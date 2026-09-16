@@ -465,11 +465,59 @@ def remap_product_sku(product_id: int, payload: RemapSkuPayload, db: Session = D
     except Exception as e:
         row = None
 
-    # 3. Cascade rename across all OrderItems, BOQItems, and Takeoff data
+    # 3. Resolve target product & its metadata (name, brand, supplier, dimming)
+    # If the official product already exists in the portal database (e.g. synced from Palladium),
+    # purge the temporary placeholder product completely so no duplicate or temp code remains.
+    if existing_official:
+        target_product = existing_official
+        if row:
+            target_product.palladium_status = "VERIFIED"
+            if row.get("retail_price") and row["retail_price"] > 0:
+                target_product.retail_price = float(row["retail_price"])
+            if row.get("stock_on_hand") is not None:
+                target_product.stock_on_hand = float(row["stock_on_hand"])
+                target_product.stock_level = int(row["stock_on_hand"])
+
+        # Delete the temporary product record completely
+        db.delete(product)
+        db.commit()
+        db.refresh(target_product)
+        purged_temp = True
+    else:
+        # The official product was not in portal DB yet: rename current record to official SKU
+        product.sku = new_sku
+        if row:
+            product.palladium_status = "VERIFIED"
+            if row.get("retail_price") and row["retail_price"] > 0:
+                product.retail_price = float(row["retail_price"])
+            if row.get("stock_on_hand") is not None:
+                product.stock_on_hand = float(row["stock_on_hand"])
+                product.stock_level = int(row["stock_on_hand"])
+        db.commit()
+        db.refresh(product)
+        target_product = product
+        purged_temp = False
+
+    # Extract official metadata to propagate to order line items (while strictly preserving cost/retail prices)
+    official_desc = target_product.client_description or target_product.name
+    official_brand = target_product.brand or ''
+    official_supplier = target_product.supplier_name or ''
+    official_dimming = target_product.dimming_protocol or target_product.dimmable or 'Non-dim'
+    serialized_target = serialize_product(target_product)
+
+    # 4. Cascade rename across all OrderItems, BOQItems, and Takeoff data
     # (Existing quoted pricing remains locked on the line items)
     order_items = db.query(OrderItem).filter(OrderItem.code == old_sku).all()
     for oi in order_items:
         oi.code = new_sku
+        if official_desc:
+            oi.description = official_desc
+        if official_brand:
+            oi.brand = official_brand
+        if official_supplier:
+            oi.supplier = official_supplier
+        if official_dimming and official_dimming != 'NOT FOUND':
+            oi.dimming = official_dimming
 
     boq_items = db.query(BOQItem).filter(BOQItem.product_code == old_sku).all()
     for bi in boq_items:
@@ -501,6 +549,14 @@ def remap_product_sku(product_id: int, payload: RemapSkuPayload, db: Session = D
             for item in tdata:
                 if isinstance(item, dict) and item.get("code") == old_sku:
                     item["code"] = new_sku
+                    if official_desc:
+                        item["description"] = official_desc
+                    if official_brand:
+                        item["brand"] = official_brand
+                    if official_supplier:
+                        item["supplier"] = official_supplier
+                    if official_dimming and official_dimming != 'NOT FOUND':
+                        item["dimming"] = official_dimming
                     changed = True
         # Format 2: Dict with specifications and countUpRows
         elif isinstance(tdata, dict):
@@ -511,7 +567,8 @@ def remap_product_sku(product_id: int, payload: RemapSkuPayload, db: Session = D
                     if isinstance(s_val, dict):
                         prod_sub = s_val.get("product")
                         if isinstance(prod_sub, dict) and prod_sub.get("sku") == old_sku:
-                            prod_sub["sku"] = new_sku
+                            # Keep user's customCost and customRetail, but update product object
+                            s_val["product"] = serialized_target
                             changed = True
                         if s_val.get("product_code") == old_sku:
                             s_val["product_code"] = new_sku
@@ -529,38 +586,7 @@ def remap_product_sku(product_id: int, payload: RemapSkuPayload, db: Session = D
             from sqlalchemy.orm.attributes import flag_modified
             flag_modified(ord_obj, "takeoff_data")
 
-    # 4. Product Record Resolution:
-    # If the official product already exists in the portal database (e.g. synced from Palladium),
-    # purge the temporary placeholder product completely so no duplicate or temp code remains.
-    if existing_official:
-        target_product = existing_official
-        if row:
-            target_product.palladium_status = "VERIFIED"
-            if row.get("retail_price") and row["retail_price"] > 0:
-                target_product.retail_price = float(row["retail_price"])
-            if row.get("stock_on_hand") is not None:
-                target_product.stock_on_hand = float(row["stock_on_hand"])
-                target_product.stock_level = int(row["stock_on_hand"])
-
-        # Delete the temporary product record completely
-        db.delete(product)
-        db.commit()
-        db.refresh(target_product)
-        purged_temp = True
-    else:
-        # The official product was not in portal DB yet: rename the current record to official SKU
-        product.sku = new_sku
-        if row:
-            product.palladium_status = "VERIFIED"
-            if row.get("retail_price") and row["retail_price"] > 0:
-                product.retail_price = float(row["retail_price"])
-            if row.get("stock_on_hand") is not None:
-                product.stock_on_hand = float(row["stock_on_hand"])
-                product.stock_level = int(row["stock_on_hand"])
-        db.commit()
-        db.refresh(product)
-        target_product = product
-        purged_temp = False
+    db.commit()
 
     status_msg = f"Successfully remapped quote line items from '{old_sku}' to official SKU '{new_sku}'."
     if purged_temp:
