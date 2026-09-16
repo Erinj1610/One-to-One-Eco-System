@@ -133,6 +133,23 @@ def init_db():
                     if 'stock_available' not in oi_cols:
                         quick_conn.execute(text("ALTER TABLE order_items ADD COLUMN stock_available FLOAT DEFAULT 0.0;"))
                         quick_conn.commit()
+                if 'products' in insp.get_table_names():
+                    p_cols = [c['name'] for c in insp.get_columns('products')]
+                    if 'palladium_status' not in p_cols:
+                        quick_conn.execute(text("ALTER TABLE products ADD COLUMN palladium_status VARCHAR DEFAULT 'VERIFIED';"))
+                        quick_conn.commit()
+                    if 'created_by_name' not in p_cols:
+                        quick_conn.execute(text("ALTER TABLE products ADD COLUMN created_by_name VARCHAR;"))
+                        quick_conn.commit()
+                    if 'source_reference' not in p_cols:
+                        quick_conn.execute(text("ALTER TABLE products ADD COLUMN source_reference VARCHAR;"))
+                        quick_conn.commit()
+                    if 'pending_notes' not in p_cols:
+                        quick_conn.execute(text("ALTER TABLE products ADD COLUMN pending_notes TEXT;"))
+                        quick_conn.commit()
+                    if 'supplier_cost' not in p_cols:
+                        quick_conn.execute(text("ALTER TABLE products ADD COLUMN supplier_cost FLOAT DEFAULT 0.0;"))
+                        quick_conn.commit()
         except Exception as quick_err:
             print(f"Quick migration notice: {quick_err}")
 

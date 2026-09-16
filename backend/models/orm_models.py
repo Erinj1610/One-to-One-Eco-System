@@ -374,6 +374,7 @@ class Product(Base):
     brand = Column(String, nullable=True)
     sku = Column(String, unique=True, index=True)
     cost_price = Column(Float, default=0.0)
+    supplier_cost = Column(Float, default=0.0)  # Confidential True Factory / Supplier Cost
     trade_price = Column(Float, default=0.0)
     retail_price = Column(Float, default=0.0)
     stock_level = Column(Integer, default=0)

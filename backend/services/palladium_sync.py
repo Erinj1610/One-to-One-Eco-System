@@ -48,7 +48,7 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
         )
         p_cursor = p_conn.cursor(as_dict=True)
 
-        # 2. Fetch inventory items and prices
+        # 2. Fetch inventory items and prices from both REGULAR and INTERNAL pricelists
         p_cursor.execute("""
             SELECT 
                 i.strPartNumber AS sku,
@@ -67,12 +67,16 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
                 i.decSumOnOrder AS sum_on_order,
                 i.decOrderLeadTime AS lead_time_days,
                 i.dteRowUpdated AS row_updated,
-                p.decSelling AS selling_price,
-                p.decEstLocalCost AS price_est_cost
+                p_reg.decSelling AS selling_price,
+                p_reg.decEstLocalCost AS price_est_cost,
+                p_int.decSelling AS internal_price
             FROM tblInv i
-            LEFT JOIN tblInvPrice p 
-                ON i.strPartNumber = p.strPartNumber 
-                AND p.strPricelist = 'REGULAR'
+            LEFT JOIN tblInvPrice p_reg 
+                ON i.strPartNumber = p_reg.strPartNumber 
+                AND p_reg.strPricelist = 'REGULAR'
+            LEFT JOIN tblInvPrice p_int 
+                ON i.strPartNumber = p_int.strPartNumber 
+                AND p_int.strPricelist = 'INTERNAL'
         """)
         palladium_items = p_cursor.fetchall()
 
@@ -194,7 +198,18 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
             category = str(item.get('category') or '').strip() or None
             family = str(item.get('family') or '').strip() or None
 
-            cost_val = float(item.get('price_est_cost') or item.get('last_cost') or item.get('standard_cost') or 0.0)
+            # Supplier True Factory Cost comes from Estimate Local Cost on REGULAR pricelist (or last PP unit)
+            supplier_cost_val = float(item.get('price_est_cost') or item.get('last_cost') or item.get('standard_cost') or 0.0)
+            
+            # Internal Cost comes from Price (Sell Unit) on INTERNAL pricelist if set; fallback to supplier_cost_val
+            raw_internal_price = item.get('internal_price')
+            if raw_internal_price is not None and float(raw_internal_price) > 0:
+                internal_cost_val = float(raw_internal_price)
+            else:
+                internal_cost_val = supplier_cost_val
+
+            # cost_price serves as the PM base cost everywhere in portal
+            cost_val = internal_cost_val
             selling_val = float(item.get('selling_price') or 0.0)
 
             sum_avail = float(item.get('sum_avail') or 0.0)
@@ -218,6 +233,8 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
                 "supplier_name": primary_vendor,
                 "supplier_details_json": json.dumps(vend_list) if vend_list else None,
                 "cost_price": cost_val,
+                "internal_cost": internal_cost_val,
+                "supplier_cost": supplier_cost_val,
                 "retail_price": selling_val,
                 "sum_avail": sum_avail,
                 "sum_on_hand": sum_on_hand,
@@ -241,6 +258,8 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
                     supplier_name=primary_vendor,
                     supplier_details_json=vend_list,
                     cost_price=cost_val,
+                    internal_cost=internal_cost_val,
+                    supplier_cost=supplier_cost_val,
                     retail_price=selling_val,
                     trade_price=selling_val,
                     stock_level=int(sum_avail),
@@ -272,6 +291,8 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
                 supplier_name = COALESCE(v.supplier_name, p.supplier_name),
                 supplier_details_json = CASE WHEN v.supplier_details_json IS NOT NULL THEN CAST(v.supplier_details_json AS json) ELSE p.supplier_details_json END,
                 cost_price = v.cost_price,
+                internal_cost = v.internal_cost,
+                supplier_cost = v.supplier_cost,
                 retail_price = v.retail_price,
                 trade_price = v.retail_price,
                 stock_level = CAST(v.sum_avail AS integer),
@@ -292,6 +313,8 @@ def sync_palladium_to_cloud_sql(db_session: Optional[Session] = None) -> Dict[st
                 supplier_name text,
                 supplier_details_json text,
                 cost_price float8,
+                internal_cost float8,
+                supplier_cost float8,
                 retail_price float8,
                 sum_avail float8,
                 sum_on_hand float8,
