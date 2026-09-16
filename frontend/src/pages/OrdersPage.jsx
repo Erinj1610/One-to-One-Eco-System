@@ -2599,12 +2599,29 @@ export default function OrdersPage() {
   };
 
   // Create a brand-new Purchase Order / Quotation
-  const handleCreatePo = (e) => {
+  const handleCreatePo = async (e) => {
     e.preventDefault();
     const proj = projects[newPoForm.projectKey];
     if (!proj) return;
 
-    const newPoId = 'Q-2026-0' + (allOrders.length + 42);
+    let newPoId = '';
+    try {
+      const resp = await fetch(`${API_BASE}/api/orders/next-quote-number`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.next_po_id) {
+          newPoId = data.next_po_id;
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch atomic next quote ID, using timestamp fallback:', err);
+    }
+
+    if (!newPoId) {
+      const year = new Date().getFullYear();
+      newPoId = `Q-${year}-${Date.now().toString().slice(-4)}`;
+    }
+
     const contact = (contacts || []).find(c => c.name === proj.client || c.company === proj.client) || {};
     const newOrder = {
       id: newPoId,

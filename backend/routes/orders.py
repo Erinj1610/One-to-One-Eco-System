@@ -20,6 +20,40 @@ class BulkRenameOrdersSchema(BaseModel):
     po_numbers: List[str]
     new_quote_name: str
 
+def generate_next_quote_id(db: Session, year: int = 2026) -> str:
+    """
+    Atomically computes the next available sequential quote number for the given year.
+    Matches formats like Q-2026-0664, Q-2026-665, Q-2026-0042, etc.
+    """
+    from sqlalchemy import text
+    query = text("SELECT po_number FROM orders WHERE po_number ~ :pattern")
+    pattern = f"^Q-{year}-[0-9]+"
+    rows = db.execute(query, {"pattern": pattern}).fetchall()
+    
+    max_num = 0
+    for r in rows:
+        val = str(r[0]).strip()
+        m = re.search(rf"^Q-{year}-0*(\d+)", val)
+        if m:
+            try:
+                num = int(m.group(1))
+                if num > max_num:
+                    max_num = num
+            except ValueError:
+                pass
+                
+    # If no quotes exist yet for this year, start at 1, else max_num + 1
+    next_num = max_num + 1 if max_num > 0 else 1
+    # Format with 4 digits e.g. Q-2026-0665
+    return f"Q-{year}-{next_num:04d}"
+
+@router.get("/next-quote-number")
+def get_next_quote_number(db: Session = Depends(get_db)):
+    from datetime import datetime
+    year = datetime.now().year
+    next_id = generate_next_quote_id(db, year)
+    return {"next_po_id": next_id, "year": year}
+
 @router.post("/bulk-delete")
 def bulk_delete_orders(payload: BulkDeleteOrdersSchema, db: Session = Depends(get_db)):
     pos = payload.po_numbers
