@@ -1366,3 +1366,161 @@ def resolve_invoicing_issue(payload: dict = Body(...), db: Session = Depends(get
         db.rollback()
         logger.error(f"Error resolving invoice issue: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.post("/manual-batch-record")
+@router.post("/manual-batch-record")
+def manual_batch_record_invoices(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    """
+    Fast batch creation of legacy/manual paper Invoices for pre-March orders.
+    Groups items by invoice_no, creates PalladiumInvoiceLine records tagged with [LEGACY],
+    creates ProcurementAllocation records (allocation_type='INVOICE'), and updates OrderItem invoice progress.
+    """
+    try:
+        project_id = payload.get("project_id")
+        order_id = payload.get("order_id")
+        created_by = payload.get("created_by") or "Staff"
+        items = payload.get("items") or []
+
+        if not items:
+            raise HTTPException(status_code=400, detail="No items provided in batch.")
+
+        # Resolve project and order
+        proj = None
+        if project_id and str(project_id).isdigit():
+            proj = db.query(Project).filter(Project.id == int(project_id)).first()
+        if not proj and project_id:
+            proj = db.query(Project).filter(Project.project_key == str(project_id)).first()
+
+        ord_obj = None
+        if order_id:
+            if str(order_id).isdigit():
+                ord_obj = db.query(Order).filter(Order.id == int(order_id)).first()
+            if not ord_obj:
+                ord_obj = db.query(Order).filter(Order.po_number == str(order_id)).first()
+
+        if ord_obj and not proj and ord_obj.project_id:
+            proj = db.query(Project).filter(Project.id == ord_obj.project_id).first()
+
+        resolved_proj_id = proj.id if proj else (int(project_id) if str(project_id).isdigit() else 1)
+        resolved_proj_name = proj.name if proj else "Project"
+        resolved_order_db_id = ord_obj.id if ord_obj else None
+        resolved_order_po = ord_obj.po_number if ord_obj else str(order_id or "ORD-LEGACY")
+        customer_name = (proj.client_name if proj else None) or "Legacy Client"
+
+        now_dt = datetime.now(timezone.utc)
+        created_invoices = set()
+        affected_order_items = []
+
+        # Group valid items by invoice number
+        items_by_inv: Dict[str, List[Dict[str, Any]]] = {}
+        for it in items:
+            inv_no = str(it.get("invoice_no") or "").strip()
+            qty_inv = float(it.get("qty_invoiced") or 0.0)
+            if not inv_no or qty_inv <= 0:
+                continue
+            items_by_inv.setdefault(inv_no, []).append(it)
+
+        if not items_by_inv:
+            raise HTTPException(status_code=400, detail="No valid items with invoice numbers and quantities > 0.")
+
+        for inv_no, inv_items in items_by_inv.items():
+            created_invoices.add(inv_no)
+            subtotal = sum(float(x.get("qty_invoiced") or 0.0) * float(x.get("unit_price") or 0.0) for x in inv_items)
+
+            # Determine transaction date from first item or today
+            raw_date = inv_items[0].get("invoice_date")
+            trans_date = None
+            if raw_date:
+                try:
+                    trans_date = datetime.fromisoformat(str(raw_date).split("T")[0])
+                except Exception:
+                    trans_date = now_dt
+            else:
+                trans_date = now_dt
+
+            for line_idx, line_data in enumerate(inv_items):
+                sku = str(line_data.get("sku") or line_data.get("code") or "CUSTOM").strip()
+                desc = str(line_data.get("description") or sku).strip()
+                qty_val = float(line_data.get("qty_invoiced") or 0.0)
+                unit_prc = float(line_data.get("unit_price") or 0.0)
+                line_tot_excl = round(qty_val * unit_prc, 2)
+                order_item_id = line_data.get("order_item_id")
+
+                # 1. Create or update PalladiumInvoiceLine
+                inv_line = PalladiumInvoiceLine(
+                    document_no=inv_no,
+                    customer_name=customer_name,
+                    reference=f"[LEGACY] {resolved_proj_name} ({resolved_order_po})",
+                    item_code=sku,
+                    item_description=desc,
+                    item_unit="EA",
+                    qty=qty_val,
+                    unit_price_excl=unit_prc,
+                    unit_price_incl=round(unit_prc * 1.15, 2),
+                    line_total_excl=line_tot_excl,
+                    line_total_incl=round(line_tot_excl * 1.15, 2),
+                    document_subtotal=round(subtotal, 2),
+                    document_total=round(subtotal * 1.15, 2),
+                    transaction_date=trans_date,
+                    last_synced_at=now_dt
+                )
+                db.add(inv_line)
+                db.flush()
+
+                # 2. Resolve matching OrderItem
+                target_item = None
+                if order_item_id:
+                    target_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
+                if not target_item and ord_obj:
+                    o_items = db.query(OrderItem).filter(OrderItem.order_id.in_([ord_obj.po_number, str(ord_obj.id)])).all()
+                    target_item = find_best_item_match(o_items, sku)
+
+                # 3. Create ProcurementAllocation
+                alloc = ProcurementAllocation(
+                    allocation_type="INVOICE",
+                    source_doc_no=inv_no,
+                    source_line_id=inv_line.id,
+                    sku=sku,
+                    project_id=resolved_proj_id,
+                    project_name=resolved_proj_name,
+                    order_id=resolved_order_db_id,
+                    order_item_id=str(target_item.id) if target_item else (str(order_item_id) if order_item_id else None),
+                    fitting_code=target_item.code if target_item else sku,
+                    allocated_qty=qty_val,
+                    unit_cost=unit_prc,
+                    doc_date=str(raw_date or now_dt.strftime("%Y-%m-%d")),
+                    allocated_by_name=created_by,
+                    allocated_at=now_dt,
+                    status="Active",
+                    notes=f"Recorded via Manual/Paper Batch Entry on {now_dt.strftime('%Y-%m-%d')}"
+                )
+                db.add(alloc)
+
+                if target_item and target_item not in affected_order_items:
+                    affected_order_items.append(target_item)
+
+        db.flush()
+
+        # Recalculate invoicing metrics for all affected order items
+        for oi in affected_order_items:
+            recalc_order_item_invoicing(db, oi)
+
+        db.commit()
+
+        logger.info(f"Manual batch recorded {len(created_invoices)} invoices across {len(items)} lines for order {resolved_order_po}.")
+        return {
+            "status": "success",
+            "message": f"Successfully created and allocated {len(created_invoices)} paper invoice(s) ({', '.join(sorted(created_invoices))}).",
+            "invoices_created": list(sorted(created_invoices)),
+            "lines_recorded": len(items),
+            "affected_items_count": len(affected_order_items)
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error in manual_batch_record_invoices: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+

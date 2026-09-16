@@ -1917,3 +1917,198 @@ def resolve_procurement_issue(payload: dict = Body(...), db: Session = Depends(g
         db.rollback()
         logger.error(f"Error resolving procurement issue: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.post("/manual-batch-record")
+@router.post("/manual-batch-record")
+def manual_batch_record_procurement(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
+    """
+    Fast batch creation of legacy/manual paper POs or GRNs for pre-March orders.
+    Groups items by doc_no, creates PalladiumPOLine or PalladiumGRNLine records tagged with [LEGACY],
+    creates ProcurementAllocation records, and updates OrderItem procurement/receiving progress.
+    """
+    try:
+        doc_type = str(payload.get("doc_type") or "PO").strip().upper() # "PO" or "GRN"
+        project_id = payload.get("project_id")
+        order_id = payload.get("order_id")
+        created_by = payload.get("created_by") or "Staff"
+        items = payload.get("items") or []
+
+        if not items:
+            raise HTTPException(status_code=400, detail="No items provided in batch.")
+
+        if doc_type not in ("PO", "GRN"):
+            raise HTTPException(status_code=400, detail="doc_type must be 'PO' or 'GRN'.")
+
+        # Resolve project and order
+        proj = None
+        if project_id and str(project_id).isdigit():
+            proj = db.query(Project).filter(Project.id == int(project_id)).first()
+        if not proj and project_id:
+            proj = db.query(Project).filter(Project.project_key == str(project_id)).first()
+
+        ord_obj = None
+        if order_id:
+            if str(order_id).isdigit():
+                ord_obj = db.query(Order).filter(Order.id == int(order_id)).first()
+            if not ord_obj:
+                ord_obj = db.query(Order).filter(Order.po_number == str(order_id)).first()
+
+        if ord_obj and not proj and ord_obj.project_id:
+            proj = db.query(Project).filter(Project.id == ord_obj.project_id).first()
+
+        resolved_proj_id = proj.id if proj else (int(project_id) if str(project_id).isdigit() else 1)
+        resolved_proj_name = proj.name if proj else "Project"
+        resolved_order_db_id = ord_obj.id if ord_obj else None
+        resolved_order_po = ord_obj.po_number if ord_obj else str(order_id or "ORD-LEGACY")
+
+        now_dt = datetime.now(timezone.utc)
+        created_docs = set()
+        affected_order_items = []
+
+        # Group valid items by document number
+        items_by_doc: Dict[str, List[Dict[str, Any]]] = {}
+        for it in items:
+            d_no = str(it.get("doc_no") or "").strip()
+            qty_val = float(it.get("qty") or 0.0)
+            if not d_no or qty_val <= 0:
+                continue
+            items_by_doc.setdefault(d_no, []).append(it)
+
+        if not items_by_doc:
+            raise HTTPException(status_code=400, detail=f"No valid items with {doc_type} numbers and quantities > 0.")
+
+        for d_no, doc_items in items_by_doc.items():
+            created_docs.add(d_no)
+            subtotal = sum(float(x.get("qty") or 0.0) * float(x.get("unit_cost") or 0.0) for x in doc_items)
+            raw_date = doc_items[0].get("doc_date")
+            trans_date = None
+            if raw_date:
+                try:
+                    trans_date = datetime.fromisoformat(str(raw_date).split("T")[0])
+                except Exception:
+                    trans_date = now_dt
+            else:
+                trans_date = now_dt
+
+            for line_data in doc_items:
+                sku = str(line_data.get("sku") or line_data.get("code") or "CUSTOM").strip()
+                desc = str(line_data.get("description") or sku).strip()
+                qty_val = float(line_data.get("qty") or 0.0)
+                unit_cst = float(line_data.get("unit_cost") or 0.0)
+                supplier = str(line_data.get("supplier_name") or line_data.get("supplier") or "Legacy Supplier").strip()
+                order_item_id = line_data.get("order_item_id")
+
+                # 1. Create PalladiumPOLine or PalladiumGRNLine
+                source_line_id = None
+                if doc_type == "PO":
+                    po_line = PalladiumPOLine(
+                        document_no=d_no,
+                        vendor_name=supplier,
+                        item_code=sku,
+                        item_description=desc,
+                        item_unit="EA",
+                        order_qty=qty_val,
+                        open_qty=0.0,
+                        shipped_qty=qty_val,
+                        unit_cost=unit_cst,
+                        total_value_excl=round(qty_val * unit_cst, 2),
+                        transaction_date=trans_date,
+                        reference=f"[LEGACY] {resolved_proj_name} ({resolved_order_po})",
+                        status="Closed",
+                        customer_name=resolved_proj_name,
+                        last_synced_at=now_dt
+                    )
+                    db.add(po_line)
+                    db.flush()
+                    source_line_id = po_line.id
+                else: # GRN
+                    grn_line = PalladiumGRNLine(
+                        document_no=d_no,
+                        vendor_name=supplier,
+                        item_code=sku,
+                        item_description=desc,
+                        item_unit="EA",
+                        received_qty=qty_val,
+                        unit_cost=unit_cst,
+                        line_total_excl=round(qty_val * unit_cst, 2),
+                        line_total_incl=round(qty_val * unit_cst * 1.15, 2),
+                        transaction_date=trans_date,
+                        reference=f"[LEGACY] {resolved_proj_name} ({resolved_order_po})",
+                        last_synced_at=now_dt
+                    )
+                    db.add(grn_line)
+                    db.flush()
+                    source_line_id = grn_line.id
+
+                # 2. Match target OrderItem
+                target_item = None
+                if order_item_id:
+                    target_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
+                if not target_item and ord_obj:
+                    o_items = db.query(OrderItem).filter(OrderItem.order_id.in_([ord_obj.po_number, str(ord_obj.id)])).all()
+                    target_item = find_best_item_match(o_items, sku)
+
+                # 3. Create ProcurementAllocation
+                alloc = ProcurementAllocation(
+                    allocation_type=doc_type,
+                    source_doc_no=d_no,
+                    source_line_id=source_line_id,
+                    sku=sku,
+                    project_id=resolved_proj_id,
+                    project_name=resolved_proj_name,
+                    order_id=resolved_order_db_id,
+                    order_item_id=str(target_item.id) if target_item else (str(order_item_id) if order_item_id else None),
+                    fitting_code=target_item.code if target_item else sku,
+                    allocated_qty=qty_val,
+                    unit_cost=unit_cst,
+                    vendor_name=supplier,
+                    doc_date=str(raw_date or now_dt.strftime("%Y-%m-%d")),
+                    allocated_by_name=created_by,
+                    allocated_at=now_dt,
+                    status="Active",
+                    notes=f"Recorded via Manual/Paper Batch Entry ({doc_type}) on {now_dt.strftime('%Y-%m-%d')}"
+                )
+                db.add(alloc)
+
+                # 4. Update OrderItem fields directly
+                if target_item:
+                    date_str = str(raw_date or now_dt.strftime("%Y-%m-%d")).split("T")[0]
+                    if doc_type == "PO":
+                        target_item.po_ref = d_no
+                        target_item.po_supplier = supplier
+                        target_item.po_date = date_str
+                        target_item.po_qty_ordered = (target_item.po_qty_ordered or 0) + int(round(qty_val))
+                        target_item.stock_status = "All Stock on Hand" if target_item.po_qty_ordered >= (target_item.qty or 1) else "Partial Stock on Hand"
+                        p_hist = list(target_item.purchase_history or [])
+                        p_hist.append({"id": d_no, "ref": d_no, "qty": qty_val, "cost": unit_cst, "supplier": supplier, "date": date_str, "type": "PO"})
+                        target_item.purchase_history = p_hist
+                    else: # GRN
+                        target_item.grn_ref = d_no
+                        target_item.received_date = date_str
+                        target_item.received_qty = (target_item.received_qty or 0) + int(round(qty_val))
+                        r_hist = list(target_item.receiving_history or [])
+                        r_hist.append({"id": d_no, "ref": d_no, "qty": qty_val, "date": date_str, "type": "GRN"})
+                        target_item.receiving_history = r_hist
+
+                    if target_item not in affected_order_items:
+                        affected_order_items.append(target_item)
+
+        db.commit()
+
+        logger.info(f"Manual batch recorded {len(created_docs)} {doc_type} documents across {len(items)} lines for order {resolved_order_po}.")
+        return {
+            "status": "success",
+            "message": f"Successfully created and allocated {len(created_docs)} paper {doc_type}(s) ({', '.join(sorted(created_docs))}).",
+            "docs_created": list(sorted(created_docs)),
+            "lines_recorded": len(items),
+            "affected_items_count": len(affected_order_items)
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error in manual_batch_record_procurement: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+

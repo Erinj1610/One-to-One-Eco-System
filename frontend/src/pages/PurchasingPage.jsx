@@ -145,6 +145,19 @@ export default function PurchasingPage() {
     return selectedBatchOrder?.itemsList || [];
   }, [selectedBatchOrder]);
 
+  // -------------------------------------------------------------
+  // MANUAL / PAPER PO & GRN RECORDING STATE (Legacy Reconciliation)
+  // -------------------------------------------------------------
+  const [manualProcurementModalOpen, setManualProcurementModalOpen] = useState(false);
+  const [manualProcDocType, setManualProcDocType] = useState('PO'); // 'PO' or 'GRN'
+  const [manualBatchProjectKey, setManualBatchProjectKey] = useState('');
+  const [manualBatchOrderKey, setManualBatchOrderKey] = useState('');
+  const [manualBatchDocRef, setManualBatchDocRef] = useState('');
+  const [manualBatchSupplier, setManualBatchSupplier] = useState('');
+  const [manualBatchDate, setManualBatchDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [manualBatchRows, setManualBatchRows] = useState([]);
+  const [isLoadingOrderItems, setIsLoadingOrderItems] = useState(false);
+  const [isSavingManualBatch, setIsSavingManualBatch] = useState(false);
 
   // Smart Bulk PO Allocation Wizard State
   const [isBulkWizardOpen, setIsBulkWizardOpen] = useState(false);
@@ -844,6 +857,134 @@ export default function PurchasingPage() {
   };
 
   // -------------------------------------------------------------
+  // MANUAL / PAPER BATCH RECORDING HANDLERS (PO & GRN)
+  // -------------------------------------------------------------
+  const handleOpenManualProcModal = (type = 'PO') => {
+    setManualProcDocType(type);
+    setManualBatchProjectKey('');
+    setManualBatchOrderKey('');
+    setManualBatchDocRef('');
+    setManualBatchSupplier('');
+    setManualBatchDate(new Date().toISOString().split('T')[0]);
+    setManualBatchRows([]);
+    setManualProcurementModalOpen(true);
+  };
+
+  const handleSelectManualOrder = async (projKey, ordKey, docType = manualProcDocType) => {
+    setManualBatchProjectKey(projKey);
+    setManualBatchOrderKey(ordKey);
+    if (!ordKey) {
+      setManualBatchRows([]);
+      return;
+    }
+
+    setIsLoadingOrderItems(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/orders/${encodeURIComponent(ordKey)}/items`);
+      if (res.ok) {
+        const items = await res.json();
+        const initialRows = (items || []).filter(it => !it.is_credit && !it.isCredit).map(it => {
+          const reqQty = Number(it.qty || 0);
+          const doneQty = docType === 'PO' ? Number(it.po_qty_ordered || it.poQtyOrdered || 0) : Number(it.received_qty || it.receivedQty || 0);
+          const rem = Math.max(0, reqQty - doneQty);
+          return {
+            order_item_id: it.id,
+            sku: it.code || it.oneOneCode || 'CUSTOM',
+            one_one_code: it.oneOneCode || it.one_one_code || '—',
+            description: it.description || it.code || 'Item',
+            required_qty: reqQty,
+            already_done: doneQty,
+            unit_cost: Number(it.unit_cost || it.unitCost || 0),
+            supplier_name: it.supplier || it.po_supplier || manualBatchSupplier || 'Supplier',
+            doc_no: manualBatchDocRef || '',
+            qty: rem > 0 ? rem : 0,
+            doc_date: manualBatchDate,
+            included: rem > 0
+          };
+        });
+        setManualBatchRows(initialRows);
+      } else {
+        alert("Failed to load items for this order.");
+      }
+    } catch (err) {
+      alert(`Error loading order items: ${err.message}`);
+    } finally {
+      setIsLoadingOrderItems(false);
+    }
+  };
+
+  const handleApplyGlobalDocRef = (refVal) => {
+    setManualBatchDocRef(refVal);
+    setManualBatchRows(prev => prev.map(r => r.included ? { ...r, doc_no: refVal } : r));
+  };
+
+  const handleApplyGlobalSupplier = (supVal) => {
+    setManualBatchSupplier(supVal);
+    setManualBatchRows(prev => prev.map(r => r.included ? { ...r, supplier_name: supVal } : r));
+  };
+
+  const handleApplyGlobalDocDate = (dateVal) => {
+    setManualBatchDate(dateVal);
+    setManualBatchRows(prev => prev.map(r => ({ ...r, doc_date: dateVal })));
+  };
+
+  const handleFillAllRemaining = () => {
+    setManualBatchRows(prev => prev.map(r => {
+      const rem = Math.max(0, r.required_qty - r.already_done);
+      return { ...r, qty: rem, included: rem > 0 };
+    }));
+  };
+
+  const handleSubmitManualBatchProcurement = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const activeItems = manualBatchRows.filter(r => r.included && r.doc_no && Number(r.qty) > 0);
+    if (activeItems.length === 0) {
+      alert(`Please ensure at least one row is checked with a ${manualProcDocType} # and a Quantity > 0.`);
+      return;
+    }
+
+    setIsSavingManualBatch(true);
+    try {
+      const payload = {
+        doc_type: manualProcDocType,
+        project_id: manualBatchProjectKey,
+        order_id: manualBatchOrderKey,
+        created_by: "Admin",
+        items: activeItems.map(r => ({
+          order_item_id: r.order_item_id,
+          sku: r.sku,
+          description: r.description,
+          unit_cost: r.unit_cost,
+          supplier_name: r.supplier_name || manualBatchSupplier,
+          qty: Number(r.qty),
+          doc_no: r.doc_no.trim(),
+          doc_date: r.doc_date || manualBatchDate
+        }))
+      };
+
+      const res = await fetch(`${API_BASE}/api/procurement/manual-batch-record`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🎉 ${data.message || `Paper ${manualProcDocType} recorded and allocated successfully!`}`);
+        setManualProcurementModalOpen(false);
+        fetchSummary();
+        fetchProcurementDocuments();
+        if (refreshProjects) refreshProjects();
+      } else {
+        alert(`Error recording paper ${manualProcDocType}: ${data.detail || 'Could not complete request.'}`);
+      }
+    } catch (err) {
+      alert(`Network error: ${err.message}`);
+    } finally {
+      setIsSavingManualBatch(false);
+    }
+  };
+
+  // -------------------------------------------------------------
   // SMART BULK PO ALLOCATION WIZARD HANDLERS
   // -------------------------------------------------------------
   const handleOpenBulkWizard = async () => {
@@ -1145,27 +1286,73 @@ export default function PurchasingPage() {
           )}
 
           {!selectedDocument && (
-            <button
-              onClick={handleOpenBulkWizard}
-              className="btn btn-sm"
-              title="Auto-match and bulk allocate unallocated POs to projects with review"
-              style={{
-                background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                color: '#fff',
-                border: 'none',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '12px',
-                height: '32px',
-                fontWeight: 700,
-                boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)',
-                padding: '0 12px',
-                borderRadius: '8px'
-              }}
-            >
-              <Sparkles size={14} /> Smart Bulk Allocate POs
-            </button>
+            <>
+              <button
+                onClick={() => handleOpenManualProcModal('PO')}
+                className="btn btn-sm"
+                title="Record pre-March 2026 paper POs directly against order line items"
+                style={{
+                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '12px',
+                  height: '32px',
+                  fontWeight: 700,
+                  boxShadow: '0 2px 8px rgba(37, 99, 235, 0.3)',
+                  padding: '0 12px',
+                  borderRadius: '8px'
+                }}
+              >
+                <ClipboardList size={14} /> 📝 Record Paper PO
+              </button>
+
+              <button
+                onClick={() => handleOpenManualProcModal('GRN')}
+                className="btn btn-sm"
+                title="Record pre-March 2026 paper GRNs directly against order line items"
+                style={{
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '12px',
+                  height: '32px',
+                  fontWeight: 700,
+                  boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+                  padding: '0 12px',
+                  borderRadius: '8px'
+                }}
+              >
+                <Package size={14} /> 📦 Record Paper GRN
+              </button>
+
+              <button
+                onClick={handleOpenBulkWizard}
+                className="btn btn-sm"
+                title="Auto-match and bulk allocate unallocated POs to projects with review"
+                style={{
+                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                  color: '#fff',
+                  border: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '12px',
+                  height: '32px',
+                  fontWeight: 700,
+                  boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)',
+                  padding: '0 12px',
+                  borderRadius: '8px'
+                }}
+              >
+                <Sparkles size={14} /> Smart Bulk Allocate POs
+              </button>
+            </>
           )}
 
           <button
@@ -4041,6 +4228,520 @@ export default function PurchasingPage() {
                       <CheckCircle2 size={15} /> Approve & Bulk Allocate ({wizardSelectedDocNos.size} POs)
                     </>
                   )}
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ============================================================ */}
+      {/* MODAL: MANUAL / PAPER BATCH PO & GRN RECORDING               */}
+      {/* ============================================================ */}
+      {manualProcurementModalOpen && createPortal(
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#ffffff',
+            color: 'var(--text-primary, #1a1a1a)',
+            border: '1px solid var(--border-strong, #cbd5e1)',
+            borderRadius: '14px',
+            width: '100%',
+            maxWidth: '1120px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.6)',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '16px 22px',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: manualProcDocType === 'PO' ? '#eff6ff' : '#ecfdf5'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '22px' }}>{manualProcDocType === 'PO' ? '📋' : '📦'}</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    Record Paper / Legacy {manualProcDocType === 'PO' ? 'Purchase Orders (PO)' : 'Goods Received Notes (GRN)'}
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                    Batch record historical {manualProcDocType} documents directly against order line items to update procurement and receiving progress
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {/* Switch between PO and GRN mode directly in modal */}
+                <div style={{ display: 'flex', background: 'var(--bg-secondary)', padding: '2px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualProcDocType('PO');
+                      if (manualBatchProjectKey && manualBatchOrderKey) {
+                        handleSelectManualOrder(manualBatchProjectKey, manualBatchOrderKey, 'PO');
+                      }
+                    }}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      borderRadius: '6px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: manualProcDocType === 'PO' ? '#3b82f6' : 'transparent',
+                      color: manualProcDocType === 'PO' ? '#fff' : 'var(--text-secondary)'
+                    }}
+                  >
+                    PO Mode
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualProcDocType('GRN');
+                      if (manualBatchProjectKey && manualBatchOrderKey) {
+                        handleSelectManualOrder(manualBatchProjectKey, manualBatchOrderKey, 'GRN');
+                      }
+                    }}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      borderRadius: '6px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: manualProcDocType === 'GRN' ? '#10b981' : 'transparent',
+                      color: manualProcDocType === 'GRN' ? '#fff' : 'var(--text-secondary)'
+                    }}
+                  >
+                    GRN Mode
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setManualProcurementModalOpen(false)}
+                  className="btn btn-sm btn-ghost"
+                  style={{ padding: '4px', borderRadius: '50%' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '20px 22px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              
+              {/* Step 1: Project & Order Selectors */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', marginBottom: '6px', color: 'var(--text-secondary)' }}>
+                    1. Select Project
+                  </label>
+                  <select
+                    className="form-control"
+                    value={manualBatchProjectKey}
+                    onChange={(e) => {
+                      const pKey = e.target.value;
+                      setManualBatchProjectKey(pKey);
+                      setManualBatchOrderKey('');
+                      setManualBatchRows([]);
+                    }}
+                    style={{ width: '100%', height: '36px', fontSize: '12.5px' }}
+                  >
+                    <option value="">— Select Target Project —</option>
+                    {Object.values(projects || {}).map(p => (
+                      <option key={p.id || p.key} value={p.key || p.id}>
+                        {p.name} {p.client ? `(${p.client})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', marginBottom: '6px', color: 'var(--text-secondary)' }}>
+                    2. Select Order
+                  </label>
+                  <select
+                    className="form-control"
+                    value={manualBatchOrderKey}
+                    disabled={!manualBatchProjectKey}
+                    onChange={(e) => handleSelectManualOrder(manualBatchProjectKey, e.target.value, manualProcDocType)}
+                    style={{ width: '100%', height: '36px', fontSize: '12.5px' }}
+                  >
+                    <option value="">— Select Order / Spec —</option>
+                    {(() => {
+                      const proj = Object.values(projects || {}).find(p => (p.key && p.key === manualBatchProjectKey) || (p.id && String(p.id) === String(manualBatchProjectKey)) || p.name === manualBatchProjectKey);
+                      return (proj?.orders || []).map(o => (
+                        <option key={o.id || o.poNumber} value={o.poNumber || o.id}>
+                          {o.quoteName || o.quote_name || o.poNumber || `Order #${o.id}`} ({o.poNumber || 'No PO'})
+                        </option>
+                      ));
+                    })()}
+                  </select>
+                </div>
+              </div>
+
+              {/* Step 2: Global Batch Inputs & Quick Fill Toolbar */}
+              {manualBatchOrderKey && (
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  padding: '12px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '12px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <div>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginRight: '6px' }}>
+                        Default {manualProcDocType} #:
+                      </span>
+                      <input
+                        type="text"
+                        placeholder={manualProcDocType === 'PO' ? "e.g. PO-1045" : "e.g. GRN-0082"}
+                        value={manualBatchDocRef}
+                        onChange={(e) => handleApplyGlobalDocRef(e.target.value)}
+                        style={{
+                          height: '30px',
+                          padding: '0 8px',
+                          fontSize: '12px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border)',
+                          background: '#ffffff',
+                          color: 'var(--text-primary)',
+                          width: '130px',
+                          fontFamily: 'monospace',
+                          fontWeight: 700
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginRight: '6px' }}>
+                        Supplier:
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="Supplier name"
+                        value={manualBatchSupplier}
+                        onChange={(e) => handleApplyGlobalSupplier(e.target.value)}
+                        style={{
+                          height: '30px',
+                          padding: '0 8px',
+                          fontSize: '12px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border)',
+                          background: '#ffffff',
+                          color: 'var(--text-primary)',
+                          width: '130px'
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginRight: '6px' }}>
+                        Date:
+                      </span>
+                      <input
+                        type="date"
+                        value={manualBatchDate}
+                        onChange={(e) => handleApplyGlobalDocDate(e.target.value)}
+                        style={{
+                          height: '30px',
+                          padding: '0 8px',
+                          fontSize: '12px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border)',
+                          background: '#ffffff',
+                          color: 'var(--text-primary)'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={handleFillAllRemaining}
+                      className="btn btn-xs btn-ghost"
+                      style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      title="Set Qty to all remaining un-ordered or un-received balance"
+                    >
+                      <CheckSquare size={12} /> Fill All Remaining
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setManualBatchRows(prev => prev.map(r => ({ ...r, included: !prev.every(x => x.included) })))}
+                      className="btn btn-xs btn-ghost"
+                      style={{ border: '1px solid var(--border)' }}
+                    >
+                      {manualBatchRows.every(r => r.included) ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Order Items Spreadsheet Grid */}
+              {isLoadingOrderItems ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  <RefreshCw size={20} className="spin" style={{ margin: '0 auto 10px auto', display: 'block', color: 'var(--accent)' }} />
+                  Loading items for selected order...
+                </div>
+              ) : manualBatchRows.length > 0 ? (
+                <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflowX: 'auto', maxHeight: '420px', background: '#ffffff' }}>
+                  <table className="table" style={{ width: '100%', margin: 0, fontSize: '12px', borderCollapse: 'collapse' }}>
+                    <thead style={{ position: 'sticky', top: 0, background: '#f1f5f9', zIndex: 2, borderBottom: '2px solid #cbd5e1' }}>
+                      <tr>
+                        <th style={{ width: '40px', textAlign: 'center', background: '#f1f5f9' }}></th>
+                        <th style={{ width: '90px', background: '#f1f5f9' }}>1:1 Code</th>
+                        <th style={{ width: '110px', background: '#f1f5f9' }}>Item Code</th>
+                        <th style={{ background: '#f1f5f9' }}>Description</th>
+                        <th style={{ width: '65px', textAlign: 'center', background: '#f1f5f9' }}>Total</th>
+                        <th style={{ width: '70px', textAlign: 'center', background: '#f1f5f9' }}>{manualProcDocType === 'PO' ? 'Ord' : 'Rec'}</th>
+                        <th style={{ width: '70px', textAlign: 'center', background: '#f1f5f9' }}>Remaining</th>
+                        <th style={{ width: '85px', textAlign: 'right', background: '#f1f5f9' }}>Cost</th>
+                        <th style={{ width: '130px', background: '#f1f5f9' }}>{manualProcDocType} #</th>
+                        <th style={{ width: '120px', background: '#f1f5f9' }}>Supplier</th>
+                        <th style={{ width: '80px', textAlign: 'center', background: '#f1f5f9' }}>Qty</th>
+                        <th style={{ width: '120px', background: '#f1f5f9' }}>Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {manualBatchRows.map((row, idx) => {
+                        const rem = Math.max(0, row.required_qty - row.already_done);
+                        const isFullyDone = rem === 0;
+
+                        return (
+                          <tr 
+                            key={row.order_item_id || idx}
+                            style={{ 
+                              background: row.included ? (manualProcDocType === 'PO' ? '#eff6ff' : '#ecfdf5') : (isFullyDone ? '#f8fafc' : '#ffffff'),
+                              opacity: isFullyDone && !row.included ? 0.6 : 1,
+                              borderBottom: '1px solid #e2e8f0'
+                            }}
+                          >
+                            <td style={{ textAlign: 'center', padding: '6px 4px' }}>
+                              <input
+                                type="checkbox"
+                                checked={row.included}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setManualBatchRows(prev => prev.map((r, i) => i === idx ? { 
+                                    ...r, 
+                                    included: checked,
+                                    doc_no: checked && !r.doc_no ? manualBatchDocRef : r.doc_no,
+                                    supplier_name: checked && !r.supplier_name ? manualBatchSupplier : r.supplier_name,
+                                    qty: checked && Number(r.qty) <= 0 ? rem : r.qty
+                                  } : r));
+                                }}
+                              />
+                            </td>
+                            <td style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                              {row.one_one_code || '—'}
+                            </td>
+                            <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>
+                              {row.sku}
+                            </td>
+                            <td style={{ maxWidth: '180px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.description}>
+                              {row.description}
+                            </td>
+                            <td style={{ textAlign: 'center', fontWeight: 700 }}>
+                              {row.required_qty}
+                            </td>
+                            <td style={{ textAlign: 'center', color: row.already_done > 0 ? '#10b981' : 'var(--text-secondary)' }}>
+                              {row.already_done}
+                            </td>
+                            <td style={{ textAlign: 'center', fontWeight: 700, color: rem > 0 ? '#f59e0b' : '#10b981' }}>
+                              {rem}
+                            </td>
+                            <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
+                              R {Math.round(row.unit_cost).toLocaleString()}
+                            </td>
+                            <td style={{ padding: '4px' }}>
+                              <input
+                                type="text"
+                                placeholder={`${manualProcDocType}-...`}
+                                disabled={!row.included}
+                                value={row.doc_no}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setManualBatchRows(prev => prev.map((r, i) => i === idx ? { ...r, doc_no: v } : r));
+                                }}
+                                style={{
+                                  width: '100%',
+                                  height: '28px',
+                                  padding: '0 6px',
+                                  fontSize: '11px',
+                                  fontFamily: 'monospace',
+                                  fontWeight: 600,
+                                  borderRadius: '4px',
+                                  border: '1px solid var(--border)',
+                                  background: row.included ? '#ffffff' : '#f8fafc',
+                                  color: 'var(--text-primary)'
+                                }}
+                              />
+                            </td>
+                            <td style={{ padding: '4px' }}>
+                              <input
+                                type="text"
+                                placeholder="Supplier"
+                                disabled={!row.included}
+                                value={row.supplier_name}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setManualBatchRows(prev => prev.map((r, i) => i === idx ? { ...r, supplier_name: v } : r));
+                                }}
+                                style={{
+                                  width: '100%',
+                                  height: '28px',
+                                  padding: '0 6px',
+                                  fontSize: '11px',
+                                  borderRadius: '4px',
+                                  border: '1px solid var(--border)',
+                                  background: row.included ? '#ffffff' : '#f8fafc',
+                                  color: 'var(--text-primary)'
+                                }}
+                              />
+                            </td>
+                            <td style={{ padding: '4px', textAlign: 'center' }}>
+                              <input
+                                type="number"
+                                min="1"
+                                max={row.required_qty}
+                                disabled={!row.included}
+                                value={row.qty}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setManualBatchRows(prev => prev.map((r, i) => i === idx ? { ...r, qty: v } : r));
+                                }}
+                                style={{
+                                  width: '65px',
+                                  height: '28px',
+                                  padding: '0 6px',
+                                  textAlign: 'center',
+                                  fontSize: '11.5px',
+                                  fontWeight: 700,
+                                  borderRadius: '4px',
+                                  border: '1px solid var(--border)',
+                                  background: row.included ? '#ffffff' : '#f8fafc',
+                                  color: 'var(--text-primary)'
+                                }}
+                              />
+                            </td>
+                            <td style={{ padding: '4px' }}>
+                              <input
+                                type="date"
+                                disabled={!row.included}
+                                value={row.doc_date}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setManualBatchRows(prev => prev.map((r, i) => i === idx ? { ...r, doc_date: v } : r));
+                                }}
+                                style={{
+                                  width: '100%',
+                                  height: '28px',
+                                  padding: '0 4px',
+                                  fontSize: '11px',
+                                  borderRadius: '4px',
+                                  border: '1px solid var(--border)',
+                                  background: row.included ? '#ffffff' : '#f8fafc',
+                                  color: 'var(--text-primary)'
+                                }}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : manualBatchOrderKey ? (
+                <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', background: '#f8fafc', borderRadius: '8px' }}>
+                  No items found on this order.
+                </div>
+              ) : (
+                <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', background: '#f8fafc', borderRadius: '8px', border: '1px dashed var(--border)' }}>
+                  👆 Please select a Project and Order above to view items.
+                </div>
+              )}
+
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '14px 22px',
+              borderTop: '1px solid var(--border)',
+              background: '#f8fafc',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '10px'
+            }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                {(() => {
+                  const checkedRows = manualBatchRows.filter(r => r.included && r.doc_no && Number(r.qty) > 0);
+                  const distinctDocs = new Set(checkedRows.map(r => r.doc_no.trim()));
+                  const totalVal = checkedRows.reduce((acc, r) => acc + (Number(r.qty) * r.unit_cost), 0);
+                  return (
+                    <span>
+                      Ready to record: <strong style={{ color: 'var(--text-primary)' }}>{checkedRows.length} lines</strong> across <strong style={{ color: '#3b82f6' }}>{distinctDocs.size} {manualProcDocType}(s)</strong> totaling <strong style={{ color: '#10b981' }}>R {Math.round(totalVal).toLocaleString()}</strong>
+                    </span>
+                  );
+                })()}
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setManualProcurementModalOpen(false)}
+                  className="btn btn-sm btn-ghost"
+                  style={{ border: '1px solid var(--border)' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmitManualBatchProcurement}
+                  disabled={isSavingManualBatch || manualBatchRows.filter(r => r.included && r.doc_no && Number(r.qty) > 0).length === 0}
+                  className="btn btn-sm"
+                  style={{
+                    background: manualProcDocType === 'PO'
+                      ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
+                      : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    color: '#fff',
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    border: 'none',
+                    padding: '0 16px',
+                    boxShadow: '0 2px 8px rgba(37, 99, 235, 0.3)'
+                  }}
+                >
+                  {isSavingManualBatch && <RefreshCw size={13} className="animate-spin" />}
+                  {isSavingManualBatch ? 'Recording...' : `Save & Record ${manualProcDocType}s`}
                 </button>
               </div>
             </div>
