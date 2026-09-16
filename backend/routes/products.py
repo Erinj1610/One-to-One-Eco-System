@@ -486,18 +486,51 @@ def remap_product_sku(product_id: int, payload: RemapSkuPayload, db: Session = D
     for bi in boq_items:
         bi.product_code = new_sku
 
-    # Cascade rename inside Order.takeoff_data JSON
+    # Cascade rename inside Order.takeoff_data JSON (supports both list and dict {countUpRows, specifications})
+    impacted_order_numbers = set()
+    for oi in order_items:
+        order_rec = db.query(Order).filter(Order.id == oi.order_id).first()
+        if order_rec:
+            impacted_order_numbers.add(order_rec.order_number or f"ORD-{order_rec.id}")
+
     orders_with_takeoff = db.query(Order).filter(Order.takeoff_data.isnot(None)).all()
     for ord_obj in orders_with_takeoff:
-        if isinstance(ord_obj.takeoff_data, list):
-            changed = False
-            for item in ord_obj.takeoff_data:
+        changed = False
+        tdata = ord_obj.takeoff_data
+        
+        # Format 1: List of items
+        if isinstance(tdata, list):
+            for item in tdata:
                 if isinstance(item, dict) and item.get("code") == old_sku:
                     item["code"] = new_sku
                     changed = True
-            if changed:
-                from sqlalchemy.orm.attributes import flag_modified
-                flag_modified(ord_obj, "takeoff_data")
+        # Format 2: Dict with specifications and countUpRows
+        elif isinstance(tdata, dict):
+            # 1. Update specifications map
+            specs = tdata.get("specifications")
+            if isinstance(specs, dict):
+                for tag, s_val in specs.items():
+                    if isinstance(s_val, dict):
+                        # check mapped product
+                        prod_sub = s_val.get("product")
+                        if isinstance(prod_sub, dict) and prod_sub.get("sku") == old_sku:
+                            prod_sub["sku"] = new_sku
+                            changed = True
+                        if s_val.get("product_code") == old_sku:
+                            s_val["product_code"] = new_sku
+                            changed = True
+            # 2. Update countUpRows
+            rows = tdata.get("countUpRows")
+            if isinstance(rows, list):
+                for r in rows:
+                    if isinstance(r, dict) and r.get("code") == old_sku:
+                        r["code"] = new_sku
+                        changed = True
+
+        if changed:
+            impacted_order_numbers.add(ord_obj.order_number or f"ORD-{ord_obj.id}")
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(ord_obj, "takeoff_data")
 
     db.commit()
     db.refresh(product)
@@ -508,10 +541,14 @@ def remap_product_sku(product_id: int, payload: RemapSkuPayload, db: Session = D
     else:
         status_msg += " Note: Not found in Palladium yet."
 
+    if impacted_order_numbers:
+        status_msg += f" Automatically updated in {len(impacted_order_numbers)} order(s): {', '.join(sorted(impacted_order_numbers))}."
+
     return {
         "success": True,
         "message": status_msg,
         "is_verified": bool(row),
+        "impacted_orders": list(impacted_order_numbers),
         "product": serialize_product(product)
     }
 

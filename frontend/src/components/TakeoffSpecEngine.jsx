@@ -144,6 +144,79 @@ export default function TakeoffSpecEngine({
   // Focus ref for auto-focusing newly added rows
   const newRowTagInputRef = useRef(null);
 
+  // In-Order Ad-Hoc Product Creation Modal State
+  const [showCreateProductModal, setShowCreateProductModal] = useState(false);
+  const [customSku, setCustomSku] = useState('');
+  const [customName, setCustomName] = useState('');
+  const [customCategory, setCustomCategory] = useState('Downlight');
+  const [customSupplier, setCustomSupplier] = useState(orderSupplier || 'ELDC');
+  const [customBrand, setCustomBrand] = useState('Delta Light');
+  const [customCostPrice, setCustomCostPrice] = useState('');
+  const [customRetailPrice, setCustomRetailPrice] = useState('');
+  const [isCreatingProduct, setIsCreatingProduct] = useState(false);
+
+  const handleOpenCreateProduct = () => {
+    setCustomSku(catalogSearch.trim() || '');
+    setCustomName(catalogSearch.trim() ? catalogSearch.trim() : (catalogTargetTag ? `Custom Fitting (${catalogTargetTag})` : ''));
+    setCustomCategory(catalogCategory !== 'All' ? catalogCategory : 'Downlight');
+    setCustomSupplier(orderSupplier || 'ELDC');
+    setCustomCostPrice('');
+    setCustomRetailPrice('');
+    setShowCreateProductModal(true);
+  };
+
+  const handleCreateCustomProduct = async (e) => {
+    e.preventDefault();
+    if (!customSku.trim() || !customName.trim()) {
+      alert("Please enter both SKU and Description for the custom product.");
+      return;
+    }
+    setIsCreatingProduct(true);
+    const costVal = parseFloat(customCostPrice) || 0.0;
+    const retailVal = parseFloat(customRetailPrice) || 0.0;
+
+    const payload = {
+      sku: customSku.trim(),
+      name: customName.trim(),
+      category: customCategory || 'Downlight',
+      brand: customBrand || 'Delta Light',
+      supplier_name: customSupplier || 'ELDC',
+      cost_price: costVal,
+      retail_price: retailVal,
+      trade_price: Math.round(retailVal * 0.9),
+      stock_level: 0,
+      reorder_level: 10,
+      lead_time: '4-6 Weeks',
+      origin: 'Import',
+      palladium_status: 'PENDING_PALLADIUM',
+      source_reference: orderId ? `Order #${orderId}` : 'Takeoff Engine',
+      created_by_name: 'Quoter (Takeoff)'
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/api/products/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const created = data.product || { ...payload, id: data.id };
+        // Immediately select/map the product to the active tag
+        await handleSelectCatalogItem(created);
+        setShowCreateProductModal(false);
+        setCatalogModalOpen(false);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Could not create product: ${err.detail || 'Server error'}`);
+      }
+    } catch (err) {
+      alert(`Network error creating product: ${err.message}`);
+    } finally {
+      setIsCreatingProduct(false);
+    }
+  };
+
   // Mark unsaved changes
   useEffect(() => {
     setHasUnsavedChanges(true);
@@ -5508,12 +5581,22 @@ export default function TakeoffSpecEngine({
                 className="select select-sm"
                 value={catalogCategory}
                 onChange={e => setCatalogCategory(e.target.value)}
-                style={{ width: '180px', fontSize: '12px' }}
+                style={{ width: '150px', fontSize: '12px' }}
               >
                 {CATEGORY_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
               </select>
+
+              <button 
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleOpenCreateProduct}
+                style={{ fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}
+                title="Create an ad-hoc / new product and map it to this tag"
+              >
+                <Plus size={13} /> + New Fitting
+              </button>
             </div>
 
             {/* RESULTS LIST */}
@@ -5524,8 +5607,22 @@ export default function TakeoffSpecEngine({
                   <div>Searching master catalog...</div>
                 </div>
               ) : catalogResults.length === 0 ? (
-                <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
-                  No catalog products found matching "{catalogSearch}".
+                <div style={{ padding: '36px 20px', textAlign: 'center', background: 'var(--bg-primary)', border: '1.5px dashed var(--border)', borderRadius: '10px' }}>
+                  <div style={{ fontSize: '24px', marginBottom: '8px' }}>🔍</div>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                    No catalog products found matching "{catalogSearch}"
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                    Need a product not currently in the catalog? Create it now to use in this quote.
+                  </div>
+                  <button 
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={handleOpenCreateProduct}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
+                  >
+                    <Plus size={14} /> Create "{catalogSearch.trim() || 'Custom Fitting'}" as New Product
+                  </button>
                 </div>
               ) : (
                 catalogResults.map(prod => (
@@ -6456,6 +6553,175 @@ export default function TakeoffSpecEngine({
                 <Check size={14} /> Generate & Open BOQ
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* MODAL: IN-ORDER AD-HOC PRODUCT CREATION (TAKEOFF SPEC)       */}
+      {/* ------------------------------------------------------------- */}
+      {showCreateProductModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1300, padding: '20px'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '520px', borderRadius: '16px', background: 'var(--bg-primary)', border: '1px solid var(--border)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.3)', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>✨</span> Add New Fitting to Quote
+                </h3>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                  Will be mapped to Tag <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{catalogTargetTag}</strong> in this order
+                </span>
+              </div>
+              <button 
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ padding: '4px' }}
+                onClick={() => setShowCreateProductModal(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCustomProduct} style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              
+              <div style={{ background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '8px', padding: '10px 14px', fontSize: '11.5px', color: 'var(--text-primary)' }}>
+                <strong>🔴 Pending Palladium Queue:</strong> This fitting will be immediately active in your Takeoff and Quote. Accounting & Inventory will receive an alert to set it up in Palladium ERP.
+              </div>
+
+              {/* SKU & NAME */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                    Proposed SKU *
+                  </label>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="e.g. DL-TEMP-01"
+                    className="form-control"
+                    style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '12px' }}
+                    value={customSku}
+                    onChange={e => setCustomSku(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                    Description / Product Name *
+                  </label>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="e.g. Custom Trimless Downlight 3000K"
+                    className="form-control"
+                    style={{ fontSize: '12px' }}
+                    value={customName}
+                    onChange={e => setCustomName(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* CATEGORY, SUPPLIER & BRAND */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                    Category
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Downlight"
+                    className="form-control"
+                    style={{ fontSize: '12px' }}
+                    value={customCategory}
+                    onChange={e => setCustomCategory(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                    Supplier
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="ELDC"
+                    className="form-control"
+                    style={{ fontSize: '12px' }}
+                    value={customSupplier}
+                    onChange={e => setCustomSupplier(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                    Brand
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="Delta Light"
+                    className="form-control"
+                    style={{ fontSize: '12px' }}
+                    value={customBrand}
+                    onChange={e => setCustomBrand(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* PRICING */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                    Unit Cost Price (R)
+                  </label>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="form-control"
+                    style={{ fontSize: '12.5px', fontWeight: 600 }}
+                    value={customCostPrice}
+                    onChange={e => setCustomCostPrice(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                    RRP Retail Price (R)
+                  </label>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="form-control"
+                    style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-success)' }}
+                    value={customRetailPrice}
+                    onChange={e => setCustomRetailPrice(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* ACTIONS */}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border)', paddingTop: '14px', marginTop: '4px' }}>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setShowCreateProductModal(false)}
+                  disabled={isCreatingProduct}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary btn-sm"
+                  disabled={isCreatingProduct || !customSku.trim() || !customName.trim()}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+                >
+                  {isCreatingProduct ? <RefreshCw size={13} className="spin" /> : <Check size={13} />}
+                  {isCreatingProduct ? 'Creating...' : 'Create & Map to Tag'}
+                </button>
+              </div>
+
+            </form>
           </div>
         </div>
       )}

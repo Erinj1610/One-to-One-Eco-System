@@ -2301,8 +2301,18 @@ export default function ProductsPage() {
                           <span>{p.name}</span>
                           {p.created_by_name && (
                             <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>
-                              Added by: {p.created_by_name} {p.source_reference ? `(${p.source_reference})` : ''}
+                              Added by: {p.created_by_name}
                             </span>
+                          )}
+                          {p.source_reference && (
+                            <div style={{ marginTop: '2px' }}>
+                              <span 
+                                className="badge b-primary" 
+                                style={{ fontSize: '10px', padding: '1px 6px', fontWeight: 600, background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '4px' }}
+                              >
+                                📋 {p.source_reference}
+                              </span>
+                            </div>
                           )}
                         </div>
                       </td>
