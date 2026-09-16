@@ -4256,15 +4256,16 @@ export default function PurchasingPage() {
           padding: '20px'
         }}>
           <div style={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border)',
+            background: '#ffffff',
+            color: 'var(--text-primary, #1a1a1a)',
+            border: '1px solid var(--border-strong, #cbd5e1)',
             borderRadius: '14px',
             width: '100%',
             maxWidth: '1120px',
             maxHeight: '90vh',
             display: 'flex',
             flexDirection: 'column',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.6)',
             overflow: 'hidden'
           }}>
             {/* Modal Header */}
@@ -4274,9 +4275,7 @@ export default function PurchasingPage() {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              background: manualProcDocType === 'PO'
-                ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, var(--bg-secondary) 100%)'
-                : 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, var(--bg-secondary) 100%)'
+              background: manualProcDocType === 'PO' ? '#eff6ff' : '#ecfdf5'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={{ fontSize: '22px' }}>{manualProcDocType === 'PO' ? '📋' : '📦'}</span>
@@ -4403,8 +4402,8 @@ export default function PurchasingPage() {
               {/* Step 2: Global Batch Inputs & Quick Fill Toolbar */}
               {manualBatchOrderKey && (
                 <div style={{
-                  background: 'var(--bg-secondary)',
-                  border: '1px solid var(--border)',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
                   borderRadius: '10px',
                   padding: '12px 16px',
                   display: 'flex',
@@ -4429,7 +4428,7 @@ export default function PurchasingPage() {
                           fontSize: '12px',
                           borderRadius: '6px',
                           border: '1px solid var(--border)',
-                          background: 'var(--bg-card)',
+                          background: '#ffffff',
                           color: 'var(--text-primary)',
                           width: '130px',
                           fontFamily: 'monospace',
@@ -4453,7 +4452,7 @@ export default function PurchasingPage() {
                           fontSize: '12px',
                           borderRadius: '6px',
                           border: '1px solid var(--border)',
-                          background: 'var(--bg-card)',
+                          background: '#ffffff',
                           color: 'var(--text-primary)',
                           width: '130px'
                         }}
@@ -4474,7 +4473,7 @@ export default function PurchasingPage() {
                           fontSize: '12px',
                           borderRadius: '6px',
                           border: '1px solid var(--border)',
-                          background: 'var(--bg-card)',
+                          background: '#ffffff',
                           color: 'var(--text-primary)'
                         }}
                       />
@@ -4510,22 +4509,22 @@ export default function PurchasingPage() {
                   Loading items for selected order...
                 </div>
               ) : manualBatchRows.length > 0 ? (
-                <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflowX: 'auto', maxHeight: '420px' }}>
+                <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflowX: 'auto', maxHeight: '420px', background: '#ffffff' }}>
                   <table className="table" style={{ width: '100%', margin: 0, fontSize: '12px', borderCollapse: 'collapse' }}>
-                    <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 2, borderBottom: '1px solid var(--border)' }}>
+                    <thead style={{ position: 'sticky', top: 0, background: '#f1f5f9', zIndex: 2, borderBottom: '2px solid #cbd5e1' }}>
                       <tr>
-                        <th style={{ width: '40px', textAlign: 'center' }}></th>
-                        <th style={{ width: '90px' }}>1:1 Code</th>
-                        <th style={{ width: '110px' }}>Item Code</th>
-                        <th>Description</th>
-                        <th style={{ width: '65px', textAlign: 'center' }}>Total</th>
-                        <th style={{ width: '70px', textAlign: 'center' }}>{manualProcDocType === 'PO' ? 'Ord' : 'Rec'}</th>
-                        <th style={{ width: '70px', textAlign: 'center' }}>Remaining</th>
-                        <th style={{ width: '85px', textAlign: 'right' }}>Cost</th>
-                        <th style={{ width: '130px' }}>{manualProcDocType} #</th>
-                        <th style={{ width: '120px' }}>Supplier</th>
-                        <th style={{ width: '80px', textAlign: 'center' }}>Qty</th>
-                        <th style={{ width: '120px' }}>Date</th>
+                        <th style={{ width: '40px', textAlign: 'center', background: '#f1f5f9' }}></th>
+                        <th style={{ width: '90px', background: '#f1f5f9' }}>1:1 Code</th>
+                        <th style={{ width: '110px', background: '#f1f5f9' }}>Item Code</th>
+                        <th style={{ background: '#f1f5f9' }}>Description</th>
+                        <th style={{ width: '65px', textAlign: 'center', background: '#f1f5f9' }}>Total</th>
+                        <th style={{ width: '70px', textAlign: 'center', background: '#f1f5f9' }}>{manualProcDocType === 'PO' ? 'Ord' : 'Rec'}</th>
+                        <th style={{ width: '70px', textAlign: 'center', background: '#f1f5f9' }}>Remaining</th>
+                        <th style={{ width: '85px', textAlign: 'right', background: '#f1f5f9' }}>Cost</th>
+                        <th style={{ width: '130px', background: '#f1f5f9' }}>{manualProcDocType} #</th>
+                        <th style={{ width: '120px', background: '#f1f5f9' }}>Supplier</th>
+                        <th style={{ width: '80px', textAlign: 'center', background: '#f1f5f9' }}>Qty</th>
+                        <th style={{ width: '120px', background: '#f1f5f9' }}>Date</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4537,9 +4536,9 @@ export default function PurchasingPage() {
                           <tr 
                             key={row.order_item_id || idx}
                             style={{ 
-                              background: row.included ? 'rgba(59, 130, 246, 0.04)' : (isFullyDone ? 'rgba(255,255,255,0.02)' : 'transparent'),
+                              background: row.included ? (manualProcDocType === 'PO' ? '#eff6ff' : '#ecfdf5') : (isFullyDone ? '#f8fafc' : '#ffffff'),
                               opacity: isFullyDone && !row.included ? 0.6 : 1,
-                              borderBottom: '1px solid var(--border)'
+                              borderBottom: '1px solid #e2e8f0'
                             }}
                           >
                             <td style={{ textAlign: 'center', padding: '6px 4px' }}>
@@ -4598,7 +4597,7 @@ export default function PurchasingPage() {
                                   fontWeight: 600,
                                   borderRadius: '4px',
                                   border: '1px solid var(--border)',
-                                  background: row.included ? 'var(--bg-card)' : 'transparent',
+                                  background: row.included ? '#ffffff' : '#f8fafc',
                                   color: 'var(--text-primary)'
                                 }}
                               />
@@ -4620,7 +4619,7 @@ export default function PurchasingPage() {
                                   fontSize: '11px',
                                   borderRadius: '4px',
                                   border: '1px solid var(--border)',
-                                  background: row.included ? 'var(--bg-card)' : 'transparent',
+                                  background: row.included ? '#ffffff' : '#f8fafc',
                                   color: 'var(--text-primary)'
                                 }}
                               />
@@ -4645,7 +4644,7 @@ export default function PurchasingPage() {
                                   fontWeight: 700,
                                   borderRadius: '4px',
                                   border: '1px solid var(--border)',
-                                  background: row.included ? 'var(--bg-card)' : 'transparent',
+                                  background: row.included ? '#ffffff' : '#f8fafc',
                                   color: 'var(--text-primary)'
                                 }}
                               />
@@ -4666,7 +4665,7 @@ export default function PurchasingPage() {
                                   fontSize: '11px',
                                   borderRadius: '4px',
                                   border: '1px solid var(--border)',
-                                  background: row.included ? 'var(--bg-card)' : 'transparent',
+                                  background: row.included ? '#ffffff' : '#f8fafc',
                                   color: 'var(--text-primary)'
                                 }}
                               />
@@ -4678,11 +4677,11 @@ export default function PurchasingPage() {
                   </table>
                 </div>
               ) : manualBatchOrderKey ? (
-                <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', background: '#f8fafc', borderRadius: '8px' }}>
                   No items found on this order.
                 </div>
               ) : (
-                <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px dashed var(--border)' }}>
+                <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', background: '#f8fafc', borderRadius: '8px', border: '1px dashed var(--border)' }}>
                   👆 Please select a Project and Order above to view items.
                 </div>
               )}
@@ -4693,7 +4692,7 @@ export default function PurchasingPage() {
             <div style={{
               padding: '14px 22px',
               borderTop: '1px solid var(--border)',
-              background: 'var(--bg-secondary)',
+              background: '#f8fafc',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
