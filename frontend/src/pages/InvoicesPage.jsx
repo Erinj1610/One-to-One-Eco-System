@@ -150,6 +150,17 @@ export default function InvoicesPage() {
     return selectedBatchOrder?.itemsList || [];
   }, [selectedBatchOrder]);
 
+  // -------------------------------------------------------------
+  // MANUAL / PAPER INVOICE RECORDING STATE (Legacy Reconciliation)
+  // -------------------------------------------------------------
+  const [manualInvoiceModalOpen, setManualInvoiceModalOpen] = useState(false);
+  const [manualBatchProjectKey, setManualBatchProjectKey] = useState('');
+  const [manualBatchOrderKey, setManualBatchOrderKey] = useState('');
+  const [manualBatchInvoiceDate, setManualBatchInvoiceDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [manualBatchInvoiceRef, setManualBatchInvoiceRef] = useState('');
+  const [manualBatchRows, setManualBatchRows] = useState([]); // [{ order_item_id, sku, description, required_qty, already_invoiced, unit_price, invoice_no, qty_invoiced, invoice_date }]
+  const [isLoadingOrderItems, setIsLoadingOrderItems] = useState(false);
+  const [isSavingManualBatch, setIsSavingManualBatch] = useState(false);
 
   // Issue Flagging State
   const [issueModalOpen, setIssueModalOpen] = useState(false);
@@ -738,6 +749,125 @@ export default function InvoicesPage() {
     }
   };
 
+  // -------------------------------------------------------------
+  // MANUAL / PAPER BATCH RECORDING HANDLERS
+  // -------------------------------------------------------------
+  const handleOpenManualInvoiceModal = () => {
+    setManualBatchProjectKey('');
+    setManualBatchOrderKey('');
+    setManualBatchInvoiceRef('');
+    setManualBatchInvoiceDate(new Date().toISOString().split('T')[0]);
+    setManualBatchRows([]);
+    setManualInvoiceModalOpen(true);
+  };
+
+  const handleSelectManualOrder = async (projKey, ordKey) => {
+    setManualBatchProjectKey(projKey);
+    setManualBatchOrderKey(ordKey);
+    if (!ordKey) {
+      setManualBatchRows([]);
+      return;
+    }
+
+    setIsLoadingOrderItems(true);
+    try {
+      // Fetch order items directly from orders endpoint
+      const res = await fetch(`${API_BASE}/api/orders/${encodeURIComponent(ordKey)}/items`);
+      if (res.ok) {
+        const items = await res.json();
+        const initialRows = (items || []).filter(it => !it.is_credit && !it.isCredit).map(it => {
+          const reqQty = Number(it.qty || 0);
+          const invQty = Number(it.invoice_qty || it.invoiceQty || 0);
+          const rem = Math.max(0, reqQty - invQty);
+          return {
+            order_item_id: it.id,
+            sku: it.code || it.oneOneCode || 'CUSTOM',
+            one_one_code: it.oneOneCode || it.one_one_code || '—',
+            description: it.description || it.code || 'Item',
+            required_qty: reqQty,
+            already_invoiced: invQty,
+            unit_price: Number(it.unit_retail || it.unitRetail || 0),
+            invoice_no: manualBatchInvoiceRef || '',
+            qty_invoiced: rem > 0 ? rem : 0,
+            invoice_date: manualBatchInvoiceDate,
+            included: rem > 0
+          };
+        });
+        setManualBatchRows(initialRows);
+      } else {
+        alert("Failed to load items for this order.");
+      }
+    } catch (err) {
+      alert(`Error loading order items: ${err.message}`);
+    } finally {
+      setIsLoadingOrderItems(false);
+    }
+  };
+
+  const handleApplyGlobalInvoiceRef = (refVal) => {
+    setManualBatchInvoiceRef(refVal);
+    setManualBatchRows(prev => prev.map(r => r.included ? { ...r, invoice_no: refVal } : r));
+  };
+
+  const handleApplyGlobalInvoiceDate = (dateVal) => {
+    setManualBatchInvoiceDate(dateVal);
+    setManualBatchRows(prev => prev.map(r => ({ ...r, invoice_date: dateVal })));
+  };
+
+  const handleFillAllRemaining = () => {
+    setManualBatchRows(prev => prev.map(r => {
+      const rem = Math.max(0, r.required_qty - r.already_invoiced);
+      return { ...r, qty_invoiced: rem, included: rem > 0 };
+    }));
+  };
+
+  const handleSubmitManualBatchInvoices = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const activeItems = manualBatchRows.filter(r => r.included && r.invoice_no && Number(r.qty_invoiced) > 0);
+    if (activeItems.length === 0) {
+      alert("Please ensure at least one row is checked with an Invoice # and a Quantity > 0.");
+      return;
+    }
+
+    setIsSavingManualBatch(true);
+    try {
+      const payload = {
+        project_id: manualBatchProjectKey,
+        order_id: manualBatchOrderKey,
+        created_by: "Admin",
+        items: activeItems.map(r => ({
+          order_item_id: r.order_item_id,
+          sku: r.sku,
+          description: r.description,
+          unit_price: r.unit_price,
+          qty_invoiced: Number(r.qty_invoiced),
+          invoice_no: r.invoice_no.trim(),
+          invoice_date: r.invoice_date || manualBatchInvoiceDate
+        }))
+      };
+
+      const res = await fetch(`${API_BASE}/api/invoicing/manual-batch-record`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🎉 ${data.message || 'Paper invoices recorded and allocated successfully!'}`);
+        setManualInvoiceModalOpen(false);
+        fetchSummary();
+        fetchInvoicingDocuments();
+        if (refreshProjects) refreshProjects();
+      } else {
+        alert(`Error recording paper invoices: ${data.detail || 'Could not complete request.'}`);
+      }
+    } catch (err) {
+      alert(`Network error: ${err.message}`);
+    } finally {
+      setIsSavingManualBatch(false);
+    }
+  };
+
   // Unallocate Single Allocation Handler
   const handleUnallocate = async (allocationId, docNo) => {
     if (!window.confirm(`Release this invoice allocation from ${docNo}? The quantity will return to Unallocated.`)) {
@@ -1058,6 +1188,30 @@ export default function InvoicesPage() {
               style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '32px', fontWeight: 600 }}
             >
               <ArrowLeft size={14} /> Back to All Documents
+            </button>
+          )}
+
+          {!selectedDocument && (
+            <button
+              onClick={handleOpenManualInvoiceModal}
+              className="btn btn-sm"
+              title="Record pre-March 2026 paper invoices directly against order line items"
+              style={{
+                background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                color: '#fff',
+                border: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '12px',
+                height: '32px',
+                fontWeight: 700,
+                boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)',
+                padding: '0 12px',
+                borderRadius: '8px'
+              }}
+            >
+              <FileText size={14} /> 📝 Record Paper Invoices
             </button>
           )}
 
@@ -3175,6 +3329,423 @@ export default function InvoicesPage() {
                 </div>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ============================================================ */}
+      {/* MODAL: MANUAL / PAPER BATCH INVOICE RECORDING                */}
+      {/* ============================================================ */}
+      {manualInvoiceModalOpen && createPortal(
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border)',
+            borderRadius: '14px',
+            width: '100%',
+            maxWidth: '1080px',
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+            overflow: 'hidden'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '16px 22px',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, var(--bg-secondary) 100%)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '22px' }}>📝</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    Record Paper / Legacy Invoices
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                    Batch record historical invoices directly against order line items to update Sales Tracker progress
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setManualInvoiceModalOpen(false)}
+                className="btn btn-sm btn-ghost"
+                style={{ padding: '4px', borderRadius: '50%' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '20px 22px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              
+              {/* Step 1: Project & Order Selectors */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', marginBottom: '6px', color: 'var(--text-secondary)' }}>
+                    1. Select Project
+                  </label>
+                  <select
+                    className="form-control"
+                    value={manualBatchProjectKey}
+                    onChange={(e) => {
+                      const pKey = e.target.value;
+                      setManualBatchProjectKey(pKey);
+                      setManualBatchOrderKey('');
+                      setManualBatchRows([]);
+                    }}
+                    style={{ width: '100%', height: '36px', fontSize: '12.5px' }}
+                  >
+                    <option value="">— Select Target Project —</option>
+                    {Object.values(projects || {}).map(p => (
+                      <option key={p.id || p.key} value={p.key || p.id}>
+                        {p.name} {p.client ? `(${p.client})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', marginBottom: '6px', color: 'var(--text-secondary)' }}>
+                    2. Select Order
+                  </label>
+                  <select
+                    className="form-control"
+                    value={manualBatchOrderKey}
+                    disabled={!manualBatchProjectKey}
+                    onChange={(e) => handleSelectManualOrder(manualBatchProjectKey, e.target.value)}
+                    style={{ width: '100%', height: '36px', fontSize: '12.5px' }}
+                  >
+                    <option value="">— Select Order / Spec —</option>
+                    {(() => {
+                      const proj = Object.values(projects || {}).find(p => (p.key && p.key === manualBatchProjectKey) || (p.id && String(p.id) === String(manualBatchProjectKey)) || p.name === manualBatchProjectKey);
+                      return (proj?.orders || []).map(o => (
+                        <option key={o.id || o.poNumber} value={o.poNumber || o.id}>
+                          {o.quoteName || o.quote_name || o.poNumber || `Order #${o.id}`} ({o.poNumber || 'No PO'})
+                        </option>
+                      ));
+                    })()}
+                  </select>
+                </div>
+              </div>
+
+              {/* Step 2: Global Batch Inputs & Quick Fill Toolbar */}
+              {manualBatchOrderKey && (
+                <div style={{
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  padding: '12px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '12px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <div>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginRight: '6px' }}>
+                        Default Invoice #:
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="e.g. INV-1045"
+                        value={manualBatchInvoiceRef}
+                        onChange={(e) => handleApplyGlobalInvoiceRef(e.target.value)}
+                        style={{
+                          height: '30px',
+                          padding: '0 8px',
+                          fontSize: '12px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border)',
+                          background: 'var(--bg-card)',
+                          color: 'var(--text-primary)',
+                          width: '130px',
+                          fontFamily: 'monospace',
+                          fontWeight: 700
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginRight: '6px' }}>
+                        Date:
+                      </span>
+                      <input
+                        type="date"
+                        value={manualBatchInvoiceDate}
+                        onChange={(e) => handleApplyGlobalInvoiceDate(e.target.value)}
+                        style={{
+                          height: '30px',
+                          padding: '0 8px',
+                          fontSize: '12px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border)',
+                          background: 'var(--bg-card)',
+                          color: 'var(--text-primary)'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={handleFillAllRemaining}
+                      className="btn btn-xs btn-ghost"
+                      style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      title="Set Qty to invoice to all remaining uninvoiced balance"
+                    >
+                      <CheckSquare size={12} /> Fill All Remaining
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setManualBatchRows(prev => prev.map(r => ({ ...r, included: !prev.every(x => x.included) })))}
+                      className="btn btn-xs btn-ghost"
+                      style={{ border: '1px solid var(--border)' }}
+                    >
+                      {manualBatchRows.every(r => r.included) ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Order Items Spreadsheet Grid */}
+              {isLoadingOrderItems ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  <RefreshCw size={20} className="spin" style={{ margin: '0 auto 10px auto', display: 'block', color: 'var(--accent)' }} />
+                  Loading items for selected order...
+                </div>
+              ) : manualBatchRows.length > 0 ? (
+                <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflowX: 'auto', maxHeight: '420px' }}>
+                  <table className="table" style={{ width: '100%', margin: 0, fontSize: '12px', borderCollapse: 'collapse' }}>
+                    <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary)', zIndex: 2, borderBottom: '1px solid var(--border)' }}>
+                      <tr>
+                        <th style={{ width: '40px', textAlign: 'center' }}></th>
+                        <th style={{ width: '90px' }}>1:1 Code</th>
+                        <th style={{ width: '110px' }}>Item Code</th>
+                        <th>Description</th>
+                        <th style={{ width: '70px', textAlign: 'center' }}>Total</th>
+                        <th style={{ width: '70px', textAlign: 'center' }}>Invoiced</th>
+                        <th style={{ width: '70px', textAlign: 'center' }}>Remaining</th>
+                        <th style={{ width: '85px', textAlign: 'right' }}>Unit Retail</th>
+                        <th style={{ width: '140px' }}>Invoice #</th>
+                        <th style={{ width: '85px', textAlign: 'center' }}>Qty to Inv</th>
+                        <th style={{ width: '125px' }}>Invoice Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {manualBatchRows.map((row, idx) => {
+                        const rem = Math.max(0, row.required_qty - row.already_invoiced);
+                        const isFullyDone = rem === 0;
+
+                        return (
+                          <tr 
+                            key={row.order_item_id || idx}
+                            style={{ 
+                              background: row.included ? 'rgba(245, 158, 11, 0.04)' : (isFullyDone ? 'rgba(255,255,255,0.02)' : 'transparent'),
+                              opacity: isFullyDone && !row.included ? 0.6 : 1,
+                              borderBottom: '1px solid var(--border)'
+                            }}
+                          >
+                            <td style={{ textAlign: 'center', padding: '6px 4px' }}>
+                              <input
+                                type="checkbox"
+                                checked={row.included}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setManualBatchRows(prev => prev.map((r, i) => i === idx ? { 
+                                    ...r, 
+                                    included: checked,
+                                    invoice_no: checked && !r.invoice_no ? manualBatchInvoiceRef : r.invoice_no,
+                                    qty_invoiced: checked && Number(r.qty_invoiced) <= 0 ? rem : r.qty_invoiced
+                                  } : r));
+                                }}
+                              />
+                            </td>
+                            <td style={{ fontFamily: 'monospace', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                              {row.one_one_code || '—'}
+                            </td>
+                            <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>
+                              {row.sku}
+                            </td>
+                            <td style={{ maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.description}>
+                              {row.description}
+                            </td>
+                            <td style={{ textAlign: 'center', fontWeight: 700 }}>
+                              {row.required_qty}
+                            </td>
+                            <td style={{ textAlign: 'center', color: row.already_invoiced > 0 ? '#10b981' : 'var(--text-secondary)' }}>
+                              {row.already_invoiced}
+                            </td>
+                            <td style={{ textAlign: 'center', fontWeight: 700, color: rem > 0 ? '#f59e0b' : '#10b981' }}>
+                              {rem}
+                            </td>
+                            <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
+                              R {Math.round(row.unit_price).toLocaleString()}
+                            </td>
+                            <td style={{ padding: '4px' }}>
+                              <input
+                                type="text"
+                                placeholder="INV-..."
+                                disabled={!row.included}
+                                value={row.invoice_no}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setManualBatchRows(prev => prev.map((r, i) => i === idx ? { ...r, invoice_no: v } : r));
+                                }}
+                                style={{
+                                  width: '100%',
+                                  height: '28px',
+                                  padding: '0 6px',
+                                  fontSize: '11px',
+                                  fontFamily: 'monospace',
+                                  fontWeight: 600,
+                                  borderRadius: '4px',
+                                  border: '1px solid var(--border)',
+                                  background: row.included ? 'var(--bg-card)' : 'transparent',
+                                  color: 'var(--text-primary)'
+                                }}
+                              />
+                            </td>
+                            <td style={{ padding: '4px', textAlign: 'center' }}>
+                              <input
+                                type="number"
+                                min="1"
+                                max={row.required_qty}
+                                disabled={!row.included}
+                                value={row.qty_invoiced}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setManualBatchRows(prev => prev.map((r, i) => i === idx ? { ...r, qty_invoiced: v } : r));
+                                }}
+                                style={{
+                                  width: '65px',
+                                  height: '28px',
+                                  padding: '0 6px',
+                                  textAlign: 'center',
+                                  fontSize: '11.5px',
+                                  fontWeight: 700,
+                                  borderRadius: '4px',
+                                  border: '1px solid var(--border)',
+                                  background: row.included ? 'var(--bg-card)' : 'transparent',
+                                  color: 'var(--text-primary)'
+                                }}
+                              />
+                            </td>
+                            <td style={{ padding: '4px' }}>
+                              <input
+                                type="date"
+                                disabled={!row.included}
+                                value={row.invoice_date}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setManualBatchRows(prev => prev.map((r, i) => i === idx ? { ...r, invoice_date: v } : r));
+                                }}
+                                style={{
+                                  width: '100%',
+                                  height: '28px',
+                                  padding: '0 4px',
+                                  fontSize: '11px',
+                                  borderRadius: '4px',
+                                  border: '1px solid var(--border)',
+                                  background: row.included ? 'var(--bg-card)' : 'transparent',
+                                  color: 'var(--text-primary)'
+                                }}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : manualBatchOrderKey ? (
+                <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                  No items found on this order.
+                </div>
+              ) : (
+                <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px dashed var(--border)' }}>
+                  👆 Please select a Project and Order above to view items.
+                </div>
+              )}
+
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '14px 22px',
+              borderTop: '1px solid var(--border)',
+              background: 'var(--bg-secondary)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '10px'
+            }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                {(() => {
+                  const checkedRows = manualBatchRows.filter(r => r.included && r.invoice_no && Number(r.qty_invoiced) > 0);
+                  const distinctInvoices = new Set(checkedRows.map(r => r.invoice_no.trim()));
+                  const totalVal = checkedRows.reduce((acc, r) => acc + (Number(r.qty_invoiced) * r.unit_price), 0);
+                  return (
+                    <span>
+                      Ready to record: <strong style={{ color: 'var(--text-primary)' }}>{checkedRows.length} lines</strong> across <strong style={{ color: '#f59e0b' }}>{distinctInvoices.size} invoice(s)</strong> totaling <strong style={{ color: '#10b981' }}>R {Math.round(totalVal).toLocaleString()}</strong>
+                    </span>
+                  );
+                })()}
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setManualInvoiceModalOpen(false)}
+                  className="btn btn-sm btn-ghost"
+                  style={{ border: '1px solid var(--border)' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmitManualBatchInvoices}
+                  disabled={isSavingManualBatch || manualBatchRows.filter(r => r.included && r.invoice_no && Number(r.qty_invoiced) > 0).length === 0}
+                  className="btn btn-sm"
+                  style={{
+                    background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                    color: '#fff',
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    border: 'none',
+                    padding: '0 16px',
+                    boxShadow: '0 2px 8px rgba(245, 158, 11, 0.3)'
+                  }}
+                >
+                  {isSavingManualBatch && <RefreshCw size={13} className="animate-spin" />}
+                  {isSavingManualBatch ? 'Recording...' : 'Save & Record Invoices'}
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>,
         document.body
