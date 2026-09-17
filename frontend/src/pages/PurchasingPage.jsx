@@ -581,7 +581,7 @@ export default function PurchasingPage() {
         });
       });
 
-      if (score > bestMatchScore) {
+        if (score > bestMatchScore) {
         bestMatchScore = score;
         bestProjId = pIdStr;
       }
@@ -592,6 +592,28 @@ export default function PurchasingPage() {
       const matchedProj = Object.values(projects || {}).find(p => String(p.id) === String(bestProjId) || p.key === bestProjId || p.name === bestProjId);
       if (matchedProj?.orders?.length === 1) {
         bestOrderId = matchedProj.orders[0].id || matchedProj.orders[0].dbId || '';
+      } else if (matchedProj?.orders?.length > 1) {
+        // Pick order whose title or items best match docRef or selected SKUs
+        let bestOrderScore = 0;
+        matchedProj.orders.forEach(o => {
+          let oScore = 0;
+          const oTitle = (o.quote_name || o.name || o.po_number || o.id || '').toLowerCase();
+          const oTokens = oTitle.split(/[\s,()-_]+/).filter(w => w.length >= 3);
+          oTokens.forEach(t => {
+            if (docRef.includes(t)) oScore += 20;
+          });
+          (o.itemsList || []).forEach(it => {
+            const code = (it.code || '').trim().toUpperCase();
+            const oneOne = (it.oneOneCode || '').trim().toUpperCase();
+            if (selectedSkus.has(code) || selectedSkus.has(oneOne)) {
+              oScore += 10;
+            }
+          });
+          if (oScore > bestOrderScore) {
+            bestOrderScore = oScore;
+            bestOrderId = o.id || o.dbId || '';
+          }
+        });
       }
     }
 

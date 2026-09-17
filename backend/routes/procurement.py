@@ -794,7 +794,13 @@ def get_candidate_orders(
         all_projects = {p.id: p for p in db.query(Project).all()}
         proj_by_key = {p.project_key: p for p in all_projects.values() if p.project_key}
         all_orders = db.query(Order).all()
-        order_by_id = {o.id: o for o in all_orders}
+        order_by_po_number = {str(o.po_number).strip(): o for o in all_orders if o.po_number}
+        order_by_quote_slug = {}
+        for o in all_orders:
+            if o.quote_name:
+                slug_key = re.sub(r'[^a-zA-Z0-9]', '', o.quote_name).lower()
+                if slug_key:
+                    order_by_quote_slug[slug_key] = o
 
         # 2. Find matching order items by code or one_one_code or description
         order_items = db.query(OrderItem).filter(
@@ -816,30 +822,48 @@ def get_candidate_orders(
             matched_order = None
             matched_proj = None
 
+            raw_oid = str(it.order_id or "").strip()
+
             # Check direct integer order ID
-            if str(it.order_id).isdigit() and int(it.order_id) in order_by_id:
-                matched_order = order_by_id[int(it.order_id)]
+            if raw_oid.isdigit() and int(raw_oid) in order_by_id:
+                matched_order = order_by_id[int(raw_oid)]
                 matched_proj = all_projects.get(matched_order.project_id)
 
+            # Check exact match on po_number
+            if not matched_order and raw_oid in order_by_po_number:
+                matched_order = order_by_po_number[raw_oid]
+                matched_proj = all_projects.get(matched_order.project_id)
+
+            # Check normalized quote_name match
+            if not matched_order and raw_oid:
+                norm_oid = re.sub(r'[^a-zA-Z0-9]', '', raw_oid).lower()
+                if norm_oid in order_by_quote_slug:
+                    matched_order = order_by_quote_slug[norm_oid]
+                    matched_proj = all_projects.get(matched_order.project_id)
+
             # Check by project_key / slug
-            if not matched_order and it.order_id:
-                parts = str(it.order_id).split('--')
+            if not matched_order and raw_oid:
+                parts = raw_oid.split('--')
                 proj_prefix = parts[0] if parts else ''
+                clean_proj_prefix = re.sub(r'[^a-zA-Z0-9]', '', proj_prefix).lower()
                 
                 if proj_prefix in proj_by_key:
                     matched_proj = proj_by_key[proj_prefix]
                 else:
                     for p in all_projects.values():
-                        if p.project_key and (p.project_key == proj_prefix or p.project_key in str(it.order_id)):
-                            matched_proj = p
-                            break
+                        if p.project_key:
+                            clean_pk = re.sub(r'[^a-zA-Z0-9]', '', p.project_key).lower()
+                            if clean_pk and (clean_pk == clean_proj_prefix or clean_pk in norm_oid or clean_proj_prefix in clean_pk):
+                                matched_proj = p
+                                break
 
                 if matched_proj:
                     proj_orders = [o for o in all_orders if o.project_id == matched_proj.id]
-                    for o in proj_orders:
-                        if len(parts) > 1:
-                            order_slug = parts[1].replace('-', ' ').strip().lower()
-                            if order_slug and order_slug in (o.quote_name or '').lower():
+                    if len(parts) > 1:
+                        target_slug = re.sub(r'[^a-zA-Z0-9]', '', parts[1]).lower()
+                        for o in proj_orders:
+                            o_slug = re.sub(r'[^a-zA-Z0-9]', '', o.quote_name or o.po_number or '').lower()
+                            if target_slug and (target_slug in o_slug or o_slug in target_slug):
                                 matched_order = o
                                 break
                     if not matched_order and proj_orders:
@@ -952,10 +976,19 @@ def allocate_procurement_item(
         matched_item = None
         target_ord = None
         if order_id:
-            if str(order_id).isdigit():
-                target_ord = db.query(Order).filter(Order.id == int(order_id)).first()
+            raw_ord_str = str(order_id).strip()
+            if raw_ord_str.isdigit():
+                target_ord = db.query(Order).filter(Order.id == int(raw_ord_str)).first()
             if not target_ord:
-                target_ord = db.query(Order).filter(Order.po_number == str(order_id)).first()
+                target_ord = db.query(Order).filter(Order.po_number == raw_ord_str).first()
+            if not target_ord and raw_ord_str:
+                norm_ord_slug = re.sub(r'[^a-zA-Z0-9]', '', raw_ord_str).lower()
+                all_ords_for_proj = db.query(Order).filter(Order.project_id == real_proj_id).all() if real_proj_id else db.query(Order).all()
+                for o in all_ords_for_proj:
+                    o_slug = re.sub(r'[^a-zA-Z0-9]', '', o.quote_name or o.po_number or '').lower()
+                    if norm_ord_slug and (norm_ord_slug in o_slug or o_slug in norm_ord_slug):
+                        target_ord = o
+                        break
 
         if order_item_id:
             matched_item = db.query(OrderItem).filter(OrderItem.id == str(order_item_id)).first()
@@ -1125,10 +1158,19 @@ def batch_allocate_procurement_items(
         proj_items = []
         target_ord_obj = None
         if order_id:
-            if str(order_id).isdigit():
-                target_ord_obj = db.query(Order).filter(Order.id == int(order_id)).first()
+            raw_b_ord = str(order_id).strip()
+            if raw_b_ord.isdigit():
+                target_ord_obj = db.query(Order).filter(Order.id == int(raw_b_ord)).first()
             if not target_ord_obj:
-                target_ord_obj = db.query(Order).filter(Order.po_number == str(order_id)).first()
+                target_ord_obj = db.query(Order).filter(Order.po_number == raw_b_ord).first()
+            if not target_ord_obj and raw_b_ord:
+                norm_b_slug = re.sub(r'[^a-zA-Z0-9]', '', raw_b_ord).lower()
+                all_ords_for_proj = db.query(Order).filter(Order.project_id == real_proj_id).all() if real_proj_id else db.query(Order).all()
+                for o in all_ords_for_proj:
+                    o_slug = re.sub(r'[^a-zA-Z0-9]', '', o.quote_name or o.po_number or '').lower()
+                    if norm_b_slug and (norm_b_slug in o_slug or o_slug in norm_b_slug):
+                        target_ord_obj = o
+                        break
 
         if target_ord_obj:
             proj_items = db.query(OrderItem).filter(OrderItem.order_id.in_([target_ord_obj.po_number, str(target_ord_obj.id)])).all()
