@@ -1505,103 +1505,192 @@ export default function SalesTracker() {
     alert(`Fill Down: Duplicated first row's "${bulkField}" value to all other rows.`);
   };
 
-  // Legacy Baseline Handlers (Sales Tracker 1-Click Balancing for pre-March / historical orders)
-  const handleApplyLegacyBaseline = async (scope = 'ALL') => {
-    if (!selectedOrderId || selectedLedgerItemIds.size === 0) {
+  // Legacy Baseline Handlers (Instant In-Memory Balancing in Sales Tracker)
+  const handleApplyLegacyBaseline = (scope = 'ALL') => {
+    if (selectedLedgerItemIds.size === 0) {
       alert("Please select at least one item using the checkboxes on the left.");
       return;
     }
 
-    try {
-      setIsApplyingBaseline(true);
-      const res = await fetch(`${API_BASE}/api/orders/${encodeURIComponent(selectedOrderId)}/legacy-baseline`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          item_ids: Array.from(selectedLedgerItemIds),
-          scope: scope,
-          created_by: user?.email || user?.name || 'Sales Tracker User'
-        })
+    const todayStr = new Date().toISOString().split('T')[0];
+    const userTag = user?.email || user?.name || 'Sales Tracker User';
+    const targetIdSet = selectedLedgerItemIds;
+
+    setActiveOrderItems(prevItems => {
+      return prevItems.map(rawItem => {
+        if (!targetIdSet.has(rawItem.id)) {
+          return rawItem;
+        }
+
+        const item = { ...rawItem };
+        const reqQty = Number(item.qty) || 0;
+        if (reqQty <= 0) return item;
+
+        const stStatus = String(item.stockStatus || item.stock_status || '').trim();
+        const stOnHand = Number(item.stockOnHand !== undefined ? item.stockOnHand : (item.stock_on_hand || 0));
+
+        // 1. PO Scope
+        if (scope === 'ALL' || scope === 'PO' || scope === 'PROC') {
+          let neededPo = 0;
+          if (stStatus === 'All Stock on Hand') {
+            neededPo = 0;
+          } else if (stStatus === 'Partial Stock on Hand') {
+            neededPo = Math.max(0, reqQty - stOnHand - (Number(item.poQtyOrdered ?? item.po_qty_ordered) || 0));
+          } else {
+            neededPo = Math.max(0, reqQty - (Number(item.poQtyOrdered ?? item.po_qty_ordered) || 0));
+          }
+
+          let pHist = Array.isArray(item.purchaseHistory) ? [...item.purchaseHistory] : 
+                      Array.isArray(item.purchase_history) ? [...item.purchase_history] : [];
+          pHist = pHist.filter(h => String(h?.ref || h?.id || '').trim() !== '[LEGACY]');
+
+          if (neededPo > 0) {
+            pHist.push({
+              id: '[LEGACY]',
+              ref: '[LEGACY]',
+              qty: neededPo,
+              cost: Number(item.unitCost || item.unit_cost || 0),
+              supplier: item.poSupplier || item.supplier || 'Legacy',
+              date: item.poDate || item.po_date || todayStr,
+              by: userTag,
+              type: 'PO'
+            });
+          }
+
+          item.purchaseHistory = pHist;
+          item.purchase_history = pHist;
+          item.poQtyOrdered = pHist.reduce((s, h) => s + (Number(h.qty) || 0), 0);
+          item.po_qty_ordered = item.poQtyOrdered;
+          const poRefs = Array.from(new Set(pHist.map(h => String(h.ref || '').trim()).filter(Boolean)));
+          item.poRef = poRefs.join('; ');
+          item.po_ref = item.poRef;
+        }
+
+        // 2. GRN Scope
+        if (scope === 'ALL' || scope === 'GRN' || scope === 'PROC') {
+          const neededGrn = Math.max(0, reqQty - (Number(item.receivedQty ?? item.received_qty) || 0));
+          let rHist = Array.isArray(item.receivingHistory) ? [...item.receivingHistory] : 
+                      Array.isArray(item.receiving_history) ? [...item.receiving_history] : [];
+          rHist = rHist.filter(h => String(h?.ref || h?.id || '').trim() !== '[LEGACY]');
+
+          if (neededGrn > 0) {
+            rHist.push({
+              id: '[LEGACY]',
+              ref: '[LEGACY]',
+              qty: neededGrn,
+              date: item.receivedDate || item.received_date || todayStr,
+              by: userTag,
+              type: 'GRN'
+            });
+          }
+
+          item.receivingHistory = rHist;
+          item.receiving_history = rHist;
+          item.receivedQty = rHist.reduce((s, h) => s + (Number(h.qty) || 0), 0);
+          item.received_qty = item.receivedQty;
+          const recRefs = Array.from(new Set(rHist.map(h => String(h.ref || '').trim()).filter(Boolean)));
+          item.receivedRef = recRefs.join('; ');
+          item.received_ref = item.receivedRef;
+        }
+
+        // 3. Invoice Scope
+        if (scope === 'ALL' || scope === 'INVOICE') {
+          const neededInv = Math.max(0, reqQty - (Number(item.invoiceQty ?? item.invoice_qty) || 0));
+          let iHist = Array.isArray(item.invoiceHistory) ? [...item.invoiceHistory] : 
+                      Array.isArray(item.invoice_history) ? [...item.invoice_history] : [];
+          iHist = iHist.filter(h => String(h?.ref || h?.id || '').trim() !== '[LEGACY]');
+
+          const unitRet = Number(item.unitRetail || item.unit_retail || 0);
+          if (neededInv > 0) {
+            iHist.push({
+              id: '[LEGACY]',
+              ref: '[LEGACY]',
+              qty: neededInv,
+              unitPrice: unitRet,
+              total: Math.round(neededInv * unitRet * 100) / 100,
+              date: item.invoiceDate || item.invoice_date || todayStr,
+              by: userTag,
+              type: 'Invoice'
+            });
+          }
+
+          item.invoiceHistory = iHist;
+          item.invoice_history = iHist;
+          item.invoiceQty = iHist.reduce((s, h) => s + (Number(h.qty) || 0), 0);
+          item.invoice_qty = item.invoiceQty;
+          item.invoiceValue = Math.round(iHist.reduce((s, h) => s + (Number(h.total) || (Number(h.qty || 0) * Number(h.unitPrice || 0))), 0) * 100) / 100;
+          item.invoice_value = item.invoiceValue;
+          const invRefs = Array.from(new Set(iHist.map(h => String(h.ref || '').trim()).filter(Boolean)));
+          item.invoiceRef = invRefs.join('; ');
+          item.invoice_ref = item.invoiceRef;
+        }
+
+        return item;
       });
+    });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to apply legacy baseline');
-      }
-
-      const data = await res.json();
-      
-      // Update local state activeOrderItems with updated items from backend
-      if (Array.isArray(data.items)) {
-        setActiveOrderItems(prev => {
-          const map = new Map(data.items.map(it => [it.id, it]));
-          return prev.map(item => {
-            const updated = map.get(item.id);
-            return updated ? getItemDefaults(updated) : item;
-          });
-        });
-      }
-
-      if (refreshProjects) {
-        await refreshProjects();
-      }
-
-      setSelectedLedgerItemIds(new Set());
-      const scopeLabel = scope === 'ALL' ? 'All (PO, GRN & Invoicing)' : scope === 'PROC' ? 'PO & GRN' : 'Invoicing Only';
-      alert(`✅ Legacy baseline applied (${scopeLabel}) for ${data.updated_count || selectedLedgerItemIds.size} item(s)!`);
-    } catch (err) {
-      console.error('Error applying legacy baseline:', err);
-      alert(`❌ Error applying legacy baseline: ${err.message}`);
-    } finally {
-      setIsApplyingBaseline(false);
-    }
+    setSelectedLedgerItemIds(new Set());
   };
 
-  const handleClearLegacyBaseline = async () => {
-    if (!selectedOrderId || selectedLedgerItemIds.size === 0) {
+  const handleClearLegacyBaseline = () => {
+    if (selectedLedgerItemIds.size === 0) {
       alert("Please select at least one item using the checkboxes on the left.");
       return;
     }
 
-    try {
-      setIsApplyingBaseline(true);
-      const res = await fetch(`${API_BASE}/api/orders/${encodeURIComponent(selectedOrderId)}/legacy-baseline`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          item_ids: Array.from(selectedLedgerItemIds)
-        })
+    const targetIdSet = selectedLedgerItemIds;
+
+    setActiveOrderItems(prevItems => {
+      return prevItems.map(rawItem => {
+        if (!targetIdSet.has(rawItem.id)) {
+          return rawItem;
+        }
+
+        const item = { ...rawItem };
+
+        // Clear PO Legacy
+        let pHist = Array.isArray(item.purchaseHistory) ? [...item.purchaseHistory] : 
+                    Array.isArray(item.purchase_history) ? [...item.purchase_history] : [];
+        pHist = pHist.filter(h => String(h?.ref || h?.id || '').trim() !== '[LEGACY]');
+        item.purchaseHistory = pHist;
+        item.purchase_history = pHist;
+        item.poQtyOrdered = pHist.reduce((s, h) => s + (Number(h.qty) || 0), 0);
+        item.po_qty_ordered = item.poQtyOrdered;
+        const poRefs = Array.from(new Set(pHist.map(h => String(h.ref || '').trim()).filter(Boolean)));
+        item.poRef = poRefs.join('; ');
+        item.po_ref = item.poRef;
+
+        // Clear GRN Legacy
+        let rHist = Array.isArray(item.receivingHistory) ? [...item.receivingHistory] : 
+                    Array.isArray(item.receiving_history) ? [...item.receiving_history] : [];
+        rHist = rHist.filter(h => String(h?.ref || h?.id || '').trim() !== '[LEGACY]');
+        item.receivingHistory = rHist;
+        item.receiving_history = rHist;
+        item.receivedQty = rHist.reduce((s, h) => s + (Number(h.qty) || 0), 0);
+        item.received_qty = item.receivedQty;
+        const recRefs = Array.from(new Set(rHist.map(h => String(h.ref || '').trim()).filter(Boolean)));
+        item.receivedRef = recRefs.join('; ');
+        item.received_ref = item.receivedRef;
+
+        // Clear Invoice Legacy
+        let iHist = Array.isArray(item.invoiceHistory) ? [...item.invoiceHistory] : 
+                    Array.isArray(item.invoice_history) ? [...item.invoice_history] : [];
+        iHist = iHist.filter(h => String(h?.ref || h?.id || '').trim() !== '[LEGACY]');
+        item.invoiceHistory = iHist;
+        item.invoice_history = iHist;
+        item.invoiceQty = iHist.reduce((s, h) => s + (Number(h.qty) || 0), 0);
+        item.invoice_qty = item.invoiceQty;
+        item.invoiceValue = Math.round(iHist.reduce((s, h) => s + (Number(h.total) || (Number(h.qty || 0) * Number(h.unitPrice || 0))), 0) * 100) / 100;
+        item.invoice_value = item.invoiceValue;
+        const invRefs = Array.from(new Set(iHist.map(h => String(h.ref || '').trim()).filter(Boolean)));
+        item.invoiceRef = invRefs.join('; ');
+        item.invoice_ref = item.invoiceRef;
+
+        return item;
       });
+    });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Failed to clear legacy baseline');
-      }
-
-      const data = await res.json();
-
-      if (Array.isArray(data.items)) {
-        setActiveOrderItems(prev => {
-          const map = new Map(data.items.map(it => [it.id, it]));
-          return prev.map(item => {
-            const updated = map.get(item.id);
-            return updated ? getItemDefaults(updated) : item;
-          });
-        });
-      }
-
-      if (refreshProjects) {
-        await refreshProjects();
-      }
-
-      setSelectedLedgerItemIds(new Set());
-      alert(`✅ Legacy baseline cleared for ${data.updated_count || selectedLedgerItemIds.size} item(s)!`);
-    } catch (err) {
-      console.error('Error clearing legacy baseline:', err);
-      alert(`❌ Error clearing legacy baseline: ${err.message}`);
-    } finally {
-      setIsApplyingBaseline(false);
-    }
+    setSelectedLedgerItemIds(new Set());
   };
 
   // Cell modification in the spreadsheet workspace
@@ -4838,7 +4927,6 @@ export default function SalesTracker() {
                               <button
                                 type="button"
                                 className="btn btn-xs"
-                                disabled={isApplyingBaseline}
                                 onClick={() => handleApplyLegacyBaseline('ALL')}
                                 style={{
                                   background: '#f59e0b',
@@ -4851,12 +4939,11 @@ export default function SalesTracker() {
                                 }}
                                 title="Fills PO, GRN, and Invoicing balances so item reflects 100% completed"
                               >
-                                {isApplyingBaseline ? 'Saving...' : '⚖️ All (PO, GRN & Inv)'}
+                                ⚖️ All (PO, GRN & Inv)
                               </button>
                               <button
                                 type="button"
                                 className="btn btn-xs"
-                                disabled={isApplyingBaseline}
                                 onClick={() => handleApplyLegacyBaseline('PROC')}
                                 style={{
                                   background: 'rgba(59, 130, 246, 0.2)',
@@ -4874,7 +4961,6 @@ export default function SalesTracker() {
                               <button
                                 type="button"
                                 className="btn btn-xs"
-                                disabled={isApplyingBaseline}
                                 onClick={() => handleApplyLegacyBaseline('INVOICE')}
                                 style={{
                                   background: 'rgba(16, 185, 129, 0.2)',
@@ -4893,7 +4979,6 @@ export default function SalesTracker() {
                               <button
                                 type="button"
                                 className="btn btn-xs"
-                                disabled={isApplyingBaseline}
                                 onClick={handleClearLegacyBaseline}
                                 style={{
                                   background: 'rgba(239, 68, 68, 0.15)',
