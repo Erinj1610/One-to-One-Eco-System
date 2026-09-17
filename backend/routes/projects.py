@@ -884,13 +884,18 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
             def parse_history(h_val):
                 if h_val is None:
                     return []
-                if isinstance(h_val, (list, dict)):
-                    return h_val
-                try:
-                    import json
-                    return json.loads(h_val)
-                except Exception:
-                    return []
+                raw = h_val
+                if isinstance(h_val, str):
+                    try:
+                        import json
+                        raw = json.loads(h_val)
+                    except Exception:
+                        return []
+                if isinstance(raw, list):
+                    return [elem for elem in raw if isinstance(elem, dict)]
+                elif isinstance(raw, dict):
+                    return [raw]
+                return []
 
             del_hist = parse_history(item.delivery_history)
             pur_hist = parse_history(item.purchase_history)
