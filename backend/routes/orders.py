@@ -630,12 +630,35 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
             calc_inv_ref = None
             calc_inv_date = None
 
+        # Check if item has a [LEGACY] baseline invoice placeholder
+        raw_inv_h = parse_history(item.invoice_history)
+        legacy_inv_entry = next((h for h in raw_inv_h if str(h.get("ref") or h.get("id") or "").strip() == "[LEGACY]"), None)
+
+        if legacy_inv_entry:
+            # Dynamically balance legacy placeholder so live allocations + legacy = needed balance
+            req_q = int(item.qty or 0)
+            needed_legacy_qty = max(0, req_q - calc_inv_qty)
+            if needed_legacy_qty > 0:
+                unit_ret = float(item.unit_retail or 0.0)
+                legacy_floated = dict(legacy_inv_entry)
+                legacy_floated["qty"] = needed_legacy_qty
+                legacy_floated["total"] = round(needed_legacy_qty * unit_ret, 2)
+                calc_inv_hist.append(legacy_floated)
+                calc_inv_qty += needed_legacy_qty
+                calc_inv_val = round(calc_inv_val + (needed_legacy_qty * unit_ret), 2)
+                
+                # Dual reference: live Palladium refs + [LEGACY]
+                all_refs = [calc_inv_ref] if calc_inv_ref else []
+                if "[LEGACY]" not in all_refs:
+                    all_refs.append("[LEGACY]")
+                calc_inv_ref = "; ".join(all_refs)
+
         # Auto-heal static OrderItem row if Cloud SQL contains stale doubled/unallocated values
         if (item.invoice_qty or 0) != calc_inv_qty or (item.invoice_ref or None) != calc_inv_ref or round(float(item.invoice_value or 0.0), 2) != calc_inv_val:
             item.invoice_qty = calc_inv_qty
             item.invoice_value = calc_inv_val
             item.invoice_ref = calc_inv_ref
-            item.invoice_date = calc_inv_date
+            item.invoice_date = calc_inv_date or item.invoice_date
             item.invoice_history = json.dumps(calc_inv_hist)
             db.add(item)
 
@@ -1045,3 +1068,217 @@ def rename_order(po_number: str, new_po_number: str, db: Session = Depends(get_d
     db.commit()
     db.refresh(order)
     return order
+
+
+@router.post("/{po_number}/legacy-baseline")
+def apply_order_legacy_baseline(
+    po_number: str,
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db)
+):
+    """
+    1-Click dynamic baseline for historical/legacy order items.
+    Balances whatever is unfulfilled for PO, GRN, and/or Invoicing.
+    Preserves existing live Palladium ERP records and clearly tags reference as [LEGACY].
+    """
+    try:
+        item_ids = payload.get("item_ids") or []
+        scope = str(payload.get("scope") or "ALL").strip().upper() # "ALL", "PO", "GRN", "INVOICE", "PROC" (PO+GRN)
+        created_by = str(payload.get("created_by") or "Staff").strip()
+
+        if not item_ids:
+            raise HTTPException(status_code=400, detail="No item_ids provided.")
+
+        order_obj = db.query(Order).filter(Order.po_number == po_number).first()
+        if not order_obj and po_number.isdigit():
+            order_obj = db.query(Order).filter(Order.id == int(po_number)).first()
+
+        items = db.query(OrderItem).filter(OrderItem.id.in_([str(i) for i in item_ids])).all()
+        if not items:
+            raise HTTPException(status_code=404, detail="No matching order items found.")
+
+        now_dt = datetime.now(timezone.utc)
+        today_str = now_dt.strftime("%Y-%m-%d")
+        updated_count = 0
+
+        for it in items:
+            req_qty = int(it.qty or 0)
+            if req_qty <= 0:
+                continue
+
+            st_status = str(it.stock_status or "").strip()
+            st_on_hand = int(it.stock_on_hand or 0)
+
+            # Helper for JSON history arrays
+            def get_hist(h_val):
+                if not h_val:
+                    return []
+                if isinstance(h_val, list):
+                    return list(h_val)
+                try:
+                    return list(json.loads(h_val))
+                except Exception:
+                    return []
+
+            # 1. PO Scope
+            if scope in ("ALL", "PO", "PROC"):
+                # Real un-ordered balance: if All Stock on Hand, need = 0. If Partial Stock on Hand, subtract on hand.
+                if st_status == "All Stock on Hand":
+                    needed_po = 0
+                elif st_status == "Partial Stock on Hand":
+                    needed_po = max(0, req_qty - st_on_hand - int(it.po_qty_ordered or 0))
+                else:
+                    needed_po = max(0, req_qty - int(it.po_qty_ordered or 0))
+
+                p_hist = get_hist(it.purchase_history)
+                # Remove prior legacy entry if present so we re-float cleanly
+                p_hist = [h for h in p_hist if str(h.get("ref") or h.get("id") or "").strip() != "[LEGACY]"]
+
+                if needed_po > 0:
+                    p_hist.append({
+                        "id": "[LEGACY]",
+                        "ref": "[LEGACY]",
+                        "qty": needed_po,
+                        "cost": float(it.unit_cost or 0.0),
+                        "supplier": it.po_supplier or "Legacy",
+                        "date": it.po_date or today_str,
+                        "by": created_by,
+                        "type": "PO"
+                    })
+
+                it.purchase_history = json.dumps(p_hist)
+                it.po_qty_ordered = int(sum(float(h.get("qty") or 0) for h in p_hist))
+                po_refs = sorted(set(str(h.get("ref")).strip() for h in p_hist if h.get("ref")))
+                it.po_ref = "; ".join(po_refs) if po_refs else None
+
+            # 2. GRN Scope
+            if scope in ("ALL", "GRN", "PROC"):
+                needed_grn = max(0, req_qty - int(it.received_qty or 0))
+                r_hist = get_hist(it.receiving_history)
+                r_hist = [h for h in r_hist if str(h.get("ref") or h.get("id") or "").strip() != "[LEGACY]"]
+
+                if needed_grn > 0:
+                    r_hist.append({
+                        "id": "[LEGACY]",
+                        "ref": "[LEGACY]",
+                        "qty": needed_grn,
+                        "date": it.received_date or today_str,
+                        "by": created_by,
+                        "type": "GRN"
+                    })
+
+                it.receiving_history = json.dumps(r_hist)
+                it.received_qty = int(sum(float(h.get("qty") or 0) for h in r_hist))
+                rec_refs = sorted(set(str(h.get("ref")).strip() for h in r_hist if h.get("ref")))
+                it.received_ref = "; ".join(rec_refs) if rec_refs else None
+
+            # 3. Invoice Scope
+            if scope in ("ALL", "INVOICE"):
+                needed_inv = max(0, req_qty - int(it.invoice_qty or 0))
+                inv_hist = get_hist(it.invoice_history)
+                inv_hist = [h for h in inv_hist if str(h.get("ref") or h.get("id") or "").strip() != "[LEGACY]"]
+
+                if needed_inv > 0:
+                    unit_ret = float(it.unit_retail or 0.0)
+                    inv_hist.append({
+                        "id": "[LEGACY]",
+                        "ref": "[LEGACY]",
+                        "qty": needed_inv,
+                        "unitPrice": unit_ret,
+                        "total": round(needed_inv * unit_ret, 2),
+                        "date": it.invoice_date or today_str,
+                        "by": created_by,
+                        "type": "Invoice"
+                    })
+
+                it.invoice_history = json.dumps(inv_hist)
+                it.invoice_qty = int(sum(float(h.get("qty") or 0) for h in inv_hist))
+                it.invoice_value = round(sum(float(h.get("total") or (float(h.get("qty") or 0) * float(h.get("unitPrice") or 0))) for h in inv_hist), 2)
+                inv_refs = sorted(set(str(h.get("ref")).strip() for h in inv_hist if h.get("ref")))
+                it.invoice_ref = "; ".join(inv_refs) if inv_refs else None
+
+            updated_count += 1
+
+        db.commit()
+        logger.info(f"Applied Legacy Baseline ({scope}) to {updated_count} items on order {po_number} by {created_by}.")
+        return {
+            "status": "success",
+            "message": f"Successfully applied Legacy Baseline to {updated_count} item(s).",
+            "updated_count": updated_count,
+            "scope": scope
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error applying legacy baseline on order {po_number}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{po_number}/legacy-baseline")
+def clear_order_legacy_baseline(
+    po_number: str,
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Clears any [LEGACY] baseline placeholder tags from selected items,
+    safely rolling them back strictly to live Palladium-only metrics.
+    """
+    try:
+        item_ids = payload.get("item_ids") or []
+        if not item_ids:
+            raise HTTPException(status_code=400, detail="No item_ids provided.")
+
+        items = db.query(OrderItem).filter(OrderItem.id.in_([str(i) for i in item_ids])).all()
+        if not items:
+            raise HTTPException(status_code=404, detail="No matching order items found.")
+
+        cleared_count = 0
+        for it in items:
+            def clean_hist(h_val):
+                if not h_val:
+                    return []
+                arr = h_val if isinstance(h_val, list) else json.loads(h_val)
+                return [h for h in arr if str(h.get("ref") or h.get("id") or "").strip() != "[LEGACY]"]
+
+            # PO
+            p_hist = clean_hist(it.purchase_history)
+            it.purchase_history = json.dumps(p_hist)
+            it.po_qty_ordered = int(sum(float(h.get("qty") or 0) for h in p_hist))
+            po_refs = sorted(set(str(h.get("ref")).strip() for h in p_hist if h.get("ref")))
+            it.po_ref = "; ".join(po_refs) if po_refs else None
+
+            # GRN
+            r_hist = clean_hist(it.receiving_history)
+            it.receiving_history = json.dumps(r_hist)
+            it.received_qty = int(sum(float(h.get("qty") or 0) for h in r_hist))
+            rec_refs = sorted(set(str(h.get("ref")).strip() for h in r_hist if h.get("ref")))
+            it.received_ref = "; ".join(rec_refs) if rec_refs else None
+
+            # Invoice
+            inv_hist = clean_hist(it.invoice_history)
+            it.invoice_history = json.dumps(inv_hist)
+            it.invoice_qty = int(sum(float(h.get("qty") or 0) for h in inv_hist))
+            it.invoice_value = round(sum(float(h.get("total") or (float(h.get("qty") or 0) * float(h.get("unitPrice") or 0))) for h in inv_hist), 2)
+            inv_refs = sorted(set(str(h.get("ref")).strip() for h in inv_hist if h.get("ref")))
+            it.invoice_ref = "; ".join(inv_refs) if inv_refs else None
+
+            cleared_count += 1
+
+        db.commit()
+        logger.info(f"Cleared Legacy Baseline from {cleared_count} items on order {po_number}.")
+        return {
+            "status": "success",
+            "message": f"Successfully cleared Legacy Baseline from {cleared_count} item(s).",
+            "cleared_count": cleared_count
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error clearing legacy baseline on order {po_number}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
