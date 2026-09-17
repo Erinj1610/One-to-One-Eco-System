@@ -132,8 +132,17 @@ const PRODUCT_CATALOG = [
 const getItemDefaults = (item) => {
   const resolved = { ...item };
   
+  // Helper to parse history arrays safely from array or JSON string
+  const parseHist = (val) => {
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string' && val.trim().startsWith('[')) {
+      try { return JSON.parse(val); } catch (_) { return []; }
+    }
+    return [];
+  };
+
   // Phase 1: Order Phase (Procurement)
-  const pHistory = Array.isArray(resolved.purchaseHistory) ? resolved.purchaseHistory : [];
+  const pHistory = parseHist(resolved.purchaseHistory ?? resolved.purchase_history);
   if (pHistory.length > 0) {
     resolved.poQtyOrdered = pHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
     resolved.poRef = Array.from(new Set(pHistory.map(h => h.ref).filter(Boolean))).join('; ');
@@ -149,7 +158,7 @@ const getItemDefaults = (item) => {
   }
   
   // Phase 2: Receiving Phase
-  const rHistory = Array.isArray(resolved.receivingHistory) ? resolved.receivingHistory : [];
+  const rHistory = parseHist(resolved.receivingHistory ?? resolved.receiving_history);
   if (rHistory.length > 0) {
     resolved.receivedQty = rHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
     resolved.receivedRef = Array.from(new Set(rHistory.map(h => h.ref).filter(Boolean))).join('; ');
@@ -161,12 +170,17 @@ const getItemDefaults = (item) => {
   }
   
   // Phase 3: Invoicing Phase
-  const iHistory = Array.isArray(resolved.invoiceHistory) ? resolved.invoiceHistory : [];
+  const iHistory = parseHist(resolved.invoiceHistory ?? resolved.invoice_history);
   if (iHistory.length > 0) {
     resolved.invoiceQty = iHistory.reduce((sum, h) => sum + (Number(h.qty) || 0), 0);
     resolved.invoiceRef = Array.from(new Set(iHistory.map(h => h.ref).filter(Boolean))).join('; ');
     resolved.invoiceDate = iHistory.map(h => h.date).filter(Boolean).reduce((latest, curr) => curr > latest ? curr : latest, '');
-    resolved.invoiceValue = iHistory.reduce((sum, h) => sum + ((Number(h.qty) || 0) * (Number(h.rate) || Number(resolved.unitRetail) || 0)), 0);
+    resolved.invoiceValue = Math.round(iHistory.reduce((sum, h) => {
+      if (h.total !== undefined && h.total !== null) return sum + (Number(h.total) || 0);
+      const q = Number(h.qty) || 0;
+      const price = Number(h.unitPrice ?? h.rate ?? resolved.unitRetail ?? resolved.unit_retail ?? 0);
+      return sum + (q * price);
+    }, 0) * 100) / 100;
   } else {
     resolved.invoiceQty = Number(item.invoiceQty ?? item.invoice_qty ?? 0);
     resolved.invoiceRef = item.invoiceRef || item.invoice_ref || '';
@@ -2053,11 +2067,15 @@ export default function SalesTracker() {
           sort_order: Math.round(Number(item.sortOrder !== undefined ? item.sortOrder : (item.sort_order !== undefined ? item.sort_order : idx)) || 0)
         }));
 
-        await fetch(`${API_BASE}/api/orders/${selectedOrderId}/items/batch`, {
+        const batchRes = await fetch(`${API_BASE}/api/orders/${selectedOrderId}/items/batch`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(itemsPayload)
         });
+
+        if (!batchRes.ok) {
+          console.error("Batch upsert returned non-ok status:", batchRes.status);
+        }
 
         // Also persist order header updates to database
         const targetOrder = updatedOrders.find(o => o.id === selectedOrderId);

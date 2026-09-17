@@ -759,6 +759,10 @@ def create_order_items_batch(po_number: str, items_data: List[OrderItemSchema], 
         str_id = str(item_data.id)
         has_active_allocs = str_id in active_inv_by_item and len(active_inv_by_item[str_id]) > 0
 
+        # Check if incoming item has a [LEGACY] baseline invoice placeholder
+        incoming_inv_h = item_data.invoice_history if isinstance(item_data.invoice_history, list) else []
+        has_legacy_inv = any(str(h.get("ref") or h.get("id") or "").strip() == "[LEGACY]" for h in incoming_inv_h if isinstance(h, dict))
+
         if str_id in existing_records:
             existing = existing_records[str_id]
             existing.order_id = po_number
@@ -792,8 +796,8 @@ def create_order_items_batch(po_number: str, items_data: List[OrderItemSchema], 
             existing.purchase_history = json.dumps(item_data.purchase_history) if item_data.purchase_history else "[]"
             existing.receiving_history = json.dumps(item_data.receiving_history) if item_data.receiving_history else "[]"
             
-            # If item has active invoice allocations or is unallocated, don't let stale frontend values overwrite
-            if not has_active_allocs:
+            # If item has active invoice allocations or has a [LEGACY] baseline, save it. Otherwise reset unallocated values.
+            if not has_active_allocs and not has_legacy_inv:
                 existing.invoice_qty = 0
                 existing.invoice_ref = None
                 existing.invoice_date = None
@@ -812,11 +816,12 @@ def create_order_items_batch(po_number: str, items_data: List[OrderItemSchema], 
             existing.item_type = item_data.item_type
             existing.sort_order = item_data.sort_order
         else:
-            inv_qty_to_set = item_data.invoice_qty if has_active_allocs else 0
-            inv_ref_to_set = item_data.invoice_ref if has_active_allocs else None
-            inv_date_to_set = item_data.invoice_date if has_active_allocs else None
-            inv_val_to_set = item_data.invoice_value if has_active_allocs else 0.0
-            inv_hist_to_set = json.dumps(item_data.invoice_history) if (has_active_allocs and item_data.invoice_history) else "[]"
+            allow_inv = has_active_allocs or has_legacy_inv
+            inv_qty_to_set = item_data.invoice_qty if allow_inv else 0
+            inv_ref_to_set = item_data.invoice_ref if allow_inv else None
+            inv_date_to_set = item_data.invoice_date if allow_inv else None
+            inv_val_to_set = item_data.invoice_value if allow_inv else 0.0
+            inv_hist_to_set = json.dumps(item_data.invoice_history) if (allow_inv and item_data.invoice_history) else "[]"
 
             new_item = OrderItem(
                 id=str_id,
@@ -878,6 +883,11 @@ def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = 
         ProcurementAllocation.status == "Active"
     ).first() is not None
 
+    # Check if incoming item has a [LEGACY] baseline invoice placeholder
+    incoming_inv_h = item_data.invoice_history if isinstance(item_data.invoice_history, list) else []
+    has_legacy_inv = any(str(h.get("ref") or h.get("id") or "").strip() == "[LEGACY]" for h in incoming_inv_h if isinstance(h, dict))
+    allow_inv = has_active_allocs or has_legacy_inv
+
     if existing:
         existing.order_id = po_number
         existing.qty = item_data.qty
@@ -899,7 +909,7 @@ def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = 
         existing.po_ref = item_data.po_ref
         existing.po_qty_ordered = item_data.po_qty_ordered
         existing.po_eta = item_data.po_eta
-        if not has_active_allocs:
+        if not allow_inv:
             existing.invoice_qty = 0
             existing.invoice_ref = None
             existing.invoice_date = None
@@ -952,21 +962,21 @@ def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = 
         po_ref=item_data.po_ref,
         po_qty_ordered=item_data.po_qty_ordered,
         po_eta=item_data.po_eta,
-        invoice_qty=item_data.invoice_qty if has_active_allocs else 0,
+        invoice_qty=item_data.invoice_qty if allow_inv else 0,
         po_supplier=item_data.po_supplier,
         po_date=item_data.po_date,
         received_qty=item_data.received_qty,
         received_date=item_data.received_date,
-        invoice_ref=item_data.invoice_ref if has_active_allocs else None,
-        invoice_date=item_data.invoice_date if has_active_allocs else None,
-        invoice_value=item_data.invoice_value if has_active_allocs else 0.0,
+        invoice_ref=item_data.invoice_ref if allow_inv else None,
+        invoice_date=item_data.invoice_date if allow_inv else None,
+        invoice_value=item_data.invoice_value if allow_inv else 0.0,
         delivery_qty=item_data.delivery_qty,
         delivery_date=item_data.delivery_date,
         delivery_status=item_data.delivery_status,
         delivery_history=json.dumps(item_data.delivery_history),
         purchase_history=json.dumps(item_data.purchase_history),
         receiving_history=json.dumps(item_data.receiving_history),
-        invoice_history=json.dumps(item_data.invoice_history) if (has_active_allocs and item_data.invoice_history) else "[]",
+        invoice_history=json.dumps(item_data.invoice_history) if (allow_inv and item_data.invoice_history) else "[]",
         stock_on_hand=item_data.stock_on_hand,
         stock_available=item_data.stock_available,
         is_credit=item_data.is_credit,
@@ -1010,7 +1020,11 @@ def update_order_item(item_id: str, item_data: OrderItemSchema, db: Session = De
         ProcurementAllocation.status == "Active"
     ).first() is not None
 
-    if not has_active_allocs:
+    incoming_inv_h = item_data.invoice_history if isinstance(item_data.invoice_history, list) else []
+    has_legacy_inv = any(str(h.get("ref") or h.get("id") or "").strip() == "[LEGACY]" for h in incoming_inv_h if isinstance(h, dict))
+    allow_inv = has_active_allocs or has_legacy_inv
+
+    if not allow_inv:
         item.invoice_qty = 0
         item.invoice_ref = None
         item.invoice_date = None
