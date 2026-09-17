@@ -66,7 +66,7 @@ const matchSkuToOrderItem = (sku, candItems) => {
 export default function PurchasingPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { projects, getModuleName } = useStore();
+  const { projects, getModuleName, refreshProjects } = useStore();
 
   // Toast notifications
   const [toastMessage, setToastMessage] = useState(null);
