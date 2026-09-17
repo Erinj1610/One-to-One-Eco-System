@@ -544,21 +544,37 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
 
     item_ids = [str(item.id) for item in items]
     raw_allocs = db.query(ProcurementAllocation).filter(
-        ProcurementAllocation.allocation_type == "INVOICE",
         ProcurementAllocation.status == "Active"
     ).all()
 
     inv_allocs_by_item_id = {}
     inv_allocs_by_sku = {}
+    po_allocs_by_item_id = {}
+    po_allocs_by_sku = {}
+    grn_allocs_by_item_id = {}
+    grn_allocs_by_sku = {}
+
     for a in raw_allocs:
-        if str(a.source_doc_no or "").upper().startswith(("CN-", "CR-")):
-            continue
-        if a.order_item_id and str(a.order_item_id) in item_ids:
-            inv_allocs_by_item_id.setdefault(str(a.order_item_id), []).append(a)
-        if a.sku:
-            norm = re.sub(r'[^A-Za-z0-9]', '', str(a.sku)).upper()
+        a_type = (a.allocation_type or "").upper().strip()
+        norm = re.sub(r'[^A-Za-z0-9]', '', str(a.sku or "")).upper()
+
+        if a_type == "INVOICE":
+            if str(a.source_doc_no or "").upper().startswith(("CN-", "CR-")):
+                continue
+            if a.order_item_id and str(a.order_item_id) in item_ids:
+                inv_allocs_by_item_id.setdefault(str(a.order_item_id), []).append(a)
             if norm:
                 inv_allocs_by_sku.setdefault(norm, []).append(a)
+        elif a_type == "PO":
+            if a.order_item_id and str(a.order_item_id) in item_ids:
+                po_allocs_by_item_id.setdefault(str(a.order_item_id), []).append(a)
+            if norm:
+                po_allocs_by_sku.setdefault(norm, []).append(a)
+        elif a_type == "GRN":
+            if a.order_item_id and str(a.order_item_id) in item_ids:
+                grn_allocs_by_item_id.setdefault(str(a.order_item_id), []).append(a)
+            if norm:
+                grn_allocs_by_sku.setdefault(norm, []).append(a)
 
     res = []
     for item in items:
@@ -577,8 +593,149 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
         pur_hist = parse_history(item.purchase_history)
         rec_hist = parse_history(item.receiving_history)
 
-        # Dynamically compute authentic invoice allocations from ProcurementAllocation
         item_norm_skus = {re.sub(r'[^A-Za-z0-9]', '', str(s)).upper() for s in [item.code, item.one_one_code] if s}
+
+        # 1. Dynamically compute authentic PO allocations from ProcurementAllocation
+        matched_po_allocs = list(po_allocs_by_item_id.get(str(item.id), []))
+        if not matched_po_allocs and item_norm_skus:
+            for s in item_norm_skus:
+                for a in po_allocs_by_sku.get(s, []):
+                    if (a.order_id and str(a.order_id) in valid_order_keys) or (a.order_item_id and str(a.order_item_id) == str(item.id)):
+                        if a not in matched_po_allocs:
+                            matched_po_allocs.append(a)
+
+        unique_po_allocs = []
+        seen_po_keys = set()
+        for a in matched_po_allocs:
+            k = (a.source_doc_no, a.source_line_id) if a.source_line_id is not None else (a.source_doc_no, a.sku, round(float(a.allocated_qty or 0.0), 4))
+            if k not in seen_po_keys:
+                seen_po_keys.add(k)
+                unique_po_allocs.append(a)
+
+        if unique_po_allocs:
+            dyn_pur_hist = []
+            dyn_po_qty = 0
+            dyn_po_refs = set()
+            dyn_po_date = None
+            dyn_po_supplier = None
+            dyn_po_eta = None
+            for a in unique_po_allocs:
+                q_val = float(a.allocated_qty or 0.0)
+                c_val = float(a.unit_cost or item.unit_cost or 0.0)
+                dyn_po_qty += int(round(q_val))
+                if a.source_doc_no:
+                    dyn_po_refs.add(str(a.source_doc_no))
+                if a.doc_date:
+                    dyn_po_date = str(a.doc_date).split("T")[0]
+                if a.vendor_name:
+                    dyn_po_supplier = a.vendor_name
+                if a.eta:
+                    dyn_po_eta = str(a.eta)
+                dyn_pur_hist.append({
+                    "id": a.source_doc_no,
+                    "ref": a.source_doc_no,
+                    "allocation_id": a.id,
+                    "qty": q_val,
+                    "unitCost": c_val,
+                    "total": round(q_val * c_val, 2),
+                    "date": str(a.doc_date).split("T")[0] if a.doc_date else None,
+                    "supplier": a.vendor_name,
+                    "by": a.allocated_by_name or "Staff",
+                    "type": "PO"
+                })
+            calc_pur_hist = dyn_pur_hist
+            calc_po_qty = dyn_po_qty
+            calc_po_ref = "; ".join(sorted(dyn_po_refs)) if dyn_po_refs else None
+            calc_po_date = dyn_po_date or item.po_date
+            calc_po_supplier = dyn_po_supplier or item.po_supplier
+            calc_po_eta = dyn_po_eta or item.po_eta
+        else:
+            calc_pur_hist = []
+            calc_po_qty = 0
+            calc_po_ref = None
+            calc_po_date = None
+            calc_po_supplier = None
+            calc_po_eta = None
+
+        # Check legacy PO placeholder in static purchase_history
+        legacy_po_entry = next((h for h in pur_hist if str(h.get("ref") or h.get("id") or "").strip() == "[LEGACY]"), None)
+        if legacy_po_entry:
+            req_q = int(item.qty or 0)
+            needed_legacy_po = max(0, req_q - calc_po_qty)
+            if needed_legacy_po > 0:
+                legacy_floated_po = dict(legacy_po_entry)
+                legacy_floated_po["qty"] = needed_legacy_po
+                calc_pur_hist.append(legacy_floated_po)
+                calc_po_qty += needed_legacy_po
+                all_po_refs = [calc_po_ref] if calc_po_ref else []
+                if "[LEGACY]" not in all_po_refs:
+                    all_po_refs.append("[LEGACY]")
+                calc_po_ref = "; ".join(all_po_refs)
+
+        # 2. Dynamically compute authentic GRN allocations from ProcurementAllocation
+        matched_grn_allocs = list(grn_allocs_by_item_id.get(str(item.id), []))
+        if not matched_grn_allocs and item_norm_skus:
+            for s in item_norm_skus:
+                for a in grn_allocs_by_sku.get(s, []):
+                    if (a.order_id and str(a.order_id) in valid_order_keys) or (a.order_item_id and str(a.order_item_id) == str(item.id)):
+                        if a not in matched_grn_allocs:
+                            matched_grn_allocs.append(a)
+
+        unique_grn_allocs = []
+        seen_grn_keys = set()
+        for a in matched_grn_allocs:
+            k = (a.source_doc_no, a.source_line_id) if a.source_line_id is not None else (a.source_doc_no, a.sku, round(float(a.allocated_qty or 0.0), 4))
+            if k not in seen_grn_keys:
+                seen_grn_keys.add(k)
+                unique_grn_allocs.append(a)
+
+        if unique_grn_allocs:
+            dyn_rec_hist = []
+            dyn_rec_qty = 0
+            dyn_rec_refs = set()
+            dyn_rec_date = None
+            for a in unique_grn_allocs:
+                q_val = float(a.allocated_qty or 0.0)
+                dyn_rec_qty += int(round(q_val))
+                if a.source_doc_no:
+                    dyn_rec_refs.add(str(a.source_doc_no))
+                if a.doc_date:
+                    dyn_rec_date = str(a.doc_date).split("T")[0]
+                dyn_rec_hist.append({
+                    "id": a.source_doc_no,
+                    "ref": a.source_doc_no,
+                    "allocation_id": a.id,
+                    "qty": q_val,
+                    "date": str(a.doc_date).split("T")[0] if a.doc_date else None,
+                    "by": a.allocated_by_name or "Staff",
+                    "type": "GRN"
+                })
+            calc_rec_hist = dyn_rec_hist
+            calc_rec_qty = dyn_rec_qty
+            calc_rec_ref = "; ".join(sorted(dyn_rec_refs)) if dyn_rec_refs else None
+            calc_rec_date = dyn_rec_date or item.received_date
+        else:
+            calc_rec_hist = []
+            calc_rec_qty = 0
+            calc_rec_ref = None
+            calc_rec_date = None
+
+        # Check legacy GRN placeholder in static receiving_history
+        legacy_rec_entry = next((h for h in rec_hist if str(h.get("ref") or h.get("id") or "").strip() == "[LEGACY]"), None)
+        if legacy_rec_entry:
+            req_q = int(item.qty or 0)
+            needed_legacy_rec = max(0, req_q - calc_rec_qty)
+            if needed_legacy_rec > 0:
+                legacy_floated_rec = dict(legacy_rec_entry)
+                legacy_floated_rec["qty"] = needed_legacy_rec
+                calc_rec_hist.append(legacy_floated_rec)
+                calc_rec_qty += needed_legacy_rec
+                all_rec_refs = [calc_rec_ref] if calc_rec_ref else []
+                if "[LEGACY]" not in all_rec_refs:
+                    all_rec_refs.append("[LEGACY]")
+                calc_rec_ref = "; ".join(all_rec_refs)
+
+        # 3. Dynamically compute authentic invoice allocations from ProcurementAllocation
         matched_allocs = list(inv_allocs_by_item_id.get(str(item.id), []))
         if not matched_allocs and item_norm_skus:
             for s in item_norm_skus:
@@ -657,19 +814,48 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
                     all_refs.append("[LEGACY]")
                 calc_inv_ref = "; ".join(all_refs)
 
-        # Auto-heal static OrderItem row if Cloud SQL contains stale doubled/unallocated values
+        # Auto-heal static OrderItem row if Cloud SQL contains stale values
+        needs_heal = False
         if (item.invoice_qty or 0) != calc_inv_qty or (item.invoice_ref or None) != calc_inv_ref or round(float(item.invoice_value or 0.0), 2) != calc_inv_val:
             item.invoice_qty = calc_inv_qty
             item.invoice_value = calc_inv_val
             item.invoice_ref = calc_inv_ref
             item.invoice_date = calc_inv_date or item.invoice_date
             item.invoice_history = json.dumps(calc_inv_hist)
+            needs_heal = True
+
+        if (item.po_qty_ordered or 0) != calc_po_qty or (item.po_ref or None) != calc_po_ref:
+            item.po_qty_ordered = calc_po_qty
+            item.po_ref = calc_po_ref
+            item.po_date = calc_po_date
+            item.po_supplier = calc_po_supplier
+            item.po_eta = calc_po_eta
+            item.purchase_history = json.dumps(calc_pur_hist)
+            needs_heal = True
+
+        if (item.received_qty or 0) != calc_rec_qty or (item.received_date or None) != calc_rec_date:
+            item.received_qty = calc_rec_qty
+            item.received_date = calc_rec_date
+            item.receiving_history = json.dumps(calc_rec_hist)
+            needs_heal = True
+
+        if needs_heal:
             db.add(item)
 
         item_dict = item.__dict__.copy()
         item_dict['delivery_history'] = del_hist
-        item_dict['purchase_history'] = pur_hist
-        item_dict['receiving_history'] = rec_hist
+        item_dict['purchase_history'] = calc_pur_hist
+        item_dict['po_qty_ordered'] = calc_po_qty
+        item_dict['po_ref'] = calc_po_ref
+        item_dict['po_date'] = calc_po_date
+        item_dict['po_supplier'] = calc_po_supplier
+        item_dict['po_eta'] = calc_po_eta
+
+        item_dict['receiving_history'] = calc_rec_hist
+        item_dict['received_qty'] = calc_rec_qty
+        item_dict['received_ref'] = calc_rec_ref
+        item_dict['received_date'] = calc_rec_date
+
         item_dict['invoice_history'] = calc_inv_hist
         item_dict['invoice_qty'] = calc_inv_qty
         item_dict['invoice_value'] = calc_inv_val
