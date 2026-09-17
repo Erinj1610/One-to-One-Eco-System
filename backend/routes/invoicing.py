@@ -1524,3 +1524,76 @@ def manual_batch_record_invoices(payload: Dict[str, Any] = Body(...), db: Sessio
         logger.error(f"Error in manual_batch_record_invoices: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@public_router.delete("/manual-document")
+@router.delete("/manual-document")
+def delete_manual_invoice_document(
+    document_no: str = Query(..., description="Invoice document number to delete"),
+    deleted_by: str = Query("Admin", description="User performing deletion"),
+    db: Session = Depends(get_db)
+):
+    """
+    Safely deletes a manually/legacy recorded Tax Invoice.
+    CRITICAL SAFEGUARD: Strictly verifies that the invoice contains '[LEGACY]' in its reference.
+    Real Palladium ERP synced invoices CAN NEVER BE DELETED through this endpoint (returns 403 Forbidden).
+    """
+    clean_doc_no = str(document_no).strip()
+
+    try:
+        lines = db.query(PalladiumInvoiceLine).filter(PalladiumInvoiceLine.document_no == clean_doc_no).all()
+        if not lines:
+            raise HTTPException(status_code=404, detail=f"No invoice found with document number '{clean_doc_no}'.")
+
+        # STRICT GUARANTEE: Must be tagged as [LEGACY]
+        for l in lines:
+            ref = str(l.reference or "")
+            if "[LEGACY]" not in ref:
+                logger.warning(f"BLOCKED attempt to delete Palladium ERP synced Invoice {clean_doc_no}!")
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"FORBIDDEN: Invoice '{clean_doc_no}' is synced directly from Palladium ERP and cannot be deleted."
+                )
+
+        # Cancel all active allocations for this invoice
+        allocs = db.query(ProcurementAllocation).filter(
+            ProcurementAllocation.allocation_type == "INVOICE",
+            ProcurementAllocation.source_doc_no == clean_doc_no,
+            ProcurementAllocation.status == "Active"
+        ).all()
+
+        affected_item_ids = set(str(a.order_item_id) for a in allocs if a.order_item_id)
+
+        for a in allocs:
+            a.status = "Cancelled"
+            a.notes = f"{a.notes or ''} [Deleted manual invoice by {deleted_by} on {datetime.now(timezone.utc).strftime('%Y-%m-%d')}]"
+
+        # Delete manual invoice lines
+        deleted_count = len(lines)
+        for l in lines:
+            db.delete(l)
+
+        # Recalculate invoicing metrics on all affected OrderItems
+        if affected_item_ids:
+            order_items = db.query(OrderItem).filter(OrderItem.id.in_(list(affected_item_ids))).all()
+            for it in order_items:
+                recalc_order_item_invoicing(db, it)
+
+        db.commit()
+        logger.info(f"Successfully deleted manual invoice {clean_doc_no} ({deleted_count} lines) by {deleted_by}.")
+
+        return {
+            "status": "success",
+            "message": f"Manual invoice '{clean_doc_no}' deleted successfully and invoicing progress rolled back.",
+            "document_no": clean_doc_no,
+            "lines_deleted": deleted_count,
+            "allocations_cancelled": len(allocs)
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting manual invoice {clean_doc_no}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+

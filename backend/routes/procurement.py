@@ -2112,3 +2112,88 @@ def manual_batch_record_procurement(payload: Dict[str, Any] = Body(...), db: Ses
         logger.error(f"Error in manual_batch_record_procurement: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@public_router.delete("/manual-document")
+@router.delete("/manual-document")
+def delete_manual_procurement_document(
+    doc_type: str = Query(..., description="PO or GRN"),
+    document_no: str = Query(..., description="Document number to delete"),
+    deleted_by: str = Query("Admin", description="User performing deletion"),
+    db: Session = Depends(get_db)
+):
+    """
+    Safely deletes a manually/legacy recorded PO or GRN document.
+    CRITICAL SAFEGUARD: Strictly verifies that the document contains '[LEGACY]' in its reference.
+    Real Palladium ERP synced documents CAN NEVER BE DELETED through this endpoint (returns 403 Forbidden).
+    """
+    clean_doc_type = str(doc_type).strip().upper()
+    clean_doc_no = str(document_no).strip()
+
+    if clean_doc_type not in ("PO", "GRN"):
+        raise HTTPException(status_code=400, detail="doc_type must be 'PO' or 'GRN'.")
+
+    try:
+        # 1. Verify existence and legacy status in lines table
+        if clean_doc_type == "PO":
+            lines = db.query(PalladiumPOLine).filter(PalladiumPOLine.document_no == clean_doc_no).all()
+        else:
+            lines = db.query(PalladiumGRNLine).filter(PalladiumGRNLine.document_no == clean_doc_no).all()
+
+        if not lines:
+            raise HTTPException(status_code=404, detail=f"No {clean_doc_type} document found with number '{clean_doc_no}'.")
+
+        # STRICT GUARANTEE: Must be tagged as [LEGACY]
+        for l in lines:
+            ref = str(l.reference or "")
+            if "[LEGACY]" not in ref:
+                logger.warning(f"BLOCKED attempt to delete Palladium ERP synced {clean_doc_type} {clean_doc_no}!")
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"FORBIDDEN: Document '{clean_doc_no}' is synced directly from Palladium ERP and cannot be deleted."
+                )
+
+        # 2. Find and cancel all active allocations for this document
+        allocs = db.query(ProcurementAllocation).filter(
+            ProcurementAllocation.allocation_type == clean_doc_type,
+            ProcurementAllocation.source_doc_no == clean_doc_no,
+            ProcurementAllocation.status == "Active"
+        ).all()
+
+        cancelled_ids = set(a.id for a in allocs)
+        cancelled_docs = {clean_doc_no}
+        affected_item_ids = set(str(a.order_item_id) for a in allocs if a.order_item_id)
+
+        for a in allocs:
+            a.status = "Cancelled"
+            a.notes = f"{a.notes or ''} [Deleted manual document by {deleted_by} on {datetime.now(timezone.utc).strftime('%Y-%m-%d')}]"
+
+        # 3. Revert OrderItem records
+        if affected_item_ids:
+            order_items = db.query(OrderItem).filter(OrderItem.id.in_(list(affected_item_ids))).all()
+            for it in order_items:
+                revert_order_item_for_cancelled_allocations(db, it, cancelled_ids, cancelled_docs)
+
+        # 4. Delete the manual lines
+        deleted_count = len(lines)
+        for l in lines:
+            db.delete(l)
+
+        db.commit()
+        logger.info(f"Successfully deleted manual {clean_doc_type} {clean_doc_no} ({deleted_count} lines) by {deleted_by}.")
+
+        return {
+            "status": "success",
+            "message": f"Manual {clean_doc_type} '{clean_doc_no}' deleted successfully and progress rolled back.",
+            "document_no": clean_doc_no,
+            "lines_deleted": deleted_count,
+            "allocations_cancelled": len(cancelled_ids)
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting manual {clean_doc_type} {clean_doc_no}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
