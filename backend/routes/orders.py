@@ -581,13 +581,18 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
         def parse_history(h_val):
             if h_val is None:
                 return []
-            if isinstance(h_val, (list, dict)):
-                return h_val
-            try:
-                import json
-                return json.loads(h_val)
-            except Exception:
-                return []
+            raw = h_val
+            if isinstance(h_val, str):
+                try:
+                    import json
+                    raw = json.loads(h_val)
+                except Exception:
+                    return []
+            if isinstance(raw, list):
+                return [elem for elem in raw if isinstance(elem, dict)]
+            elif isinstance(raw, dict):
+                return [raw]
+            return []
 
         del_hist = parse_history(item.delivery_history)
         pur_hist = parse_history(item.purchase_history)
@@ -1317,12 +1322,17 @@ def apply_order_legacy_baseline(
             def get_hist(h_val):
                 if not h_val:
                     return []
-                if isinstance(h_val, list):
-                    return list(h_val)
-                try:
-                    return list(json.loads(h_val))
-                except Exception:
-                    return []
+                raw = h_val
+                if isinstance(h_val, str):
+                    try:
+                        raw = json.loads(h_val)
+                    except Exception:
+                        return []
+                if isinstance(raw, list):
+                    return [elem for elem in raw if isinstance(elem, dict)]
+                elif isinstance(raw, dict):
+                    return [raw]
+                return []
 
             # 1. PO Scope
             if scope in ("ALL", "PO", "PROC"):
@@ -1373,8 +1383,6 @@ def apply_order_legacy_baseline(
 
                 it.receiving_history = json.dumps(r_hist)
                 it.received_qty = int(sum(float(h.get("qty") or 0) for h in r_hist))
-                rec_refs = sorted(set(str(h.get("ref")).strip() for h in r_hist if h.get("ref")))
-                it.received_ref = "; ".join(rec_refs) if rec_refs else None
 
             # 3. Invoice Scope
             if scope in ("ALL", "INVOICE"):
@@ -1444,8 +1452,17 @@ def clear_order_legacy_baseline(
             def clean_hist(h_val):
                 if not h_val:
                     return []
-                arr = h_val if isinstance(h_val, list) else json.loads(h_val)
-                return [h for h in arr if str(h.get("ref") or h.get("id") or "").strip() != "[LEGACY]"]
+                raw = h_val
+                if isinstance(h_val, str):
+                    try:
+                        raw = json.loads(h_val)
+                    except Exception:
+                        return []
+                if isinstance(raw, list):
+                    return [h for h in raw if isinstance(h, dict) and str(h.get("ref") or h.get("id") or "").strip() != "[LEGACY]"]
+                elif isinstance(raw, dict):
+                    return [raw] if str(raw.get("ref") or raw.get("id") or "").strip() != "[LEGACY]" else []
+                return []
 
             # PO
             p_hist = clean_hist(it.purchase_history)
@@ -1458,8 +1475,6 @@ def clear_order_legacy_baseline(
             r_hist = clean_hist(it.receiving_history)
             it.receiving_history = json.dumps(r_hist)
             it.received_qty = int(sum(float(h.get("qty") or 0) for h in r_hist))
-            rec_refs = sorted(set(str(h.get("ref")).strip() for h in r_hist if h.get("ref")))
-            it.received_ref = "; ".join(rec_refs) if rec_refs else None
 
             # Invoice
             inv_hist = clean_hist(it.invoice_history)
