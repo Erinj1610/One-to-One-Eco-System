@@ -1052,12 +1052,31 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 inv_date = dyn_inv_date
                 inv_val = round(dyn_inv_val, 2)
             else:
-                # If there are no active invoice allocations, invoice metrics must be zero
                 inv_hist = []
                 inv_qty = 0
                 inv_ref = ""
                 inv_date = ""
                 inv_val = 0.0
+
+            # Check if item has a [LEGACY] baseline invoice placeholder
+            legacy_inv_entry = next((h for h in inv_hist_raw if str(h.get("ref") or h.get("id") or "").strip() == "[LEGACY]"), None)
+            if legacy_inv_entry:
+                req_q = int(item.qty or 0)
+                needed_legacy_qty = max(0, req_q - inv_qty)
+                if needed_legacy_qty > 0:
+                    unit_ret = float(item.unit_retail or 0.0)
+                    legacy_floated = dict(legacy_inv_entry)
+                    legacy_floated["qty"] = needed_legacy_qty
+                    legacy_floated["unitPrice"] = unit_ret
+                    legacy_floated["total"] = round(needed_legacy_qty * unit_ret, 2)
+                    inv_hist.append(legacy_floated)
+                    inv_qty += needed_legacy_qty
+                    inv_val = round(inv_val + (needed_legacy_qty * unit_ret), 2)
+                    
+                    all_refs = [inv_ref] if inv_ref else []
+                    if "[LEGACY]" not in all_refs:
+                        all_refs.append("[LEGACY]")
+                    inv_ref = "; ".join(all_refs)
 
             # Derive authentic live stock available & on hand
             # Priority: OrderItem explicit saved value -> Product catalog fallback -> 0
