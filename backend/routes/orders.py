@@ -833,9 +833,8 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
             item.purchase_history = json.dumps(calc_pur_hist)
             needs_heal = True
 
-        if (item.received_qty or 0) != calc_rec_qty or (item.received_ref or None) != calc_rec_ref:
+        if (item.received_qty or 0) != calc_rec_qty or (item.received_date or None) != calc_rec_date:
             item.received_qty = calc_rec_qty
-            item.received_ref = calc_rec_ref
             item.received_date = calc_rec_date
             item.receiving_history = json.dumps(calc_rec_hist)
             needs_heal = True
