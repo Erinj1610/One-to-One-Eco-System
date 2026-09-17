@@ -2079,7 +2079,7 @@ def manual_batch_record_procurement(payload: Dict[str, Any] = Body(...), db: Ses
                         target_item.po_supplier = supplier
                         target_item.po_date = date_str
                         target_item.po_qty_ordered = (target_item.po_qty_ordered or 0) + int(round(qty_val))
-                        target_item.stock_status = "All Stock on Hand" if target_item.po_qty_ordered >= (target_item.qty or 1) else "Partial Stock on Hand"
+                        # Note: We preserve the user's explicit Stock Status (All Stock on Hand / Partial / To Be Ordered)
                         p_hist = list(target_item.purchase_history or [])
                         p_hist.append({"id": d_no, "ref": d_no, "qty": qty_val, "cost": unit_cst, "supplier": supplier, "date": date_str, "type": "PO"})
                         target_item.purchase_history = p_hist
