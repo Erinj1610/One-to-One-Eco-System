@@ -886,12 +886,34 @@ export default function PurchasingPage() {
         const initialRows = (items || []).filter(it => !it.is_credit && !it.isCredit).map(it => {
           const reqQty = Number(it.qty || 0);
           const doneQty = docType === 'PO' ? Number(it.po_qty_ordered || it.poQtyOrdered || 0) : Number(it.received_qty || it.receivedQty || 0);
-          const rem = Math.max(0, reqQty - doneQty);
+          const stStatus = String(it.stockStatus || it.stock_status || '').trim();
+          const stOnHand = Number(it.stockOnHand !== undefined ? it.stockOnHand : (it.stock_on_hand !== undefined ? it.stock_on_hand : 0));
+
+          // Smart Net Balance Calculation:
+          // If All Stock on Hand: nothing needs to be ordered (rem = 0)
+          // If Partial Stock on Hand: rem = max(0, reqQty - stockOnHand - already_ordered)
+          // Otherwise: rem = max(0, reqQty - already_ordered)
+          let rem = 0;
+          if (docType === 'PO') {
+            if (stStatus === 'All Stock on Hand') {
+              rem = 0;
+            } else if (stStatus === 'Partial Stock on Hand') {
+              rem = Math.max(0, reqQty - stOnHand - doneQty);
+            } else {
+              rem = Math.max(0, reqQty - doneQty);
+            }
+          } else {
+            // GRN: what is still unreceived
+            rem = Math.max(0, reqQty - doneQty);
+          }
+
           return {
             order_item_id: it.id,
             sku: it.code || it.oneOneCode || 'CUSTOM',
             one_one_code: it.oneOneCode || it.one_one_code || '—',
             description: it.description || it.code || 'Item',
+            stock_status: stStatus,
+            stock_on_hand: stOnHand,
             required_qty: reqQty,
             already_done: doneQty,
             unit_cost: Number(it.unit_cost || it.unitCost || 0),
@@ -930,7 +952,18 @@ export default function PurchasingPage() {
 
   const handleFillAllRemaining = () => {
     setManualBatchRows(prev => prev.map(r => {
-      const rem = Math.max(0, r.required_qty - r.already_done);
+      let rem = 0;
+      if (manualProcDocType === 'PO') {
+        if (r.stock_status === 'All Stock on Hand') {
+          rem = 0;
+        } else if (r.stock_status === 'Partial Stock on Hand') {
+          rem = Math.max(0, r.required_qty - (Number(r.stock_on_hand) || 0) - r.already_done);
+        } else {
+          rem = Math.max(0, r.required_qty - r.already_done);
+        }
+      } else {
+        rem = Math.max(0, r.required_qty - r.already_done);
+      }
       return { ...r, qty: rem, included: rem > 0 };
     }));
   };
@@ -981,6 +1014,36 @@ export default function PurchasingPage() {
       alert(`Network error: ${err.message}`);
     } finally {
       setIsSavingManualBatch(false);
+    }
+  };
+
+  const handleDeleteManualDocument = async (doc) => {
+    if (!doc) return;
+    const isLegacy = doc.reference && doc.reference.includes('[LEGACY]');
+    if (!isLegacy) {
+      alert("⚠️ Protected: This document is synced from Palladium ERP and cannot be deleted.");
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete manual ${doc.doc_type} '${doc.document_no}'?\n\nThis will remove the manual record and roll back any allocations and order line progress.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/procurement/manual-document?doc_type=${encodeURIComponent(doc.doc_type)}&document_no=${encodeURIComponent(doc.document_no)}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🗑️ ${data.message || `Manual ${doc.doc_type} deleted successfully.`}`);
+        fetchSummary();
+        fetchProcurementDocuments();
+        if (refreshProjects) refreshProjects();
+      } else {
+        alert(data.detail || 'Could not delete manual document.');
+      }
+    } catch (err) {
+      alert(`Network error: ${err.message}`);
     }
   };
 
@@ -2303,6 +2366,27 @@ export default function PurchasingPage() {
                               >
                                 {doc.is_flagged_issue ? 'Resolve' : 'Flag'}
                               </button>
+
+                              {/* Delete button STRICTLY for manually recorded legacy documents */}
+                              {doc.reference && doc.reference.includes('[LEGACY]') && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteManualDocument(doc);
+                                  }}
+                                  className="btn btn-xs btn-ghost"
+                                  style={{
+                                    color: '#ef4444',
+                                    borderColor: 'rgba(239, 68, 68, 0.4)',
+                                    fontSize: '10.5px',
+                                    padding: '3px 8px',
+                                    borderRadius: '6px'
+                                  }}
+                                  title={`Delete manual ${doc.doc_type} '${doc.document_no}'`}
+                                >
+                                  <Trash2 size={11} /> Delete
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -4514,23 +4598,36 @@ export default function PurchasingPage() {
                     <thead style={{ position: 'sticky', top: 0, background: '#f1f5f9', zIndex: 2, borderBottom: '2px solid #cbd5e1' }}>
                       <tr>
                         <th style={{ width: '40px', textAlign: 'center', background: '#f1f5f9' }}></th>
-                        <th style={{ width: '90px', background: '#f1f5f9' }}>1:1 Code</th>
-                        <th style={{ width: '110px', background: '#f1f5f9' }}>Item Code</th>
+                        <th style={{ width: '85px', background: '#f1f5f9' }}>1:1 Code</th>
+                        <th style={{ width: '105px', background: '#f1f5f9' }}>Item Code</th>
                         <th style={{ background: '#f1f5f9' }}>Description</th>
-                        <th style={{ width: '65px', textAlign: 'center', background: '#f1f5f9' }}>Total</th>
-                        <th style={{ width: '70px', textAlign: 'center', background: '#f1f5f9' }}>{manualProcDocType === 'PO' ? 'Ord' : 'Rec'}</th>
-                        <th style={{ width: '70px', textAlign: 'center', background: '#f1f5f9' }}>Remaining</th>
-                        <th style={{ width: '85px', textAlign: 'right', background: '#f1f5f9' }}>Cost</th>
-                        <th style={{ width: '130px', background: '#f1f5f9' }}>{manualProcDocType} #</th>
-                        <th style={{ width: '120px', background: '#f1f5f9' }}>Supplier</th>
-                        <th style={{ width: '80px', textAlign: 'center', background: '#f1f5f9' }}>Qty</th>
-                        <th style={{ width: '120px', background: '#f1f5f9' }}>Date</th>
+                        <th style={{ width: '120px', background: '#f1f5f9' }}>Stock Status</th>
+                        <th style={{ width: '65px', textAlign: 'center', background: '#f1f5f9' }}>On Hand</th>
+                        <th style={{ width: '55px', textAlign: 'center', background: '#f1f5f9' }}>Req</th>
+                        <th style={{ width: '55px', textAlign: 'center', background: '#f1f5f9' }}>{manualProcDocType === 'PO' ? 'Ord' : 'Rec'}</th>
+                        <th style={{ width: '65px', textAlign: 'center', background: '#f1f5f9' }}>Need</th>
+                        <th style={{ width: '75px', textAlign: 'right', background: '#f1f5f9' }}>Cost</th>
+                        <th style={{ width: '120px', background: '#f1f5f9' }}>{manualProcDocType} #</th>
+                        <th style={{ width: '110px', background: '#f1f5f9' }}>Supplier</th>
+                        <th style={{ width: '75px', textAlign: 'center', background: '#f1f5f9' }}>Qty</th>
+                        <th style={{ width: '115px', background: '#f1f5f9' }}>Date</th>
                       </tr>
                     </thead>
                     <tbody>
                       {manualBatchRows.map((row, idx) => {
-                        const rem = Math.max(0, row.required_qty - row.already_done);
-                        const isFullyDone = rem === 0;
+                        let netNeeded = 0;
+                        if (manualProcDocType === 'PO') {
+                          if (row.stock_status === 'All Stock on Hand') {
+                            netNeeded = 0;
+                          } else if (row.stock_status === 'Partial Stock on Hand') {
+                            netNeeded = Math.max(0, row.required_qty - (Number(row.stock_on_hand) || 0) - row.already_done);
+                          } else {
+                            netNeeded = Math.max(0, row.required_qty - row.already_done);
+                          }
+                        } else {
+                          netNeeded = Math.max(0, row.required_qty - row.already_done);
+                        }
+                        const isFullyDone = netNeeded === 0;
 
                         return (
                           <tr 
@@ -4552,7 +4649,7 @@ export default function PurchasingPage() {
                                     included: checked,
                                     doc_no: checked && !r.doc_no ? manualBatchDocRef : r.doc_no,
                                     supplier_name: checked && !r.supplier_name ? manualBatchSupplier : r.supplier_name,
-                                    qty: checked && Number(r.qty) <= 0 ? rem : r.qty
+                                    qty: checked && Number(r.qty) <= 0 ? netNeeded : r.qty
                                   } : r));
                                 }}
                               />
@@ -4563,8 +4660,27 @@ export default function PurchasingPage() {
                             <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>
                               {row.sku}
                             </td>
-                            <td style={{ maxWidth: '180px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.description}>
+                            <td style={{ maxWidth: '160px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.description}>
                               {row.description}
+                            </td>
+                            <td style={{ fontSize: '11px' }}>
+                              <span style={{
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                background: row.stock_status === 'All Stock on Hand' ? '#dcfce7' :
+                                            row.stock_status === 'Partial Stock on Hand' ? '#e0f2fe' : '#f1f5f9',
+                                color: row.stock_status === 'All Stock on Hand' ? '#15803d' :
+                                       row.stock_status === 'Partial Stock on Hand' ? '#0369a1' : 'var(--text-secondary)',
+                                border: '1px solid rgba(0,0,0,0.06)',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                {row.stock_status || 'To Be Ordered'}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'center', fontWeight: 700, color: (Number(row.stock_on_hand) || 0) > 0 ? '#0284c7' : 'var(--text-secondary)' }}>
+                              {row.stock_on_hand || 0}
                             </td>
                             <td style={{ textAlign: 'center', fontWeight: 700 }}>
                               {row.required_qty}
@@ -4572,8 +4688,8 @@ export default function PurchasingPage() {
                             <td style={{ textAlign: 'center', color: row.already_done > 0 ? '#10b981' : 'var(--text-secondary)' }}>
                               {row.already_done}
                             </td>
-                            <td style={{ textAlign: 'center', fontWeight: 700, color: rem > 0 ? '#f59e0b' : '#10b981' }}>
-                              {rem}
+                            <td style={{ textAlign: 'center', fontWeight: 700, color: netNeeded > 0 ? '#f59e0b' : '#10b981' }}>
+                              {netNeeded}
                             </td>
                             <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>
                               R {Math.round(row.unit_cost).toLocaleString()}

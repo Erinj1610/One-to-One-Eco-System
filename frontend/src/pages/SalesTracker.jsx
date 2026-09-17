@@ -234,8 +234,31 @@ export default function SalesTracker() {
     const tokens = refStr.split(/[;,]+/).map(t => t.trim()).filter(Boolean);
     if (tokens.length === 0) return '—';
     return (
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
         {tokens.map((tok, idx) => {
+          if (tok.toUpperCase() === '[LEGACY]') {
+            return (
+              <span
+                key={idx}
+                style={{
+                  padding: '2px 6px',
+                  fontSize: '10px',
+                  fontFamily: 'monospace',
+                  fontWeight: 800,
+                  color: '#b45309',
+                  background: '#fef3c7',
+                  borderRadius: '4px',
+                  border: '1px solid #fde68a',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  lineHeight: '1.2'
+                }}
+                title="Historical baseline fulfillment"
+              >
+                ⚖️ LEGACY
+              </span>
+            );
+          }
           const isCN = tok.toUpperCase().startsWith('CN-') || tok.toUpperCase().startsWith('CR-');
           return (
             <button
@@ -837,6 +860,10 @@ export default function SalesTracker() {
   // Checkbox state for Bulk Excel Operations
   const [selectedOrders, setSelectedOrders] = useState([]); // Array of strings: "projectKey_orderId"
 
+  // Checkbox state for Hardware Item Ledger Legacy Baseline
+  const [selectedLedgerItemIds, setSelectedLedgerItemIds] = useState(new Set());
+  const [isApplyingBaseline, setIsApplyingBaseline] = useState(false);
+
 
   // Pricing consistency assistant modal state
   const [pendingPriceEdit, setPendingPriceEdit] = useState(null); // { itemId, field, value, code }
@@ -1293,6 +1320,7 @@ export default function SalesTracker() {
   const handleOpenWorkspace = (order) => {
     setSelectedOrderId(order.id);
     setSelectedProjectKey(order.projectKey);
+    setSelectedLedgerItemIds(new Set());
     // Dynamically calculate delivery properties from deliveryHistory on load to prevent overwrite
     const loadedItems = (order.itemsList || []).map(item => getItemDefaults(item));
     setActiveOrderItems(loadedItems);
@@ -1475,6 +1503,194 @@ export default function SalesTracker() {
       };
     }));
     alert(`Fill Down: Duplicated first row's "${bulkField}" value to all other rows.`);
+  };
+
+  // Legacy Baseline Handlers (Instant In-Memory Balancing in Sales Tracker)
+  const handleApplyLegacyBaseline = (scope = 'ALL') => {
+    if (selectedLedgerItemIds.size === 0) {
+      alert("Please select at least one item using the checkboxes on the left.");
+      return;
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const userTag = user?.email || user?.name || 'Sales Tracker User';
+    const targetIdSet = selectedLedgerItemIds;
+
+    setActiveOrderItems(prevItems => {
+      return prevItems.map(rawItem => {
+        if (!targetIdSet.has(rawItem.id)) {
+          return rawItem;
+        }
+
+        const item = { ...rawItem };
+        const reqQty = Number(item.qty) || 0;
+        if (reqQty <= 0) return item;
+
+        const stStatus = String(item.stockStatus || item.stock_status || '').trim();
+        const stOnHand = Number(item.stockOnHand !== undefined ? item.stockOnHand : (item.stock_on_hand || 0));
+
+        // 1. PO Scope
+        if (scope === 'ALL' || scope === 'PO' || scope === 'PROC') {
+          let neededPo = 0;
+          if (stStatus === 'All Stock on Hand') {
+            neededPo = 0;
+          } else if (stStatus === 'Partial Stock on Hand') {
+            neededPo = Math.max(0, reqQty - stOnHand - (Number(item.poQtyOrdered ?? item.po_qty_ordered) || 0));
+          } else {
+            neededPo = Math.max(0, reqQty - (Number(item.poQtyOrdered ?? item.po_qty_ordered) || 0));
+          }
+
+          let pHist = Array.isArray(item.purchaseHistory) ? [...item.purchaseHistory] : 
+                      Array.isArray(item.purchase_history) ? [...item.purchase_history] : [];
+          pHist = pHist.filter(h => String(h?.ref || h?.id || '').trim() !== '[LEGACY]');
+
+          if (neededPo > 0) {
+            pHist.push({
+              id: '[LEGACY]',
+              ref: '[LEGACY]',
+              qty: neededPo,
+              cost: Number(item.unitCost || item.unit_cost || 0),
+              supplier: item.poSupplier || item.supplier || 'Legacy',
+              date: item.poDate || item.po_date || todayStr,
+              by: userTag,
+              type: 'PO'
+            });
+          }
+
+          item.purchaseHistory = pHist;
+          item.purchase_history = pHist;
+          item.poQtyOrdered = pHist.reduce((s, h) => s + (Number(h.qty) || 0), 0);
+          item.po_qty_ordered = item.poQtyOrdered;
+          const poRefs = Array.from(new Set(pHist.map(h => String(h.ref || '').trim()).filter(Boolean)));
+          item.poRef = poRefs.join('; ');
+          item.po_ref = item.poRef;
+        }
+
+        // 2. GRN Scope
+        if (scope === 'ALL' || scope === 'GRN' || scope === 'PROC') {
+          const neededGrn = Math.max(0, reqQty - (Number(item.receivedQty ?? item.received_qty) || 0));
+          let rHist = Array.isArray(item.receivingHistory) ? [...item.receivingHistory] : 
+                      Array.isArray(item.receiving_history) ? [...item.receiving_history] : [];
+          rHist = rHist.filter(h => String(h?.ref || h?.id || '').trim() !== '[LEGACY]');
+
+          if (neededGrn > 0) {
+            rHist.push({
+              id: '[LEGACY]',
+              ref: '[LEGACY]',
+              qty: neededGrn,
+              date: item.receivedDate || item.received_date || todayStr,
+              by: userTag,
+              type: 'GRN'
+            });
+          }
+
+          item.receivingHistory = rHist;
+          item.receiving_history = rHist;
+          item.receivedQty = rHist.reduce((s, h) => s + (Number(h.qty) || 0), 0);
+          item.received_qty = item.receivedQty;
+          const recRefs = Array.from(new Set(rHist.map(h => String(h.ref || '').trim()).filter(Boolean)));
+          item.receivedRef = recRefs.join('; ');
+          item.received_ref = item.receivedRef;
+        }
+
+        // 3. Invoice Scope
+        if (scope === 'ALL' || scope === 'INVOICE') {
+          const neededInv = Math.max(0, reqQty - (Number(item.invoiceQty ?? item.invoice_qty) || 0));
+          let iHist = Array.isArray(item.invoiceHistory) ? [...item.invoiceHistory] : 
+                      Array.isArray(item.invoice_history) ? [...item.invoice_history] : [];
+          iHist = iHist.filter(h => String(h?.ref || h?.id || '').trim() !== '[LEGACY]');
+
+          const unitRet = Number(item.unitRetail || item.unit_retail || 0);
+          if (neededInv > 0) {
+            iHist.push({
+              id: '[LEGACY]',
+              ref: '[LEGACY]',
+              qty: neededInv,
+              unitPrice: unitRet,
+              total: Math.round(neededInv * unitRet * 100) / 100,
+              date: item.invoiceDate || item.invoice_date || todayStr,
+              by: userTag,
+              type: 'Invoice'
+            });
+          }
+
+          item.invoiceHistory = iHist;
+          item.invoice_history = iHist;
+          item.invoiceQty = iHist.reduce((s, h) => s + (Number(h.qty) || 0), 0);
+          item.invoice_qty = item.invoiceQty;
+          item.invoiceValue = Math.round(iHist.reduce((s, h) => s + (Number(h.total) || (Number(h.qty || 0) * Number(h.unitPrice || 0))), 0) * 100) / 100;
+          item.invoice_value = item.invoiceValue;
+          const invRefs = Array.from(new Set(iHist.map(h => String(h.ref || '').trim()).filter(Boolean)));
+          item.invoiceRef = invRefs.join('; ');
+          item.invoice_ref = item.invoiceRef;
+        }
+
+        return item;
+      });
+    });
+
+    setSelectedLedgerItemIds(new Set());
+  };
+
+  const handleClearLegacyBaseline = () => {
+    if (selectedLedgerItemIds.size === 0) {
+      alert("Please select at least one item using the checkboxes on the left.");
+      return;
+    }
+
+    const targetIdSet = selectedLedgerItemIds;
+
+    setActiveOrderItems(prevItems => {
+      return prevItems.map(rawItem => {
+        if (!targetIdSet.has(rawItem.id)) {
+          return rawItem;
+        }
+
+        const item = { ...rawItem };
+
+        // Clear PO Legacy
+        let pHist = Array.isArray(item.purchaseHistory) ? [...item.purchaseHistory] : 
+                    Array.isArray(item.purchase_history) ? [...item.purchase_history] : [];
+        pHist = pHist.filter(h => String(h?.ref || h?.id || '').trim() !== '[LEGACY]');
+        item.purchaseHistory = pHist;
+        item.purchase_history = pHist;
+        item.poQtyOrdered = pHist.reduce((s, h) => s + (Number(h.qty) || 0), 0);
+        item.po_qty_ordered = item.poQtyOrdered;
+        const poRefs = Array.from(new Set(pHist.map(h => String(h.ref || '').trim()).filter(Boolean)));
+        item.poRef = poRefs.join('; ');
+        item.po_ref = item.poRef;
+
+        // Clear GRN Legacy
+        let rHist = Array.isArray(item.receivingHistory) ? [...item.receivingHistory] : 
+                    Array.isArray(item.receiving_history) ? [...item.receiving_history] : [];
+        rHist = rHist.filter(h => String(h?.ref || h?.id || '').trim() !== '[LEGACY]');
+        item.receivingHistory = rHist;
+        item.receiving_history = rHist;
+        item.receivedQty = rHist.reduce((s, h) => s + (Number(h.qty) || 0), 0);
+        item.received_qty = item.receivedQty;
+        const recRefs = Array.from(new Set(rHist.map(h => String(h.ref || '').trim()).filter(Boolean)));
+        item.receivedRef = recRefs.join('; ');
+        item.received_ref = item.receivedRef;
+
+        // Clear Invoice Legacy
+        let iHist = Array.isArray(item.invoiceHistory) ? [...item.invoiceHistory] : 
+                    Array.isArray(item.invoice_history) ? [...item.invoice_history] : [];
+        iHist = iHist.filter(h => String(h?.ref || h?.id || '').trim() !== '[LEGACY]');
+        item.invoiceHistory = iHist;
+        item.invoice_history = iHist;
+        item.invoiceQty = iHist.reduce((s, h) => s + (Number(h.qty) || 0), 0);
+        item.invoice_qty = item.invoiceQty;
+        item.invoiceValue = Math.round(iHist.reduce((s, h) => s + (Number(h.total) || (Number(h.qty || 0) * Number(h.unitPrice || 0))), 0) * 100) / 100;
+        item.invoice_value = item.invoiceValue;
+        const invRefs = Array.from(new Set(iHist.map(h => String(h.ref || '').trim()).filter(Boolean)));
+        item.invoiceRef = invRefs.join('; ');
+        item.invoice_ref = item.invoiceRef;
+
+        return item;
+      });
+    });
+
+    setSelectedLedgerItemIds(new Set());
   };
 
   // Cell modification in the spreadsheet workspace
@@ -4680,12 +4896,120 @@ export default function SalesTracker() {
                           </div>
                           </div>
                         </div>
+
+                        {/* Bulk Legacy Baseline Action Bar */}
+                        {selectedLedgerItemIds.size > 0 && (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '12px',
+                            background: 'linear-gradient(90deg, rgba(245, 158, 11, 0.15) 0%, rgba(59, 130, 246, 0.1) 100%)',
+                            border: '1px solid rgba(245, 158, 11, 0.4)',
+                            borderRadius: '6px',
+                            padding: '10px 16px',
+                            marginBottom: '12px'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                ⚡ {selectedLedgerItemIds.size} row{selectedLedgerItemIds.size > 1 ? 's' : ''} selected
+                              </span>
+                              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                (1-Click Historical Fulfillment Baseline)
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                                Mark as Legacy:
+                              </span>
+                              <button
+                                type="button"
+                                className="btn btn-xs"
+                                onClick={() => handleApplyLegacyBaseline('ALL')}
+                                style={{
+                                  background: '#f59e0b',
+                                  color: '#000',
+                                  fontWeight: 700,
+                                  borderRadius: '4px',
+                                  padding: '5px 10px',
+                                  border: 'none',
+                                  cursor: 'pointer'
+                                }}
+                                title="Fills PO, GRN, and Invoicing balances so item reflects 100% completed"
+                              >
+                                ⚖️ All (PO, GRN & Inv)
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-xs"
+                                onClick={() => handleApplyLegacyBaseline('PROC')}
+                                style={{
+                                  background: 'rgba(59, 130, 246, 0.2)',
+                                  color: 'var(--text-info)',
+                                  border: '1px solid rgba(59, 130, 246, 0.4)',
+                                  fontWeight: 600,
+                                  borderRadius: '4px',
+                                  padding: '5px 10px',
+                                  cursor: 'pointer'
+                                }}
+                                title="Fills only PO and GRN balance"
+                              >
+                                📦 PO & GRN Only
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-xs"
+                                onClick={() => handleApplyLegacyBaseline('INVOICE')}
+                                style={{
+                                  background: 'rgba(16, 185, 129, 0.2)',
+                                  color: 'var(--text-success)',
+                                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                                  fontWeight: 600,
+                                  borderRadius: '4px',
+                                  padding: '5px 10px',
+                                  cursor: 'pointer'
+                                }}
+                                title="Fills only Invoicing balance"
+                              >
+                                💵 Invoice Only
+                              </button>
+                              <div style={{ width: '1px', height: '20px', background: 'var(--border-strong)', margin: '0 4px' }} />
+                              <button
+                                type="button"
+                                className="btn btn-xs"
+                                onClick={handleClearLegacyBaseline}
+                                style={{
+                                  background: 'rgba(239, 68, 68, 0.15)',
+                                  color: 'var(--text-danger)',
+                                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                                  fontWeight: 600,
+                                  borderRadius: '4px',
+                                  padding: '5px 10px',
+                                  cursor: 'pointer'
+                                }}
+                                title="Strips [LEGACY] placeholder baseline and restores live Palladium values"
+                              >
+                                ✕ Clear Legacy
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-xs btn-ghost"
+                                onClick={() => setSelectedLedgerItemIds(new Set())}
+                                style={{ color: 'var(--text-secondary)', fontSize: '11px' }}
+                              >
+                                Deselect
+                              </button>
+                            </div>
+                          </div>
+                        )}
                         
                         <div style={{ overflowX: 'auto', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px' }}>
-                          <table className="table" style={{ margin: 0, fontSize: '12px', verticalAlign: 'middle', borderCollapse: 'separate', borderSpacing: '0', minWidth: activeTab === 'purchasing' ? '1350px' : activeTab === 'order' ? '1100px' : activeTab === 'invoicing' ? '1100px' : '1200px' }}>
+                          <table className="table" style={{ margin: 0, fontSize: '12px', verticalAlign: 'middle', borderCollapse: 'separate', borderSpacing: '0', minWidth: activeTab === 'purchasing' ? '1380px' : activeTab === 'order' ? '1140px' : activeTab === 'invoicing' ? '1140px' : '1240px' }}>
                             <thead>
                               <tr style={{ background: 'var(--bg-secondary)' }}>
-                                <th colSpan={8} style={{ background: 'rgba(0,0,0,0.1)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px' }}>CORE FITTING DETAILS</th>
+                                <th colSpan={9} style={{ background: 'rgba(0,0,0,0.1)', textAlign: 'center', borderRight: '1px solid var(--border-strong)', fontWeight: 700, fontSize: '11px' }}>CORE FITTING DETAILS</th>
                                 
                                 {activeTab === 'order' && (
                                   <th 
@@ -4724,6 +5048,33 @@ export default function SalesTracker() {
                                 )}
                               </tr>
                               <tr style={{ background: 'var(--bg-secondary)', borderBottom: '2px solid var(--border-strong)' }}>
+                                <th style={{ width: '38px', textAlign: 'center', padding: '4px' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={
+                                      groupedItems.filter(i => !(i.is_credit || i.isCredit)).length > 0 &&
+                                      groupedItems.filter(i => !(i.is_credit || i.isCredit)).every(i => (i.itemIds || [i.id]).every(id => selectedLedgerItemIds.has(id)))
+                                    }
+                                    onChange={(e) => {
+                                      const nonCredit = groupedItems.filter(i => !(i.is_credit || i.isCredit));
+                                      if (e.target.checked) {
+                                        const next = new Set(selectedLedgerItemIds);
+                                        nonCredit.forEach(item => {
+                                          (item.itemIds || [item.id]).forEach(id => next.add(id));
+                                        });
+                                        setSelectedLedgerItemIds(next);
+                                      } else {
+                                        const next = new Set(selectedLedgerItemIds);
+                                        nonCredit.forEach(item => {
+                                          (item.itemIds || [item.id]).forEach(id => next.delete(id));
+                                        });
+                                        setSelectedLedgerItemIds(next);
+                                      }
+                                    }}
+                                    title="Select / Deselect all hardware ledger items"
+                                    style={{ cursor: 'pointer' }}
+                                  />
+                                </th>
                                 <th style={{ width: '50px', textAlign: 'center' }}>Qty</th>
                                 <th style={{ width: '100px' }}>1:1 Code</th>
                                 <th style={{ width: '55px', textAlign: 'center' }} title="Plan Drawing Breakdown">Plans</th>
@@ -4816,11 +5167,34 @@ export default function SalesTracker() {
                                 const totalRetailPrice = item.qty * (item.unitRetail || 0);
                                 const calculatedOutstandingInvoiceValue = Math.max(0, totalRetailPrice - Number(invoiceValueVal));
 
+                                const targetItemIds = item.itemIds || [item.id];
+                                const isRowSelected = targetItemIds.every(id => selectedLedgerItemIds.has(id));
+
                                 return (
                                   <tr 
                                     key={item.id} 
-                                    style={{ borderBottom: '1px solid var(--border)' }}
+                                    style={{
+                                      borderBottom: '1px solid var(--border)',
+                                      backgroundColor: isRowSelected ? 'rgba(245, 158, 11, 0.06)' : undefined
+                                    }}
                                   >
+                                    <td style={{ textAlign: 'center', padding: '4px' }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={isRowSelected}
+                                        onChange={(e) => {
+                                          const next = new Set(selectedLedgerItemIds);
+                                          if (e.target.checked) {
+                                            targetItemIds.forEach(id => next.add(id));
+                                          } else {
+                                            targetItemIds.forEach(id => next.delete(id));
+                                          }
+                                          setSelectedLedgerItemIds(next);
+                                        }}
+                                        title="Select item for legacy baseline action"
+                                        style={{ cursor: 'pointer' }}
+                                      />
+                                    </td>
                                     <td style={{ textAlign: 'center', fontWeight: 700 }}>{item.qty}</td>
                                     <td style={{ fontFamily: 'monospace' }}>{item.oneOneCode || '—'}</td>
                                     <td style={{ textAlign: 'center', padding: '4px 6px' }}>

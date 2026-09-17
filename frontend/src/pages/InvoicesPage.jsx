@@ -1081,6 +1081,36 @@ export default function InvoicesPage() {
     }
   };
 
+  const handleDeleteManualInvoice = async (doc) => {
+    if (!doc) return;
+    const isLegacy = doc.reference && doc.reference.includes('[LEGACY]');
+    if (!isLegacy) {
+      alert("⚠️ Protected: This invoice is synced from Palladium ERP and cannot be deleted.");
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to delete manual Tax Invoice '${doc.document_no}'?\n\nThis will remove the manual record and roll back any invoicing allocations and order line progress.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/manual-document?document_no=${encodeURIComponent(doc.document_no)}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🗑️ ${data.message || `Manual invoice deleted successfully.`}`);
+        fetchSummary();
+        fetchInvoicingDocuments(page, activeFilterTab, customerFilter, searchQuery, limit);
+        if (refreshProjects) refreshProjects();
+      } else {
+        alert(data.detail || 'Could not delete manual invoice.');
+      }
+    } catch (err) {
+      alert(`Network error: ${err.message}`);
+    }
+  };
+
   // Multi-select helpers
   const handleToggleSelectLine = (lineId) => {
     const next = new Set(selectedLineIds);
@@ -2182,6 +2212,27 @@ export default function InvoicesPage() {
                               >
                                 {doc.is_flagged_issue ? 'Resolve' : 'Flag'}
                               </button>
+
+                              {/* Delete button STRICTLY for manually recorded legacy invoices */}
+                              {doc.reference && doc.reference.includes('[LEGACY]') && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteManualInvoice(doc);
+                                  }}
+                                  className="btn btn-xs btn-ghost"
+                                  style={{
+                                    color: '#ef4444',
+                                    borderColor: 'rgba(239, 68, 68, 0.4)',
+                                    fontSize: '10.5px',
+                                    padding: '3px 8px',
+                                    borderRadius: '6px'
+                                  }}
+                                  title={`Delete manual Tax Invoice '${doc.document_no}'`}
+                                >
+                                  <Trash2 size={11} /> Delete
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
