@@ -618,10 +618,14 @@ def merge_google_sheet(
         sheet_obj = sp_data['sheets'][0]
         orig_merges = sheet_obj.get('merges', [])
         exact_row_height_by_index = {}
-        for r_i_idx, r_obj in enumerate(row_data):
-            r_meta = r_obj.get('rowMetadata', {})
-            if 'pixelSize' in r_meta:
+        for r_i_idx, r_meta in enumerate(grid_data.get('rowMetadata', [])):
+            if isinstance(r_meta, dict) and 'pixelSize' in r_meta:
                 exact_row_height_by_index[r_i_idx] = r_meta['pixelSize']
+        if not exact_row_height_by_index:
+            for r_i_idx, r_obj in enumerate(row_data):
+                r_meta = r_obj.get('rowMetadata', {})
+                if isinstance(r_meta, dict) and 'pixelSize' in r_meta:
+                    exact_row_height_by_index[r_i_idx] = r_meta['pixelSize']
 
         # Dynamically determine the maximum column count present in this specific template sheet
         sheet_props = sp_data['sheets'][0].get('properties', {})
