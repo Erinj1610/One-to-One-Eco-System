@@ -665,6 +665,7 @@ def merge_google_sheet(
             '[AREA_HEADER]', '[AREA_HEAD]', '[AREA_ROW]',
             '[AREA_TABLE_HEAD]', '[AREA_TABLE_HEADER]',
             '[TABLE_HEADER]', '[TABLE_HEAD]',
+            '[ITEM_START]', '[ITEM_END]',
             '[ITEM_ROW]', '[ITEM_SUMMARY]',
             '[CREDIT_HEADER]', '[CREDIT_HEAD]', '[CREDIT_ITEM_ROW]', '[CREDIT_ITEM_SUMMARY]',
             '[AREA_FOOTER]', '[FLOOR_FOOTER]'
@@ -695,6 +696,10 @@ def merge_google_sheet(
                 norm_dir = col_a_val
             elif col_a_val in ('[CREDIT_ITEM_SUMMARY]', '[CREDIT_ITEM_ROW]'):
                 norm_dir = col_a_val
+            elif col_a_val in ('[ITEM_START]', '[CARD_START]'):
+                norm_dir = '[ITEM_START]'
+            elif col_a_val in ('[ITEM_END]', '[CARD_END]'):
+                norm_dir = '[ITEM_END]'
             elif col_a_val in ('[PAYMENT_ROW]', '[PAYMENT]', '[PAYMENTS]'):
                 norm_dir = '[PAYMENT_ROW]'
             elif col_a_val in ('[DISCOUNT_ROW]', '[DISCOUNT_HEAD]', '[DISCOUNT_HEADER]', '[IF_DISCOUNT]', '[DISCOUNT]'):
@@ -706,6 +711,23 @@ def merge_google_sheet(
                 first_dyn_idx = r_i
             
             parsed_rows.append((r_i, norm_dir, cell_objs))
+
+        # Check for [ITEM_START] ... [ITEM_END] block in parsed_rows
+        item_start_idx = None
+        item_end_idx = None
+        for p_idx, (r_i, d, _) in enumerate(parsed_rows):
+            if d == '[ITEM_START]' and item_start_idx is None:
+                item_start_idx = p_idx
+            elif d == '[ITEM_END]' and item_start_idx is not None and item_end_idx is None:
+                item_end_idx = p_idx
+                break
+
+        # If a block exists, mark all interior rows between ITEM_START and ITEM_END as dynamic block rows
+        if item_start_idx is not None and item_end_idx is not None and item_end_idx >= item_start_idx:
+            for p_idx in range(item_start_idx, item_end_idx + 1):
+                r_i, d, c_objs = parsed_rows[p_idx]
+                if d not in dynamic_directives:
+                    parsed_rows[p_idx] = (r_i, '[ITEM_ROW]', c_objs)
 
         # Partition parsed rows into top_fixed, dynamic_template_block, and bottom_fixed
         top_fixed = []
@@ -741,6 +763,13 @@ def merge_google_sheet(
         payment_template_row = next(((r_i, cell_objs) for r_i, norm_dir, cell_objs in parsed_rows if norm_dir == '[PAYMENT_ROW]'), None)
         payment_orig_r_i = payment_template_row[0] if payment_template_row else None
         payment_template_cells = payment_template_row[1] if payment_template_row else None
+
+        # Extract multi-row item block if [ITEM_START] and [ITEM_END] were defined
+        item_block_template_rows = []
+        if item_start_idx is not None and item_end_idx is not None:
+            for p_idx in range(item_start_idx, item_end_idx + 1):
+                r_i, d, c_objs = parsed_rows[p_idx]
+                item_block_template_rows.append((r_i, d, c_objs))
 
         # Helper to compute exact line item total from BOQ item objects
         def resolve_item_total(it):
@@ -823,25 +852,54 @@ def merge_google_sheet(
                 out_list.append(item_dict)
             return out_list
 
-        # Row-weight budgeting helper (accounts for text-wrapping in description / area columns)
-        def get_item_row_weight(it_obj):
+        # Pixel-based row budgeting helper
+        # Accounts for template row height, multi-row item blocks, and text wrapping expansion
+        def get_item_block_height_px(it_obj):
+            if item_block_template_rows:
+                # Multi-row card (e.g. 5-row lighting schedule card)
+                tot_h = 0
+                for r_i, _, _ in item_block_template_rows:
+                    tot_h += exact_row_height_by_index.get(r_i, 28)
+                return max(100, tot_h)
+            
+            # Single row item
+            base_h = 24
+            if item_row_cells:
+                item_r_idx = next((r_i for r_i, d, _ in dynamic_template_rows if d in ('[ITEM_ROW]', '[ITEM_SUMMARY]')), None)
+                if item_r_idx is not None and item_r_idx in exact_row_height_by_index:
+                    base_h = exact_row_height_by_index[item_r_idx]
+
             d_txt = str(it_obj.get('description') or it_obj.get('name') or '').strip()
             if '\n' in d_txt:
-                return 1.0 + float(d_txt.count('\n'))
-            if len(d_txt) > 145:
-                return 3.0
-            elif len(d_txt) > 95:
-                return 2.0
-            return 1.0
+                lines = 1 + d_txt.count('\n')
+                return base_h * lines
+            if len(d_txt) > 130:
+                return base_h * 3
+            elif len(d_txt) > 65:
+                return base_h * 2
+            return base_h
 
-        PAGE_1_ITEM_BUDGET = 36.0
-        SUBSEQUENT_PAGE_ITEM_BUDGET = 45.0
-        current_page_capacity = PAGE_1_ITEM_BUDGET
-        rows_on_current_page = 0.0
+        def get_single_row_height_px(directive_str):
+            orig_r = next((r_i for r_i, d, _ in dynamic_template_rows if d == directive_str), None)
+            if orig_r is not None and orig_r in exact_row_height_by_index:
+                return exact_row_height_by_index[orig_r]
+            return 28
+
+        # Calculate initial top fixed rows pixel height
+        top_fixed_px = sum(exact_row_height_by_index.get(r_i, 24) for r_i, _, _, _ in top_fixed)
+
+        # Standard A4 printable height is ~1020-1060px with 0.25in margins.
+        # Leave a safety margin of 60px so table headers never split or bleed onto page ends.
+        PAGE_TOTAL_PRINT_PX = 1000.0
+        PAGE_1_ITEM_BUDGET_PX = max(300.0, PAGE_TOTAL_PRINT_PX - top_fixed_px - 40.0)
+        SUBSEQUENT_PAGE_ITEM_BUDGET_PX = PAGE_TOTAL_PRINT_PX - 40.0
+
+        current_page_capacity_px = PAGE_1_ITEM_BUDGET_PX
+        px_on_current_page = 0.0
         is_page_1 = True
 
-        # Check if template is a flat BOQ template (has [TABLE_HEADER] or flat [ITEM_ROW] without [FLOOR_HEADER])
-        if table_head_cells or (item_row_cells and not fl_header_cells and not area_row_cells):
+        # Check if template is a flat BOQ template (has [TABLE_HEADER] or flat [ITEM_ROW]/[ITEM_START] without [FLOOR_HEADER])
+        if table_head_cells or ((item_row_cells or item_block_template_rows) and not fl_header_cells and not area_row_cells):
             main_items = [it for it in items_list if safe_float(it.get('qty') or it.get('quantity'), 1.0) >= 0]
             credit_items = [it for it in items_list if safe_float(it.get('qty') or it.get('quantity'), 1.0) < 0]
 
@@ -895,64 +953,101 @@ def merge_google_sheet(
 
             if table_head_cells:
                 generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, {}))
+                px_on_current_page += get_single_row_height_px('[TABLE_HEADER]')
             
-            if item_row_cells:
+            if item_block_template_rows:
+                # Multi-row card layout (e.g. 5-row lighting schedule card)
                 active_floor = None
                 for item_obj in main_items:
                     it_fl = str(item_obj.get('floor') or item_obj.get('Floor') or '').strip()
                     if it_fl:
                         active_floor = it_fl
 
-                    it_weight = get_item_row_weight(item_obj)
+                    it_height_px = get_item_block_height_px(item_obj)
 
-                    if rows_on_current_page + it_weight > current_page_capacity and rows_on_current_page > 0:
-                        pad_px = 30 if is_page_1 else 45
-                        generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
+                    if px_on_current_page + it_height_px > current_page_capacity_px and px_on_current_page > 0:
+                        # Insert clean pad spacer to push card cleanly to next page
+                        rem_pad_px = max(15, min(80, int(current_page_capacity_px - px_on_current_page)))
+                        first_card_cells = item_block_template_rows[0][2]
+                        generated_dynamic_rows.append(('[ITEM_ROW]', first_card_cells, {'_is_spacer': True, '_is_pad': True, '_spacer_height': rem_pad_px}))
 
-                        # Start new page with carryover block
                         carry_fl_ctx = {'floor.name': f"{active_floor} (Continued)", 'floor': f"{active_floor} (Continued)"} if active_floor else {}
-                        rows_on_current_page = 0.0
+                        px_on_current_page = 0.0
                         is_page_1 = False
-                        current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
+                        current_page_capacity_px = SUBSEQUENT_PAGE_ITEM_BUDGET_PX
 
                         if active_floor and fl_header_cells:
                             generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, carry_fl_ctx))
-                            rows_on_current_page += 1.0
+                            px_on_current_page += get_single_row_height_px('[FLOOR_HEADER]')
                         
                         if table_head_cells:
                             generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, carry_fl_ctx))
-                            rows_on_current_page += 1.0
+                            px_on_current_page += get_single_row_height_px('[TABLE_HEADER]')
+
+                    # Append all rows of the card block
+                    card_ctx = build_item_ctx(item_obj)
+                    for r_orig_i, r_dir, r_cells in item_block_template_rows:
+                        generated_dynamic_rows.append((r_dir, r_cells, {**card_ctx, '_orig_src_r': r_orig_i}))
+                    px_on_current_page += it_height_px
+
+            elif item_row_cells:
+                active_floor = None
+                for item_obj in main_items:
+                    it_fl = str(item_obj.get('floor') or item_obj.get('Floor') or '').strip()
+                    if it_fl:
+                        active_floor = it_fl
+
+                    it_height_px = get_item_block_height_px(item_obj)
+
+                    if px_on_current_page + it_height_px > current_page_capacity_px and px_on_current_page > 0:
+                        rem_pad_px = max(15, min(80, int(current_page_capacity_px - px_on_current_page)))
+                        generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, {'_is_spacer': True, '_is_pad': True, '_spacer_height': rem_pad_px}))
+
+                        # Start new page with carryover block
+                        carry_fl_ctx = {'floor.name': f"{active_floor} (Continued)", 'floor': f"{active_floor} (Continued)"} if active_floor else {}
+                        px_on_current_page = 0.0
+                        is_page_1 = False
+                        current_page_capacity_px = SUBSEQUENT_PAGE_ITEM_BUDGET_PX
+
+                        if active_floor and fl_header_cells:
+                            generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, carry_fl_ctx))
+                            px_on_current_page += get_single_row_height_px('[FLOOR_HEADER]')
+                        
+                        if table_head_cells:
+                            generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, carry_fl_ctx))
+                            px_on_current_page += get_single_row_height_px('[TABLE_HEADER]')
 
                     generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, build_item_ctx(item_obj)))
-                    rows_on_current_page += it_weight
+                    px_on_current_page += it_height_px
 
             if credit_items and (credit_head_cells or credit_item_cells):
                 target_credit_cell = credit_item_cells or item_row_cells
-                if rows_on_current_page + 3.0 > current_page_capacity and rows_on_current_page > 0:
-                    pad_px = 30 if is_page_1 else 45
-                    generated_dynamic_rows.append(('[ITEM_ROW]', target_credit_cell, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
-                    rows_on_current_page = 0.0
+                cred_h_px = get_single_row_height_px('[CREDIT_HEADER]')
+                if px_on_current_page + cred_h_px + 50.0 > current_page_capacity_px and px_on_current_page > 0:
+                    rem_pad_px = max(15, min(80, int(current_page_capacity_px - px_on_current_page)))
+                    generated_dynamic_rows.append(('[ITEM_ROW]', target_credit_cell, {'_is_spacer': True, '_is_pad': True, '_spacer_height': rem_pad_px}))
+                    px_on_current_page = 0.0
                     is_page_1 = False
-                    current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
+                    current_page_capacity_px = SUBSEQUENT_PAGE_ITEM_BUDGET_PX
 
                 if credit_head_cells:
                     generated_dynamic_rows.append(('[CREDIT_HEADER]', credit_head_cells, {}))
-                    rows_on_current_page += 1.0
+                    px_on_current_page += cred_h_px
                 if target_credit_cell:
                     for item_obj in credit_items:
-                        it_weight = get_item_row_weight(item_obj)
-                        if rows_on_current_page + it_weight > current_page_capacity and rows_on_current_page > 0:
-                            pad_px = 30 if is_page_1 else 45
-                            generated_dynamic_rows.append(('[ITEM_ROW]', target_credit_cell, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
-                            rows_on_current_page = 0.0
+                        it_height_px = get_item_block_height_px(item_obj)
+                        if px_on_current_page + it_height_px > current_page_capacity_px and px_on_current_page > 0:
+                            rem_pad_px = max(15, min(80, int(current_page_capacity_px - px_on_current_page)))
+                            generated_dynamic_rows.append(('[ITEM_ROW]', target_credit_cell, {'_is_spacer': True, '_is_pad': True, '_spacer_height': rem_pad_px}))
+                            px_on_current_page = 0.0
                             is_page_1 = False
-                            current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
+                            current_page_capacity_px = SUBSEQUENT_PAGE_ITEM_BUDGET_PX
                             if credit_head_cells:
                                 generated_dynamic_rows.append(('[CREDIT_HEADER]', credit_head_cells, {}))
-                                rows_on_current_page += 1.0
+                                px_on_current_page += cred_h_px
 
                         generated_dynamic_rows.append(('[CREDIT_ITEM_ROW]', target_credit_cell, build_item_ctx(item_obj)))
-                        rows_on_current_page += it_weight
+                        px_on_current_page += it_height_px
         else:
             # Grouped Floor / Area template (like Quotation)
             for fl_name, areas in grouped_floors.items():
@@ -960,88 +1055,91 @@ def merge_google_sheet(
                 fl_subtotal_str = f"R {fl_subtotal_num:,.2f}"
                 fl_ctx = {'floor.name': fl_name, 'floor': fl_name, 'SUBTOTAL': fl_subtotal_str}
 
+                fl_h_px = get_single_row_height_px('[FLOOR_HEADER]') + get_single_row_height_px('[FLOOR_TABLE_HEAD]')
+
                 # If starting a new floor near bottom of page, start fresh on next page
-                if rows_on_current_page > 0 and (rows_on_current_page + 4.0 > current_page_capacity):
-                    pad_px = 30 if is_page_1 else 45
+                if px_on_current_page > 0 and (px_on_current_page + fl_h_px + 60.0 > current_page_capacity_px):
+                    rem_pad_px = max(15, min(80, int(current_page_capacity_px - px_on_current_page)))
                     target_c = fl_header_cells or item_row_cells
-                    generated_dynamic_rows.append(('[ITEM_ROW]', target_c, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
-                    rows_on_current_page = 0.0
+                    generated_dynamic_rows.append(('[ITEM_ROW]', target_c, {'_is_spacer': True, '_is_pad': True, '_spacer_height': rem_pad_px}))
+                    px_on_current_page = 0.0
                     is_page_1 = False
-                    current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
+                    current_page_capacity_px = SUBSEQUENT_PAGE_ITEM_BUDGET_PX
 
                 if fl_header_cells:
                     generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, fl_ctx))
-                    rows_on_current_page += 1.0
+                    px_on_current_page += get_single_row_height_px('[FLOOR_HEADER]')
                 if fl_table_head_cells:
                     generated_dynamic_rows.append(('[FLOOR_TABLE_HEAD]', fl_table_head_cells, fl_ctx))
-                    rows_on_current_page += 1.0
+                    px_on_current_page += get_single_row_height_px('[FLOOR_TABLE_HEAD]')
 
                 for ar_name, ar_items in areas.items():
                     ar_subtotal_num = sum(resolve_item_total(it) for it in ar_items)
                     ar_subtotal_str = f"R {ar_subtotal_num:,.2f}"
                     ar_ctx = {**fl_ctx, 'area.name': ar_name, 'area': ar_name, 'SUBTOTAL': ar_subtotal_str}
+                    ar_h_px = get_single_row_height_px('[AREA_ROW]') + get_single_row_height_px('[AREA_TABLE_HEAD]')
 
                     # Check page overflow before adding area/items
-                    if rows_on_current_page + 2.0 > current_page_capacity and rows_on_current_page > 0:
-                        pad_px = 30 if is_page_1 else 45
+                    if px_on_current_page + ar_h_px + 40.0 > current_page_capacity_px and px_on_current_page > 0:
+                        rem_pad_px = max(15, min(80, int(current_page_capacity_px - px_on_current_page)))
                         target_c = area_row_cells or item_row_cells
-                        generated_dynamic_rows.append(('[ITEM_ROW]', target_c, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
+                        generated_dynamic_rows.append(('[ITEM_ROW]', target_c, {'_is_spacer': True, '_is_pad': True, '_spacer_height': rem_pad_px}))
 
                         carry_fl_ctx = {**fl_ctx, 'floor.name': f"{fl_name} (Continued)", 'floor': f"{fl_name} (Continued)"}
-                        rows_on_current_page = 0.0
+                        px_on_current_page = 0.0
                         is_page_1 = False
-                        current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
+                        current_page_capacity_px = SUBSEQUENT_PAGE_ITEM_BUDGET_PX
                         if fl_header_cells:
                             generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, carry_fl_ctx))
-                            rows_on_current_page += 1.0
+                            px_on_current_page += get_single_row_height_px('[FLOOR_HEADER]')
                         if fl_table_head_cells:
                             generated_dynamic_rows.append(('[FLOOR_TABLE_HEAD]', fl_table_head_cells, carry_fl_ctx))
-                            rows_on_current_page += 1.0
+                            px_on_current_page += get_single_row_height_px('[FLOOR_TABLE_HEAD]')
                         elif table_head_cells:
                             generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, carry_fl_ctx))
-                            rows_on_current_page += 1.0
+                            px_on_current_page += get_single_row_height_px('[TABLE_HEADER]')
 
                     if area_row_cells:
                         generated_dynamic_rows.append(('[AREA_ROW]', area_row_cells, ar_ctx))
-                        rows_on_current_page += 1.0
+                        px_on_current_page += get_single_row_height_px('[AREA_ROW]')
                     if area_table_head_cells:
                         generated_dynamic_rows.append(('[AREA_TABLE_HEAD]', area_table_head_cells, ar_ctx))
-                        rows_on_current_page += 1.0
+                        px_on_current_page += get_single_row_height_px('[AREA_TABLE_HEAD]')
 
                     if item_row_cells:
                         for item_obj in ar_items:
-                            it_weight = get_item_row_weight(item_obj)
-                            if rows_on_current_page + it_weight > current_page_capacity and rows_on_current_page > 0:
-                                pad_px = 30 if is_page_1 else 45
-                                generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, {'_is_spacer': True, '_is_pad': True, '_spacer_height': pad_px}))
+                            it_height_px = get_item_block_height_px(item_obj)
+                            if px_on_current_page + it_height_px > current_page_capacity_px and px_on_current_page > 0:
+                                rem_pad_px = max(15, min(80, int(current_page_capacity_px - px_on_current_page)))
+                                generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, {'_is_spacer': True, '_is_pad': True, '_spacer_height': rem_pad_px}))
 
                                 carry_fl_ctx = {**fl_ctx, 'floor.name': f"{fl_name} (Continued)", 'floor': f"{fl_name} (Continued)"}
-                                rows_on_current_page = 0.0
+                                px_on_current_page = 0.0
                                 is_page_1 = False
-                                current_page_capacity = SUBSEQUENT_PAGE_ITEM_BUDGET
+                                current_page_capacity_px = SUBSEQUENT_PAGE_ITEM_BUDGET_PX
                                 if fl_header_cells:
                                     generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, carry_fl_ctx))
-                                    rows_on_current_page += 1.0
+                                    px_on_current_page += get_single_row_height_px('[FLOOR_HEADER]')
                                 if fl_table_head_cells:
                                     generated_dynamic_rows.append(('[FLOOR_TABLE_HEAD]', fl_table_head_cells, carry_fl_ctx))
-                                    rows_on_current_page += 1.0
+                                    px_on_current_page += get_single_row_height_px('[FLOOR_TABLE_HEAD]')
                                 elif table_head_cells:
                                     generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, carry_fl_ctx))
-                                    rows_on_current_page += 1.0
+                                    px_on_current_page += get_single_row_height_px('[TABLE_HEADER]')
 
                             item_ctx = {**ar_ctx}
                             for k, v in item_obj.items():
                                 item_ctx[k] = str(v) if v is not None else ''
                             generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, item_ctx))
-                            rows_on_current_page += it_weight
+                            px_on_current_page += it_height_px
 
                     if area_footer_cells:
                         generated_dynamic_rows.append(('[AREA_FOOTER]', area_footer_cells, ar_ctx))
-                        rows_on_current_page += 1.0
+                        px_on_current_page += get_single_row_height_px('[AREA_FOOTER]')
 
                 if fl_footer_cells:
                     generated_dynamic_rows.append(('[FLOOR_FOOTER]', fl_footer_cells, fl_ctx))
-                    rows_on_current_page += 1.0
+                    px_on_current_page += get_single_row_height_px('[FLOOR_FOOTER]')
 
         expanded_rows = top_fixed + generated_dynamic_rows + bottom_fixed
 
@@ -1110,9 +1208,12 @@ def merge_google_sheet(
                         replacements.append((m.start(), old_len, delta))
 
                     cleaned_final = clean_block_tags(new_str)
-                    cell_copy['userEnteredValue'] = {'stringValue': cleaned_final}
+                    if cleaned_final.startswith('='):
+                        cell_copy['userEnteredValue'] = {'formulaValue': cleaned_final}
+                    else:
+                        cell_copy['userEnteredValue'] = {'stringValue': cleaned_final}
 
-                    if orig_runs:
+                    if orig_runs and not cleaned_final.startswith('='):
                         new_runs = []
                         for run in orig_runs:
                             orig_start = run.get('startIndex', 0)
@@ -1152,10 +1253,23 @@ def merge_google_sheet(
         for orig_r_i, orig_dir, _ in dynamic_template_rows:
             directive_merges[orig_dir] = []
             for m in orig_merges:
-                if m.get('startRowIndex') == orig_r_i:
+                if m.get('startRowIndex') == orig_r_i and m.get('endRowIndex', orig_r_i + 1) == orig_r_i + 1:
                     start_c = m.get('startColumnIndex', 0)
                     end_c = m.get('endColumnIndex', 1)
                     directive_merges[orig_dir].append((start_c, end_c))
+
+        # Build relative merges for multi-row item block if defined
+        card_block_merges = []
+        if item_block_template_rows:
+            card_start_r = item_block_template_rows[0][0]
+            card_end_r = item_block_template_rows[-1][0] + 1
+            for m in orig_merges:
+                m_start_r = m.get('startRowIndex', 0)
+                m_end_r = m.get('endRowIndex', m_start_r + 1)
+                if m_start_r >= card_start_r and m_end_r <= card_end_r:
+                    rel_r_offset = m_start_r - card_start_r
+                    r_span = m_end_r - m_start_r
+                    card_block_merges.append((rel_r_offset, r_span, m.get('startColumnIndex', 0), m.get('endColumnIndex', 1)))
 
         # Extract original row heights (pixelSize) by exact template row index
         exact_row_height_by_index = {}
@@ -1269,7 +1383,7 @@ def merge_google_sheet(
         # STEP 3: Overwrite template dynamic rows AND write newly inserted rows via copyPaste (PASTE_NORMAL)
         for r_idx, (directive, cell_objs, ctx) in enumerate(generated_dynamic_rows):
             actual_row_i = len(top_fixed) + r_idx
-            orig_src_r = directive_orig_row.get(directive)
+            orig_src_r = (ctx or {}).get('_orig_src_r') if (ctx and '_orig_src_r' in ctx) else directive_orig_row.get(directive)
             if orig_src_r is not None:
                 grid_requests.append({
                     'copyPaste': {
@@ -1540,7 +1654,7 @@ def merge_google_sheet(
         # STEP 7: Re-apply exact column merges and row heights AFTER copyPaste
         for r_idx, (directive, cell_objs, ctx) in enumerate(generated_dynamic_rows):
             actual_row_i = len(top_fixed) + r_idx
-            orig_src_r = directive_orig_row.get(directive)
+            orig_src_r = (ctx or {}).get('_orig_src_r') if (ctx and '_orig_src_r' in ctx) else directive_orig_row.get(directive)
 
             # Check if this row is a SPACER row
             if ctx and ctx.get('_is_spacer'):
@@ -1587,7 +1701,7 @@ def merge_google_sheet(
             else:
                 # Re-apply exact template row height from template source row
                 desc_text = str((ctx or {}).get('item.description') or (ctx or {}).get('description') or '')
-                is_item_row = directive in ('[ITEM_ROW]', '[ITEM_SUMMARY]', '[CREDIT_ITEM_ROW]', '[CREDIT_ITEM_SUMMARY]')
+                is_item_row = directive in ('[ITEM_ROW]', '[ITEM_SUMMARY]', '[CREDIT_ITEM_ROW]', '[CREDIT_ITEM_SUMMARY]') and not item_block_template_rows
                 has_wrapped_text = is_item_row and (len(desc_text) > 45 or '\n' in desc_text)
 
                 if orig_src_r is not None and orig_src_r in exact_row_height_by_index and not has_wrapped_text:
@@ -1618,20 +1732,45 @@ def merge_google_sheet(
                         }
                     })
 
-            if directive in directive_merges and directive_merges[directive]:
-                for start_c, end_c in directive_merges[directive]:
-                    grid_requests.append({
-                        'mergeCells': {
-                            'range': {
-                                'sheetId': temp_tab_gid,
-                                'startRowIndex': actual_row_i,
-                                'endRowIndex': actual_row_i + 1,
-                                'startColumnIndex': start_c,
-                                'endColumnIndex': end_c
-                            },
-                            'mergeType': 'MERGE_ALL'
-                        }
-                    })
+            if not (ctx and ctx.get('_orig_src_r') is not None and card_block_merges):
+                if directive in directive_merges and directive_merges[directive]:
+                    for start_c, end_c in directive_merges[directive]:
+                        grid_requests.append({
+                            'mergeCells': {
+                                'range': {
+                                    'sheetId': temp_tab_gid,
+                                    'startRowIndex': actual_row_i,
+                                    'endRowIndex': actual_row_i + 1,
+                                    'startColumnIndex': start_c,
+                                    'endColumnIndex': end_c
+                                },
+                                'mergeType': 'MERGE_ALL'
+                            }
+                        })
+
+        # Apply multi-row card block merges (including vertical cell merges across card rows)
+        if item_block_template_rows and card_block_merges:
+            card_len = len(item_block_template_rows)
+            for r_idx in range(len(generated_dynamic_rows)):
+                _, _, c_ctx = generated_dynamic_rows[r_idx]
+                # Check if this row is the start of a card block
+                if c_ctx and c_ctx.get('_orig_src_r') == item_block_template_rows[0][0]:
+                    card_base_actual_r = len(top_fixed) + r_idx
+                    for rel_r_offset, r_span, start_c, end_c in card_block_merges:
+                        m_start_row = card_base_actual_r + rel_r_offset
+                        m_end_row = m_start_row + r_span
+                        grid_requests.append({
+                            'mergeCells': {
+                                'range': {
+                                    'sheetId': temp_tab_gid,
+                                    'startRowIndex': m_start_row,
+                                    'endRowIndex': m_end_row,
+                                    'startColumnIndex': start_c,
+                                    'endColumnIndex': end_c
+                                },
+                                'mergeType': 'MERGE_ALL'
+                            }
+                        })
 
         # Ensure all top fixed header rows maintain their exact original row height
         for orig_r_i, norm_dir, cell_objs, _ in top_fixed:
