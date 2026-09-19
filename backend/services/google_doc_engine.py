@@ -614,6 +614,15 @@ def merge_google_sheet(
         row_data = grid_data.get('rowData', [])
         items_list = tokens.get('items', [])
 
+        # Extract root sheet merges and original row heights early so all helpers have scope access
+        sheet_obj = sp_data['sheets'][0]
+        orig_merges = sheet_obj.get('merges', [])
+        exact_row_height_by_index = {}
+        for r_i_idx, r_obj in enumerate(row_data):
+            r_meta = r_obj.get('rowMetadata', {})
+            if 'pixelSize' in r_meta:
+                exact_row_height_by_index[r_i_idx] = r_meta['pixelSize']
+
         # Dynamically determine the maximum column count present in this specific template sheet
         sheet_props = sp_data['sheets'][0].get('properties', {})
         grid_props = sheet_props.get('gridProperties', {})
@@ -1271,13 +1280,6 @@ def merge_google_sheet(
                     r_span = m_end_r - m_start_r
                     card_block_merges.append((rel_r_offset, r_span, m.get('startColumnIndex', 0), m.get('endColumnIndex', 1)))
 
-        # Extract original row heights (pixelSize) by exact template row index
-        exact_row_height_by_index = {}
-        for r_i_idx, r_obj in enumerate(row_data):
-            r_meta = r_obj.get('rowMetadata', {})
-            if 'pixelSize' in r_meta:
-                exact_row_height_by_index[r_i_idx] = r_meta['pixelSize']
-
         template_row_heights = {}
         for orig_r_i, orig_dir, _ in dynamic_template_rows:
             if orig_r_i in exact_row_height_by_index:
@@ -1366,19 +1368,23 @@ def merge_google_sheet(
                 }
             })
 
-        # STEP 2: Clear pre-existing merges STRICTLY in the generated dynamic region (NEVER touch fixed rows)
-        if new_dyn_count > 0:
-            grid_requests.append({
-                'unmergeCells': {
-                    'range': {
-                        'sheetId': temp_tab_gid,
-                        'startRowIndex': len(top_fixed),
-                        'endRowIndex': len(top_fixed) + new_dyn_count,
-                        'startColumnIndex': 0,
-                        'endColumnIndex': max_col_count
+        # STEP 2: Clear pre-existing merges STRICTLY on exact merge ranges within the dynamic region
+        for m in orig_merges:
+            m_s_r = m.get('startRowIndex', 0)
+            m_e_r = m.get('endRowIndex', m_s_r + 1)
+            # If the merge is within the original dynamic template block
+            if m_s_r >= len(top_fixed) and m_e_r <= len(top_fixed) + orig_dyn_count:
+                grid_requests.append({
+                    'unmergeCells': {
+                        'range': {
+                            'sheetId': temp_tab_gid,
+                            'startRowIndex': m_s_r,
+                            'endRowIndex': m_e_r,
+                            'startColumnIndex': m.get('startColumnIndex', 0),
+                            'endColumnIndex': m.get('endColumnIndex', max_col_count)
+                        }
                     }
-                }
-            })
+                })
 
         # STEP 3: Overwrite template dynamic rows AND write newly inserted rows via copyPaste (PASTE_NORMAL)
         for r_idx, (directive, cell_objs, ctx) in enumerate(generated_dynamic_rows):
