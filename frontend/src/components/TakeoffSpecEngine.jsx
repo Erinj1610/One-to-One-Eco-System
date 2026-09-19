@@ -1452,7 +1452,7 @@ export default function TakeoffSpecEngine({
         itemType: 'Hardware',
         oneOneCode: profProd?.one_to_one_code || '',
         code: profileSku,
-        description: `${profileName} — ${profMeters}m run${row.notes ? ' — ' + row.notes : ''}`,
+        description: profileName,
         floor: row.floor || 'Ground',
         area: row.area || 'General Area',
         dimming: '—',
@@ -1486,7 +1486,7 @@ export default function TakeoffSpecEngine({
         itemType: 'Hardware',
         oneOneCode: stripProd?.one_to_one_code || '',
         code: stripSku,
-        description: `${stripName} — ${stripMeters}m`,
+        description: stripName,
         floor: row.floor || 'Ground',
         area: row.area || 'General Area',
         dimming: stripProd?.dimming_protocol || 'Phase Cut / 24V',
@@ -1531,7 +1531,7 @@ export default function TakeoffSpecEngine({
         itemType: 'Hardware',
         oneOneCode: drvProd?.one_to_one_code || '',
         code: driverSku,
-        description: `${driverName} (${cleanLen}m run)`,
+        description: driverName,
         floor: row.floor || 'Ground',
         area: row.area || 'General Area',
         dimming: drvProd?.dimming_protocol || 'Phase Cut',
@@ -1571,7 +1571,7 @@ export default function TakeoffSpecEngine({
               itemType: 'Hardware',
               oneOneCode: acc.one_to_one_code || '',
               code: acc.sku || 'LED-ACC',
-              description: `${acc.name || acc.client_description || 'Linear LED Accessory'} (${cleanLen}m run)`,
+              description: acc.client_description || acc.name || 'Linear LED Accessory',
               floor: row.floor || 'Ground',
               area: row.area || 'General Area',
               dimming: '—',
@@ -1630,6 +1630,7 @@ export default function TakeoffSpecEngine({
       // 1. Track Rails
       const railCost = trackCfg.railCost !== undefined ? Number(trackCfg.railCost) : (trackCfg.railProduct?.cost_price || 450);
       const railRetail = trackCfg.railRetail !== undefined ? Number(trackCfg.railRetail) : (trackCfg.railProduct?.retail_price || 850);
+      const railName = trackCfg.railName || trackCfg.railProduct?.client_description || trackCfg.railProduct?.name || 'Track Profile Rail';
       items.push({
         id: 'I-' + Date.now() + '-' + idSuffix + '-rail-' + Math.random().toString(36).substr(2, 4),
         qty: railMeters,
@@ -1637,7 +1638,7 @@ export default function TakeoffSpecEngine({
         itemType: 'Hardware',
         oneOneCode: trackCfg.railProduct?.one_to_one_code || '',
         code: trackCfg.railSku || 'TRACK-RAIL',
-        description: `${trackCfg.railName || 'Track Profile Rail'} — ${railMeters}m run${row.notes ? ' — ' + row.notes : ''}`,
+        description: railName,
         floor: row.floor || 'Ground',
         area: row.area || 'General Area',
         dimming: '—',
@@ -1662,6 +1663,7 @@ export default function TakeoffSpecEngine({
           const spQty = Math.max(1, Number(spot.qty) || 1);
           const spCost = Number(spot.cost_price) || 0;
           const spRetail = Number(spot.retail_price) || 0;
+          const spotName = spot.product?.client_description || spot.product?.name || spot.name || 'Track Luminaire';
           items.push({
             id: 'I-' + Date.now() + '-' + idSuffix + '-spot-' + spIdx + '-' + Math.random().toString(36).substr(2, 4),
             qty: spQty,
@@ -1669,7 +1671,7 @@ export default function TakeoffSpecEngine({
             itemType: 'Hardware',
             oneOneCode: spot.product?.one_to_one_code || '',
             code: spot.sku || 'TRACK-SPOT',
-            description: `${spot.name} — Track Luminaire`,
+            description: spotName,
             floor: row.floor || 'Ground',
             area: row.area || 'General Area',
             dimming: spot.product?.dimming_protocol || 'DALI / 48V Dim',
@@ -1694,6 +1696,7 @@ export default function TakeoffSpecEngine({
       if (trackCfg.driverProduct || trackCfg.driverName) {
         const drvCost = trackCfg.driverCost !== undefined ? Number(trackCfg.driverCost) : (trackCfg.driverProduct?.cost_price || 480);
         const drvRetail = trackCfg.driverRetail !== undefined ? Number(trackCfg.driverRetail) : (trackCfg.driverProduct?.retail_price || 890);
+        const drvName = trackCfg.driverProduct?.client_description || trackCfg.driverProduct?.name || trackCfg.driverName || '48V DC Low-Voltage Track Power Supply Box';
         items.push({
           id: 'I-' + Date.now() + '-' + idSuffix + '-tr-drv-' + Math.random().toString(36).substr(2, 4),
           qty: drvQty,
@@ -1701,7 +1704,7 @@ export default function TakeoffSpecEngine({
           itemType: 'Hardware',
           oneOneCode: trackCfg.driverProduct?.one_to_one_code || '',
           code: trackCfg.driverSku || 'TRACK-DRIVER-48V',
-          description: `${trackCfg.driverName || '48V DC Low-Voltage Track Power Supply Box'}`,
+          description: drvName,
           floor: row.floor || 'Ground',
           area: row.area || 'General Area',
           dimming: '48V DALI / Dim',
@@ -1949,12 +1952,20 @@ export default function TakeoffSpecEngine({
 
         if (itemType === 'linear_led') {
           // Linear LEDs stay itemized per run (each area retains its profile, strip, driver, accessories)
+          // With blank spacer rows between each individual run
           rows.forEach((row, rIdx) => {
+            if (includeRoomSpacers && rIdx > 0 && generatedItems.length > 0) {
+              generatedItems.push(makeBlankSpacer(`tag-${tagIdx}-led-run-${rIdx}`));
+            }
             generatedItems.push(...buildLinearLedItems(row, spec, `tag-${tagIdx}-r-${rIdx}`));
           });
         } else if (itemType === 'track_system') {
           // Track Systems stay itemized per run (each area retains rails, spots, driver, hardware kit)
+          // With blank spacer rows between each individual run
           rows.forEach((row, rIdx) => {
+            if (includeRoomSpacers && rIdx > 0 && generatedItems.length > 0) {
+              generatedItems.push(makeBlankSpacer(`tag-${tagIdx}-trk-run-${rIdx}`));
+            }
             generatedItems.push(...buildTrackSystemItems(row, spec, `tag-${tagIdx}-r-${rIdx}`));
           });
         } else if (product) {
