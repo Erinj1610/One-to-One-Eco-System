@@ -627,10 +627,10 @@ def merge_google_sheet(
                 if isinstance(r_meta, dict) and 'pixelSize' in r_meta:
                     exact_row_height_by_index[r_i_idx] = r_meta['pixelSize']
 
-        # Ensure any template row without explicit pixelSize defaults to a comfortable standard height (at least 28px)
+        # Keep only explicit pixelSize from template metadata
         for r_i_idx in range(len(row_data)):
-            if r_i_idx not in exact_row_height_by_index or exact_row_height_by_index[r_i_idx] is None:
-                exact_row_height_by_index[r_i_idx] = 28
+            if r_i_idx not in exact_row_height_by_index:
+                exact_row_height_by_index[r_i_idx] = None
 
         # Dynamically determine the maximum column count present in this specific template sheet
         sheet_props = sp_data['sheets'][0].get('properties', {})
@@ -1511,8 +1511,8 @@ def merge_google_sheet(
                             }
                         })
 
-                # Maintain exact row height for all payment rows
-                if payment_orig_r_i in exact_row_height_by_index:
+                # Maintain exact row height for payment rows only if explicitly set in template
+                if exact_row_height_by_index.get(payment_orig_r_i) is not None:
                     grid_requests.append({
                         'updateDimensionProperties': {
                             'range': {
@@ -1689,40 +1689,7 @@ def merge_google_sheet(
                         'fields': fields_str
                     }
                 })
-            else:
-                # Re-apply exact template row height from template source row
-                desc_text = str((ctx or {}).get('item.description') or (ctx or {}).get('description') or '')
-                is_item_row = directive in ('[ITEM_ROW]', '[ITEM_SUMMARY]', '[CREDIT_ITEM_ROW]', '[CREDIT_ITEM_SUMMARY]') and not item_block_template_rows
-                
-                template_h = exact_row_height_by_index.get(orig_src_r, 28) if orig_src_r is not None else 28
-                final_h = template_h
-
-                if is_item_row:
-                    # Account for wrapped text and newlines so descriptions are never clipped, with minimum 28px
-                    line_count = 1 + desc_text.count('\n')
-                    if len(desc_text) > 130 and line_count < 3:
-                        line_count = 3
-                    elif len(desc_text) > 65 and line_count < 2:
-                        line_count = 2
-                    final_h = max(template_h, line_count * max(20, template_h))
-                else:
-                    final_h = template_h
-
-                final_h = max(24, int(final_h))
-                grid_requests.append({
-                    'updateDimensionProperties': {
-                        'range': {
-                            'sheetId': temp_tab_gid,
-                            'dimension': 'ROWS',
-                            'startIndex': actual_row_i,
-                            'endIndex': actual_row_i + 1
-                        },
-                        'properties': {
-                            'pixelSize': final_h
-                        },
-                        'fields': 'pixelSize'
-                    }
-                })
+            # Do not force artificial row heights on normal dynamic rows; Google Sheets keeps native template row heights and text wraps
 
             if not (ctx and ctx.get('_orig_src_r') is not None and card_block_merges):
                 if directive in directive_merges and directive_merges[directive]:
@@ -1764,11 +1731,12 @@ def merge_google_sheet(
                             }
                         })
 
-        # Ensure all top fixed header rows maintain their exact original row height
+        # Ensure top fixed header rows only apply explicit pixelSize if defined in template metadata
         for orig_r_i, norm_dir, cell_objs, _ in top_fixed:
             if not has_discount and is_discount_row(norm_dir, cell_objs):
                 continue
-            if orig_r_i in exact_row_height_by_index:
+            explicit_top_h = exact_row_height_by_index.get(orig_r_i)
+            if explicit_top_h is not None:
                 grid_requests.append({
                     'updateDimensionProperties': {
                         'range': {
@@ -1778,13 +1746,13 @@ def merge_google_sheet(
                             'endIndex': orig_r_i + 1
                         },
                         'properties': {
-                            'pixelSize': exact_row_height_by_index[orig_r_i]
+                            'pixelSize': explicit_top_h
                         },
                         'fields': 'pixelSize'
                     }
                 })
 
-        # Ensure all bottom fixed rows maintain their exact original row height AFTER copyPaste
+        # Ensure bottom fixed rows only maintain explicit pixelSize if one was specifically defined in template metadata
         for orig_r_i, norm_dir, cell_objs, _ in bottom_fixed:
             if not has_discount and is_discount_row(norm_dir, cell_objs):
                 continue
@@ -1794,7 +1762,8 @@ def merge_google_sheet(
                 actual_r_idx = orig_r_i + extra_rows + extra_payment_rows
             else:
                 actual_r_idx = orig_r_i + extra_rows
-            if orig_r_i in exact_row_height_by_index:
+            explicit_h = exact_row_height_by_index.get(orig_r_i)
+            if explicit_h is not None:
                 grid_requests.append({
                     'updateDimensionProperties': {
                         'range': {
@@ -1804,7 +1773,7 @@ def merge_google_sheet(
                             'endIndex': actual_r_idx + 1
                         },
                         'properties': {
-                            'pixelSize': exact_row_height_by_index[orig_r_i]
+                            'pixelSize': explicit_h
                         },
                         'fields': 'pixelSize'
                     }
@@ -1830,6 +1799,118 @@ def merge_google_sheet(
                 spreadsheetId=working_spreadsheet_id,
                 body={'requests': grid_requests}
             ).execute()
+
+        # PASS 2 & 3: Measure actual rendered row heights & ensure footer block and headers paginate cleanly
+        try:
+            measure_data = sheets_service.spreadsheets().get(
+                spreadsheetId=working_spreadsheet_id,
+                ranges=[f"'{dup_title}'!A1:Z500"],
+                includeGridData=True
+            ).execute()
+
+            m_sheets = measure_data.get('sheets', [])
+            if m_sheets and 'data' in m_sheets[0] and m_sheets[0]['data']:
+                m_grid_data = m_sheets[0]['data'][0]
+                m_row_metadata = m_grid_data.get('rowMetadata', [])
+                m_row_data = m_grid_data.get('rowData', [])
+                total_current_rows = len(m_row_data)
+
+                # Determine rendered row heights
+                rendered_h = []
+                for r_idx in range(total_current_rows):
+                    px = None
+                    if r_idx < len(m_row_metadata):
+                        px = m_row_metadata[r_idx].get('pixelSize')
+                    if px is None and r_idx < len(m_row_data):
+                        px = m_row_data[r_idx].get('rowMetadata', {}).get('pixelSize')
+                    if px is None:
+                        # Fallback to standard comfortable row height
+                        px = 28
+                    rendered_h.append(int(px))
+
+                # Identify bottom fixed rows start index
+                num_dyn = len(generated_dynamic_rows)
+                dyn_start_idx = len(top_fixed)
+                footer_start_idx = dyn_start_idx + num_dyn
+
+                # Calculate footer block total height
+                footer_total_px = sum(rendered_h[r] for r in range(footer_start_idx, total_current_rows)) if footer_start_idx < total_current_rows else 0
+
+                # Standard A4 printable height budget (~1020px)
+                A4_PAGE_PX = 1020
+
+                # Calculate cumulative heights to find where pages break
+                curr_page_px = 0
+                page_num = 1
+                pass2_requests = []
+
+                # Check dynamic rows page boundaries
+                for r_idx in range(footer_start_idx):
+                    r_h = rendered_h[r_idx]
+                    if curr_page_px + r_h > A4_PAGE_PX and curr_page_px > 0:
+                        curr_page_px = r_h
+                        page_num += 1
+                    else:
+                        curr_page_px += r_h
+
+                # Now check footer block: if remaining space on current page cannot fit the footer block, push it cleanly
+                rem_space = A4_PAGE_PX - curr_page_px
+                if footer_total_px > 0 and rem_space < footer_total_px and curr_page_px > 0:
+                    pad_h = max(20, min(A4_PAGE_PX, int(rem_space)))
+                    logger.info(f"Footer block ({footer_total_px}px) exceeds remaining space ({rem_space}px) on Page {page_num}. Pushing cleanly to Page {page_num + 1} with {pad_h}px spacer.")
+                    pass2_requests.append({
+                        'insertDimension': {
+                            'range': {
+                                'sheetId': temp_tab_gid,
+                                'dimension': 'ROWS',
+                                'startIndex': footer_start_idx,
+                                'endIndex': footer_start_idx + 1
+                            },
+                            'inheritFromBefore': False
+                        }
+                    })
+                    pass2_requests.append({
+                        'updateDimensionProperties': {
+                            'range': {
+                                'sheetId': temp_tab_gid,
+                                'dimension': 'ROWS',
+                                'startIndex': footer_start_idx,
+                                'endIndex': footer_start_idx + 1
+                            },
+                            'properties': {
+                                'pixelSize': pad_h
+                            },
+                            'fields': 'pixelSize'
+                        }
+                    })
+                    pass2_requests.append({
+                        'repeatCell': {
+                            'range': {
+                                'sheetId': temp_tab_gid,
+                                'startIndex': footer_start_idx,
+                                'endIndex': footer_start_idx + 1,
+                                'startColumnIndex': 0,
+                                'endColumnIndex': max_col_count
+                            },
+                            'cell': {
+                                'userEnteredValue': {'stringValue': ''},
+                                'userEnteredFormat': {
+                                    'backgroundColor': {'red': 1.0, 'green': 1.0, 'blue': 1.0},
+                                    'borders': {}
+                                }
+                            },
+                            'fields': 'userEnteredValue,userEnteredFormat.backgroundColor,userEnteredFormat.borders'
+                        }
+                    })
+
+                if pass2_requests:
+                    sheets_service.spreadsheets().batchUpdate(
+                        spreadsheetId=working_spreadsheet_id,
+                        body={'requests': pass2_requests}
+                    ).execute()
+                    logger.info(f"Applied {len(pass2_requests)} pagination adjustment requests for footer block/headers")
+        except Exception as measure_err:
+            logger.warn(f"Pass 2 measurement / pagination adjustment notice: {measure_err}")
 
     except Exception as token_err:
         logger.error(f"Error expanding working sheet grid: {token_err}")
