@@ -1689,40 +1689,9 @@ def merge_google_sheet(
                         'fields': fields_str
                     }
                 })
-            else:
-                # Re-apply exact template row height from template source row
-                desc_text = str((ctx or {}).get('item.description') or (ctx or {}).get('description') or '')
-                is_item_row = directive in ('[ITEM_ROW]', '[ITEM_SUMMARY]', '[CREDIT_ITEM_ROW]', '[CREDIT_ITEM_SUMMARY]') and not item_block_template_rows
-                
-                template_h = exact_row_height_by_index.get(orig_src_r, 28) if orig_src_r is not None else 28
-                final_h = template_h
-
-                if is_item_row:
-                    # Account for wrapped text and newlines so descriptions are never clipped, with minimum 28px
-                    line_count = 1 + desc_text.count('\n')
-                    if len(desc_text) > 130 and line_count < 3:
-                        line_count = 3
-                    elif len(desc_text) > 65 and line_count < 2:
-                        line_count = 2
-                    final_h = max(template_h, line_count * max(20, template_h))
-                else:
-                    final_h = template_h
-
-                final_h = max(24, int(final_h))
-                grid_requests.append({
-                    'updateDimensionProperties': {
-                        'range': {
-                            'sheetId': temp_tab_gid,
-                            'dimension': 'ROWS',
-                            'startIndex': actual_row_i,
-                            'endIndex': actual_row_i + 1
-                        },
-                        'properties': {
-                            'pixelSize': final_h
-                        },
-                        'fields': 'pixelSize'
-                    }
-                })
+            # DO NOT override row heights with artificial pixel sizes.
+            # Google Sheets copyPaste(PASTE_NORMAL) preserves the template row height,
+            # and unconstrained cells allow multi-line wrapped descriptions to expand without clipping.
 
             if not (ctx and ctx.get('_orig_src_r') is not None and card_block_merges):
                 if directive in directive_merges and directive_merges[directive]:
