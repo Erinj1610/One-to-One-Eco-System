@@ -627,6 +627,11 @@ def merge_google_sheet(
                 if isinstance(r_meta, dict) and 'pixelSize' in r_meta:
                     exact_row_height_by_index[r_i_idx] = r_meta['pixelSize']
 
+        # Ensure any template row without explicit pixelSize defaults to a comfortable standard height (at least 28px)
+        for r_i_idx in range(len(row_data)):
+            if r_i_idx not in exact_row_height_by_index or exact_row_height_by_index[r_i_idx] is None:
+                exact_row_height_by_index[r_i_idx] = 28
+
         # Dynamically determine the maximum column count present in this specific template sheet
         sheet_props = sp_data['sheets'][0].get('properties', {})
         grid_props = sheet_props.get('gridProperties', {})
@@ -1004,32 +1009,8 @@ def merge_google_sheet(
                     px_on_current_page += it_height_px
 
             elif item_row_cells:
-                active_floor = None
                 for item_obj in main_items:
-                    it_fl = str(item_obj.get('floor') or item_obj.get('Floor') or '').strip()
-                    if it_fl:
-                        active_floor = it_fl
-
                     it_height_px = get_item_block_height_px(item_obj)
-
-                    if px_on_current_page + it_height_px > current_page_capacity_px and px_on_current_page > 0:
-                        rem_pad_px = max(15, min(80, int(current_page_capacity_px - px_on_current_page)))
-                        generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, {'_is_spacer': True, '_is_pad': True, '_spacer_height': rem_pad_px}))
-
-                        # Start new page with carryover block
-                        carry_fl_ctx = {'floor.name': f"{active_floor} (Continued)", 'floor': f"{active_floor} (Continued)"} if active_floor else {}
-                        px_on_current_page = 0.0
-                        is_page_1 = False
-                        current_page_capacity_px = SUBSEQUENT_PAGE_ITEM_BUDGET_PX
-
-                        if active_floor and fl_header_cells:
-                            generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, carry_fl_ctx))
-                            px_on_current_page += get_single_row_height_px('[FLOOR_HEADER]')
-                        
-                        if table_head_cells:
-                            generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, carry_fl_ctx))
-                            px_on_current_page += get_single_row_height_px('[TABLE_HEADER]')
-
                     generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, build_item_ctx(item_obj)))
                     px_on_current_page += it_height_px
 
@@ -1712,35 +1693,36 @@ def merge_google_sheet(
                 # Re-apply exact template row height from template source row
                 desc_text = str((ctx or {}).get('item.description') or (ctx or {}).get('description') or '')
                 is_item_row = directive in ('[ITEM_ROW]', '[ITEM_SUMMARY]', '[CREDIT_ITEM_ROW]', '[CREDIT_ITEM_SUMMARY]') and not item_block_template_rows
-                has_wrapped_text = is_item_row and (len(desc_text) > 45 or '\n' in desc_text)
+                
+                template_h = exact_row_height_by_index.get(orig_src_r, 28) if orig_src_r is not None else 28
+                final_h = template_h
 
-                if orig_src_r is not None and orig_src_r in exact_row_height_by_index and not has_wrapped_text:
-                    grid_requests.append({
-                        'updateDimensionProperties': {
-                            'range': {
-                                'sheetId': temp_tab_gid,
-                                'dimension': 'ROWS',
-                                'startIndex': actual_row_i,
-                                'endIndex': actual_row_i + 1
-                            },
-                            'properties': {
-                                'pixelSize': exact_row_height_by_index[orig_src_r]
-                            },
-                            'fields': 'pixelSize'
-                        }
-                    })
-                elif has_wrapped_text:
-                    # Let long wrapped item text auto-fit row height dynamically so descriptions are never clipped
-                    grid_requests.append({
-                        'autoResizeDimensions': {
-                            'dimensions': {
-                                'sheetId': temp_tab_gid,
-                                'dimension': 'ROWS',
-                                'startIndex': actual_row_i,
-                                'endIndex': actual_row_i + 1
-                            }
-                        }
-                    })
+                if is_item_row:
+                    # Account for wrapped text and newlines so descriptions are never clipped, with minimum 28px
+                    line_count = 1 + desc_text.count('\n')
+                    if len(desc_text) > 130 and line_count < 3:
+                        line_count = 3
+                    elif len(desc_text) > 65 and line_count < 2:
+                        line_count = 2
+                    final_h = max(template_h, line_count * max(20, template_h))
+                else:
+                    final_h = template_h
+
+                final_h = max(24, int(final_h))
+                grid_requests.append({
+                    'updateDimensionProperties': {
+                        'range': {
+                            'sheetId': temp_tab_gid,
+                            'dimension': 'ROWS',
+                            'startIndex': actual_row_i,
+                            'endIndex': actual_row_i + 1
+                        },
+                        'properties': {
+                            'pixelSize': final_h
+                        },
+                        'fields': 'pixelSize'
+                    }
+                })
 
             if not (ctx and ctx.get('_orig_src_r') is not None and card_block_merges):
                 if directive in directive_merges and directive_merges[directive]:
