@@ -148,11 +148,11 @@ export default function Sidebar({ isCollapsed, toggleCollapse }) {
               width: '7px',
               height: '7px',
               borderRadius: '50%',
-              background: (typeof window !== 'undefined' && window.location.hostname.includes('staging')) ? '#f59e0b' : '#10b981',
-              boxShadow: (typeof window !== 'undefined' && window.location.hostname.includes('staging')) ? '0 0 6px rgba(245, 158, 11, 0.6)' : '0 0 6px rgba(16, 185, 129, 0.6)'
+              background: (typeof window !== 'undefined' && (window.location.hostname === 'ejportal.world' || window.location.hostname === 'www.ejportal.world' || window.location.hostname === 'portal.one-to-one.world')) ? '#10b981' : '#f59e0b',
+              boxShadow: (typeof window !== 'undefined' && (window.location.hostname === 'ejportal.world' || window.location.hostname === 'www.ejportal.world' || window.location.hostname === 'portal.one-to-one.world')) ? '0 0 6px rgba(16, 185, 129, 0.6)' : '0 0 6px rgba(245, 158, 11, 0.6)'
             }} />
             <span style={{ fontWeight: 600 }}>
-              {(typeof window !== 'undefined' && window.location.hostname.includes('staging')) ? 'Staging Playground' : 'Live Production'}
+              {(typeof window !== 'undefined' && (window.location.hostname === 'ejportal.world' || window.location.hostname === 'www.ejportal.world' || window.location.hostname === 'portal.one-to-one.world')) ? 'Live Production' : 'Staging Playground'}
             </span>
           </div>
         )}
