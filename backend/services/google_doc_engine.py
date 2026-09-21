@@ -614,6 +614,88 @@ def merge_google_sheet(
         row_data = grid_data.get('rowData', [])
         items_list = tokens.get('items', [])
 
+        # Enrich items with complete Product specifications from Cloud SQL
+        try:
+            from database.cloud_sql import SessionLocal
+            from models.orm_models import Product
+            with SessionLocal() as db_session:
+                all_codes = set()
+                for it in items_list:
+                    for c_key in ['code', 'make_code', 'sku', 'one_one_code', 'oneOneCode']:
+                        c_val = str(it.get(c_key) or '').strip()
+                        if c_val:
+                            all_codes.add(c_val)
+                            all_codes.add(c_val.upper())
+
+                if all_codes:
+                    matched_prods = db_session.query(Product).filter(
+                        (Product.sku.in_(list(all_codes))) |
+                        (Product.one_to_one_code.in_(list(all_codes)))
+                    ).all()
+
+                    prod_by_code = {}
+                    for p in matched_prods:
+                        if p.sku:
+                            prod_by_code[p.sku.strip().upper()] = p
+                        if p.one_to_one_code:
+                            prod_by_code[p.one_to_one_code.strip().upper()] = p
+
+                    for it in items_list:
+                        c_candidates = [
+                            str(it.get('code') or '').strip().upper(),
+                            str(it.get('make_code') or '').strip().upper(),
+                            str(it.get('sku') or '').strip().upper(),
+                            str(it.get('one_one_code') or it.get('oneOneCode') or '').strip().upper()
+                        ]
+                        p_match = next((prod_by_code[c] for c in c_candidates if c in prod_by_code), None)
+                        if p_match:
+                            if not it.get('image_url') and not it.get('image'):
+                                it['image_url'] = p_match.image_url or ''
+                                it['imageUrl'] = p_match.image_url or ''
+                                it['image'] = p_match.image_url or ''
+                            if not it.get('technical_image') and not it.get('technical_image_url'):
+                                it['technical_image'] = p_match.technical_image_url or ''
+                                it['technical_image_url'] = p_match.technical_image_url or ''
+                                it['technicalImageUrl'] = p_match.technical_image_url or ''
+                            if not it.get('material') and not it.get('color'):
+                                it['material'] = p_match.color or ''
+                                it['color'] = p_match.color or ''
+                                it['material_color'] = p_match.color or ''
+                            if not it.get('cutout') and not it.get('cut_out_size'):
+                                it['cutout'] = p_match.cutout or ''
+                                it['cut_out_size'] = p_match.cutout or ''
+                                it['cutout_size'] = p_match.cutout or ''
+                            if not it.get('wattage') and not it.get('system_power'):
+                                it['wattage'] = f"{p_match.system_power}W" if p_match.system_power else ''
+                                it['system_power'] = p_match.system_power or ''
+                            if not it.get('light_source') and not it.get('light_source_type'):
+                                it['light_source'] = p_match.light_source_type or ''
+                                it['light_source_type'] = p_match.light_source_type or ''
+                            if not it.get('dimming') or it.get('dimming') == 'Non-dim':
+                                if p_match.dimming_protocol or p_match.dimmable:
+                                    it['dimming'] = p_match.dimming_protocol or p_match.dimmable or 'Non-dim'
+                                    it['dimming_protocol'] = p_match.dimming_protocol or ''
+                                    it['dimming_type'] = it['dimming']
+                            if not it.get('driver_information') and not it.get('driver_spec'):
+                                it['driver_information'] = p_match.driver_spec or ''
+                                it['driver_spec'] = p_match.driver_spec or ''
+                            if not it.get('red_list'):
+                                it['red_list'] = p_match.red_list or ''
+                            if not it.get('beam_angle'):
+                                it['beam_angle'] = p_match.beam_angle or ''
+                            if not it.get('ip_rating'):
+                                it['ip_rating'] = p_match.ip_rating or ''
+                            if not it.get('kelvin'):
+                                it['kelvin'] = p_match.kelvin or ''
+                            if not it.get('cri'):
+                                it['cri'] = p_match.cri or ''
+                            if not it.get('qr_code') and not it.get('qr_code_link'):
+                                it['qr_code'] = p_match.qr_link or p_match.qr or ''
+                                it['qr_code_link'] = p_match.qr_link or p_match.qr or ''
+                                it['qr_link'] = p_match.qr_link or p_match.qr or ''
+        except Exception as db_enrich_err:
+            logger.warn(f"Notice: Product DB auto-enrichment skipped: {db_enrich_err}")
+
         # Extract root sheet merges and original row heights early so all helpers have scope access
         sheet_obj = sp_data['sheets'][0]
         orig_merges = sheet_obj.get('merges', [])
@@ -834,6 +916,7 @@ def merge_google_sheet(
 
                 if group_key not in grouped:
                     grouped[group_key] = {
+                        **it,
                         'qty': q_val,
                         'unit_price': u_val,
                         'code': code_val,
@@ -852,6 +935,10 @@ def merge_google_sheet(
                     order_keys.append(group_key)
                 else:
                     grouped[group_key]['qty'] += q_val
+                    # Backfill any missing specifications or URLs from subsequent items in group
+                    for k_spec, v_spec in it.items():
+                        if v_spec and not grouped[group_key].get(k_spec):
+                            grouped[group_key][k_spec] = v_spec
 
             out_list = []
             for k in order_keys:
@@ -973,9 +1060,17 @@ def merge_google_sheet(
                     '_is_spacer': False
                 }
                 for k, v in item_obj.items():
-                    if k not in item_ctx and v is not None:
-                        item_ctx[f"item.{k}"] = str(v)
-                        item_ctx[k] = str(v)
+                    if v is not None:
+                        val_str = str(v)
+                        if k not in item_ctx:
+                            item_ctx[f"item.{k}"] = val_str
+                            item_ctx[k] = val_str
+                        # Support natural variations e.g. {{item.Cut Out Size}}, {{Material/Colour}}, etc.
+                        spaced_k = k.replace('_', ' ')
+                        item_ctx[f"item.{spaced_k}"] = val_str
+                        item_ctx[spaced_k] = val_str
+                        item_ctx[f"item.{spaced_k.title()}"] = val_str
+                        item_ctx[spaced_k.title()] = val_str
                 return item_ctx
 
             if table_head_cells:
