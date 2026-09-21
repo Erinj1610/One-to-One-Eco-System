@@ -3557,9 +3557,10 @@ export default function SalesTracker() {
       const normProjPart = normalizeSheetText(parsedProjPart);
       const normQuotePart = normalizeSheetText(parsedQuotePart);
 
-      // Score matching against allOrders
+      // Strict matching against allOrders:
+      // Must match on the order's specific quote name, order ID, or exact combined title.
+      // NEVER match a different order under the same project.
       let bestMatch = null;
-      let highestScore = 0;
 
       for (const ord of allOrders) {
         const ordId = normalizeSheetText(ord.id);
@@ -3567,45 +3568,34 @@ export default function SalesTracker() {
         const ordProj = normalizeSheetText(ord.projectFullName || ord.projectName);
         const ordCombined = `${ordProj}${ordQuote}`;
 
-        // 1. Exact match on combined project + quote
+        // 1. Combined exact match (e.g. "45victoriapenthousesproductest" === "45victoriapenthousesproductest")
         if (normFullName && (ordCombined === normFullName || normFullName === `${ordQuote}${ordProj}`)) {
           bestMatch = ord;
-          highestScore = 100;
           break;
         }
 
-        // 2. Exact match on quote name or id
+        // 2. Exact match of sheet name to order's quote name or order ID
         if (normFullName && (ordQuote === normFullName || ordId === normFullName)) {
-          if (highestScore < 90) {
-            bestMatch = ord;
-            highestScore = 90;
-          }
+          bestMatch = ord;
+          break;
         }
 
-        // 3. Project matches and Quote matches
-        if (normProjPart && ordProj && (ordProj === normProjPart || ordProj.includes(normProjPart) || normProjPart.includes(ordProj))) {
-          if (normQuotePart && ordQuote && (ordQuote === normQuotePart || ordQuote.includes(normQuotePart) || normQuotePart.includes(ordQuote))) {
-            if (highestScore < 85) {
-              bestMatch = ord;
-              highestScore = 85;
-            }
-          } else if (highestScore < 50) {
-            // Partial project match only
-            bestMatch = ord;
-            highestScore = 50;
-          }
+        // 3. Exact match of extracted quote part to order's quote name or order ID
+        if (normQuotePart && (ordQuote === normQuotePart || ordId === normQuotePart)) {
+          bestMatch = ord;
+          break;
         }
 
-        // 4. Substring containment
-        if (normFullName && (ordCombined.includes(normFullName) || normFullName.includes(ordCombined))) {
-          if (highestScore < 70) {
+        // 4. Exact match when project matches AND quote matches
+        if (normProjPart && ordProj && ordProj === normProjPart) {
+          if (normQuotePart && ordQuote && ordQuote === normQuotePart) {
             bestMatch = ord;
-            highestScore = 70;
+            break;
           }
         }
       }
 
-      if (!bestMatch || highestScore < 50) {
+      if (!bestMatch) {
         return {
           ...sheetRow,
           matchStatus: 'NOT_FOUND',
