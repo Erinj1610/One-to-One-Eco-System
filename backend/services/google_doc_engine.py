@@ -661,13 +661,30 @@ def merge_google_sheet(
                                 it['material'] = p_match.color or ''
                                 it['color'] = p_match.color or ''
                                 it['material_color'] = p_match.color or ''
+                            raw_cutout = str(p_match.cutout or '').strip()
+                            clean_cutout = re.sub(r'^[^\w\dØø]+', 'Ø', raw_cutout) if raw_cutout else ''
                             if not it.get('cutout') and not it.get('cut_out_size'):
-                                it['cutout'] = p_match.cutout or ''
-                                it['cut_out_size'] = p_match.cutout or ''
-                                it['cutout_size'] = p_match.cutout or ''
+                                it['cutout'] = clean_cutout
+                                it['cut_out_size'] = clean_cutout
+                                it['cut_out'] = clean_cutout
+                                it['cutout_size'] = clean_cutout
+                            
+                            # Resolve wattage from system_power, or extract from description/name (e.g. "8W")
+                            w_num = safe_float(p_match.system_power, 0.0)
+                            if w_num <= 0.0:
+                                desc_to_check = f"{p_match.name or ''} {p_match.client_description or ''} {it.get('description', '')}"
+                                m_watt = re.search(r'(\d+(?:\.\d+)?)\s*[wW](?:\b|[^a-zA-Z])', desc_to_check)
+                                if m_watt:
+                                    w_num = safe_float(m_watt.group(1), 0.0)
+                            
+                            w_str = f"{int(w_num) if w_num.is_integer() else w_num:.1f}W" if w_num > 0 else ""
                             if not it.get('wattage') and not it.get('system_power'):
-                                it['wattage'] = f"{p_match.system_power}W" if p_match.system_power else ''
-                                it['system_power'] = p_match.system_power or ''
+                                it['wattage'] = w_str
+                                it['system_power'] = w_num
+                                it['wattage_num'] = w_num
+                            else:
+                                it['wattage_num'] = w_num if w_num > 0 else safe_float(it.get('wattage') or it.get('system_power'), 0.0)
+                            
                             if not it.get('light_source') and not it.get('light_source_type'):
                                 it['light_source'] = p_match.light_source_type or ''
                                 it['light_source_type'] = p_match.light_source_type or ''
@@ -1003,6 +1020,23 @@ def merge_google_sheet(
                 main_items = aggregate_summary_items(main_items)
                 credit_items = aggregate_summary_items(credit_items)
 
+            # Calculate total schedule estimated wattage across all items
+            grand_total_wattage_num = 0.0
+            for _it in items_list:
+                _q = safe_float(_it.get('qty') or _it.get('quantity'), 1.0)
+                _w = safe_float(_it.get('wattage_num') or _it.get('system_power'), 0.0)
+                if _w <= 0.0:
+                    _m = re.search(r'(\d+(?:\.\d+)?)\s*[wW](?:\b|[^a-zA-Z])', str(_it.get('description') or ''))
+                    if _m:
+                        _w = safe_float(_m.group(1), 0.0)
+                if _w > 0.0:
+                    grand_total_wattage_num += (_q * _w)
+
+            total_wattage_str = f"{int(grand_total_wattage_num) if grand_total_wattage_num.is_integer() else grand_total_wattage_num:.1f}W" if grand_total_wattage_num > 0 else "0W"
+            tokens['total.wattage'] = total_wattage_str
+            tokens['total_wattage'] = total_wattage_str
+            tokens['TOTAL_WATTAGE'] = total_wattage_str
+
             def build_item_ctx(item_obj):
                 q_val = safe_float(item_obj.get('qty') or item_obj.get('quantity'), 1.0)
                 u_val = safe_float(item_obj.get('unit_price') or item_obj.get('retail') or item_obj.get('rate') or item_obj.get('price'), 0.0)
@@ -1059,6 +1093,32 @@ def merge_google_sheet(
                     'qr_code': qr_code_val,
                     '_is_spacer': False
                 }
+
+                # Explicitly populate Cut Out Size and Wattage variants
+                cutout_val = str(item_obj.get('cutout') or item_obj.get('cut_out') or item_obj.get('cut_out_size') or '').strip()
+                item_ctx['item.cutout'] = cutout_val
+                item_ctx['item.cut_out'] = cutout_val
+                item_ctx['item.cut_out_size'] = cutout_val
+                item_ctx['item.Cut Out Size'] = cutout_val
+
+                watt_num = safe_float(item_obj.get('wattage_num') or item_obj.get('system_power'), 0.0)
+                if watt_num <= 0.0:
+                    m_w = re.search(r'(\d+(?:\.\d+)?)\s*[wW](?:\b|[^a-zA-Z])', desc_str)
+                    if m_w:
+                        watt_num = safe_float(m_w.group(1), 0.0)
+                
+                single_watt_str = f"{int(watt_num) if watt_num.is_integer() else watt_num:.1f}W" if watt_num > 0 else ""
+                item_ctx['item.wattage'] = single_watt_str
+                item_ctx['item.system_power'] = f"{watt_num}" if watt_num > 0 else ""
+                
+                # Line item total load / total wattage = qty * wattage
+                line_total_watt_num = q_val * watt_num
+                line_total_watt_str = f"{int(line_total_watt_num) if line_total_watt_num.is_integer() else line_total_watt_num:.1f}W" if line_total_watt_num > 0 else ""
+                item_ctx['total.wattage'] = line_total_watt_str
+                item_ctx['total_wattage'] = line_total_watt_str
+                item_ctx['item.total_wattage'] = line_total_watt_str
+                item_ctx['item.totalLoad'] = line_total_watt_str
+                item_ctx['item.total_load'] = line_total_watt_str
                 for k, v in item_obj.items():
                     if v is not None:
                         val_str = str(v)
