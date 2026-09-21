@@ -913,9 +913,20 @@ export default function OrdersPage() {
       floor: item.floor || '',
       area: item.area || '',
       dimming: item.dimming || 'Non-dim',
-      unitCost: item.isSpacer || item.type === 'SPACER' ? '' : `R ${(Number(item.unitCost || item.unit_cost) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       stockStatus: item.stockStatus || item.stock_status || 'In Stock',
-      eta: item.eta || '4 weeks'
+      eta: item.eta || '4 weeks',
+      image_url: item.image_url || item.imageUrl || item.image || item.Image || item.photo || '',
+      imageUrl: item.image_url || item.imageUrl || item.image || item.Image || item.photo || '',
+      image: item.image_url || item.imageUrl || item.image || item.Image || item.photo || '',
+      technical_image: item.technical_image || item.technical_image_url || item.technicalImageUrl || item.tech_image || '',
+      technical_image_url: item.technical_image || item.technical_image_url || item.technicalImageUrl || item.tech_image || '',
+      technicalImageUrl: item.technical_image || item.technical_image_url || item.technicalImageUrl || item.tech_image || '',
+      driver_information: item.driver_information || item.driver_spec || item.driverInformation || item.driver || '',
+      driverInformation: item.driver_information || item.driver_spec || item.driverInformation || item.driver || '',
+      qr_code: item.qr_code || item.qr || item.qr_link || '',
+      qr_code_link: item.qr_code_link || item.qr_link || item.qr || '',
+      QR_CODE: item.qr_code || item.qr || item.qr_link || '',
+      QR_CODE_LINK: item.qr_code_link || item.qr_link || item.qr || ''
     }));
 
     // Resolve Representative & PM Info
