@@ -1,8 +1,7 @@
 const hostname = typeof window !== 'undefined' ? (window.location.hostname || '') : '';
-// Only exact production domains route to live production backend
-// All other hosts (vercel preview, ejportal.vercel.app, localhost, staging) route to Staging
-const isProdHost = hostname === 'ejportal.world' || hostname === 'www.ejportal.world' || hostname === 'portal.one-to-one.world';
-const isStagingHost = !isProdHost;
+// Hosts containing 'staging' (e.g. frontend-git-staging-erinj1610s-projects.vercel.app) route to Staging
+// Main production hosts (ejportal.vercel.app, ejportal.world, www.ejportal.world, portal.one-to-one.world) route to Production
+const isStagingHost = hostname.includes('staging');
 
 export const API_BASE = isStagingHost 
   ? 'https://one-to-one-backend-staging-858977785048.us-central1.run.app'
