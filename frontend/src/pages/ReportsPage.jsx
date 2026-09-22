@@ -477,14 +477,29 @@ export default function ReportsPage() {
     return { monthName: 'July', year: 2026, monthIdx: 6 };
   };
 
-  // Helper to check if an order/item has a valid invoice reference and date
+  // Helper to check if an order/item has a valid invoice reference and date (ignoring historical [LEGACY] baselines)
   const hasValidInvoiceRefAndDate = (order) => {
     // Order level invoice ref
-    if (order.invoiceRef || order.invoice_ref || (order.clientInvoices && order.clientInvoices.length > 0)) {
+    const ordRef = String(order.invoiceRef || order.invoice_ref || '').trim().toUpperCase();
+    if (ordRef && !ordRef.includes('[LEGACY]')) {
+      return true;
+    }
+    if (order.clientInvoices && order.clientInvoices.some(cinv => {
+      const cRef = String(cinv.id || cinv.ref || '').trim().toUpperCase();
+      return cRef && !cRef.includes('[LEGACY]');
+    })) {
       return true;
     }
     // Item level invoice ref
-    if (order.itemsList && order.itemsList.some(it => (it.invoiceRef && it.invoiceRef.trim() !== '') || (it.invoiceHistory && it.invoiceHistory.length > 0 && it.invoiceHistory[0].ref))) {
+    if (order.itemsList && order.itemsList.some(it => {
+      const itRef = String(it.invoiceRef || '').trim().toUpperCase();
+      if (itRef && !itRef.includes('[LEGACY]')) return true;
+      if (it.invoiceHistory && it.invoiceHistory.some(h => {
+        const hRef = String(h.ref || h.id || '').trim().toUpperCase();
+        return hRef && !hRef.includes('[LEGACY]');
+      })) return true;
+      return false;
+    })) {
       return true;
     }
     return false;
@@ -549,7 +564,10 @@ export default function ReportsPage() {
       
       // Process item-level and clientInvoices-level invoice entries
       const itemsList = order.itemsList || [];
-      const clientInvoices = (order.clientInvoices || []).filter(cinv => !cinv.is_credit && !String(cinv.id).toUpperCase().startsWith('CN-') && !String(cinv.id).toUpperCase().startsWith('CR-'));
+      const clientInvoices = (order.clientInvoices || []).filter(cinv => {
+        const idStr = String(cinv.id || cinv.ref || '').toUpperCase();
+        return !cinv.is_credit && !idStr.startsWith('CN-') && !idStr.startsWith('CR-') && !idStr.includes('[LEGACY]');
+      });
       
       let processedInvoicedTotal = 0;
 
@@ -557,6 +575,7 @@ export default function ReportsPage() {
       if (clientInvoices.length > 0) {
         clientInvoices.forEach(cinv => {
           const cRef = cinv.id || cinv.ref || order.invoiceRef;
+          if (String(cRef || '').toUpperCase().includes('[LEGACY]')) return;
           const cDate = cinv.date || order.invoiceDate;
           const cVal = Number(cinv.totalValue ?? cinv.value ?? cinv.amount ?? ((cinv.items || []).reduce((s, it) => s + ((Number(it.qtyAction) || Number(it.qty) || 0) * (Number(it.rate) || Number(it.unitPrice) || Number(it.unitRetail) || Number(it.unitCost) || 0)), 0))) || 0;
           if (cRef && cDate && cVal > 0) {
@@ -580,12 +599,16 @@ export default function ReportsPage() {
           }
         });
       } else {
-        // 2. Iterate over line items and their invoiceHistory
+        // 2. Iterate over line items and their invoiceHistory (strictly ignoring [LEGACY] baselines)
         itemsList.forEach(item => {
-          const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory.filter(h => !String(h.id || h.ref).toUpperCase().startsWith('CN-') && !String(h.id || h.ref).toUpperCase().startsWith('CR-')) : [];
+          const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory.filter(h => {
+            const refStr = String(h.id || h.ref || '').toUpperCase();
+            return !refStr.startsWith('CN-') && !refStr.startsWith('CR-') && !refStr.includes('[LEGACY]');
+          }) : [];
           if (iHist.length > 0) {
             iHist.forEach(h => {
               const hRef = h.ref || item.invoiceRef;
+              if (String(hRef || '').toUpperCase().includes('[LEGACY]')) return;
               const hDate = h.date || item.invoiceDate;
               const hVal = Number(h.total ?? ((Number(h.qty) || 0) * (Number(h.rate) || Number(h.unitPrice) || Number(item.unitRetail) || 0))) || 0;
               if (hRef && hDate && hVal > 0) {
@@ -608,7 +631,7 @@ export default function ReportsPage() {
                 }
               }
             });
-          } else if (item.invoiceRef && item.invoiceDate && Number(item.invoiceQty) > 0) {
+          } else if (item.invoiceRef && !String(item.invoiceRef).toUpperCase().includes('[LEGACY]') && item.invoiceDate && Number(item.invoiceQty) > 0) {
             const itemVal = (Number(item.invoiceQty) || 0) * (Number(item.unitRetail) || 0);
             if (itemVal > 0) {
               const parsedDate = parseDateString(item.invoiceDate);
@@ -632,8 +655,8 @@ export default function ReportsPage() {
           }
         });
 
-        // 3. Fallback to order-level invoiceRef if no item or clientInvoices found
-        if (processedInvoicedTotal === 0 && order.invoiceRef && order.invoiceDate) {
+        // 3. Fallback to order-level invoiceRef if no item or clientInvoices found (excluding [LEGACY])
+        if (processedInvoicedTotal === 0 && order.invoiceRef && !String(order.invoiceRef).toUpperCase().includes('[LEGACY]') && order.invoiceDate) {
           const parsedDate = parseDateString(order.invoiceDate);
           if (parsedDate) {
             processedInvoicedTotal += orderValue;
@@ -654,30 +677,49 @@ export default function ReportsPage() {
         }
       }
 
-      // 4. Process allocated Credit Notes and deduct from invoiced revenue
+      // 4. Process allocated Credit Notes: correctly offset credited goods with handling/service fees
       const creditNotes = (order.creditNotes && order.creditNotes.length > 0)
         ? order.creditNotes
         : (order.clientInvoices || []).filter(cinv => cinv.is_credit || String(cinv.id).toUpperCase().startsWith('CN-') || String(cinv.id).toUpperCase().startsWith('CR-'));
 
       creditNotes.forEach(cn => {
         const cnRef = cn.id || cn.ref;
+        if (String(cnRef || '').toUpperCase().includes('[LEGACY]')) return;
         const cnDate = cn.date || order.invoiceDate;
-        const cnVal = Math.abs(Number(cn.totalValue ?? cn.value ?? cn.amount ?? ((cn.items || []).reduce((s, it) => s + ((Number(it.qtyAction) || Number(it.qty) || 0) * (Number(it.rate) || Number(it.unitPrice) || Number(it.unitRetail) || Number(it.unitCost) || 0)), 0))) || 0);
-        if (cnRef && cnDate && cnVal > 0) {
+        
+        // Compute net credit value: Negative totalValue is a credit (reduces sales); Positive is a fee (adds to sales)
+        let netCnVal = 0;
+        if (cn.totalValue !== undefined && cn.totalValue !== null && !isNaN(Number(cn.totalValue))) {
+          netCnVal = Number(cn.totalValue);
+        } else if (cn.value !== undefined && cn.value !== null && !isNaN(Number(cn.value))) {
+          netCnVal = Number(cn.value);
+        } else if (cn.amount !== undefined && cn.amount !== null && !isNaN(Number(cn.amount))) {
+          netCnVal = Number(cn.amount);
+        } else if (Array.isArray(cn.items) && cn.items.length > 0) {
+          netCnVal = cn.items.reduce((s, it) => {
+            const itemQty = Number(it.qtyAction) || Number(it.qty) || 0;
+            const itemPrice = Number(it.rate) || Number(it.unitPrice) || Number(it.unitRetail) || Number(it.unitCost) || 0;
+            return s + (itemQty * itemPrice);
+          }, 0);
+        }
+
+        if (cnRef && cnDate && Math.abs(netCnVal) > 0.001) {
           const parsedDate = parseDateString(cnDate);
           if (parsedDate) {
             const { monthName: invMonth, year: invYear, monthIdx: invMonthIdx } = parsedDate;
             const invFy = getFinancialYearForPeriod(invMonthIdx, invYear);
 
+            // Note: netCnVal is signed (e.g. -46574.09 for credits, +644.06 for fee net balance)
+            // Adding signed netCnVal automatically subtracts credits and adds handling fees
             if (invMonth === selectedMonthName && invYear === selectedYear) {
-              dynamicInvoiced[div].actual -= cnVal;
+              dynamicInvoiced[div].actual += netCnVal;
             }
             if (invFy === currentFinancialYear) {
               const invSeqVal = getFyMonthSequenceVal(invMonthIdx);
               if (invSeqVal <= selectedSeqIndex) {
-                dynamicInvoiced[div].ytdActual -= cnVal;
+                dynamicInvoiced[div].ytdActual += netCnVal;
               }
-              dynamicAnnual[div].invoiced -= cnVal;
+              dynamicAnnual[div].invoiced += netCnVal;
             }
           }
         }
@@ -861,17 +903,20 @@ export default function ReportsPage() {
         const itemsList = order.itemsList || [];
         const orderValue = order.value || itemsList.reduce((s, item) => s + ((item.qty || 0) * (item.unitRetail || 0)), 0);
         
-        // Compute precise actual invoiced value from line items / invoice history
+        // Compute precise actual invoiced value from line items / invoice history (excluding [LEGACY])
         const invoicedValue = itemsList.reduce((s, item) => {
-          const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
+          const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory.filter(h => {
+            const refStr = String(h.id || h.ref || '').toUpperCase();
+            return !refStr.startsWith('CN-') && !refStr.startsWith('CR-') && !refStr.includes('[LEGACY]');
+          }) : [];
           if (iHist.length > 0) {
             return s + iHist.reduce((hSum, h) => hSum + ((Number(h.qty) || 0) * (Number(h.rate) || Number(item.unitRetail) || 0)), 0);
           }
-          if (item.invoiceRef && item.invoiceDate) {
+          if (item.invoiceRef && !String(item.invoiceRef).toUpperCase().includes('[LEGACY]') && item.invoiceDate) {
             return s + ((Number(item.invoiceQty) || Number(item.qty) || 0) * (Number(item.unitRetail) || 0));
           }
           return s;
-        }, 0) || (order.invoiceRef && order.invoiceDate ? orderValue : 0);
+        }, 0) || (order.invoiceRef && !String(order.invoiceRef).toUpperCase().includes('[LEGACY]') && order.invoiceDate ? orderValue : 0);
 
         const orderDateParsed = getOrderMonthAndYear(order, 'order');
         const orderFy = orderDateParsed ? getFinancialYearForPeriod(orderDateParsed.monthIdx, orderDateParsed.year) : null;
@@ -879,7 +924,10 @@ export default function ReportsPage() {
 
         // Sales Invoiced (Invoices - Credit Notes)
         if (type === 'invoiced') {
-          const clientInvoices = (order.clientInvoices || []).filter(cinv => !cinv.is_credit && !String(cinv.id).toUpperCase().startsWith('CN-') && !String(cinv.id).toUpperCase().startsWith('CR-'));
+          const clientInvoices = (order.clientInvoices || []).filter(cinv => {
+            const idStr = String(cinv.id || cinv.ref || '').toUpperCase();
+            return !cinv.is_credit && !idStr.startsWith('CN-') && !idStr.startsWith('CR-') && !idStr.includes('[LEGACY]');
+          });
           const creditNotes = (order.creditNotes && order.creditNotes.length > 0)
             ? order.creditNotes
             : (order.clientInvoices || []).filter(cinv => cinv.is_credit || String(cinv.id).toUpperCase().startsWith('CN-') || String(cinv.id).toUpperCase().startsWith('CR-'));
@@ -888,6 +936,7 @@ export default function ReportsPage() {
           if (clientInvoices.length > 0) {
             clientInvoices.forEach(cinv => {
               const cRef = cinv.id || cinv.ref || order.invoiceRef;
+              if (String(cRef || '').toUpperCase().includes('[LEGACY]')) return;
               const cDate = cinv.date || order.invoiceDate;
               const cVal = Number(cinv.totalValue ?? cinv.value ?? cinv.amount ?? ((cinv.items || []).reduce((s, it) => s + ((Number(it.qtyAction) || Number(it.qty) || 0) * (Number(it.rate) || Number(it.unitPrice) || Number(it.unitRetail) || Number(it.unitCost) || 0)), 0))) || 0;
               if (cRef && cDate && cVal > 0) {
@@ -909,10 +958,14 @@ export default function ReportsPage() {
             });
           } else {
             itemsList.forEach(item => {
-              const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory.filter(h => !String(h.id || h.ref).toUpperCase().startsWith('CN-') && !String(h.id || h.ref).toUpperCase().startsWith('CR-')) : [];
+              const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory.filter(h => {
+                const refStr = String(h.id || h.ref || '').toUpperCase();
+                return !refStr.startsWith('CN-') && !refStr.startsWith('CR-') && !refStr.includes('[LEGACY]');
+              }) : [];
               if (iHist.length > 0) {
                 iHist.forEach(h => {
                   const hRef = h.ref || item.invoiceRef;
+                  if (String(hRef || '').toUpperCase().includes('[LEGACY]')) return;
                   const hDate = h.date || item.invoiceDate;
                   const hVal = Number(h.total ?? ((Number(h.qty) || 0) * (Number(h.rate) || Number(h.unitPrice) || Number(item.unitRetail) || 0))) || 0;
                   if (hRef && hDate && hVal > 0) {
@@ -946,7 +999,7 @@ export default function ReportsPage() {
                     }
                   }
                 });
-              } else if (item.invoiceRef && item.invoiceDate && Number(item.invoiceQty) > 0) {
+              } else if (item.invoiceRef && !String(item.invoiceRef).toUpperCase().includes('[LEGACY]') && item.invoiceDate && Number(item.invoiceQty) > 0) {
                 const itemVal = (Number(item.invoiceQty) || 0) * (Number(item.unitRetail) || 0);
                 if (itemVal > 0) {
                   const parsedDate = parseDateString(item.invoiceDate);
@@ -983,7 +1036,7 @@ export default function ReportsPage() {
 
             if (Object.keys(invoiceGroupsMap).length > 0) {
               Object.values(invoiceGroupsMap).forEach(g => list.push(g));
-            } else if (order.invoiceRef && order.invoiceDate) {
+            } else if (order.invoiceRef && !String(order.invoiceRef).toUpperCase().includes('[LEGACY]') && order.invoiceDate) {
               const parsedDate = parseDateString(order.invoiceDate);
               if (parsedDate) {
                 const { monthName: invMonth, year: invYear, monthIdx: invMonthIdx } = parsedDate;
@@ -1004,9 +1057,26 @@ export default function ReportsPage() {
           // Process and include Credit Notes in drilldown
           creditNotes.forEach(cn => {
             const cnRef = cn.id || cn.ref;
+            if (String(cnRef || '').toUpperCase().includes('[LEGACY]')) return;
             const cnDate = cn.date || order.invoiceDate;
-            const cnVal = Math.abs(Number(cn.totalValue ?? cn.value ?? cn.amount ?? ((cn.items || []).reduce((s, it) => s + ((Number(it.qtyAction) || Number(it.qty) || 0) * (Number(it.rate) || Number(it.unitPrice) || Number(it.unitRetail) || Number(it.unitCost) || 0)), 0))) || 0);
-            if (cnRef && cnDate && cnVal > 0) {
+            
+            // Compute signed net credit value
+            let netCnVal = 0;
+            if (cn.totalValue !== undefined && cn.totalValue !== null && !isNaN(Number(cn.totalValue))) {
+              netCnVal = Number(cn.totalValue);
+            } else if (cn.value !== undefined && cn.value !== null && !isNaN(Number(cn.value))) {
+              netCnVal = Number(cn.value);
+            } else if (cn.amount !== undefined && cn.amount !== null && !isNaN(Number(cn.amount))) {
+              netCnVal = Number(cn.amount);
+            } else if (Array.isArray(cn.items) && cn.items.length > 0) {
+              netCnVal = cn.items.reduce((s, it) => {
+                const itemQty = Number(it.qtyAction) || Number(it.qty) || 0;
+                const itemPrice = Number(it.rate) || Number(it.unitPrice) || Number(it.unitRetail) || Number(it.unitCost) || 0;
+                return s + (itemQty * itemPrice);
+              }, 0);
+            }
+
+            if (cnRef && cnDate && Math.abs(netCnVal) > 0.001) {
               const parsedDate = parseDateString(cnDate);
               if (parsedDate) {
                 const { monthName: invMonth, year: invYear, monthIdx: invMonthIdx } = parsedDate;
@@ -1018,7 +1088,18 @@ export default function ReportsPage() {
                   if (invMonth === selectedMonthName && invYear === selectedYear) match = true;
                 }
                 if (match) {
-                  list.push({ projectName: proj.name, division: div, invoiceNo: cnRef, orderId: order.po_number || order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: cnDate, value: -cnVal, isCredit: true, docType: 'Credit Note' });
+                  const isNetCredit = netCnVal < 0;
+                  list.push({ 
+                    projectName: proj.name, 
+                    division: div, 
+                    invoiceNo: cnRef, 
+                    orderId: order.po_number || order.id || 'N/A', 
+                    quote_name: order.quote_name || 'General Spec', 
+                    date: cnDate, 
+                    value: netCnVal, 
+                    isCredit: isNetCredit, 
+                    docType: isNetCredit ? 'Credit Note' : 'CN Service / Fee' 
+                  });
                 }
               }
             }
