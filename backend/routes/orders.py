@@ -559,8 +559,6 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
         norm = re.sub(r'[^A-Za-z0-9]', '', str(a.sku or "")).upper()
 
         if a_type == "INVOICE":
-            if str(a.source_doc_no or "").upper().startswith(("CN-", "CR-")):
-                continue
             if a.order_item_id and str(a.order_item_id) in item_ids:
                 inv_allocs_by_item_id.setdefault(str(a.order_item_id), []).append(a)
             if norm:
@@ -765,10 +763,13 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
             dyn_inv_refs = set()
             dyn_inv_date = None
             for a in unique_allocs:
-                q_val = float(a.allocated_qty or 0.0)
+                raw_q = float(a.allocated_qty or 0.0)
+                is_cn = str(a.source_doc_no or '').upper().startswith(('CN-', 'CR-'))
+                # Credit notes represent negative quantity/value adjustments
+                effective_q = -abs(raw_q) if is_cn else abs(raw_q)
                 c_val = float(a.unit_cost or item.unit_retail or 0.0)
-                dyn_inv_qty += int(round(q_val))
-                dyn_inv_val += q_val * c_val
+                dyn_inv_qty += effective_q
+                dyn_inv_val += effective_q * c_val
                 if a.source_doc_no:
                     dyn_inv_refs.add(str(a.source_doc_no))
                 if a.doc_date:
@@ -777,16 +778,16 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
                     "id": a.source_doc_no,
                     "ref": a.source_doc_no,
                     "allocation_id": a.id,
-                    "qty": q_val,
+                    "qty": effective_q,
                     "unitPrice": c_val,
-                    "total": round(q_val * c_val, 2),
+                    "total": round(effective_q * c_val, 2),
                     "date": str(a.doc_date).split("T")[0] if a.doc_date else None,
                     "by": a.allocated_by_name or "Staff",
-                    "type": "Invoice"
+                    "type": "Credit Note" if is_cn else "Invoice"
                 })
             calc_inv_hist = dyn_inv_hist
-            calc_inv_qty = dyn_inv_qty
-            calc_inv_val = round(dyn_inv_val, 2)
+            calc_inv_qty = max(0, int(round(dyn_inv_qty)))
+            calc_inv_val = max(0.0, round(dyn_inv_val, 2))
             calc_inv_ref = "; ".join(sorted(dyn_inv_refs)) if dyn_inv_refs else None
             calc_inv_date = dyn_inv_date
         else:

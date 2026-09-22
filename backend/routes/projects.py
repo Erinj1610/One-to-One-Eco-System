@@ -727,7 +727,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                         alloc_by_sku_po.setdefault(norm_sku, []).append(a)
                     elif a.allocation_type == "GRN":
                         alloc_by_sku_grn.setdefault(norm_sku, []).append(a)
-                    elif a.allocation_type == "INVOICE" and not str(a.source_doc_no).upper().startswith(("CN-", "CR-")):
+                    elif a.allocation_type == "INVOICE":
                         alloc_by_sku_inv.setdefault(norm_sku, []).append(a)
 
         # Pre-load active payment allocations for live payment breakdown
@@ -1007,7 +1007,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
 
             item_inv_allocs = [
                 a for a in alloc_by_item_id.get(str(item.id), [])
-                if a.allocation_type == "INVOICE" and not str(a.source_doc_no).upper().startswith(("CN-", "CR-"))
+                if a.allocation_type == "INVOICE"
             ]
             if not item_inv_allocs and item_norm_skus:
                 for s in item_norm_skus:
@@ -1032,10 +1032,13 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 dyn_inv_refs = set()
                 dyn_inv_date = None
                 for a in unique_inv_allocs:
-                    q_val = float(a.allocated_qty or 0.0)
+                    raw_q = float(a.allocated_qty or 0.0)
+                    is_cn = str(a.source_doc_no or '').upper().startswith(('CN-', 'CR-'))
+                    # Credit notes represent negative quantity/value adjustments
+                    effective_q = -abs(raw_q) if is_cn else abs(raw_q)
                     c_val = float(a.unit_cost or item.unit_retail or 0.0)
-                    dyn_inv_qty += int(round(q_val))
-                    dyn_inv_val += q_val * c_val
+                    dyn_inv_qty += effective_q
+                    dyn_inv_val += effective_q * c_val
                     if a.source_doc_no:
                         dyn_inv_refs.add(str(a.source_doc_no))
                     if a.doc_date:
@@ -1044,18 +1047,18 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                         "id": a.source_doc_no,
                         "ref": a.source_doc_no,
                         "allocation_id": a.id,
-                        "qty": q_val,
+                        "qty": effective_q,
                         "unitPrice": c_val,
-                        "total": round(q_val * c_val, 2),
+                        "total": round(effective_q * c_val, 2),
                         "date": str(a.doc_date).split("T")[0] if a.doc_date else None,
                         "by": a.allocated_by_name or "Staff",
-                        "type": "Invoice"
+                        "type": "Credit Note" if is_cn else "Invoice"
                     })
                 inv_hist = dynamic_inv_hist
-                inv_qty = dyn_inv_qty
+                inv_qty = max(0, int(round(dyn_inv_qty)))
                 inv_ref = "; ".join(sorted(dyn_inv_refs)) if dyn_inv_refs else ""
                 inv_date = dyn_inv_date
-                inv_val = round(dyn_inv_val, 2)
+                inv_val = max(0.0, round(dyn_inv_val, 2))
             else:
                 inv_hist = []
                 inv_qty = 0
