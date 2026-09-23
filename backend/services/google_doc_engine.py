@@ -983,14 +983,18 @@ def merge_google_sheet(
                     base_h = exact_row_height_by_index[item_r_idx]
 
             d_txt = str(it_obj.get('description') or it_obj.get('name') or '').strip()
+            # Calculate wrapped lines: Description column typically fits ~45-55 chars per line
+            # Account for explicit newlines (\n) or natural text wrapping
             if '\n' in d_txt:
-                lines = 1 + d_txt.count('\n')
-                return base_h * lines
-            if len(d_txt) > 130:
-                return base_h * 3
-            elif len(d_txt) > 65:
-                return base_h * 2
-            return base_h
+                line_count = 1 + d_txt.count('\n')
+                return int(base_h + max(0, line_count - 1) * 16)
+            elif len(d_txt) > 130:
+                # 3 lines
+                return int(base_h + 30)
+            elif len(d_txt) > 55:
+                # 2 lines
+                return int(base_h + 15)
+            return int(base_h)
 
         def get_single_row_height_px(directive_str):
             orig_r = next((r_i for r_i, d, _ in dynamic_template_rows if d == directive_str), None)
@@ -1043,11 +1047,12 @@ def merge_google_sheet(
                 {**tokens, '_orig_src_r': orig_r_i, '_is_continuation_header': True}
             ))
 
-        # Standard A4 printable height is ~1020-1060px with 0.25in margins.
-        # Leave a safety margin of 60px so table headers never split or bleed onto page ends.
-        PAGE_TOTAL_PRINT_PX = 1000.0
-        PAGE_1_ITEM_BUDGET_PX = max(300.0, PAGE_TOTAL_PRINT_PX - top_fixed_px - 40.0)
-        SUBSEQUENT_PAGE_ITEM_BUDGET_PX = PAGE_TOTAL_PRINT_PX - 40.0
+        # Standard A4 printable height at 96 DPI: 11.69in * 96 = 1122px.
+        # With 0.25in margins top and bottom (48px total), available height is ~1074px.
+        # Use 1060px with a 15px safety margin for reliable full-page utilization.
+        PAGE_TOTAL_PRINT_PX = 1060.0
+        PAGE_1_ITEM_BUDGET_PX = max(300.0, PAGE_TOTAL_PRINT_PX - top_fixed_px - 15.0)
+        SUBSEQUENT_PAGE_ITEM_BUDGET_PX = PAGE_TOTAL_PRINT_PX - 15.0
 
         current_page_capacity_px = PAGE_1_ITEM_BUDGET_PX
         px_on_current_page = 0.0
@@ -1213,7 +1218,7 @@ def merge_google_sheet(
                             generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, carry_fl_ctx))
                             continuation_headers_h += get_single_row_height_px('[TABLE_HEADER]')
 
-                        current_page_capacity_px = max(200.0, PAGE_TOTAL_PRINT_PX - continuation_headers_h - 40.0)
+                        current_page_capacity_px = max(200.0, PAGE_TOTAL_PRINT_PX - continuation_headers_h - 15.0)
 
                     # Append all rows of the card block
                     card_ctx = build_item_ctx(item_obj)
@@ -1251,7 +1256,7 @@ def merge_google_sheet(
                             generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, carry_fl_ctx))
                             continuation_headers_h += get_single_row_height_px('[TABLE_HEADER]')
 
-                        current_page_capacity_px = max(200.0, PAGE_TOTAL_PRINT_PX - continuation_headers_h - 40.0)
+                        current_page_capacity_px = max(200.0, PAGE_TOTAL_PRINT_PX - continuation_headers_h - 15.0)
 
                     generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, build_item_ctx(item_obj)))
                     px_on_current_page += it_height_px
@@ -1316,7 +1321,7 @@ def merge_google_sheet(
                     for c_dir, c_cells, c_ctx in continuation_top_fixed_rows:
                         generated_dynamic_rows.append((c_dir, c_cells, dict(c_ctx)))
 
-                    current_page_capacity_px = max(200.0, PAGE_TOTAL_PRINT_PX - continuation_headers_h - 40.0)
+                    current_page_capacity_px = max(200.0, PAGE_TOTAL_PRINT_PX - continuation_headers_h - 15.0)
 
                 if fl_header_cells:
                     generated_dynamic_rows.append(('[FLOOR_HEADER]', fl_header_cells, fl_ctx))
@@ -1355,7 +1360,7 @@ def merge_google_sheet(
                             generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, carry_fl_ctx))
                             continuation_headers_h += get_single_row_height_px('[TABLE_HEADER]')
 
-                        current_page_capacity_px = max(200.0, PAGE_TOTAL_PRINT_PX - continuation_headers_h - 40.0)
+                        current_page_capacity_px = max(200.0, PAGE_TOTAL_PRINT_PX - continuation_headers_h - 15.0)
 
                     if area_row_cells:
                         generated_dynamic_rows.append(('[AREA_ROW]', area_row_cells, ar_ctx))
@@ -1389,7 +1394,7 @@ def merge_google_sheet(
                                     generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, carry_fl_ctx))
                                     continuation_headers_h += get_single_row_height_px('[TABLE_HEADER]')
 
-                                current_page_capacity_px = max(200.0, PAGE_TOTAL_PRINT_PX - continuation_headers_h - 40.0)
+                                current_page_capacity_px = max(200.0, PAGE_TOTAL_PRINT_PX - continuation_headers_h - 15.0)
 
                             item_ctx = {**ar_ctx}
                             for k, v in item_obj.items():
