@@ -1175,6 +1175,11 @@ def merge_google_sheet(
                         item_ctx[spaced_k.title()] = val_str
                 return item_ctx
 
+            # Ensure Page 1 starts with the table header if defined
+            if table_head_cells:
+                generated_dynamic_rows.append(('[TABLE_HEADER]', table_head_cells, {}))
+                px_on_current_page += get_single_row_height_px('[TABLE_HEADER]')
+
             if item_block_template_rows:
                 # Multi-row card layout (e.g. 5-row lighting schedule card)
                 active_floor = None
@@ -2014,6 +2019,25 @@ def merge_google_sheet(
                             'mergeType': 'MERGE_ALL'
                         }
                     })
+
+                # Re-apply multi-row merges if this continuation header row has them
+                if ctx and ctx.get('_is_continuation_header') and orig_src_r is not None:
+                    for m in orig_merges:
+                        msr = m.get('startRowIndex')
+                        mer = m.get('endRowIndex', msr + 1 if msr is not None else 0)
+                        if msr == orig_src_r and mer > msr + 1:
+                            grid_requests.append({
+                                'mergeCells': {
+                                    'range': {
+                                        'sheetId': temp_tab_gid,
+                                        'startRowIndex': actual_row_i,
+                                        'endRowIndex': actual_row_i + (mer - msr),
+                                        'startColumnIndex': m.get('startColumnIndex', 0),
+                                        'endColumnIndex': m.get('endColumnIndex', 1)
+                                    },
+                                    'mergeType': 'MERGE_ALL'
+                                }
+                            })
 
         # Apply multi-row card block merges (including vertical cell merges across card rows)
         if item_block_template_rows and card_block_merges:
