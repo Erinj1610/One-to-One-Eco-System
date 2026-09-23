@@ -728,6 +728,20 @@ def merge_google_sheet(
         grid_col_count = grid_props.get('columnCount', 26)
         max_col_count = min(grid_col_count, max([len(r_item.get('values', [])) for r_item in row_data] + [1]))
 
+        # Calculate total visible column width (excluding hidden Column A)
+        col_meta = grid_data.get('columnMetadata', [])
+        total_visible_width_px = 0
+        for col_idx in range(1, max_col_count):
+            if col_idx < len(col_meta):
+                c_p = col_meta[col_idx] or {}
+                if not c_p.get('hiddenByUser') and not c_p.get('hiddenByFilter'):
+                    total_visible_width_px += c_p.get('pixelSize', 100)
+            else:
+                total_visible_width_px += 100
+        
+        # Fallback to standard A4 printable width (~746px at 96 DPI) if empty or minimal
+        total_visible_width_px = max(746, total_visible_width_px)
+
         # Helper to check if an item is a SPACER item
         def is_spacer_item(it):
             c_str = str(it.get('code') or it.get('make_code') or it.get('one_one_code') or it.get('sku') or '').strip().upper()
@@ -1047,12 +1061,25 @@ def merge_google_sheet(
                 {**tokens, '_orig_src_r': orig_r_i, '_is_continuation_header': True}
             ))
 
-        # Standard A4 printable height at 96 DPI: 11.69in * 96 = 1122px.
-        # With 0.25in margins top and bottom (48px total), available height is ~1074px.
-        # Use 1060px with a 15px safety margin for reliable full-page utilization.
-        PAGE_TOTAL_PRINT_PX = 1060.0
+        # Dynamic A4 page height budget in Google Sheets units:
+        # The PDF export specifies 'fitw=true', which scales the sheet width to fit the A4 printable width.
+        # A4 portrait printable dimensions with 0.25in margins:
+        # printable width = 8.27in - 0.50in = 7.77in (746px @ 96 DPI)
+        # printable height = 11.69in - 0.50in = 11.19in (1074px @ 96 DPI)
+        # Printable aspect ratio: 11.19 / 7.77 = 1.440154.
+        # Therefore, the unscaled sheet height fitting on one printed page is:
+        # sheet_page_height = total_visible_width_px * (11.19 / 7.77).
+        # We subtract 30px as a safety buffer against sub-pixel font/padding rounding.
+        A4_PRINTABLE_ASPECT_RATIO = 11.19 / 7.77
+        PAGE_TOTAL_PRINT_PX = max(1060.0, (total_visible_width_px * A4_PRINTABLE_ASPECT_RATIO) - 30.0)
         PAGE_1_ITEM_BUDGET_PX = max(300.0, PAGE_TOTAL_PRINT_PX - top_fixed_px - 15.0)
         SUBSEQUENT_PAGE_ITEM_BUDGET_PX = PAGE_TOTAL_PRINT_PX - 15.0
+        logger.info(
+            f"PAGINATION SETUP: visible_width_px={total_visible_width_px}, "
+            f"PAGE_TOTAL_PRINT_PX={PAGE_TOTAL_PRINT_PX:.1f}, "
+            f"top_fixed_px={top_fixed_px}, continuation_top_fixed_px={continuation_top_fixed_px}, "
+            f"PAGE_1_ITEM_BUDGET_PX={PAGE_1_ITEM_BUDGET_PX:.1f}"
+        )
 
         current_page_capacity_px = PAGE_1_ITEM_BUDGET_PX
         px_on_current_page = 0.0
