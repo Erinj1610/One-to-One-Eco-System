@@ -1309,8 +1309,8 @@ def merge_google_sheet(
 
                 fl_h_px = get_single_row_height_px('[FLOOR_HEADER]') + get_single_row_height_px('[FLOOR_TABLE_HEAD]')
 
-                # If starting a new floor near bottom of page, start fresh on next page
-                if px_on_current_page > 0 and (px_on_current_page + fl_h_px + 60.0 > current_page_capacity_px):
+                # Flow floors and areas naturally; only break when floor header itself doesn't fit on the page
+                if px_on_current_page > 0 and (px_on_current_page + fl_h_px > current_page_capacity_px):
                     rem_pad_px = max(1, int(current_page_capacity_px - px_on_current_page))
                     target_c = fl_header_cells or item_row_cells
                     generated_dynamic_rows.append(('[ITEM_ROW]', target_c, {'_is_spacer': True, '_is_pad': True, '_spacer_height': rem_pad_px}))
@@ -1336,8 +1336,8 @@ def merge_google_sheet(
                     ar_ctx = {**fl_ctx, 'area.name': ar_name, 'area': ar_name, 'SUBTOTAL': ar_subtotal_str}
                     ar_h_px = get_single_row_height_px('[AREA_ROW]') + get_single_row_height_px('[AREA_TABLE_HEAD]')
 
-                    # Check page overflow before adding area/items
-                    if px_on_current_page + ar_h_px + 40.0 > current_page_capacity_px and px_on_current_page > 0:
+                    # Only break page if the area header itself doesn't fit on the page
+                    if px_on_current_page + ar_h_px > current_page_capacity_px and px_on_current_page > 0:
                         rem_pad_px = max(1, int(current_page_capacity_px - px_on_current_page))
                         target_c = area_row_cells or item_row_cells
                         generated_dynamic_rows.append(('[ITEM_ROW]', target_c, {'_is_spacer': True, '_is_pad': True, '_spacer_height': rem_pad_px}))
@@ -2038,7 +2038,7 @@ def merge_google_sheet(
                                         'startRowIndex': actual_row_i,
                                         'endRowIndex': actual_row_i + (mer - msr),
                                         'startColumnIndex': m.get('startColumnIndex', 0),
-                                        'endColumnIndex': m.get('endColumnIndex', 1)
+                                        'endColumnIndex': m.get('endColumnIndex', max_col_count)
                                     },
                                     'mergeType': 'MERGE_ALL'
                                 }
