@@ -1001,6 +1001,48 @@ def merge_google_sheet(
         # Calculate initial top fixed rows pixel height
         top_fixed_px = sum(exact_row_height_by_index.get(r_i, 24) for r_i, _, _, _ in top_fixed)
 
+        # Determine if order has active discount > 0%
+        has_discount = False
+        if 'orderDiscount' in tokens:
+            has_discount = safe_float(tokens.get('orderDiscount', 0)) > 0
+        elif 'DISCOUNT_PERCENT' in tokens:
+            has_discount = safe_float(str(tokens.get('DISCOUNT_PERCENT', '0')).replace('%', '').strip()) > 0
+        elif 'DISCOUNT_AMOUNT' in tokens:
+            d_val_str = str(tokens.get('DISCOUNT_AMOUNT', '0')).replace('R', '').replace(',', '').strip()
+            has_discount = safe_float(d_val_str) > 0
+        elif 'DISCOUNT' in tokens:
+            d_val_str = str(tokens.get('DISCOUNT', '0')).replace('R', '').replace(',', '').strip()
+            has_discount = safe_float(d_val_str) > 0
+
+        def is_discount_row(norm_dir, cell_objs):
+            if norm_dir in ('[DISCOUNT_ROW]', '[DISCOUNT_HEAD]', '[DISCOUNT_HEADER]', '[IF_DISCOUNT]', '[DISCOUNT]'):
+                return True
+            for c in (cell_objs or []):
+                u_val = c.get('userEnteredValue', {})
+                f_val = str(c.get('formattedValue', '') or u_val.get('stringValue', '')).strip()
+                if not f_val:
+                    continue
+                f_upper = f_val.upper()
+                if '{{DISCOUNT' in f_upper or '{?DISCOUNT' in f_upper:
+                    return True
+                if 'DISCOUNT :' in f_upper or 'DISCOUNT:' in f_upper or 'DISCOUNT (' in f_upper:
+                    return True
+            return False
+
+        # Build continuation top_fixed rows and their combined pixel height
+        continuation_top_fixed_rows = []
+        continuation_top_fixed_px = 0
+        for orig_r_i, norm_dir, cell_objs, _ in top_fixed:
+            if not has_discount and is_discount_row(norm_dir, cell_objs):
+                continue
+            r_h = exact_row_height_by_index.get(orig_r_i, 24)
+            continuation_top_fixed_px += r_h
+            continuation_top_fixed_rows.append((
+                norm_dir,
+                cell_objs,
+                {**tokens, '_orig_src_r': orig_r_i, '_is_continuation_header': True}
+            ))
+
         # Standard A4 printable height is ~1020-1060px with 0.25in margins.
         # Leave a safety margin of 60px so table headers never split or bleed onto page ends.
         PAGE_TOTAL_PRINT_PX = 1000.0
