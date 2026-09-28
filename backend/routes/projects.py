@@ -1315,9 +1315,21 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                     base_unit_cost = float(a.unit_cost or it_meta.get("unit_price_excl", 0.0))
                     effective_unit_cost = base_unit_cost * global_doc_disc_ratio
 
+                    # On Credit Notes:
+                    # If the ERP line total is already negative (or zero with a credit doc), it is a credit (-1.0).
+                    # Only if the ERP line total is explicitly positive (> 0) on a Credit Note does it act as a debit/charge offset (+1.0).
+                    raw_erp_total = it_meta.get("line_total_excl")
                     if is_credit_doc:
-                        line_multiplier = 1.0 if is_fee_line else -1.0
-                        item_qty_action = abs(a.allocated_qty) if is_fee_line else -abs(a.allocated_qty)
+                        if is_fee_line:
+                            if raw_erp_total is not None and raw_erp_total < 0:
+                                line_multiplier = -1.0
+                                item_qty_action = -abs(a.allocated_qty)
+                            else:
+                                line_multiplier = 1.0
+                                item_qty_action = abs(a.allocated_qty)
+                        else:
+                            line_multiplier = -1.0
+                            item_qty_action = -abs(a.allocated_qty)
                     else:
                         line_multiplier = 1.0
                         item_qty_action = a.allocated_qty

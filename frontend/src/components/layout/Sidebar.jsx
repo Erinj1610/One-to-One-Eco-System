@@ -148,11 +148,11 @@ export default function Sidebar({ isCollapsed, toggleCollapse }) {
               width: '7px',
               height: '7px',
               borderRadius: '50%',
-              background: (typeof window !== 'undefined' && (window.location.hostname === 'ejportal.world' || window.location.hostname === 'www.ejportal.world' || window.location.hostname === 'portal.one-to-one.world')) ? '#10b981' : '#f59e0b',
-              boxShadow: (typeof window !== 'undefined' && (window.location.hostname === 'ejportal.world' || window.location.hostname === 'www.ejportal.world' || window.location.hostname === 'portal.one-to-one.world')) ? '0 0 6px rgba(16, 185, 129, 0.6)' : '0 0 6px rgba(245, 158, 11, 0.6)'
+              background: (typeof window !== 'undefined' && (window.location.hostname === 'ejportal.vercel.app' || window.location.hostname === 'ejportal.world' || window.location.hostname === 'www.ejportal.world' || window.location.hostname === 'portal.one-to-one.world' || (!window.location.hostname.includes('staging') && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')))) ? '#10b981' : '#f59e0b',
+              boxShadow: (typeof window !== 'undefined' && (window.location.hostname === 'ejportal.vercel.app' || window.location.hostname === 'ejportal.world' || window.location.hostname === 'www.ejportal.world' || window.location.hostname === 'portal.one-to-one.world' || (!window.location.hostname.includes('staging') && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')))) ? '0 0 6px rgba(16, 185, 129, 0.6)' : '0 0 6px rgba(245, 158, 11, 0.6)'
             }} />
             <span style={{ fontWeight: 600 }}>
-              {(typeof window !== 'undefined' && (window.location.hostname === 'ejportal.world' || window.location.hostname === 'www.ejportal.world' || window.location.hostname === 'portal.one-to-one.world')) ? 'Live Production' : 'Staging Playground'}
+              {(typeof window !== 'undefined' && (window.location.hostname === 'ejportal.vercel.app' || window.location.hostname === 'ejportal.world' || window.location.hostname === 'www.ejportal.world' || window.location.hostname === 'portal.one-to-one.world' || (!window.location.hostname.includes('staging') && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')))) ? 'Live Production' : 'Staging Playground'}
             </span>
           </div>
         )}
