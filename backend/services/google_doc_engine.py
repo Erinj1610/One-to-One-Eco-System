@@ -562,8 +562,22 @@ def merge_google_sheet(
         except Exception as working_err:
             logger.warn(f"Re-fetch GID from working sheet notice: {working_err}")
 
-    # Duplicate target tab into a temporary working tab for PDF rendering
-    dup_title = f"PDF_Render_{int(time.time() * 1000)}"
+    # Duplicate target tab into a dedicated preview tab so the user can inspect layout & row heights in Google Sheets
+    clean_tag = re.sub(r'[^a-zA-Z0-9_]', '', (sheet_name or 'Output').replace(' ', '_'))
+    dup_title = f"Preview_{clean_tag}"
+    
+    # Remove any existing preview tab with the same name to prevent accumulation
+    try:
+        working_sp_now = sheets_service.spreadsheets().get(spreadsheetId=working_spreadsheet_id).execute()
+        existing_tabs = {ws['properties']['title']: ws['properties']['sheetId'] for ws in working_sp_now.get('sheets', [])}
+        if dup_title in existing_tabs:
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=working_spreadsheet_id,
+                body={'requests': [{'deleteSheet': {'sheetId': existing_tabs[dup_title]}}]}
+            ).execute()
+    except Exception as cleanup_prior:
+        logger.debug(f"Prior tab check notice: {cleanup_prior}")
+
     dup_res = sheets_service.spreadsheets().batchUpdate(
         spreadsheetId=working_spreadsheet_id,
         body={
@@ -727,20 +741,6 @@ def merge_google_sheet(
         grid_props = sheet_props.get('gridProperties', {})
         grid_col_count = grid_props.get('columnCount', 26)
         max_col_count = min(grid_col_count, max([len(r_item.get('values', [])) for r_item in row_data] + [1]))
-
-        # Calculate total visible column width (excluding hidden Column A)
-        col_meta = grid_data.get('columnMetadata', [])
-        total_visible_width_px = 0
-        for col_idx in range(1, max_col_count):
-            if col_idx < len(col_meta):
-                c_p = col_meta[col_idx] or {}
-                if not c_p.get('hiddenByUser') and not c_p.get('hiddenByFilter'):
-                    total_visible_width_px += c_p.get('pixelSize', 100)
-            else:
-                total_visible_width_px += 100
-        
-        # Fallback to standard A4 printable width (~746px at 96 DPI) if empty or minimal
-        total_visible_width_px = max(746, total_visible_width_px)
 
         # Helper to check if an item is a SPACER item
         def is_spacer_item(it):
@@ -1061,22 +1061,14 @@ def merge_google_sheet(
                 {**tokens, '_orig_src_r': orig_r_i, '_is_continuation_header': True}
             ))
 
-        # Dynamic A4 page height budget in Google Sheets units:
-        # The PDF export specifies 'fitw=true', which scales the sheet width to fit the A4 printable width.
-        # A4 portrait printable dimensions with 0.25in margins:
-        # printable width = 8.27in - 0.50in = 7.77in (746px @ 96 DPI)
-        # printable height = 11.69in - 0.50in = 11.19in (1074px @ 96 DPI)
-        # Printable aspect ratio: 11.19 / 7.77 = 1.440154.
-        # Therefore, the unscaled sheet height fitting on one printed page is:
-        # sheet_page_height = total_visible_width_px * (11.19 / 7.77).
-        # We subtract 30px as a safety buffer against sub-pixel font/padding rounding.
-        A4_PRINTABLE_ASPECT_RATIO = 11.19 / 7.77
-        PAGE_TOTAL_PRINT_PX = max(1060.0, (total_visible_width_px * A4_PRINTABLE_ASPECT_RATIO) - 30.0)
+        # Standard A4 printable height at 96 DPI: 11.69in * 96 = 1122px.
+        # With 0.25in margins top and bottom (48px total), available printable height is ~1074px.
+        # We use 1060px (leaving 14px safety margin for reliable full-page utilization without spilling).
+        PAGE_TOTAL_PRINT_PX = 1060.0
         PAGE_1_ITEM_BUDGET_PX = max(300.0, PAGE_TOTAL_PRINT_PX - top_fixed_px - 15.0)
         SUBSEQUENT_PAGE_ITEM_BUDGET_PX = PAGE_TOTAL_PRINT_PX - 15.0
         logger.info(
-            f"PAGINATION SETUP: visible_width_px={total_visible_width_px}, "
-            f"PAGE_TOTAL_PRINT_PX={PAGE_TOTAL_PRINT_PX:.1f}, "
+            f"PAGINATION SETUP: PAGE_TOTAL_PRINT_PX={PAGE_TOTAL_PRINT_PX:.1f}, "
             f"top_fixed_px={top_fixed_px}, continuation_top_fixed_px={continuation_top_fixed_px}, "
             f"PAGE_1_ITEM_BUDGET_PX={PAGE_1_ITEM_BUDGET_PX:.1f}"
         )
@@ -2251,13 +2243,8 @@ def merge_google_sheet(
         except Exception as vault_err:
             logger.error(f"Error archiving PDF in Drive Vault: {vault_err}")
 
-    # Clean up temporary tab so sheet tabs do not accumulate
-    try:
-        sheets_service.spreadsheets().batchUpdate(
-            spreadsheetId=working_spreadsheet_id,
-            body={'requests': [{'deleteSheet': {'sheetId': temp_tab_gid}}]}
-        ).execute()
-    except Exception as cleanup_err:
-        logger.debug(f"Temporary sheet tab cleanup notice: {cleanup_err}")
+    # Preserve the generated Google Sheet tab so the user can inspect exact rows, styling, and pixel sizes
+    sheet_tab_url = f"https://docs.google.com/spreadsheets/d/{working_spreadsheet_id}/edit#gid={temp_tab_gid}"
+    logger.info(f"Preserved Google Sheet tab '{dup_title}' (GID={temp_tab_gid}) at: {sheet_tab_url}")
 
-    return temp_pdf.name, working_spreadsheet_id, sheet_url
+    return temp_pdf.name, working_spreadsheet_id, sheet_tab_url
