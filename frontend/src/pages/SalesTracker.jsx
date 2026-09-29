@@ -948,57 +948,7 @@ export default function SalesTracker() {
   const [dateCompleted, setDateCompleted] = useState('');
   const [paymentResponse, setPaymentResponse] = useState('');
 
-  const { procPct, invPct, delPct } = useMemo(() => {
-    let totalQtyForProc = 0;
-    let totalProcQty = 0;
-    
-    let totalQtyForInv = 0;
-    let totalInvQty = 0;
-    
-    let totalQtyForDel = 0;
-    let totalDelQty = 0;
 
-    activeOrderItems.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
-      const q = Number(item.qty) || 0;
-      const isService = (item.itemType || item.item_type) === 'Service';
-      
-      const defaults = getItemDefaults(item);
-      const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : defaults.invoiceQty || 0;
-
-      if (isService) {
-        // Services only impact invoicing
-        totalQtyForInv += q;
-        totalInvQty += Number(invoiced) || 0;
-        return;
-      }
-
-      // Hardware impacts all three
-      totalQtyForProc += q;
-      totalQtyForInv += q;
-      totalQtyForDel += q;
-
-      const received = item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty || 0;
-      const delivered = item.deliveryQty !== undefined ? item.deliveryQty : defaults.deliveryQty || 0;
-      const stockStatus = item.stockStatus !== undefined ? item.stockStatus : defaults.stockStatus || '';
-      const stockOnHand = item.stockOnHand !== undefined ? item.stockOnHand : defaults.stockOnHand || 0;
-
-      const effectiveProc = stockStatus === 'All Stock on Hand' 
-        ? q 
-        : stockStatus === 'Partial Stock on Hand' 
-          ? Math.min(q, (Number(received) || 0) + (Number(stockOnHand) || 0))
-          : (Number(received) || 0);
-
-      totalProcQty += effectiveProc;
-      totalInvQty += Number(invoiced) || 0;
-      totalDelQty += Number(delivered) || 0;
-    });
-
-    const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
-    const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
-    const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
-
-    return { procPct, invPct, delPct };
-  }, [activeOrderItems]);
 
 
   // DOCUMENT SCRATCHPAD & LIVING LEDGER HISTORIC CONTAINER STATE
@@ -1190,12 +1140,19 @@ export default function SalesTracker() {
             // Credit notes with WILL_NOT_REINVOICE settle the item's billing obligation
             const itemCode = (item.code || '').trim().toUpperCase();
             const itemOneOne = (item.oneOneCode || '').trim().toUpperCase();
-            const creditedSettledQty = orderCreditNotes
+            const itemDesc = (item.description || '').trim().toLowerCase();
+            const creditedSettledQty = (orderCreditNotes || [])
               .filter(cn => cn.re_invoice_intent !== 'WILL_REINVOICE')
               .flatMap(cn => cn.items || [])
               .filter(it => {
+                if (it.re_invoice_intent === 'WILL_REINVOICE') return false;
                 const c = (it.code || '').trim().toUpperCase();
-                return c && (c === itemCode || (itemOneOne && c === itemOneOne));
+                const sku = (it.sku || '').trim().toUpperCase();
+                const codeMatch = (c && (c === itemCode || (itemOneOne && c === itemOneOne))) ||
+                                  (sku && (sku === itemCode || (itemOneOne && sku === itemOneOne)));
+                if (codeMatch) return true;
+                const itDesc = (it.description || '').trim().toLowerCase();
+                return itDesc && itemDesc && itDesc === itemDesc;
               })
               .reduce((sum, it) => sum + Math.abs(Number(it.qtyAction || it.qty || 0)), 0);
 
@@ -1528,6 +1485,79 @@ export default function SalesTracker() {
       })
     );
   }, [orderCreditNotes, activeOrderItems]);
+
+  const { procPct, invPct, delPct } = useMemo(() => {
+    let totalQtyForProc = 0;
+    let totalProcQty = 0;
+    
+    let totalQtyForInv = 0;
+    let totalInvQty = 0;
+    
+    let totalQtyForDel = 0;
+    let totalDelQty = 0;
+
+    activeOrderItems.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
+      const q = Number(item.qty) || 0;
+      const isService = (item.itemType || item.item_type) === 'Service';
+      
+      const defaults = getItemDefaults(item);
+      const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : defaults.invoiceQty || 0;
+
+      // Credit notes with WILL_NOT_REINVOICE settle the item's billing obligation
+      const itemCode = (item.code || '').trim().toUpperCase();
+      const itemOneOne = (item.oneOneCode || '').trim().toUpperCase();
+      const itemDesc = (item.description || '').trim().toLowerCase();
+      const creditedSettledQty = (orderCreditNotes || [])
+        .filter(cn => cn.re_invoice_intent !== 'WILL_REINVOICE')
+        .flatMap(cn => cn.items || [])
+        .filter(it => {
+          if (it.re_invoice_intent === 'WILL_REINVOICE') return false;
+          const c = (it.code || '').trim().toUpperCase();
+          const sku = (it.sku || '').trim().toUpperCase();
+          const codeMatch = (c && (c === itemCode || (itemOneOne && c === itemOneOne))) ||
+                            (sku && (sku === itemCode || (itemOneOne && sku === itemOneOne)));
+          if (codeMatch) return true;
+          const itDesc = (it.description || '').trim().toLowerCase();
+          return itDesc && itemDesc && itDesc === itemDesc;
+        })
+        .reduce((sum, it) => sum + Math.abs(Number(it.qtyAction || it.qty || 0)), 0);
+
+      const effectiveInvoiced = Math.min(q, (Number(invoiced) || 0) + creditedSettledQty);
+
+      if (isService) {
+        // Services only impact invoicing
+        totalQtyForInv += q;
+        totalInvQty += effectiveInvoiced;
+        return;
+      }
+
+      // Hardware impacts all three
+      totalQtyForProc += q;
+      totalQtyForInv += q;
+      totalQtyForDel += q;
+
+      const received = item.receivedQty !== undefined ? item.receivedQty : defaults.receivedQty || 0;
+      const delivered = item.deliveryQty !== undefined ? item.deliveryQty : defaults.deliveryQty || 0;
+      const stockStatus = item.stockStatus !== undefined ? item.stockStatus : defaults.stockStatus || '';
+      const stockOnHand = item.stockOnHand !== undefined ? item.stockOnHand : defaults.stockOnHand || 0;
+
+      const effectiveProc = stockStatus === 'All Stock on Hand' 
+        ? q 
+        : stockStatus === 'Partial Stock on Hand' 
+          ? Math.min(q, (Number(received) || 0) + (Number(stockOnHand) || 0))
+          : (Number(received) || 0);
+
+      totalProcQty += effectiveProc;
+      totalInvQty += effectiveInvoiced;
+      totalDelQty += Number(delivered) || 0;
+    });
+
+    const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
+    const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
+    const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
+
+    return { procPct, invPct, delPct };
+  }, [activeOrderItems, orderCreditNotes]);
 
   // Open the spreadsheet workspace
   const handleOpenWorkspace = (order) => {
@@ -4735,9 +4765,30 @@ export default function SalesTracker() {
                   const isService = (item.itemType || item.item_type) === 'Service';
                   const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : 0;
 
+                  // Credit notes with WILL_NOT_REINVOICE settle the item's billing obligation
+                  const itemCode = (item.code || '').trim().toUpperCase();
+                  const itemOneOne = (item.oneOneCode || '').trim().toUpperCase();
+                  const itemDesc = (item.description || '').trim().toLowerCase();
+                  const creditedSettledQty = (orderCreditNotes || [])
+                    .filter(cn => cn.re_invoice_intent !== 'WILL_REINVOICE')
+                    .flatMap(cn => cn.items || [])
+                    .filter(it => {
+                      if (it.re_invoice_intent === 'WILL_REINVOICE') return false;
+                      const c = (it.code || '').trim().toUpperCase();
+                      const sku = (it.sku || '').trim().toUpperCase();
+                      const codeMatch = (c && (c === itemCode || (itemOneOne && c === itemOneOne))) ||
+                                        (sku && (sku === itemCode || (itemOneOne && sku === itemOneOne)));
+                      if (codeMatch) return true;
+                      const itDesc = (it.description || '').trim().toLowerCase();
+                      return itDesc && itemDesc && itDesc === itemDesc;
+                    })
+                    .reduce((sum, it) => sum + Math.abs(Number(it.qtyAction || it.qty || 0)), 0);
+
+                  const effectiveInvoiced = Math.min(q, (Number(invoiced) || 0) + creditedSettledQty);
+
                   if (isService) {
                     totalQtyForInv += q;
-                    totalInvQty += Number(invoiced) || 0;
+                    totalInvQty += effectiveInvoiced;
                     return;
                   }
 
@@ -4757,7 +4808,7 @@ export default function SalesTracker() {
                       : (Number(received) || 0);
 
                   totalProcQty += effectiveProc;
-                  totalInvQty += Number(invoiced) || 0;
+                  totalInvQty += effectiveInvoiced;
                   totalDelQty += Number(delivered) || 0;
                 });
 
@@ -5458,12 +5509,19 @@ export default function SalesTracker() {
                                               const invQ = Number(item.invoiceQty) || 0;
                                               const itemCode = (item.code || '').trim().toUpperCase();
                                               const itemOneOne = (item.oneOneCode || '').trim().toUpperCase();
-                                              const credQ = orderCreditNotes
+                                              const itemDesc = (item.description || '').trim().toLowerCase();
+                                              const credQ = (orderCreditNotes || [])
                                                 .filter(cn => cn.re_invoice_intent !== 'WILL_REINVOICE')
                                                 .flatMap(cn => cn.items || [])
                                                 .filter(it => {
+                                                  if (it.re_invoice_intent === 'WILL_REINVOICE') return false;
                                                   const c = (it.code || '').trim().toUpperCase();
-                                                  return c && (c === itemCode || (itemOneOne && c === itemOneOne));
+                                                  const sku = (it.sku || '').trim().toUpperCase();
+                                                  const codeMatch = (c && (c === itemCode || (itemOneOne && c === itemOneOne))) ||
+                                                                    (sku && (sku === itemCode || (itemOneOne && sku === itemOneOne)));
+                                                  if (codeMatch) return true;
+                                                  const itDesc = (it.description || '').trim().toLowerCase();
+                                                  return itDesc && itemDesc && itDesc === itemDesc;
                                                 })
                                                 .reduce((sum, it) => sum + Math.abs(Number(it.qtyAction || it.qty || 0)), 0);
                                               const effInv = Math.min(q, invQ + credQ);
