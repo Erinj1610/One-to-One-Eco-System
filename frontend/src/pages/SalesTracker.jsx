@@ -243,7 +243,168 @@ export default function SalesTracker() {
     navigate(page, { state: { openDocId: docId, projectKey } });
   };
 
-  const renderDocLinks = (refStr, page, projectKey) => {
+  const handleOpenItemLedgerModal = (item, type, clickedToken) => {
+    if (!item) return;
+    const rawCode = (item.code || '').trim().toUpperCase();
+    const rawOneOne = (item.oneOneCode || '').trim().toUpperCase();
+    const rows = [];
+
+    if (type === 'invoicing') {
+      // 1. Invoices from item.invoiceHistory
+      const invHistory = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
+      if (invHistory.length > 0) {
+        invHistory.forEach(h => {
+          if (!h || !h.ref) return;
+          const q = Number(h.qty) || 0;
+          const price = Number(h.unitPrice ?? h.rate ?? item.unitRetail ?? 0);
+          const totalVal = (h.total !== undefined && h.total !== null) ? Number(h.total) : (q * price);
+          rows.push({
+            type: 'invoice',
+            typeLabel: 'Invoice',
+            ref: h.ref,
+            date: h.date || '—',
+            qty: q,
+            unitPrice: price,
+            total: totalVal,
+            page: '/invoices'
+          });
+        });
+      } else if (item.invoiceRef) {
+        // Fallback for flat invoiceRef string if invoiceHistory was not populated
+        const refs = item.invoiceRef.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+        refs.forEach(r => {
+          const isCN = r.toUpperCase().startsWith('CN-') || r.toUpperCase().startsWith('CR-');
+          if (!isCN && r.toUpperCase() !== '[LEGACY]') {
+            const q = Number(item.invoiceQty) || Number(item.qty) || 0;
+            const price = Number(item.unitRetail) || 0;
+            rows.push({
+              type: 'invoice',
+              typeLabel: 'Invoice',
+              ref: r,
+              date: item.invoiceDate || '—',
+              qty: q,
+              unitPrice: price,
+              total: Number(item.invoiceValue) || (q * price),
+              page: '/invoices'
+            });
+          }
+        });
+      }
+
+      // 2. Credit Notes from orderCreditNotes
+      (orderCreditNotes || []).forEach(cn => {
+        const cnItems = (cn.items || []).filter(it => {
+          const c = (it.code || it.sku || '').trim().toUpperCase();
+          return c && (c === rawCode || (rawOneOne && c === rawOneOne));
+        });
+        cnItems.forEach(it => {
+          const rawQ = it.qtyAction !== undefined ? it.qtyAction : (it.qty !== undefined ? it.qty : 1);
+          const absQ = Math.abs(Number(rawQ) || 1);
+          const unitPrice = Math.abs(Number(it.unitPrice || it.unitRetail || it.price || item.unitRetail || 0));
+          const totalVal = it.total !== undefined ? Math.abs(Number(it.total)) : (absQ * unitPrice);
+          rows.push({
+            type: 'credit_note',
+            typeLabel: 'Credit Note',
+            ref: cn.id,
+            date: String(cn.date || '').split('T')[0] || '—',
+            qty: -absQ,
+            unitPrice: unitPrice,
+            total: -totalVal,
+            re_invoice_intent: cn.re_invoice_intent,
+            page: '/invoices'
+          });
+        });
+      });
+    } else if (type === 'purchasing') {
+      const pHist = Array.isArray(item.purchaseHistory) ? item.purchaseHistory : [];
+      if (pHist.length > 0) {
+        pHist.forEach(h => {
+          if (!h || !h.ref) return;
+          const q = Number(h.qty) || 0;
+          const price = Number(h.unitPrice ?? h.rate ?? item.unitCost ?? 0);
+          rows.push({
+            type: 'po',
+            typeLabel: 'Purchase Order',
+            ref: h.ref,
+            date: h.date || '—',
+            qty: q,
+            unitPrice: price,
+            total: q * price,
+            supplier: h.supplier || item.supplier || '',
+            page: '/purchasing'
+          });
+        });
+      } else if (item.poRef) {
+        const refs = item.poRef.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+        refs.forEach(r => {
+          if (r.toUpperCase() !== '[LEGACY]') {
+            const q = Number(item.poQtyOrdered) || Number(item.qty) || 0;
+            const price = Number(item.unitCost) || 0;
+            rows.push({
+              type: 'po',
+              typeLabel: 'Purchase Order',
+              ref: r,
+              date: item.poDate || '—',
+              qty: q,
+              unitPrice: price,
+              total: q * price,
+              supplier: item.poSupplier || item.supplier || '',
+              page: '/purchasing'
+            });
+          }
+        });
+      }
+    } else if (type === 'receiving') {
+      const rHist = Array.isArray(item.receivingHistory) ? item.receivingHistory : [];
+      if (rHist.length > 0) {
+        rHist.forEach(h => {
+          if (!h || !h.ref) return;
+          const q = Number(h.qty) || 0;
+          const price = Number(item.unitCost) || 0;
+          rows.push({
+            type: 'grn',
+            typeLabel: 'Goods Received (GRN)',
+            ref: h.ref,
+            date: h.date || '—',
+            qty: q,
+            unitPrice: price,
+            total: q * price,
+            page: '/purchasing'
+          });
+        });
+      } else if (item.receivedRef) {
+        const refs = item.receivedRef.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+        refs.forEach(r => {
+          if (r.toUpperCase() !== '[LEGACY]') {
+            const q = Number(item.receivedQty) || 0;
+            const price = Number(item.unitCost) || 0;
+            rows.push({
+              type: 'grn',
+              typeLabel: 'Goods Received (GRN)',
+              ref: r,
+              date: item.receivedDate || '—',
+              qty: q,
+              unitPrice: price,
+              total: q * price,
+              page: '/purchasing'
+            });
+          }
+        });
+      }
+    }
+
+    // Sort chronologically if dates available
+    rows.sort((a, b) => (String(a.date) > String(b.date) ? 1 : -1));
+
+    setActiveItemLedgerModal({
+      item,
+      type, // 'invoicing' | 'purchasing' | 'receiving'
+      clickedToken,
+      transactions: rows
+    });
+  };
+
+  const renderDocLinks = (refStr, page, projectKey, item, type) => {
     if (!refStr) return '—';
     const tokens = refStr.split(/[;,]+/).map(t => t.trim()).filter(Boolean);
     if (tokens.length === 0) return '—';
@@ -284,17 +445,22 @@ export default function SalesTracker() {
                 fontFamily: 'monospace',
                 fontWeight: 700,
                 color: isCN ? 'var(--text-danger)' : 'var(--text-info)',
-                background: isCN ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
-                borderRadius: isCN ? '4px' : '2px',
-                border: isCN ? '1px solid rgba(239, 68, 68, 0.3)' : 'none',
-                textDecoration: isCN ? 'none' : 'underline',
+                background: isCN ? 'rgba(239, 68, 68, 0.12)' : 'rgba(59, 130, 246, 0.08)',
+                borderRadius: '4px',
+                border: isCN ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(59, 130, 246, 0.25)',
+                textDecoration: 'none',
                 cursor: 'pointer',
                 height: 'auto',
                 minHeight: 0
               }}
+              title={`View ${tok} item transaction breakdown`}
               onClick={(e) => {
                 e.stopPropagation();
-                handleNavigateToDoc(page, tok, projectKey);
+                if (item && type) {
+                  handleOpenItemLedgerModal(item, type, tok);
+                } else {
+                  handleNavigateToDoc(page, tok, projectKey);
+                }
               }}
             >
               {isCN ? `🔴 ${tok}` : tok}
@@ -385,6 +551,9 @@ export default function SalesTracker() {
           stockStatuses: new Set(),
           deliveryCommentsList: [],
           deliveryHistories: [],
+          purchaseHistories: [],
+          receivingHistories: [],
+          invoiceHistories: [],
           is_credit: item.is_credit || item.isCredit || false,
           itemType: item.itemType || item.item_type || 'Hardware'
         };
@@ -474,6 +643,14 @@ export default function SalesTracker() {
       if (stockStatusVal) g.stockStatuses.add(stockStatusVal);
       if (deliveryCommentsVal) g.deliveryCommentsList.push(deliveryCommentsVal);
       if (deliveryHistoryVal && Array.isArray(deliveryHistoryVal)) g.deliveryHistories.push(...deliveryHistoryVal);
+
+      // Accumulate procurement & billing histories
+      const pHist = parseHist(item.purchaseHistory ?? item.purchase_history);
+      if (pHist.length > 0) g.purchaseHistories.push(...pHist);
+      const rHist = parseHist(item.receivingHistory ?? item.receiving_history);
+      if (rHist.length > 0) g.receivingHistories.push(...rHist);
+      const iHist = parseHist(item.invoiceHistory ?? item.invoice_history);
+      if (iHist.length > 0) g.invoiceHistories.push(...iHist);
     });
 
     return Object.values(groups).map(g => {
@@ -525,6 +702,9 @@ export default function SalesTracker() {
           return Object.values(historyMap);
         })(),
         area: g.areasSet.size > 0 ? Array.from(g.areasSet).join(', ') : '—',
+        purchaseHistory: g.purchaseHistories,
+        receivingHistory: g.receivingHistories,
+        invoiceHistory: g.invoiceHistories,
         is_credit: g.is_credit,
         itemType: g.itemType
       };
@@ -834,6 +1014,7 @@ export default function SalesTracker() {
   // States for Document-Centric Logger Modal
   const [waybillHistoryModalItem, setWaybillHistoryModalItem] = useState(null);
   const [planBreakdownModalItem, setPlanBreakdownModalItem] = useState(null);
+  const [activeItemLedgerModal, setActiveItemLedgerModal] = useState(null);
   const [showPaymentViewer, setShowPaymentViewer] = useState(false);
 
 
@@ -5361,7 +5542,7 @@ export default function SalesTracker() {
                                           />
                                         </td>
                                         <td style={{ padding: '8px', fontSize: '11.5px', fontFamily: 'monospace', color: 'var(--text-info)', fontWeight: 500 }}>
-                                          {renderDocLinks(poRefVal, '/purchasing', selectedProjectKey)}
+                                          {renderDocLinks(poRefVal, '/purchasing', selectedProjectKey, item, 'purchasing')}
                                         </td>
                                         <td style={{ padding: '8px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
                                           {poSupplierVal || '—'}
@@ -5379,7 +5560,7 @@ export default function SalesTracker() {
                                           {receivedQtyVal || 0}
                                         </td>
                                         <td style={{ padding: '8px', fontSize: '11.5px', fontFamily: 'monospace', color: 'var(--text-info)', fontWeight: 500 }}>
-                                          {renderDocLinks(item.receivedRef, '/purchasing', selectedProjectKey)}
+                                          {renderDocLinks(item.receivedRef, '/purchasing', selectedProjectKey, item, 'receiving')}
                                         </td>
                                         <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>
                                           {receivedDateVal || '—'}
@@ -5396,7 +5577,7 @@ export default function SalesTracker() {
                                           {invoiceQtyVal || 0}
                                         </td>
                                         <td style={{ padding: '8px', fontSize: '11.5px', fontFamily: 'monospace', color: 'var(--text-info)', fontWeight: 500 }}>
-                                          {renderDocLinks(invoiceRefVal, '/invoices', selectedProjectKey)}
+                                          {renderDocLinks(invoiceRefVal, '/invoices', selectedProjectKey, item, 'invoicing')}
                                         </td>
                                         <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>
                                           {invoiceDateVal || '—'}
@@ -6552,6 +6733,255 @@ export default function SalesTracker() {
           </div>
         </div>
       )}
+
+      {/* ITEM TRANSACTION LEDGER MODAL */}
+      {activeItemLedgerModal && (() => {
+        const { item, type, transactions } = activeItemLedgerModal;
+        const totalOrdered = Number(item.qty) || 0;
+        const netQty = transactions.reduce((sum, t) => sum + (Number(t.qty) || 0), 0);
+        const netTotalVal = transactions.reduce((sum, t) => sum + (Number(t.total) || 0), 0);
+        
+        let modalTitle = 'Item Transaction History';
+        let modalIcon = '📊';
+        let typeBadgeColor = '#3b82f6';
+        let typeBadgeBg = 'rgba(59, 130, 246, 0.12)';
+        
+        if (type === 'invoicing') {
+          modalTitle = 'Item Invoicing & Credit History';
+          modalIcon = '🧾';
+          typeBadgeColor = '#f59e0b';
+          typeBadgeBg = 'rgba(245, 158, 11, 0.12)';
+        } else if (type === 'purchasing') {
+          modalTitle = 'Item Procurement & PO History';
+          modalIcon = '📦';
+          typeBadgeColor = '#8b5cf6';
+          typeBadgeBg = 'rgba(139, 92, 246, 0.12)';
+        } else if (type === 'receiving') {
+          modalTitle = 'Item Goods Received (GRN) History';
+          modalIcon = '🚚';
+          typeBadgeColor = '#10b981';
+          typeBadgeBg = 'rgba(16, 185, 129, 0.12)';
+        }
+
+        const isFullySettled = totalOrdered > 0 && netQty >= totalOrdered;
+        const isCredited = transactions.some(t => t.qty < 0);
+
+        return (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(5px)',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            paddingTop: '6vh', paddingBottom: '6vh', overflowY: 'auto',
+            zIndex: 1250, animation: 'fadeIn 0.2s ease'
+          }}>
+            <div className="card" style={{ width: '100%', maxWidth: '780px', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-secondary)', boxShadow: '0 25px 35px -5px rgba(0, 0, 0, 0.55)', borderRadius: '12px' }}>
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', background: 'var(--bg-primary)', padding: '16px 22px', borderBottom: '1px solid var(--border)' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '18px' }}>{modalIcon}</span>
+                    <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {modalTitle}
+                    </h3>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '6px',
+                      color: typeBadgeColor,
+                      background: typeBadgeBg,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.4px'
+                    }}>
+                      {type}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+                    <span>1:1 Code: <strong style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>{item.oneOneCode || '—'}</strong></span>
+                    <span>│</span>
+                    <span>Supplier Code: <strong style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{item.code || 'CUSTOM'}</strong></span>
+                    <span>│</span>
+                    <span>Ordered: <strong style={{ color: 'var(--text-primary)' }}>{totalOrdered} units</strong></span>
+                  </div>
+                  {item.description && (
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '4px', maxWidth: '620px', lineHeight: 1.35 }}>
+                      {item.description}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ padding: '4px 8px', fontSize: '14px', lineHeight: 1 }}
+                  onClick={() => setActiveItemLedgerModal(null)}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Transactions List */}
+              <div style={{ padding: '18px 22px', maxHeight: '55vh', overflowY: 'auto' }}>
+                {transactions.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-tertiary)' }}>
+                    <div style={{ fontSize: '32px', marginBottom: '8px' }}>📋</div>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>No Transaction Entries Found</div>
+                    <div style={{ fontSize: '11.5px', marginTop: '4px' }}>
+                      There are currently no detailed line allocations recorded for this item under {type}.
+                    </div>
+                  </div>
+                ) : (
+                  <table className="table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'separate', borderSpacing: 0 }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg-primary)', borderBottom: '2px solid var(--border)' }}>
+                        <th style={{ textAlign: 'left', padding: '10px 12px' }}>Document Ref</th>
+                        <th style={{ textAlign: 'left', padding: '10px 12px', width: '110px' }}>Date</th>
+                        <th style={{ textAlign: 'center', padding: '10px 12px', width: '85px' }}>Qty Delta</th>
+                        <th style={{ textAlign: 'right', padding: '10px 12px', width: '110px' }}>Unit Price</th>
+                        <th style={{ textAlign: 'right', padding: '10px 12px', width: '120px' }}>Net Value</th>
+                        <th style={{ textAlign: 'center', padding: '10px 12px', width: '110px' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {transactions.map((tr, idx) => {
+                        const isNegative = Number(tr.qty) < 0;
+                        const qtySign = isNegative ? '' : '+';
+                        const qtyColor = isNegative ? 'var(--text-danger)' : 'var(--text-success)';
+                        const valColor = isNegative ? 'var(--text-danger)' : 'var(--text-primary)';
+                        const isCN = tr.type === 'credit_note';
+
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                            {/* Document Ref & Badge */}
+                            <td style={{ padding: '10px 12px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{
+                                  fontFamily: 'monospace',
+                                  fontWeight: 700,
+                                  fontSize: '11.5px',
+                                  color: isCN ? 'var(--text-danger)' : 'var(--text-info)',
+                                  background: isCN ? 'rgba(239, 68, 68, 0.12)' : 'rgba(59, 130, 246, 0.1)',
+                                  border: isCN ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(59, 130, 246, 0.25)',
+                                  padding: '2px 7px',
+                                  borderRadius: '4px'
+                                }}>
+                                  {isCN ? `🔴 ${tr.ref}` : tr.ref}
+                                </span>
+                                <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                  ({tr.typeLabel || tr.type})
+                                </span>
+                              </div>
+                              {tr.re_invoice_intent && (
+                                <div style={{ fontSize: '10px', color: tr.re_invoice_intent === 'WILL_NOT_REINVOICE' ? '#10b981' : '#f59e0b', marginTop: '2px', fontWeight: 600 }}>
+                                  {tr.re_invoice_intent === 'WILL_NOT_REINVOICE' ? '✓ Will Not Re-invoice (Permanent Credit)' : '↻ Will Re-invoice (Temporary Correction)'}
+                                </div>
+                              )}
+                              {tr.supplier && (
+                                <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                  Supplier: {tr.supplier}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Date */}
+                            <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: '11.5px' }}>
+                              {tr.date || '—'}
+                            </td>
+
+                            {/* Signed Quantity Delta */}
+                            <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700, fontFamily: 'monospace', fontSize: '12.5px', color: qtyColor }}>
+                              {qtySign}{tr.qty}
+                            </td>
+
+                            {/* Unit Price */}
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                              R {Math.round(tr.unitPrice || 0).toLocaleString()}
+                            </td>
+
+                            {/* Net Value */}
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: valColor }}>
+                              {isNegative ? '-' : ''}R {Math.abs(Math.round(tr.total || 0)).toLocaleString()}
+                            </td>
+
+                            {/* Direct Deep-link Action Button */}
+                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                              <button
+                                type="button"
+                                className="btn btn-xs btn-primary"
+                                style={{
+                                  padding: '3px 8px',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  height: '24px',
+                                  minHeight: '24px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                                title={`Navigate directly to ${tr.ref} in ${tr.page}`}
+                                onClick={() => {
+                                  setActiveItemLedgerModal(null);
+                                  handleNavigateToDoc(tr.page, tr.ref, selectedProjectKey);
+                                }}
+                              >
+                                View Doc ↗
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background: 'var(--bg-primary)', fontWeight: 700, borderTop: '2px solid var(--border-strong)' }}>
+                        <td style={{ padding: '12px' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--text-primary)' }}>Net Totals:</span>
+                        </td>
+                        <td style={{ padding: '12px', color: 'var(--text-secondary)', fontSize: '11px' }}>
+                          {transactions.length} entries
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'center', color: netQty < totalOrdered ? 'var(--text-warning)' : 'var(--text-success)', fontSize: '13px', fontFamily: 'monospace' }}>
+                          {netQty} / {totalOrdered}
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '11px' }}>
+                          Net Value:
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'right', color: 'var(--text-primary)', fontSize: '13px', fontFamily: 'monospace' }}>
+                          R {Math.round(netTotalVal).toLocaleString()}
+                        </td>
+                        <td style={{ padding: '12px' }}></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Status:</span>
+                  {totalOrdered > 0 && netQty === 0 && isCredited && (
+                    <span className="badge b-warning" style={{ fontSize: '11px' }}>
+                      Fully Credited (0 Active Invoiced)
+                    </span>
+                  )}
+                  {totalOrdered > 0 && isFullySettled && (
+                    <span className="badge b-success" style={{ fontSize: '11px' }}>
+                      100% Fulfilled ({netQty} of {totalOrdered})
+                    </span>
+                  )}
+                  {totalOrdered > 0 && !isFullySettled && netQty > 0 && (
+                    <span className="badge b-info" style={{ fontSize: '11px' }}>
+                      Partially Fulfilled ({Math.round((netQty / totalOrdered) * 100)}%)
+                    </span>
+                  )}
+                </div>
+                <button type="button" className="btn btn-secondary" onClick={() => setActiveItemLedgerModal(null)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* PAYMENTS VIEWER MODAL */}
       {showPaymentViewer && (
