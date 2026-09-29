@@ -763,6 +763,9 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
         doc_date = payload.get("doc_date") or payload.get("transaction_date")
         allocated_by = payload.get("allocated_by_name") or "Staff"
         notes = payload.get("notes")
+        re_invoice_intent = str(payload.get("re_invoice_intent") or "WILL_NOT_REINVOICE").strip().upper()
+        if re_invoice_intent not in ("WILL_NOT_REINVOICE", "WILL_REINVOICE"):
+            re_invoice_intent = "WILL_NOT_REINVOICE"
 
         if not source_doc_no or not sku or (not project_id_input and not project_key_input and not project_name) or allocated_qty <= 0:
             raise HTTPException(status_code=400, detail="Missing required allocation parameters.")
@@ -834,7 +837,8 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
             allocated_by_name=allocated_by,
             allocated_at=datetime.now(timezone.utc),
             status="Active",
-            notes=notes
+            notes=notes,
+            re_invoice_intent=re_invoice_intent
         )
         db.add(alloc)
         db.flush()
@@ -873,6 +877,9 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
         doc_date = payload.get("doc_date") or payload.get("transaction_date")
         allocated_by = payload.get("allocated_by_name") or "Staff"
         notes = payload.get("notes") or "Batch invoice allocation"
+        re_invoice_intent = str(payload.get("re_invoice_intent") or "WILL_NOT_REINVOICE").strip().upper()
+        if re_invoice_intent not in ("WILL_NOT_REINVOICE", "WILL_REINVOICE"):
+            re_invoice_intent = "WILL_NOT_REINVOICE"
         items = payload.get("items") or []
 
         if not source_doc_no or (not project_id_input and not project_key_input and not project_name) or not items:
@@ -906,6 +913,9 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
             fitting_code = it.get("fitting_code") or sku
             is_service = bool(it.get("is_service"))
             ignore = bool(it.get("ignore"))
+            item_intent = str(it.get("re_invoice_intent") or re_invoice_intent).strip().upper()
+            if item_intent not in ("WILL_NOT_REINVOICE", "WILL_REINVOICE"):
+                item_intent = re_invoice_intent
 
             if ignore or not sku or allocated_qty <= 0:
                 continue
@@ -953,7 +963,8 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
                 allocated_by_name=allocated_by,
                 allocated_at=datetime.now(timezone.utc),
                 status="Active",
-                notes=f"{notes} (Service/Fee)" if is_service else notes
+                notes=f"{notes} (Service/Fee)" if is_service else notes,
+                re_invoice_intent=item_intent
             )
             db.add(alloc)
             db.flush()
@@ -1262,6 +1273,56 @@ def batch_unallocate_invoicing_items(payload: Dict[str, Any], db: Session = Depe
     except Exception as e:
         db.rollback()
         logger.error(f"Error in batch unallocate: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.post("/update-credit-intent")
+@router.post("/update-credit-intent")
+def update_credit_note_intent(payload: Dict[str, Any], db: Session = Depends(get_db)):
+    """
+    Updates the re_invoice_intent for a Credit Note allocation or all allocations of a Credit Note.
+    Values: 'WILL_NOT_REINVOICE' | 'WILL_REINVOICE'
+    """
+    try:
+        allocation_id = payload.get("allocation_id")
+        source_doc_no = str(payload.get("source_doc_no") or payload.get("document_no") or "").strip()
+        intent = str(payload.get("re_invoice_intent") or "").strip().upper()
+
+        if intent not in ("WILL_NOT_REINVOICE", "WILL_REINVOICE"):
+            raise HTTPException(status_code=400, detail="Invalid re_invoice_intent. Must be 'WILL_NOT_REINVOICE' or 'WILL_REINVOICE'.")
+
+        query = db.query(ProcurementAllocation).filter(
+            ProcurementAllocation.allocation_type == "INVOICE",
+            ProcurementAllocation.status == "Active"
+        )
+
+        if allocation_id:
+            query = query.filter(ProcurementAllocation.id == int(allocation_id))
+        elif source_doc_no:
+            query = query.filter(ProcurementAllocation.source_doc_no == source_doc_no)
+        else:
+            raise HTTPException(status_code=400, detail="Missing allocation_id or source_doc_no.")
+
+        allocs = query.all()
+        if not allocs:
+            raise HTTPException(status_code=404, detail="No active credit note allocations found.")
+
+        for a in allocs:
+            a.re_invoice_intent = intent
+
+        db.commit()
+        return {
+            "status": "success",
+            "message": f"Updated credit note intent to {intent} for {len(allocs)} allocation(s).",
+            "count": len(allocs),
+            "re_invoice_intent": intent
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating credit note intent: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

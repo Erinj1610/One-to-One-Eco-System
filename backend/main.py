@@ -150,6 +150,11 @@ def init_db():
                     if 'supplier_cost' not in p_cols:
                         quick_conn.execute(text("ALTER TABLE products ADD COLUMN supplier_cost FLOAT DEFAULT 0.0;"))
                         quick_conn.commit()
+                if 'procurement_allocations' in insp.get_table_names():
+                    pa_cols = [c['name'] for c in insp.get_columns('procurement_allocations')]
+                    if 're_invoice_intent' not in pa_cols:
+                        quick_conn.execute(text("ALTER TABLE procurement_allocations ADD COLUMN re_invoice_intent VARCHAR DEFAULT 'WILL_NOT_REINVOICE';"))
+                        quick_conn.commit()
         except Exception as quick_err:
             print(f"Quick migration notice: {quick_err}")
 

@@ -772,6 +772,7 @@ class ProcurementAllocation(Base):
     allocated_at = Column(DateTime, default=datetime.utcnow)
     status = Column(String, default="Active")                  # "Active", "Cancelled"
     notes = Column(Text, nullable=True)
+    re_invoice_intent = Column(String, default="WILL_NOT_REINVOICE", nullable=True) # "WILL_NOT_REINVOICE", "WILL_REINVOICE"
 
 
 class PalladiumInvoiceLine(Base):

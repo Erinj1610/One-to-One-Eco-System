@@ -995,6 +995,10 @@ export default function SalesTracker() {
           let totalDelQty = 0;
 
           const itemsList = o.itemsList || [];
+          const orderCreditNotes = (o.creditNotes && o.creditNotes.length > 0)
+            ? o.creditNotes
+            : (o.clientInvoices || []).filter(cinv => cinv.is_credit || String(cinv.id).toUpperCase().startsWith('CN-') || String(cinv.id).toUpperCase().startsWith('CR-'));
+
           itemsList.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
             const q = Number(item.qty) || 0;
             const isService = (item.itemType || item.item_type) === 'Service';
@@ -1002,9 +1006,23 @@ export default function SalesTracker() {
             const defaults = getItemDefaults(item);
             const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : defaults.invoiceQty || 0;
 
+            // Credit notes with WILL_NOT_REINVOICE settle the item's billing obligation
+            const itemCode = (item.code || '').trim().toUpperCase();
+            const itemOneOne = (item.oneOneCode || '').trim().toUpperCase();
+            const creditedSettledQty = orderCreditNotes
+              .filter(cn => cn.re_invoice_intent !== 'WILL_REINVOICE')
+              .flatMap(cn => cn.items || [])
+              .filter(it => {
+                const c = (it.code || '').trim().toUpperCase();
+                return c && (c === itemCode || (itemOneOne && c === itemOneOne));
+              })
+              .reduce((sum, it) => sum + Math.abs(Number(it.qtyAction || it.qty || 0)), 0);
+
+            const effectiveInvoiced = Math.min(q, (Number(invoiced) || 0) + creditedSettledQty);
+
             if (isService) {
               totalQtyForInv += q;
-              totalInvQty += Number(invoiced) || 0;
+              totalInvQty += effectiveInvoiced;
               return;
             }
 
@@ -1024,7 +1042,7 @@ export default function SalesTracker() {
                 : (Number(received) || 0);
 
             totalProcQty += effectiveProc;
-            totalInvQty += Number(invoiced) || 0;
+            totalInvQty += effectiveInvoiced;
             totalDelQty += Number(delivered) || 0;
           });
 
@@ -5253,7 +5271,23 @@ export default function SalesTracker() {
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(245, 158, 11, 0.08)', padding: '2px 4px', borderRadius: '4px' }}>
                                           <span style={{ color: '#f59e0b', fontWeight: 600 }}>Inv:</span>
                                           <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                            {item.is_credit ? '—' : `${Math.round(((item.invoiceQty || 0) / (item.qty || 1)) * 100)}%`}
+                                            {(() => {
+                                              if (item.is_credit) return '—';
+                                              const q = Number(item.qty) || 1;
+                                              const invQ = Number(item.invoiceQty) || 0;
+                                              const itemCode = (item.code || '').trim().toUpperCase();
+                                              const itemOneOne = (item.oneOneCode || '').trim().toUpperCase();
+                                              const credQ = orderCreditNotes
+                                                .filter(cn => cn.re_invoice_intent !== 'WILL_REINVOICE')
+                                                .flatMap(cn => cn.items || [])
+                                                .filter(it => {
+                                                  const c = (it.code || '').trim().toUpperCase();
+                                                  return c && (c === itemCode || (itemOneOne && c === itemOneOne));
+                                                })
+                                                .reduce((sum, it) => sum + Math.abs(Number(it.qtyAction || it.qty || 0)), 0);
+                                              const effInv = Math.min(q, invQ + credQ);
+                                              return `${Math.round((effInv / q) * 100)}%`;
+                                            })()}
                                           </span>
                                         </div>
                                         {/* Delivered Badge */}
