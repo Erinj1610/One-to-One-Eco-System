@@ -138,6 +138,42 @@ const parseHist = (val) => {
   return [];
 };
 
+// Helper to calculate credited and settled billing quantity for an item
+const getItemCreditSettledQty = (item, orderCreditNotes = []) => {
+  const itemCode = (item.code || '').trim().toUpperCase();
+  const itemOneOne = (item.oneOneCode || '').trim().toUpperCase();
+  const itemDesc = (item.description || '').trim().toLowerCase();
+
+  // 1. Credit Notes from order level
+  const fromOrderCN = (orderCreditNotes || [])
+    .filter(cn => cn.re_invoice_intent !== 'WILL_REINVOICE')
+    .flatMap(cn => cn.items || [])
+    .filter(it => {
+      if (it.re_invoice_intent === 'WILL_REINVOICE') return false;
+      const c = (it.code || '').trim().toUpperCase();
+      const sku = (it.sku || '').trim().toUpperCase();
+      const codeMatch = (c && (c === itemCode || (itemOneOne && c === itemOneOne))) ||
+                        (sku && (sku === itemCode || (itemOneOne && sku === itemOneOne)));
+      if (codeMatch) return true;
+      const itDesc = (it.description || '').trim().toLowerCase();
+      return !!(itDesc && itemDesc && itDesc === itemDesc);
+    })
+    .reduce((sum, it) => sum + Math.abs(Number(it.qtyAction || it.qty || 0)), 0);
+
+  // 2. Credit entries from item invoiceHistory (e.g. negative qty or CN-/CR- ref)
+  const iHistory = parseHist(item.invoiceHistory ?? item.invoice_history);
+  const fromItemHist = iHistory
+    .filter(h => {
+      if (h.re_invoice_intent === 'WILL_REINVOICE') return false;
+      const q = Number(h.qty) || 0;
+      const ref = String(h.ref || '').toUpperCase();
+      return q < 0 || ref.startsWith('CN-') || ref.startsWith('CR-');
+    })
+    .reduce((sum, h) => sum + Math.abs(Number(h.qty) || 0), 0);
+
+  return Math.max(fromOrderCN, fromItemHist);
+};
+
 const getItemDefaults = (item) => {
   const resolved = { ...item };
   
@@ -250,22 +286,30 @@ export default function SalesTracker() {
     const rows = [];
 
     if (type === 'invoicing') {
-      // 1. Invoices from item.invoiceHistory
+      const itemDesc = (item.description || '').trim().toLowerCase();
+      const existingRefs = new Set();
+
+      // 1. Transactions from item.invoiceHistory
       const invHistory = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
       if (invHistory.length > 0) {
         invHistory.forEach(h => {
           if (!h || !h.ref) return;
-          const q = Number(h.qty) || 0;
+          const refStr = String(h.ref).trim();
+          const qRaw = Number(h.qty) || 0;
+          const isCN = qRaw < 0 || refStr.toUpperCase().startsWith('CN-') || refStr.toUpperCase().startsWith('CR-');
+          const absQ = Math.abs(qRaw);
           const price = Number(h.unitPrice ?? h.rate ?? item.unitRetail ?? 0);
-          const totalVal = (h.total !== undefined && h.total !== null) ? Number(h.total) : (q * price);
+          const totalVal = (h.total !== undefined && h.total !== null) ? Math.abs(Number(h.total)) : (absQ * price);
+          existingRefs.add(refStr.toUpperCase());
           rows.push({
-            type: 'invoice',
-            typeLabel: 'Invoice',
-            ref: h.ref,
+            type: isCN ? 'credit_note' : 'invoice',
+            typeLabel: isCN ? 'Credit Note' : 'Invoice',
+            ref: refStr,
             date: h.date || '—',
-            qty: q,
+            qty: isCN ? -absQ : absQ,
             unitPrice: price,
-            total: totalVal,
+            total: isCN ? -totalVal : totalVal,
+            re_invoice_intent: h.re_invoice_intent,
             page: '/invoices'
           });
         });
@@ -274,28 +318,32 @@ export default function SalesTracker() {
         const refs = item.invoiceRef.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
         refs.forEach(r => {
           const isCN = r.toUpperCase().startsWith('CN-') || r.toUpperCase().startsWith('CR-');
-          if (!isCN && r.toUpperCase() !== '[LEGACY]') {
+          if (r.toUpperCase() !== '[LEGACY]') {
             const q = Number(item.invoiceQty) || Number(item.qty) || 0;
             const price = Number(item.unitRetail) || 0;
+            existingRefs.add(r.toUpperCase());
             rows.push({
-              type: 'invoice',
-              typeLabel: 'Invoice',
+              type: isCN ? 'credit_note' : 'invoice',
+              typeLabel: isCN ? 'Credit Note' : 'Invoice',
               ref: r,
               date: item.invoiceDate || '—',
-              qty: q,
+              qty: isCN ? -Math.abs(q) : Math.abs(q),
               unitPrice: price,
-              total: Number(item.invoiceValue) || (q * price),
+              total: isCN ? -(Math.abs(q) * price) : (Math.abs(q) * price),
               page: '/invoices'
             });
           }
         });
       }
 
-      // 2. Credit Notes from orderCreditNotes
+      // 2. Credit Notes from orderCreditNotes (if not already added via invoiceHistory)
       (orderCreditNotes || []).forEach(cn => {
+        if (existingRefs.has(String(cn.id || '').trim().toUpperCase())) return;
         const cnItems = (cn.items || []).filter(it => {
           const c = (it.code || it.sku || '').trim().toUpperCase();
-          return c && (c === rawCode || (rawOneOne && c === rawOneOne));
+          if (c && (c === rawCode || (rawOneOne && c === rawOneOne))) return true;
+          const itDesc = (it.description || '').trim().toLowerCase();
+          return !!(itDesc && itemDesc && itDesc === itemDesc);
         });
         cnItems.forEach(it => {
           const rawQ = it.qtyAction !== undefined ? it.qtyAction : (it.qty !== undefined ? it.qty : 1);
@@ -1137,25 +1185,7 @@ export default function SalesTracker() {
             const defaults = getItemDefaults(item);
             const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : defaults.invoiceQty || 0;
 
-            // Credit notes with WILL_NOT_REINVOICE settle the item's billing obligation
-            const itemCode = (item.code || '').trim().toUpperCase();
-            const itemOneOne = (item.oneOneCode || '').trim().toUpperCase();
-            const itemDesc = (item.description || '').trim().toLowerCase();
-            const creditedSettledQty = (orderCreditNotes || [])
-              .filter(cn => cn.re_invoice_intent !== 'WILL_REINVOICE')
-              .flatMap(cn => cn.items || [])
-              .filter(it => {
-                if (it.re_invoice_intent === 'WILL_REINVOICE') return false;
-                const c = (it.code || '').trim().toUpperCase();
-                const sku = (it.sku || '').trim().toUpperCase();
-                const codeMatch = (c && (c === itemCode || (itemOneOne && c === itemOneOne))) ||
-                                  (sku && (sku === itemCode || (itemOneOne && sku === itemOneOne)));
-                if (codeMatch) return true;
-                const itDesc = (it.description || '').trim().toLowerCase();
-                return itDesc && itemDesc && itDesc === itemDesc;
-              })
-              .reduce((sum, it) => sum + Math.abs(Number(it.qtyAction || it.qty || 0)), 0);
-
+            const creditedSettledQty = getItemCreditSettledQty(item, orderCreditNotes);
             const effectiveInvoiced = Math.min(q, (Number(invoiced) || 0) + creditedSettledQty);
 
             if (isService) {
@@ -1441,7 +1471,7 @@ export default function SalesTracker() {
 
   const currentSelectedOrder = useMemo(() => {
     if (!selectedOrderId) return null;
-    return allOrders.find(o => o.id === selectedOrderId) || null;
+    return allOrders.find(o => String(o.id) === String(selectedOrderId)) || null;
   }, [allOrders, selectedOrderId]);
 
   const orderCreditNotes = useMemo(() => {
@@ -1503,25 +1533,7 @@ export default function SalesTracker() {
       const defaults = getItemDefaults(item);
       const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : defaults.invoiceQty || 0;
 
-      // Credit notes with WILL_NOT_REINVOICE settle the item's billing obligation
-      const itemCode = (item.code || '').trim().toUpperCase();
-      const itemOneOne = (item.oneOneCode || '').trim().toUpperCase();
-      const itemDesc = (item.description || '').trim().toLowerCase();
-      const creditedSettledQty = (orderCreditNotes || [])
-        .filter(cn => cn.re_invoice_intent !== 'WILL_REINVOICE')
-        .flatMap(cn => cn.items || [])
-        .filter(it => {
-          if (it.re_invoice_intent === 'WILL_REINVOICE') return false;
-          const c = (it.code || '').trim().toUpperCase();
-          const sku = (it.sku || '').trim().toUpperCase();
-          const codeMatch = (c && (c === itemCode || (itemOneOne && c === itemOneOne))) ||
-                            (sku && (sku === itemCode || (itemOneOne && sku === itemOneOne)));
-          if (codeMatch) return true;
-          const itDesc = (it.description || '').trim().toLowerCase();
-          return itDesc && itemDesc && itDesc === itemDesc;
-        })
-        .reduce((sum, it) => sum + Math.abs(Number(it.qtyAction || it.qty || 0)), 0);
-
+      const creditedSettledQty = getItemCreditSettledQty(item, orderCreditNotes);
       const effectiveInvoiced = Math.min(q, (Number(invoiced) || 0) + creditedSettledQty);
 
       if (isService) {
@@ -4765,25 +4777,7 @@ export default function SalesTracker() {
                   const isService = (item.itemType || item.item_type) === 'Service';
                   const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : 0;
 
-                  // Credit notes with WILL_NOT_REINVOICE settle the item's billing obligation
-                  const itemCode = (item.code || '').trim().toUpperCase();
-                  const itemOneOne = (item.oneOneCode || '').trim().toUpperCase();
-                  const itemDesc = (item.description || '').trim().toLowerCase();
-                  const creditedSettledQty = (orderCreditNotes || [])
-                    .filter(cn => cn.re_invoice_intent !== 'WILL_REINVOICE')
-                    .flatMap(cn => cn.items || [])
-                    .filter(it => {
-                      if (it.re_invoice_intent === 'WILL_REINVOICE') return false;
-                      const c = (it.code || '').trim().toUpperCase();
-                      const sku = (it.sku || '').trim().toUpperCase();
-                      const codeMatch = (c && (c === itemCode || (itemOneOne && c === itemOneOne))) ||
-                                        (sku && (sku === itemCode || (itemOneOne && sku === itemOneOne)));
-                      if (codeMatch) return true;
-                      const itDesc = (it.description || '').trim().toLowerCase();
-                      return itDesc && itemDesc && itDesc === itemDesc;
-                    })
-                    .reduce((sum, it) => sum + Math.abs(Number(it.qtyAction || it.qty || 0)), 0);
-
+                  const creditedSettledQty = getItemCreditSettledQty(item, orderCreditNotes);
                   const effectiveInvoiced = Math.min(q, (Number(invoiced) || 0) + creditedSettledQty);
 
                   if (isService) {
@@ -5423,7 +5417,9 @@ export default function SalesTracker() {
 
                                 const calculatedValueReceived = Number(receivedQtyVal) * (item.unitCost || 0);
                                 const totalRetailPrice = item.qty * (item.unitRetail || 0);
-                                const calculatedOutstandingInvoiceValue = Math.max(0, totalRetailPrice - Number(invoiceValueVal));
+                                const rowCredQ = getItemCreditSettledQty(item, orderCreditNotes);
+                                const creditedValueSettled = rowCredQ * (item.unitRetail || 0);
+                                const calculatedOutstandingInvoiceValue = Math.max(0, totalRetailPrice - (Number(invoiceValueVal) || 0) - creditedValueSettled);
 
                                 const targetItemIds = item.itemIds || [item.id];
                                 const isRowSelected = targetItemIds.every(id => selectedLedgerItemIds.has(id));
@@ -5507,23 +5503,7 @@ export default function SalesTracker() {
                                               if (item.is_credit) return '—';
                                               const q = Number(item.qty) || 1;
                                               const invQ = Number(item.invoiceQty) || 0;
-                                              const itemCode = (item.code || '').trim().toUpperCase();
-                                              const itemOneOne = (item.oneOneCode || '').trim().toUpperCase();
-                                              const itemDesc = (item.description || '').trim().toLowerCase();
-                                              const credQ = (orderCreditNotes || [])
-                                                .filter(cn => cn.re_invoice_intent !== 'WILL_REINVOICE')
-                                                .flatMap(cn => cn.items || [])
-                                                .filter(it => {
-                                                  if (it.re_invoice_intent === 'WILL_REINVOICE') return false;
-                                                  const c = (it.code || '').trim().toUpperCase();
-                                                  const sku = (it.sku || '').trim().toUpperCase();
-                                                  const codeMatch = (c && (c === itemCode || (itemOneOne && c === itemOneOne))) ||
-                                                                    (sku && (sku === itemCode || (itemOneOne && sku === itemOneOne)));
-                                                  if (codeMatch) return true;
-                                                  const itDesc = (it.description || '').trim().toLowerCase();
-                                                  return itDesc && itemDesc && itDesc === itemDesc;
-                                                })
-                                                .reduce((sum, it) => sum + Math.abs(Number(it.qtyAction || it.qty || 0)), 0);
+                                              const credQ = getItemCreditSettledQty(item, orderCreditNotes);
                                               const effInv = Math.min(q, invQ + credQ);
                                               return `${Math.round((effInv / q) * 100)}%`;
                                             })()}
@@ -6821,8 +6801,12 @@ export default function SalesTracker() {
           typeBadgeBg = 'rgba(16, 185, 129, 0.12)';
         }
 
-        const isFullySettled = totalOrdered > 0 && netQty >= totalOrdered;
-        const isCredited = transactions.some(t => t.qty < 0);
+        const creditedSettledQty = type === 'invoicing'
+          ? transactions.filter(t => t.type === 'credit_note' && t.re_invoice_intent !== 'WILL_REINVOICE').reduce((sum, t) => sum + Math.abs(Number(t.qty) || 0), 0)
+          : 0;
+        const effectiveSettledQty = Math.min(totalOrdered, Math.max(0, netQty) + creditedSettledQty);
+        const isFullySettled = totalOrdered > 0 && (effectiveSettledQty >= totalOrdered || (netQty === 0 && creditedSettledQty >= totalOrdered));
+        const isCredited = transactions.some(t => t.qty < 0 || t.type === 'credit_note');
 
         return (
           <div style={{
@@ -6996,8 +6980,13 @@ export default function SalesTracker() {
                         <td style={{ padding: '12px', color: 'var(--text-secondary)', fontSize: '11px' }}>
                           {transactions.length} entries
                         </td>
-                        <td style={{ padding: '12px', textAlign: 'center', color: netQty < totalOrdered ? 'var(--text-warning)' : 'var(--text-success)', fontSize: '13px', fontFamily: 'monospace' }}>
+                        <td style={{ padding: '12px', textAlign: 'center', color: (isFullySettled || netQty >= totalOrdered) ? 'var(--text-success)' : 'var(--text-warning)', fontSize: '13px', fontFamily: 'monospace' }}>
                           {netQty} / {totalOrdered}
+                          {type === 'invoicing' && creditedSettledQty > 0 && (
+                            <div style={{ fontSize: '10px', color: '#10b981', fontWeight: 600 }}>
+                              ({creditedSettledQty} Credited/Settled)
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '12px', textAlign: 'right', color: 'var(--text-secondary)', fontSize: '11px' }}>
                           Net Value:
@@ -7016,19 +7005,21 @@ export default function SalesTracker() {
               <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Status:</span>
-                  {totalOrdered > 0 && netQty === 0 && isCredited && (
+                  {totalOrdered > 0 && isFullySettled ? (
+                    <span className="badge b-success" style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      ✓ 100% Settled {isCredited && (creditedSettledQty > 0 ? `(${creditedSettledQty} Credited)` : '(Credited)')}
+                    </span>
+                  ) : (totalOrdered > 0 && netQty === 0 && isCredited) ? (
                     <span className="badge b-warning" style={{ fontSize: '11px' }}>
                       Fully Credited (0 Active Invoiced)
                     </span>
-                  )}
-                  {totalOrdered > 0 && isFullySettled && (
-                    <span className="badge b-success" style={{ fontSize: '11px' }}>
-                      100% Fulfilled ({netQty} of {totalOrdered})
-                    </span>
-                  )}
-                  {totalOrdered > 0 && !isFullySettled && netQty > 0 && (
+                  ) : (totalOrdered > 0 && netQty > 0) ? (
                     <span className="badge b-info" style={{ fontSize: '11px' }}>
-                      Partially Fulfilled ({Math.round((netQty / totalOrdered) * 100)}%)
+                      Partially Fulfilled ({Math.round((effectiveSettledQty / totalOrdered) * 100)}%)
+                    </span>
+                  ) : (
+                    <span className="badge" style={{ fontSize: '11px', background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+                      Pending (0%)
                     </span>
                   )}
                 </div>
