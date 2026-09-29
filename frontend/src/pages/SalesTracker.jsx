@@ -129,18 +129,18 @@ const PRODUCT_CATALOG = [
   { code: 'MOL-TRK-005', description: '3-Phase Track System 2m', brand: 'Molecule', dimming: 'Non-dim', unitCost: 520.00, unitRetail: 780.00 },
 ];
 
+// Helper to parse history arrays safely from array or JSON string
+const parseHist = (val) => {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string' && val.trim().startsWith('[')) {
+    try { return JSON.parse(val); } catch (_) { return []; }
+  }
+  return [];
+};
+
 const getItemDefaults = (item) => {
   const resolved = { ...item };
   
-  // Helper to parse history arrays safely from array or JSON string
-  const parseHist = (val) => {
-    if (Array.isArray(val)) return val;
-    if (typeof val === 'string' && val.trim().startsWith('[')) {
-      try { return JSON.parse(val); } catch (_) { return []; }
-    }
-    return [];
-  };
-
   // Phase 1: Order Phase (Procurement)
   const pHistory = parseHist(resolved.purchaseHistory ?? resolved.purchase_history);
   if (pHistory.length > 0) {
