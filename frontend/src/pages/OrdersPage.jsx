@@ -1357,6 +1357,10 @@ export default function OrdersPage() {
         let totalDelQty = 0;
 
         const itemsList = o.itemsList || [];
+        const orderCreditNotes = (o.creditNotes && o.creditNotes.length > 0)
+          ? o.creditNotes
+          : (o.clientInvoices || []).filter(cinv => cinv.is_credit || String(cinv.id).toUpperCase().startsWith('CN-') || String(cinv.id).toUpperCase().startsWith('CR-'));
+
         itemsList.filter(item => !item.is_credit && !item.isCredit).forEach(item => {
           const q = Number(item.qty) || 0;
           const isService = (item.itemType || item.item_type) === 'Service';
@@ -1364,9 +1368,23 @@ export default function OrdersPage() {
           // Simple mock defaults to calculate progress
           const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : 0;
 
+          // Credit notes with WILL_NOT_REINVOICE settle the item's billing obligation
+          const itemCode = (item.code || '').trim().toUpperCase();
+          const itemOneOne = (item.oneOneCode || '').trim().toUpperCase();
+          const creditedSettledQty = orderCreditNotes
+            .filter(cn => cn.re_invoice_intent !== 'WILL_REINVOICE')
+            .flatMap(cn => cn.items || [])
+            .filter(it => {
+              const c = (it.code || '').trim().toUpperCase();
+              return c && (c === itemCode || (itemOneOne && c === itemOneOne));
+            })
+            .reduce((sum, it) => sum + Math.abs(Number(it.qtyAction || it.qty || 0)), 0);
+
+          const effectiveInvoiced = Math.min(q, (Number(invoiced) || 0) + creditedSettledQty);
+
           if (isService) {
             totalQtyForInv += q;
-            totalInvQty += Number(invoiced) || 0;
+            totalInvQty += effectiveInvoiced;
             return;
           }
 
@@ -1386,7 +1404,7 @@ export default function OrdersPage() {
               : (Number(received) || 0);
 
           totalProcQty += effectiveProc;
-          totalInvQty += Number(invoiced) || 0;
+          totalInvQty += effectiveInvoiced;
           totalDelQty += Number(delivered) || 0;
         });
 
@@ -1468,6 +1486,9 @@ export default function OrdersPage() {
           setWorkspaceSubTab(location.state.initialSubTab);
         }
       }
+    }
+    if (location.state) {
+      window.history.replaceState({}, document.title);
     }
   }, [location.state, allOrders]);
 
@@ -2726,11 +2747,34 @@ export default function OrdersPage() {
           unitRetail: unitPrice,
           totalRetail: finalTotal,
           allocatedBy: cn.allocated_by || cn.allocated_by_name || 'Staff',
-          notes: cn.notes || 'Allocated from Palladium ERP'
+          notes: cn.notes || 'Allocated from Palladium ERP',
+          allocationId: it.allocation_id || cn.allocation_id,
+          reInvoiceIntent: it.re_invoice_intent || cn.re_invoice_intent || 'WILL_NOT_REINVOICE'
         };
       })
     );
   }, [orderCreditNotes, activeOrderItems]);
+
+  const handleUpdateCreditNoteIntent = async (docNo, newIntent) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/update-credit-intent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_doc_no: docNo,
+          re_invoice_intent: newIntent
+        })
+      });
+      if (res.ok) {
+        if (refreshProjects) refreshProjects();
+      } else {
+        const err = await res.json();
+        alert(`Could not update credit note intent: ${err.detail || 'Error'}`);
+      }
+    } catch (e) {
+      alert(`Network error: ${e.message}`);
+    }
+  };
 
   return (
     <>
@@ -3350,9 +3394,23 @@ export default function OrdersPage() {
                   const isService = (item.itemType || item.item_type) === 'Service';
                   const invoiced = item.invoiceQty !== undefined ? item.invoiceQty : 0;
 
+                  // Credit notes with WILL_NOT_REINVOICE settle the item's billing obligation
+                  const itemCode = (item.code || '').trim().toUpperCase();
+                  const itemOneOne = (item.oneOneCode || '').trim().toUpperCase();
+                  const creditedSettledQty = orderCreditNotes
+                    .filter(cn => cn.re_invoice_intent !== 'WILL_REINVOICE')
+                    .flatMap(cn => cn.items || [])
+                    .filter(it => {
+                      const c = (it.code || '').trim().toUpperCase();
+                      return c && (c === itemCode || (itemOneOne && c === itemOneOne));
+                    })
+                    .reduce((sum, it) => sum + Math.abs(Number(it.qtyAction || it.qty || 0)), 0);
+
+                  const effectiveInvoiced = Math.min(q, (Number(invoiced) || 0) + creditedSettledQty);
+
                   if (isService) {
                     totalQtyForInv += q;
-                    totalInvQty += Number(invoiced) || 0;
+                    totalInvQty += effectiveInvoiced;
                     return;
                   }
 
@@ -3372,7 +3430,7 @@ export default function OrdersPage() {
                       : (Number(received) || 0);
 
                   totalProcQty += effectiveProc;
-                  totalInvQty += Number(invoiced) || 0;
+                  totalInvQty += effectiveInvoiced;
                   totalDelQty += Number(delivered) || 0;
                 });
 
@@ -6310,47 +6368,71 @@ export default function OrdersPage() {
                           <th style={{ padding: '10px 12px' }}>Document Type</th>
                           <th style={{ padding: '10px 12px' }}>Date Issued</th>
                           <th style={{ padding: '10px 12px' }}>Items Credited</th>
+                          <th style={{ padding: '10px 12px', textAlign: 'center' }}>Billing Intent</th>
                           <th style={{ padding: '10px 12px', textAlign: 'right' }}>Credited Amount</th>
                         </tr>
                       </thead>
                       <tbody>
                         {orderCreditNotes.length === 0 ? (
                           <tr>
-                            <td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            <td colSpan={6} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                               No Credit Notes have been allocated to this order yet. Go to Invoices workspace to allocate pending Credit Notes from Palladium.
                             </td>
                           </tr>
                         ) : (
-                          orderCreditNotes.map((cn, idx) => (
-                            <tr key={`cn-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
-                              <td 
-                                style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-danger)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
-                                onClick={() => navigate('/invoices')}
-                              >
-                                {cn.id}
-                              </td>
-                              <td style={{ padding: '10px 12px' }}>
-                                <span style={{ padding: '2px 8px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.12)', color: 'var(--text-danger)', fontSize: '10.5px', fontWeight: 700 }}>
-                                  🔴 Credit Note (ERP)
-                                </span>
-                              </td>
-                              <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{String(cn.date || '').split('T')[0] || '—'}</td>
-                              <td style={{ padding: '10px 12px' }}>
-                                {cn.items?.length > 0 ? (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                    {cn.items.map((it, iIdx) => (
-                                      <span key={iIdx} style={{ fontSize: '11px', color: 'var(--text-primary)' }}>
-                                        {it.code} (Qty: {Math.abs(Number(it.qtyAction || it.qty || 1))})
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : `${cn.items?.length || 1} items`}
-                              </td>
-                              <td style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-danger)', textAlign: 'right' }}>
-                                -R {Math.abs(Number(cn.totalValue || cn.value || cn.amount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </td>
-                            </tr>
-                          ))
+                          orderCreditNotes.map((cn, idx) => {
+                            const isReInvoice = cn.re_invoice_intent === 'WILL_REINVOICE';
+                            return (
+                              <tr key={`cn-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
+                                <td 
+                                  style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-danger)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
+                                  onClick={() => navigate('/invoices')}
+                                >
+                                  {cn.id}
+                                </td>
+                                <td style={{ padding: '10px 12px' }}>
+                                  <span style={{ padding: '2px 8px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.12)', color: 'var(--text-danger)', fontSize: '10.5px', fontWeight: 700 }}>
+                                    🔴 Credit Note (ERP)
+                                  </span>
+                                </td>
+                                <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{String(cn.date || '').split('T')[0] || '—'}</td>
+                                <td style={{ padding: '10px 12px' }}>
+                                  {cn.items?.length > 0 ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      {cn.items.map((it, iIdx) => (
+                                        <span key={iIdx} style={{ fontSize: '11px', color: 'var(--text-primary)' }}>
+                                          {it.code} (Qty: {Math.abs(Number(it.qtyAction || it.qty || 1))})
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : `${cn.items?.length || 1} items`}
+                                </td>
+                                <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                  <select
+                                    value={isReInvoice ? 'WILL_REINVOICE' : 'WILL_NOT_REINVOICE'}
+                                    onChange={(e) => handleUpdateCreditNoteIntent(cn.id, e.target.value)}
+                                    style={{
+                                      fontSize: '11px',
+                                      fontWeight: 600,
+                                      padding: '3px 8px',
+                                      borderRadius: '4px',
+                                      border: isReInvoice ? '1px solid #f59e0b' : '1px solid #10b981',
+                                      background: isReInvoice ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                                      color: isReInvoice ? '#b45309' : '#047857',
+                                      cursor: 'pointer',
+                                      outline: 'none'
+                                    }}
+                                  >
+                                    <option value="WILL_NOT_REINVOICE">✓ Will NOT Re-invoice (Closed)</option>
+                                    <option value="WILL_REINVOICE">⏳ Will Re-invoice (Pending Re-bill)</option>
+                                  </select>
+                                </td>
+                                <td style={{ padding: '10px 12px', fontWeight: 700, color: 'var(--text-danger)', textAlign: 'right' }}>
+                                  -R {Math.abs(Number(cn.totalValue || cn.value || cn.amount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                              </tr>
+                            );
+                          })
                         )}
                       </tbody>
                     </table>
@@ -6378,6 +6460,7 @@ export default function OrdersPage() {
                             <th style={{ padding: '10px 12px' }}>Description</th>
                             <th style={{ padding: '10px 12px', width: '110px', textAlign: 'right' }}>Unit Retail</th>
                             <th style={{ padding: '10px 12px', width: '120px', textAlign: 'right' }}>Total Credited</th>
+                            <th style={{ padding: '10px 12px', width: '130px', textAlign: 'center' }}>Billing Intent</th>
                             <th style={{ padding: '10px 12px', width: '140px' }}>Allocated By</th>
                           </tr>
                         </thead>
@@ -6407,6 +6490,17 @@ export default function OrdersPage() {
                               </td>
                               <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: 'var(--text-danger)', fontFamily: 'monospace' }}>
                                 -R {Math.abs(item.totalRetail || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </td>
+                              <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                {item.reInvoiceIntent === 'WILL_REINVOICE' ? (
+                                  <span style={{ fontSize: '10.5px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.12)', color: '#b45309', fontWeight: 600, border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                                    ⏳ Re-invoice
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: '10.5px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.12)', color: '#047857', fontWeight: 600, border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                                    ✓ Closed
+                                  </span>
+                                )}
                               </td>
                               <td style={{ padding: '10px 12px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
                                 {item.allocatedBy || 'Palladium ERP'}

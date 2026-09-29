@@ -1344,7 +1344,9 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                         "unitPrice": round(effective_unit_cost, 2),
                         "total": round(line_val, 2),
                         "is_fee": is_fee_line,
-                        "line_disc_perc": line_disc_p
+                        "line_disc_perc": line_disc_p,
+                        "allocation_id": a.id,
+                        "re_invoice_intent": getattr(a, 're_invoice_intent', None) or "WILL_NOT_REINVOICE"
                     })
 
                 inv_total_val = round(inv_total_val, 2)
@@ -1359,6 +1361,7 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                     "amount": inv_total_val,
                     "notes": first_a.notes or ("Credit Note allocated from Palladium ERP" if is_credit_doc else "Allocated from Palladium ERP"),
                     "allocated_by": first_a.allocated_by_name,
+                    "re_invoice_intent": getattr(first_a, 're_invoice_intent', None) or "WILL_NOT_REINVOICE",
                     "items": parsed_items
                 })
 

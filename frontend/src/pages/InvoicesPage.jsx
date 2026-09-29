@@ -128,6 +128,7 @@ export default function InvoicesPage() {
   const [allocFile, setAllocFile] = useState(null);
   const [showNoDocPrompt, setShowNoDocPrompt] = useState(false);
   const [isSavingAlloc, setIsSavingAlloc] = useState(false);
+  const [allocCreditIntent, setAllocCreditIntent] = useState('WILL_NOT_REINVOICE');
 
   // Batch Allocation Modal State
   const [batchModalOpen, setBatchModalOpen] = useState(false);
@@ -137,6 +138,7 @@ export default function InvoicesPage() {
   const [batchFile, setBatchFile] = useState(null);
   const [showBatchNoDocPrompt, setShowBatchNoDocPrompt] = useState(false);
   const [isSavingBatchAlloc, setIsSavingBatchAlloc] = useState(false);
+  const [batchCreditIntent, setBatchCreditIntent] = useState('WILL_NOT_REINVOICE');
   const [batchLineMappings, setBatchLineMappings] = useState({}); // { [line_id]: { type: 'item'|'service'|'ignore', orderItemId?: string } }
 
   const selectedBatchOrder = useMemo(() => {
@@ -322,6 +324,7 @@ export default function InvoicesPage() {
     setAllocTargetItem(line);
     setAllocQty(unalloc > 0 ? unalloc : 1);
     setAllocNotes('');
+    setAllocCreditIntent('WILL_NOT_REINVOICE');
 
     const cleanSku = (line.item_code || '').trim().toUpperCase();
     const docRef = (selectedDocument?.reference || '').trim().toLowerCase();
@@ -489,7 +492,10 @@ export default function InvoicesPage() {
       allocated_qty: Number(allocQty),
       unit_cost: Number(allocTargetItem.unit_price_excl || 0),
       notes: allocNotes,
-      allocated_by_name: 'Staff'
+      allocated_by_name: 'Staff',
+      re_invoice_intent: (selectedDocument?.doc_type === 'CREDIT_NOTE' || String(selectedDocument?.document_no || '').startsWith('CN-') || String(selectedDocument?.document_no || '').startsWith('CR-'))
+        ? allocCreditIntent
+        : 'WILL_NOT_REINVOICE'
     };
 
     if (selectedCandidateKey && selectedCandidateKey !== 'MANUAL') {
@@ -634,6 +640,7 @@ export default function InvoicesPage() {
     setBatchProjectId(bestProjId || '');
     setBatchOrderId(bestOrderId ? String(bestOrderId) : '');
     setBatchNotes('');
+    setBatchCreditIntent('WILL_NOT_REINVOICE');
     setBatchModalOpen(true);
   };
 
@@ -695,6 +702,8 @@ export default function InvoicesPage() {
       return;
     }
 
+    const isCreditDoc = selectedDocument?.doc_type === 'CREDIT_NOTE' || String(selectedDocument?.document_no || '').startsWith('CN-') || String(selectedDocument?.document_no || '').startsWith('CR-');
+
     const payload = {
       source_doc_no: selectedDocument.document_no,
       doc_date: selectedDocument.transaction_date,
@@ -704,6 +713,7 @@ export default function InvoicesPage() {
       order_id: batchOrderId || null,
       allocated_by_name: 'Staff',
       notes: batchNotes || `Batch allocated ${itemsPayload.length} invoice items`,
+      re_invoice_intent: isCreditDoc ? batchCreditIntent : 'WILL_NOT_REINVOICE',
       items: itemsPayload
     };
 
@@ -2663,6 +2673,47 @@ export default function InvoicesPage() {
                   );
                 })()}
 
+                {/* Credit Note Intent Selector (When allocating a Credit Note) */}
+                {(selectedDocument?.doc_type === 'CREDIT_NOTE' || String(selectedDocument?.document_no || '').startsWith('CN-') || String(selectedDocument?.document_no || '').startsWith('CR-')) && (
+                  <div style={{ background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', padding: '12px 14px' }}>
+                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-danger)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      🔴 Credit Note Action / Billing Intent:
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', fontSize: '11.5px', color: 'var(--text-primary)' }}>
+                        <input
+                          type="radio"
+                          name="batch_credit_intent"
+                          checked={batchCreditIntent === 'WILL_NOT_REINVOICE'}
+                          onChange={() => setBatchCreditIntent('WILL_NOT_REINVOICE')}
+                          style={{ marginTop: '2px', cursor: 'pointer' }}
+                        />
+                        <div>
+                          <strong>Will NOT Re-invoice</strong> <span style={{ color: 'var(--text-secondary)' }}>(Cancellation / Client Credit / Order Closed)</span>
+                          <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '1px' }}>
+                            Settles the line item obligation. Reduces un-invoiced target so order can complete and clears from KPI 2 backlog.
+                          </div>
+                        </div>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', fontSize: '11.5px', color: 'var(--text-primary)' }}>
+                        <input
+                          type="radio"
+                          name="batch_credit_intent"
+                          checked={batchCreditIntent === 'WILL_REINVOICE'}
+                          onChange={() => setBatchCreditIntent('WILL_REINVOICE')}
+                          style={{ marginTop: '2px', cursor: 'pointer' }}
+                        />
+                        <div>
+                          <strong>Will Re-invoice</strong> <span style={{ color: 'var(--text-secondary)' }}>(Internal Correction / Pending Replacement Re-bill)</span>
+                          <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '1px' }}>
+                            Drops invoiced % and keeps item in KPI 2 to alert staff that a replacement invoice must be issued.
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
                 {/* Internal Notes */}
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>
@@ -2995,6 +3046,47 @@ export default function InvoicesPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Credit Note Intent Selector (When allocating a Credit Note) */}
+                {(selectedDocument?.doc_type === 'CREDIT_NOTE' || String(selectedDocument?.document_no || '').startsWith('CN-') || String(selectedDocument?.document_no || '').startsWith('CR-')) && (
+                  <div style={{ background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', padding: '12px 14px' }}>
+                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-danger)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      🔴 Credit Note Action / Billing Intent:
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', fontSize: '11.5px', color: 'var(--text-primary)' }}>
+                        <input
+                          type="radio"
+                          name="single_credit_intent"
+                          checked={allocCreditIntent === 'WILL_NOT_REINVOICE'}
+                          onChange={() => setAllocCreditIntent('WILL_NOT_REINVOICE')}
+                          style={{ marginTop: '2px', cursor: 'pointer' }}
+                        />
+                        <div>
+                          <strong>Will NOT Re-invoice</strong> <span style={{ color: 'var(--text-secondary)' }}>(Cancellation / Client Credit / Order Closed)</span>
+                          <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '1px' }}>
+                            Settles the line item obligation. Reduces un-invoiced target so order can complete and clears from KPI 2 backlog.
+                          </div>
+                        </div>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', fontSize: '11.5px', color: 'var(--text-primary)' }}>
+                        <input
+                          type="radio"
+                          name="single_credit_intent"
+                          checked={allocCreditIntent === 'WILL_REINVOICE'}
+                          onChange={() => setAllocCreditIntent('WILL_REINVOICE')}
+                          style={{ marginTop: '2px', cursor: 'pointer' }}
+                        />
+                        <div>
+                          <strong>Will Re-invoice</strong> <span style={{ color: 'var(--text-secondary)' }}>(Internal Correction / Pending Replacement Re-bill)</span>
+                          <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '1px' }}>
+                            Drops invoiced % and keeps item in KPI 2 to alert staff that a replacement invoice must be issued.
+                          </div>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                )}
 
                 {/* Notes Input */}
                 <div>

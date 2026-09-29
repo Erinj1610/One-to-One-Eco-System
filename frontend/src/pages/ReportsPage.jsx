@@ -753,7 +753,21 @@ export default function ReportsPage() {
 
           const outstandingVal = Math.max(0, retailVal - itemInvoicedVal);
 
-          if (outstandingVal > 0) {
+          // If item was credited under 'WILL_NOT_REINVOICE' (Cancellation / Refund), that portion is settled and not owed an invoice
+          const itemCode = (item.code || '').trim().toUpperCase();
+          const itemOneOne = (item.oneOneCode || '').trim().toUpperCase();
+          const finalCreditedVal = creditNotes
+            .filter(cn => cn.re_invoice_intent !== 'WILL_REINVOICE')
+            .flatMap(cn => cn.items || [])
+            .filter(it => {
+              const c = (it.code || '').trim().toUpperCase();
+              return c && (c === itemCode || (itemOneOne && c === itemOneOne));
+            })
+            .reduce((s, it) => s + Math.abs(Number(it.total ?? ((Number(it.qtyAction) || Number(it.qty) || 0) * (Number(it.unitPrice) || Number(it.unitRetail) || 0)))), 0);
+
+          const finalOutstandingVal = Math.max(0, outstandingVal - finalCreditedVal);
+
+          if (finalOutstandingVal > 0) {
             // Prefer item-level PO ETA first, then general item ETA, then order-level eta, then expected_delivery_date, then order PO date
             const expectedDate = item.po_eta || item.eta || order.eta || order.expected_delivery_date || item.po_date || order.po_date;
             const parsedExpected = parseDateString(expectedDate);
@@ -764,10 +778,10 @@ export default function ReportsPage() {
               
               const expRollingIdx = rollingMonths.findIndex(rm => rm.monthName === expMonth && rm.year === expYear);
               if (expRollingIdx !== -1) {
-                dynamicAwaiting[div][`col${expRollingIdx}`] += outstandingVal;
+                dynamicAwaiting[div][`col${expRollingIdx}`] += finalOutstandingVal;
               }
               if (expFy === currentFinancialYear) {
-                dynamicAnnual[div].toInvoice += outstandingVal;
+                dynamicAnnual[div].toInvoice += finalOutstandingVal;
               }
             } else {
               // Fallback to order date month if no valid expected date is found (avoid defaulting to July if order is in another month)
@@ -777,10 +791,10 @@ export default function ReportsPage() {
               const ordFy = getFinancialYearForPeriod(ordMonthIdx, ordYear);
               const ordRollingIdx = rollingMonths.findIndex(rm => rm.monthName === ordMonth && rm.year === ordYear);
               if (ordRollingIdx !== -1) {
-                dynamicAwaiting[div][`col${ordRollingIdx}`] += outstandingVal;
+                dynamicAwaiting[div][`col${ordRollingIdx}`] += finalOutstandingVal;
               }
               if (ordFy === currentFinancialYear) {
-                dynamicAnnual[div].toInvoice += outstandingVal;
+                dynamicAnnual[div].toInvoice += finalOutstandingVal;
               }
             }
           }
@@ -1109,6 +1123,10 @@ export default function ReportsPage() {
         // To Be Invoiced (Awaiting Stock)
         if (type === 'awaiting') {
           if (order.status !== 'Draft' && order.status) {
+            const creditNotes = (order.creditNotes && order.creditNotes.length > 0)
+              ? order.creditNotes
+              : (order.clientInvoices || []).filter(cinv => cinv.is_credit || String(cinv.id).toUpperCase().startsWith('CN-') || String(cinv.id).toUpperCase().startsWith('CR-'));
+
             itemsList.forEach(item => {
               const retailVal = (Number(item.qty) || 0) * (Number(item.unitRetail) || 0);
               let itemInvoicedVal = 0;
@@ -1120,7 +1138,20 @@ export default function ReportsPage() {
               }
               const outstandingVal = Math.max(0, retailVal - itemInvoicedVal);
 
-              if (outstandingVal > 0) {
+              const itemCode = (item.code || '').trim().toUpperCase();
+              const itemOneOne = (item.oneOneCode || '').trim().toUpperCase();
+              const finalCreditedVal = creditNotes
+                .filter(cn => cn.re_invoice_intent !== 'WILL_REINVOICE')
+                .flatMap(cn => cn.items || [])
+                .filter(it => {
+                  const c = (it.code || '').trim().toUpperCase();
+                  return c && (c === itemCode || (itemOneOne && c === itemOneOne));
+                })
+                .reduce((s, it) => s + Math.abs(Number(it.total ?? ((Number(it.qtyAction) || Number(it.qty) || 0) * (Number(it.unitPrice) || Number(it.unitRetail) || 0)))), 0);
+
+              const finalOutstandingVal = Math.max(0, outstandingVal - finalCreditedVal);
+
+              if (finalOutstandingVal > 0) {
                 const expectedDate = item.po_eta || item.eta || order.eta || order.expected_delivery_date || item.po_date || order.po_date;
                 const parsedExpected = parseDateString(expectedDate) || orderDateParsed;
                 if (parsedExpected) {
@@ -1128,12 +1159,12 @@ export default function ReportsPage() {
                   if (extraFilter !== null) {
                     const targetMonth = rollingMonths[extraFilter];
                     if (expMonth === targetMonth.monthName && expYear === targetMonth.year) {
-                      list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: expectedDate || order.orderDate || 'N/A', value: outstandingVal, docType: 'Awaiting Stock' });
+                      list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: expectedDate || order.orderDate || 'N/A', value: finalOutstandingVal, docType: 'Awaiting Stock' });
                     }
                   } else {
                     const inRolling = rollingMonths.some(rm => rm.monthName === expMonth && rm.year === expYear);
                     if (inRolling) {
-                      list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: expectedDate || order.orderDate || 'N/A', value: outstandingVal, docType: 'Awaiting Stock' });
+                      list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: expectedDate || order.orderDate || 'N/A', value: finalOutstandingVal, docType: 'Awaiting Stock' });
                     }
                   }
                 }
