@@ -1372,6 +1372,33 @@ export default function PurchasingPage() {
     }
   };
 
+  const handleResolveIssue = async (docOrLine) => {
+    if (!docOrLine) return;
+    try {
+      const moduleType = (docOrLine.document_type || docOrLine.doc_type || (docOrLine.document_no?.startsWith('GRN') ? 'GRN' : 'PO')).toUpperCase();
+      const res = await fetch(`${API_BASE}/api/procurement/resolve-issue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          module: moduleType,
+          document_no: docOrLine.document_no,
+          resolved_by: 'Staff'
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`✅ Issue on ${docOrLine.document_no} resolved!`);
+        fetchSummary();
+        fetchProcurementDocuments(page, activeFilterTab, supplierFilter, searchQuery, limit);
+        if (selectedDocument) fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
+      } else {
+        alert(data.detail || 'Could not resolve issue.');
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
   const unallocatedLinesInDoc = useMemo(() => {
     if (!selectedDocument || !selectedDocument.lines) return [];
     return selectedDocument.lines.filter(l => (l.unallocated_qty || 0) > 0);
@@ -2615,23 +2642,44 @@ export default function PurchasingPage() {
                                     📦 Archive
                                   </button>
 
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      doc.is_open_issue ? handleResolveIssue(doc) : handleOpenIssueModal(doc);
-                                    }}
-                                    className="btn btn-xs btn-ghost"
-                                    style={{
-                                      color: doc.is_open_issue ? '#10b981' : '#f59e0b',
-                                      border: '1px solid var(--border)',
-                                      fontSize: '10.5px',
-                                      padding: '3px 8px',
-                                      borderRadius: '6px'
-                                    }}
-                                    title={doc.is_open_issue ? 'Click to resolve issue' : 'Flag as Issue / Not Found'}
-                                  >
-                                    {doc.is_open_issue ? 'Resolve' : 'Flag'}
-                                  </button>
+                                  {doc.is_open_issue || (doc.is_flagged_issue && !doc.is_internal && !doc.is_archived) ? (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleResolveIssue(doc);
+                                      }}
+                                      className="btn btn-xs btn-ghost"
+                                      style={{
+                                        color: '#10b981',
+                                        border: '1px solid rgba(16, 185, 129, 0.4)',
+                                        fontSize: '10.5px',
+                                        padding: '3px 8px',
+                                        borderRadius: '6px',
+                                        fontWeight: 600
+                                      }}
+                                      title="Click to resolve issue and restore to active list"
+                                    >
+                                      ✓ Resolve
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenIssueModal(doc);
+                                      }}
+                                      className="btn btn-xs btn-ghost"
+                                      style={{
+                                        color: '#f59e0b',
+                                        border: '1px solid var(--border)',
+                                        fontSize: '10.5px',
+                                        padding: '3px 8px',
+                                        borderRadius: '6px'
+                                      }}
+                                      title="Flag as Issue / Not Found"
+                                    >
+                                      Flag
+                                    </button>
+                                  )}
                                 </>
                               )}
 
