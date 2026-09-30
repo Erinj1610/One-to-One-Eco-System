@@ -516,7 +516,7 @@ export default function ReportsPage() {
     return isGood ? '#10b981' : '#f43f5e';
   };
 
-  const sumAwaitingStockTotal = (row) => ((row && row.col0) || 0) + ((row && row.col1) || 0) + ((row && row.col2) || 0) + ((row && row.col3) || 0);
+  const sumAwaitingStockTotal = (row) => ((row && row.allTotal !== undefined) ? row.allTotal : (((row && row.col0) || 0) + ((row && row.col1) || 0) + ((row && row.col2) || 0) + ((row && row.col3) || 0)));
   const sumPipelineTotal = (row) => ((row && row.col0) || 0) + ((row && row.col1) || 0) + ((row && row.col2) || 0) + ((row && row.col3) || 0);
   const sumAnnualTotal = (row) => ((row && row.invoiced) || 0) + ((row && row.toInvoice) || 0) + ((row && row.pipeline) || 0) + ((row && row.tbc) || 0);
 
@@ -539,7 +539,7 @@ export default function ReportsPage() {
     const baselineKPI5 = (activeFyConfig.targetsKPI5 && activeFyConfig.targetsKPI5[div]) || 0;
 
     dynamicInvoiced[div] = { actual: 0, budget: currentMonthBudget, ytdActual: 0, ytdBudget: computedYtdBudget };
-    dynamicAwaiting[div] = { col0: 0, col1: 0, col2: 0, col3: 0, target: 0 };
+    dynamicAwaiting[div] = { col0: 0, col1: 0, col2: 0, col3: 0, allTotal: 0, target: 0 };
     dynamicPipeline[div] = { col0: 0, col1: 0, col2: 0, col3: 0, target: 0 };
     dynamicAnnual[div] = { invoiced: 0, toInvoice: 0, pipeline: 0, tbc: 0, budget: fullYearAnnualBudget };
     dynamicDelivered[div] = { 
@@ -768,6 +768,9 @@ export default function ReportsPage() {
           const finalOutstandingVal = Math.max(0, outstandingVal - finalCreditedVal);
 
           if (finalOutstandingVal > 0) {
+            // Accumulate into all-months pipeline total for KPI 2
+            dynamicAwaiting[div].allTotal += finalOutstandingVal;
+
             // Prefer item-level PO ETA first, then general item ETA, then order-level eta, then expected_delivery_date, then order PO date
             const expectedDate = item.po_eta || item.eta || order.eta || order.expected_delivery_date || item.po_date || order.po_date;
             const parsedExpected = parseDateString(expectedDate);
@@ -1162,11 +1165,12 @@ export default function ReportsPage() {
                       list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: expectedDate || order.orderDate || 'N/A', value: finalOutstandingVal, docType: 'Awaiting Stock' });
                     }
                   } else {
-                    const inRolling = rollingMonths.some(rm => rm.monthName === expMonth && rm.year === expYear);
-                    if (inRolling) {
-                      list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: expectedDate || order.orderDate || 'N/A', value: finalOutstandingVal, docType: 'Awaiting Stock' });
-                    }
+                    // Total Pipeline: include all awaiting stock items across all months
+                    list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: expectedDate || order.orderDate || 'N/A', value: finalOutstandingVal, docType: 'Awaiting Stock' });
                   }
+                } else if (extraFilter === null) {
+                  // Fallback for missing date when viewing all-months Total Pipeline
+                  list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: finalOutstandingVal, docType: 'Awaiting Stock' });
                 }
               }
             });
