@@ -95,6 +95,10 @@ export default function PurchasingPage() {
   const [selectedLineIds, setSelectedLineIds] = useState(new Set());
 
   const [procurementDocs, setProcurementDocs] = useState([]);
+  const [docSortField, setDocSortField] = useState('date');
+  const [docSortDirection, setDocSortDirection] = useState('desc');
+  const [lineSortField, setLineSortField] = useState('item_code');
+  const [lineSortDirection, setLineSortDirection] = useState('asc');
   const [isLoadingProcurement, setIsLoadingProcurement] = useState(false);
   const [activeFilterTab, setActiveFilterTab] = useState('NEEDS_ALLOCATION'); // 'NEEDS_ALLOCATION' | 'PARTIAL' | 'FULLY_ALLOCATED' | 'PO' | 'GRN' | 'ALL'
   const [supplierFilter, setSupplierFilter] = useState('All Suppliers');
@@ -1409,6 +1413,122 @@ export default function PurchasingPage() {
     return selectedDocument.lines.filter(l => (l.allocated_qty || 0) > 0);
   }, [selectedDocument]);
 
+  const handleDocSort = (field) => {
+    if (docSortField === field) {
+      setDocSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setDocSortField(field);
+      setDocSortDirection('asc');
+    }
+  };
+
+  const renderDocSortIcon = (field) => {
+    if (docSortField !== field) {
+      return <ArrowUpDown size={12} style={{ marginLeft: '4px', opacity: 0.35, verticalAlign: 'middle' }} />;
+    }
+    return docSortDirection === 'asc'
+      ? <ArrowUp size={12} style={{ marginLeft: '4px', color: 'var(--text-info, #3b82f6)', verticalAlign: 'middle' }} />
+      : <ArrowDown size={12} style={{ marginLeft: '4px', color: 'var(--text-info, #3b82f6)', verticalAlign: 'middle' }} />;
+  };
+
+  const sortedProcurementDocs = useMemo(() => {
+    const list = [...procurementDocs];
+    list.sort((a, b) => {
+      let valA = a[docSortField];
+      let valB = b[docSortField];
+
+      if (docSortField === 'document_no') {
+        valA = (a.document_no || '').toLowerCase();
+        valB = (b.document_no || '').toLowerCase();
+      } else if (docSortField === 'doc_type') {
+        valA = (a.doc_type || '').toLowerCase();
+        valB = (b.doc_type || '').toLowerCase();
+      } else if (docSortField === 'date') {
+        valA = a.transaction_date ? new Date(a.transaction_date).getTime() : 0;
+        valB = b.transaction_date ? new Date(b.transaction_date).getTime() : 0;
+      } else if (docSortField === 'supplier') {
+        valA = (a.vendor_name || '').toLowerCase();
+        valB = (b.vendor_name || '').toLowerCase();
+      } else if (docSortField === 'reference') {
+        valA = (a.reference || a.customer_name || '').toLowerCase();
+        valB = (b.reference || b.customer_name || '').toLowerCase();
+      } else if (docSortField === 'items_qty') {
+        valA = Number(a.total_qty || 0);
+        valB = Number(b.total_qty || 0);
+      } else if (docSortField === 'total_value') {
+        valA = Number(a.total_value || 0);
+        valB = Number(b.total_value || 0);
+      } else if (docSortField === 'status') {
+        const order = { 'NEEDS_ALLOCATION': 0, 'PARTIAL': 1, 'FULLY_ALLOCATED': 2 };
+        valA = a.is_internal ? 3 : (a.is_archived ? 4 : (a.is_open_issue || a.is_flagged_issue ? -1 : (order[a.allocation_status] ?? 5)));
+        valB = b.is_internal ? 3 : (b.is_archived ? 4 : (b.is_open_issue || b.is_flagged_issue ? -1 : (order[b.allocation_status] ?? 5)));
+      }
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return docSortDirection === 'asc' ? valA - valB : valB - valA;
+      }
+      if (valA < valB) return docSortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return docSortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [procurementDocs, docSortField, docSortDirection]);
+
+  const handleLineSort = (field) => {
+    if (lineSortField === field) {
+      setLineSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setLineSortField(field);
+      setLineSortDirection('asc');
+    }
+  };
+
+  const renderLineSortIcon = (field) => {
+    if (lineSortField !== field) {
+      return <ArrowUpDown size={12} style={{ marginLeft: '4px', opacity: 0.35, verticalAlign: 'middle' }} />;
+    }
+    return lineSortDirection === 'asc'
+      ? <ArrowUp size={12} style={{ marginLeft: '4px', color: 'var(--text-info, #3b82f6)', verticalAlign: 'middle' }} />
+      : <ArrowDown size={12} style={{ marginLeft: '4px', color: 'var(--text-info, #3b82f6)', verticalAlign: 'middle' }} />;
+  };
+
+  const sortedDocumentLines = useMemo(() => {
+    if (!selectedDocument || !selectedDocument.lines) return [];
+    const list = [...selectedDocument.lines];
+    list.sort((a, b) => {
+      let valA = a[lineSortField];
+      let valB = b[lineSortField];
+
+      if (lineSortField === 'item_code') {
+        valA = (a.item_code || '').toLowerCase();
+        valB = (b.item_code || '').toLowerCase();
+      } else if (lineSortField === 'unit_cost') {
+        valA = Number(a.unit_cost || 0);
+        valB = Number(b.unit_cost || 0);
+      } else if (lineSortField === 'ordered_qty') {
+        valA = Number(a.total_qty || 0);
+        valB = Number(b.total_qty || 0);
+      } else if (lineSortField === 'allocated_qty') {
+        valA = Number(a.allocated_qty || 0);
+        valB = Number(b.allocated_qty || 0);
+      } else if (lineSortField === 'unallocated_qty') {
+        valA = Number(a.unallocated_qty || 0);
+        valB = Number(b.unallocated_qty || 0);
+      } else if (lineSortField === 'status') {
+        valA = (a.allocation_status || '').toLowerCase();
+        valB = (b.allocation_status || '').toLowerCase();
+      }
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return lineSortDirection === 'asc' ? valA - valB : valB - valA;
+      }
+      if (valA < valB) return lineSortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return lineSortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }, [selectedDocument, lineSortField, lineSortDirection]);
+
   return (
     <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 85px)', padding: '0 4px' }}>
       
@@ -1947,17 +2067,41 @@ export default function PurchasingPage() {
                       />
                     </th>
                     <th style={{ width: '30px' }}></th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Item Code / Description</th>
-                    <th style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 600 }}>Unit Cost</th>
-                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600 }}>Ordered Qty</th>
-                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600 }}>Allocated</th>
-                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600 }}>Unallocated</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}>Status</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('item_code')}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        Item Code / Description{renderLineSortIcon('item_code')}
+                      </div>
+                    </th>
+                    <th style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('unit_cost')}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                        Unit Cost{renderLineSortIcon('unit_cost')}
+                      </div>
+                    </th>
+                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('ordered_qty')}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        Ordered Qty{renderLineSortIcon('ordered_qty')}
+                      </div>
+                    </th>
+                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('allocated_qty')}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        Allocated{renderLineSortIcon('allocated_qty')}
+                      </div>
+                    </th>
+                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('unallocated_qty')}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        Unallocated{renderLineSortIcon('unallocated_qty')}
+                      </div>
+                    </th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('status')}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        Status{renderLineSortIcon('status')}
+                      </div>
+                    </th>
                     <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600 }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(selectedDocument.lines || []).map((line) => {
+                  {sortedDocumentLines.map((line) => {
                     const isExpanded = expandedLineId === line.id;
                     const hasAllocations = line.allocations && line.allocations.length > 0;
                     const isSelected = selectedLineIds.has(line.id);
@@ -2355,14 +2499,46 @@ export default function PurchasingPage() {
               <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
-                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600 }}>Document #</th>
-                    <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 600 }}>Type</th>
-                    <th style={{ padding: '10px 10px', textAlign: 'left', fontWeight: 600 }}>Date</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Supplier</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Project Reference</th>
-                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600 }}>Items / Qty</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>Total Value</th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600 }}>Allocation Status</th>
+                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('document_no')}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        Document #{renderDocSortIcon('document_no')}
+                      </div>
+                    </th>
+                    <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('doc_type')}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        Type{renderDocSortIcon('doc_type')}
+                      </div>
+                    </th>
+                    <th style={{ padding: '10px 10px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('date')}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        Date{renderDocSortIcon('date')}
+                      </div>
+                    </th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('supplier')}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        Supplier{renderDocSortIcon('supplier')}
+                      </div>
+                    </th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('reference')}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        Project Reference{renderDocSortIcon('reference')}
+                      </div>
+                    </th>
+                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('items_qty')}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        Items / Qty{renderDocSortIcon('items_qty')}
+                      </div>
+                    </th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('total_value')}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                        Total Value{renderDocSortIcon('total_value')}
+                      </div>
+                    </th>
+                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('status')}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        Allocation Status{renderDocSortIcon('status')}
+                      </div>
+                    </th>
                     <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600 }}>Action</th>
                   </tr>
                 </thead>
@@ -2383,7 +2559,7 @@ export default function PurchasingPage() {
                       </td>
                     </tr>
                   ) : (
-                    procurementDocs.map((doc) => {
+                    sortedProcurementDocs.map((doc) => {
                       return (
                         <tr 
                           key={doc.id}
