@@ -217,6 +217,10 @@ export default function PurchasingPage() {
         statusParam = 'FULLY_ALLOCATED';
       } else if (newTab === 'ISSUES') {
         statusParam = 'ISSUES';
+      } else if (newTab === 'INTERNAL') {
+        statusParam = 'INTERNAL';
+      } else if (newTab === 'ARCHIVED') {
+        statusParam = 'ARCHIVED';
       }
 
       const params = new URLSearchParams({
@@ -1268,27 +1272,100 @@ export default function PurchasingPage() {
     }
   };
 
-  const handleResolveIssue = async (docOrLine) => {
+  const handleMarkInternal = async (docOrLine) => {
     if (!docOrLine) return;
+    const docNo = docOrLine.document_no;
+    const moduleType = (docOrLine.document_type || docOrLine.doc_type || (docNo?.startsWith('GRN') ? 'GRN' : 'PO')).toUpperCase();
+
+    if (!window.confirm(`Mark ${moduleType} "${docNo}" as Internal Company Purchase / Office Expense?\n\nThis will remove it from the unallocated and issues lists and place it under the "Internal / Office" tab.`)) {
+      return;
+    }
+
     try {
-      const moduleType = (docOrLine.document_type || docOrLine.doc_type || (docOrLine.document_no?.startsWith('GRN') ? 'GRN' : 'PO')).toUpperCase();
-      const res = await fetch(`${API_BASE}/api/procurement/resolve-issue`, {
+      const res = await fetch(`${API_BASE}/api/procurement/mark-internal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           module: moduleType,
-          document_no: docOrLine.document_no,
-          resolved_by: 'Staff'
+          document_no: docNo,
+          notes: 'Internal company purchase / showroom / tools / stock',
+          marked_by: 'Staff'
         })
       });
       const data = await res.json();
       if (res.ok) {
-        triggerToast(`✅ Issue on ${docOrLine.document_no} resolved!`);
+        triggerToast(`🏢 ${docNo} marked as Internal / Office!`);
         fetchSummary();
         fetchProcurementDocuments(page, activeFilterTab, supplierFilter, searchQuery, limit);
         if (selectedDocument) fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
       } else {
-        alert(data.detail || 'Could not resolve issue.');
+        alert(data.detail || 'Could not mark as internal.');
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  const handleArchiveDocument = async (docOrLine) => {
+    if (!docOrLine) return;
+    const docNo = docOrLine.document_no;
+    const moduleType = (docOrLine.document_type || docOrLine.doc_type || (docNo?.startsWith('GRN') ? 'GRN' : 'PO')).toUpperCase();
+
+    if (!window.confirm(`Archive ${moduleType} "${docNo}"?\n\nChoose this for old purchase orders/GRNs whose client orders are no longer on the portal. It will be moved into the "Archived / Old Orders" tab and cleared from all active counters.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/procurement/archive-document`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          module: moduleType,
+          document_no: docNo,
+          notes: 'Archived - Order no longer on portal',
+          marked_by: 'Staff'
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`📦 ${docNo} archived successfully!`);
+        fetchSummary();
+        fetchProcurementDocuments(page, activeFilterTab, supplierFilter, searchQuery, limit);
+        if (selectedDocument) fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
+      } else {
+        alert(data.detail || 'Could not archive document.');
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
+  const handleUnmarkSpecial = async (docOrLine) => {
+    if (!docOrLine) return;
+    const docNo = docOrLine.document_no;
+    const moduleType = (docOrLine.document_type || docOrLine.doc_type || (docNo?.startsWith('GRN') ? 'GRN' : 'PO')).toUpperCase();
+
+    if (!window.confirm(`Restore ${moduleType} "${docNo}" back to active unallocated queue?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/procurement/unmark-special`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          module: moduleType,
+          document_no: docNo
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`🔄 ${docNo} restored to active queue!`);
+        fetchSummary();
+        fetchProcurementDocuments(page, activeFilterTab, supplierFilter, searchQuery, limit);
+        if (selectedDocument) fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
+      } else {
+        alert(data.detail || 'Could not restore document.');
       }
     } catch (err) {
       alert(`Error: ${err.message}`);
@@ -1640,8 +1717,60 @@ export default function PurchasingPage() {
                     transition: 'width 0.3s ease'
                   }} />
                 </div>
-                {selectedDocument.allocated_lines_count > 0 && (
-                  <div style={{ marginTop: '8px' }}>
+                <div style={{ marginTop: '8px', display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  {(selectedDocument.is_internal || selectedDocument.is_archived) ? (
+                    <button
+                      onClick={() => handleUnmarkSpecial(selectedDocument)}
+                      className="btn btn-xs btn-ghost"
+                      style={{
+                        color: 'var(--text-secondary)',
+                        border: '1px solid var(--border)',
+                        padding: '3px 9px',
+                        fontSize: '10.5px',
+                        fontWeight: 600,
+                        borderRadius: '6px'
+                      }}
+                      title="Restore back to unallocated list"
+                    >
+                      🔄 Restore to Active Queue
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleMarkInternal(selectedDocument)}
+                        className="btn btn-xs btn-ghost"
+                        style={{
+                          color: '#8b5cf6',
+                          border: '1px solid rgba(139, 92, 246, 0.3)',
+                          padding: '3px 9px',
+                          fontSize: '10.5px',
+                          fontWeight: 600,
+                          borderRadius: '6px'
+                        }}
+                        title="Mark as Internal Office / Company Purchase"
+                      >
+                        🏢 Mark as Internal
+                      </button>
+
+                      <button
+                        onClick={() => handleArchiveDocument(selectedDocument)}
+                        className="btn btn-xs btn-ghost"
+                        style={{
+                          color: 'var(--text-secondary)',
+                          border: '1px solid var(--border)',
+                          padding: '3px 9px',
+                          fontSize: '10.5px',
+                          fontWeight: 600,
+                          borderRadius: '6px'
+                        }}
+                        title="Archive (Order no longer on portal)"
+                      >
+                        📦 Archive Document
+                      </button>
+                    </>
+                  )}
+
+                  {selectedDocument.allocated_lines_count > 0 && (
                     <button
                       onClick={() => handleUnallocateEntireDocument(selectedDocument.document_no)}
                       className="btn btn-xs"
@@ -1661,8 +1790,8 @@ export default function PurchasingPage() {
                     >
                       <Trash2 size={11} /> Unallocate Entire Document
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -2107,6 +2236,32 @@ export default function PurchasingPage() {
                   ⚠️ Issues / Not Found ({procurementSummary.issues_count || 0})
                 </button>
                 <button
+                  onClick={() => setActiveFilterTab('INTERNAL')}
+                  className={`btn btn-xs ${activeFilterTab === 'INTERNAL' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    background: activeFilterTab === 'INTERNAL' ? '#8b5cf6' : 'transparent',
+                    color: activeFilterTab === 'INTERNAL' ? '#fff' : '#8b5cf6',
+                    border: '1px solid rgba(139, 92, 246, 0.4)'
+                  }}
+                >
+                  🏢 Internal / Office ({procurementSummary.internal_count || 0})
+                </button>
+                <button
+                  onClick={() => setActiveFilterTab('ARCHIVED')}
+                  className={`btn btn-xs ${activeFilterTab === 'ARCHIVED' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    background: activeFilterTab === 'ARCHIVED' ? '#6b7280' : 'transparent',
+                    color: activeFilterTab === 'ARCHIVED' ? '#fff' : 'var(--text-secondary)',
+                    border: '1px solid rgba(107, 114, 128, 0.4)'
+                  }}
+                >
+                  📦 Archived / Old Orders ({procurementSummary.archived_count || 0})
+                </button>
+                <button
                   onClick={() => setActiveFilterTab('PO')}
                   className={`btn btn-xs ${activeFilterTab === 'PO' ? 'btn-primary' : 'btn-ghost'}`}
                   style={{ fontSize: '11.5px', fontWeight: 600 }}
@@ -2285,7 +2440,37 @@ export default function PurchasingPage() {
 
                           {/* Allocation Status Badge */}
                           <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                            {doc.is_flagged_issue ? (
+                            {doc.is_internal ? (
+                              <span style={{ 
+                                background: 'rgba(139, 92, 246, 0.12)', 
+                                color: '#8b5cf6', 
+                                border: '1px solid rgba(139, 92, 246, 0.3)',
+                                padding: '3px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10px', 
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                🏢 Internal / Office
+                              </span>
+                            ) : doc.is_archived ? (
+                              <span style={{ 
+                                background: 'rgba(107, 114, 128, 0.15)', 
+                                color: 'var(--text-secondary)', 
+                                border: '1px solid rgba(107, 114, 128, 0.3)',
+                                padding: '3px 8px', 
+                                borderRadius: '12px', 
+                                fontSize: '10px', 
+                                fontWeight: 700,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                📦 Archived (Old Order)
+                              </span>
+                            ) : doc.is_open_issue || (doc.is_flagged_issue && !doc.is_internal && !doc.is_archived) ? (
                               <span style={{ 
                                 background: 'rgba(239, 68, 68, 0.12)', 
                                 color: '#ef4444', 
@@ -2368,26 +2553,87 @@ export default function PurchasingPage() {
                                   boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
                                 }}
                               >
-                                <Sparkles size={11} /> Open & Allocate
+                                <Sparkles size={11} /> Open
                               </button>
 
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  doc.is_flagged_issue ? handleResolveIssue(doc) : handleOpenIssueModal(doc);
-                                }}
-                                className="btn btn-xs btn-ghost"
-                                style={{
-                                  color: doc.is_flagged_issue ? '#10b981' : '#f59e0b',
-                                  border: '1px solid var(--border)',
-                                  fontSize: '10.5px',
-                                  padding: '3px 8px',
-                                  borderRadius: '6px'
-                                }}
-                                title={doc.is_flagged_issue ? 'Click to resolve issue' : 'Flag as Issue / Not Found'}
-                              >
-                                {doc.is_flagged_issue ? 'Resolve' : 'Flag'}
-                              </button>
+                              {/* If document is marked as Internal or Archived, allow restoring it */}
+                              {(doc.is_internal || doc.is_archived) ? (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleUnmarkSpecial(doc);
+                                  }}
+                                  className="btn btn-xs btn-ghost"
+                                  style={{
+                                    color: 'var(--text-secondary)',
+                                    border: '1px solid var(--border)',
+                                    fontSize: '10.5px',
+                                    padding: '3px 8px',
+                                    borderRadius: '6px'
+                                  }}
+                                  title="Restore back to unallocated list"
+                                >
+                                  Restore
+                                </button>
+                              ) : (
+                                <>
+                                  {/* Mark Internal quick button */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleMarkInternal(doc);
+                                    }}
+                                    className="btn btn-xs btn-ghost"
+                                    style={{
+                                      color: '#8b5cf6',
+                                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                                      fontSize: '10.5px',
+                                      padding: '3px 8px',
+                                      borderRadius: '6px'
+                                    }}
+                                    title="Mark as Internal Office / Company Purchase"
+                                  >
+                                    🏢 Internal
+                                  </button>
+
+                                  {/* Archive quick button */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleArchiveDocument(doc);
+                                    }}
+                                    className="btn btn-xs btn-ghost"
+                                    style={{
+                                      color: 'var(--text-secondary)',
+                                      border: '1px solid var(--border)',
+                                      fontSize: '10.5px',
+                                      padding: '3px 8px',
+                                      borderRadius: '6px'
+                                    }}
+                                    title="Archive (Order no longer on portal)"
+                                  >
+                                    📦 Archive
+                                  </button>
+
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      doc.is_open_issue ? handleResolveIssue(doc) : handleOpenIssueModal(doc);
+                                    }}
+                                    className="btn btn-xs btn-ghost"
+                                    style={{
+                                      color: doc.is_open_issue ? '#10b981' : '#f59e0b',
+                                      border: '1px solid var(--border)',
+                                      fontSize: '10.5px',
+                                      padding: '3px 8px',
+                                      borderRadius: '6px'
+                                    }}
+                                    title={doc.is_open_issue ? 'Click to resolve issue' : 'Flag as Issue / Not Found'}
+                                  >
+                                    {doc.is_open_issue ? 'Resolve' : 'Flag'}
+                                  </button>
+                                </>
+                              )}
 
                               {/* Delete button STRICTLY for manually recorded legacy documents */}
                               {doc.reference && doc.reference.includes('[LEGACY]') && (
@@ -3608,6 +3854,8 @@ export default function PurchasingPage() {
                   style={{ width: '100%', fontSize: '12.5px' }}
                 >
                   <option value="Order Not Found">Order Not Found in System</option>
+                  <option value="Internal Purchase">🏢 Internal Company Purchase / Office Expense</option>
+                  <option value="Archived (Legacy Order)">📦 Archived (Old Order No Longer on Portal)</option>
                   <option value="SKU Mismatch">SKU / Item Code Mismatch</option>
                   <option value="Quantity / Spec Discrepancy">Quantity / Spec Discrepancy</option>
                   <option value="Requires PM Review">Requires PM / Estimator Review</option>
@@ -3635,23 +3883,51 @@ export default function PurchasingPage() {
                 paddingTop: '14px',
                 display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center'
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '8px'
               }}>
-                {issueTargetItem.is_flagged_issue ? (
+                <div style={{ display: 'flex', gap: '6px' }}>
                   <button
                     type="button"
                     onClick={() => {
+                      const item = issueTargetItem;
                       setIssueModalOpen(false);
-                      handleResolveIssue(issueTargetItem);
+                      handleMarkInternal(item);
                     }}
                     className="btn btn-sm btn-ghost"
-                    style={{ color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', fontSize: '11.5px' }}
+                    style={{ color: '#8b5cf6', border: '1px solid rgba(139, 92, 246, 0.4)', fontSize: '11px' }}
+                    title="Mark this document as internal company purchase"
                   >
-                    <Check size={13} /> Mark Resolved
+                    🏢 Mark Internal
                   </button>
-                ) : (
-                  <div />
-                )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const item = issueTargetItem;
+                      setIssueModalOpen(false);
+                      handleArchiveDocument(item);
+                    }}
+                    className="btn btn-sm btn-ghost"
+                    style={{ color: 'var(--text-secondary)', border: '1px solid var(--border)', fontSize: '11px' }}
+                    title="Archive this document (old order no longer on portal)"
+                  >
+                    📦 Archive
+                  </button>
+                  {issueTargetItem.is_flagged_issue && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIssueModalOpen(false);
+                        handleResolveIssue(issueTargetItem);
+                      }}
+                      className="btn btn-sm btn-ghost"
+                      style={{ color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', fontSize: '11px' }}
+                    >
+                      <Check size={13} /> Resolve
+                    </button>
+                  )}
+                </div>
 
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button

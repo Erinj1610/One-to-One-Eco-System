@@ -153,34 +153,66 @@ def get_procurement_summary(db: Session = Depends(get_db)):
             elif allocated >= target_qty:
                 doc_stats[dkey]["alloc_lines"] += 1
 
+        # Fetch all open issues and archived/internal issues
+        all_relevant_issues = db.query(AllocationIssue).filter(
+            AllocationIssue.module.in_(["PO", "GRN"]),
+            or_(
+                AllocationIssue.status == "Open",
+                AllocationIssue.reason.in_(["Internal Purchase", "Archived (Legacy Order)"])
+            )
+        ).all()
+
+        issue_doc_keys = set()
+        open_issues_count = 0
+        po_issues_cnt = 0
+        grn_issues_cnt = 0
+        internal_doc_keys = set()
+        archived_doc_keys = set()
+
+        for iss in all_relevant_issues:
+            dkey = f"{iss.module}_{iss.document_no}"
+            if iss.status == "Open":
+                issue_doc_keys.add(dkey)
+                open_issues_count += 1
+                if iss.module == "PO":
+                    po_issues_cnt += 1
+                elif iss.module == "GRN":
+                    grn_issues_cnt += 1
+            elif iss.reason == "Internal Purchase":
+                internal_doc_keys.add(dkey)
+            elif iss.reason == "Archived (Legacy Order)":
+                archived_doc_keys.add(dkey)
+
         unallocated_docs = 0
         partially_allocated_docs = 0
         fully_allocated_docs = 0
         total_unallocated_units = 0.0
 
         for dkey, s in doc_stats.items():
-            total_unallocated_units += s["unalloc_units"]
-            if s["alloc_lines"] == s["total_lines"]:
+            # If document is flagged with an open issue, internal, or archived, exclude from active unallocated queue
+            is_special = (dkey in issue_doc_keys or dkey in internal_doc_keys or dkey in archived_doc_keys)
+            
+            if not is_special:
+                total_unallocated_units += s["unalloc_units"]
+
+            if s["alloc_lines"] == s["total_lines"] and s["total_lines"] > 0:
                 fully_allocated_docs += 1
             elif s["unalloc_lines"] == s["total_lines"]:
-                unallocated_docs += 1
+                if not is_special:
+                    unallocated_docs += 1
             else:
-                partially_allocated_docs += 1
-
-        open_issues = db.query(AllocationIssue).filter(
-            AllocationIssue.module.in_(["PO", "GRN"]),
-            AllocationIssue.status == "Open"
-        ).all()
-        po_issues_cnt = sum(1 for i in open_issues if i.module == "PO")
-        grn_issues_cnt = sum(1 for i in open_issues if i.module == "GRN")
+                if not is_special:
+                    partially_allocated_docs += 1
 
         return {
             "unallocated_count": unallocated_docs,
             "partially_allocated_count": partially_allocated_docs,
             "fully_allocated_count": fully_allocated_docs,
-            "issues_count": len(open_issues),
+            "issues_count": len(issue_doc_keys),
             "po_issues_count": po_issues_cnt,
             "grn_issues_count": grn_issues_cnt,
+            "internal_count": len(internal_doc_keys),
+            "archived_count": len(archived_doc_keys),
             "total_documents": len(doc_stats),
             "total_lines": len(po_lines) + len(grn_lines),
             "total_unallocated_units": round(total_unallocated_units, 2)
@@ -229,14 +261,17 @@ def get_procurement_documents(
                 "notes": ar.notes
             })
 
-        # Load open issues
-        open_issues = db.query(AllocationIssue).filter(
+        # Load open issues and archived/internal classifications
+        all_relevant_issues = db.query(AllocationIssue).filter(
             AllocationIssue.module.in_(["PO", "GRN"]),
-            AllocationIssue.status == "Open"
+            or_(
+                AllocationIssue.status == "Open",
+                AllocationIssue.reason.in_(["Internal Purchase", "Archived (Legacy Order)"])
+            )
         ).all()
         issue_by_doc = {}
         issue_by_line = {}
-        for iss in open_issues:
+        for iss in all_relevant_issues:
             issue_by_doc[f"{iss.module}_{iss.document_no}"] = iss
             if iss.line_id:
                 issue_by_line[f"{iss.module}_{iss.document_no}_{iss.line_id}"] = iss
@@ -577,11 +612,35 @@ def get_procurement_documents(
             d["issue_flagged_by"] = iss_d.flagged_by if iss_d else (next((l["issue_flagged_by"] for l in d["lines"] if l.get("issue_flagged_by")), None))
             d["issue_flagged_at"] = iss_d.flagged_at.isoformat() if iss_d and iss_d.flagged_at else (next((l["issue_flagged_at"] for l in d["lines"] if l.get("issue_flagged_at")), None))
 
-            if status.upper() in ["ISSUES", "NOT_FOUND"] and not is_d_issue:
-                continue
-            elif status.upper() == "NEEDS_ALLOCATION" and (doc_status != "NEEDS_ALLOCATION" or is_d_issue):
-                continue
-            elif status != "ALL" and status.upper() not in ["ISSUES", "NOT_FOUND", "NEEDS_ALLOCATION"] and doc_status != status.upper():
+            # Check if document has internal or archived classification
+            doc_issue_reason = d["issue_reason"]
+            is_internal = is_d_issue and doc_issue_reason == "Internal Purchase"
+            is_archived = is_d_issue and doc_issue_reason == "Archived (Legacy Order)"
+            is_open_issue = is_d_issue and not is_internal and not is_archived
+
+            d["is_internal"] = is_internal
+            d["is_archived"] = is_archived
+            d["is_open_issue"] = is_open_issue
+
+            if status.upper() == "INTERNAL":
+                if not is_internal:
+                    continue
+            elif status.upper() in ["ARCHIVED", "LEGACY"]:
+                if not is_archived:
+                    continue
+            elif status.upper() in ["ISSUES", "NOT_FOUND"]:
+                if not is_open_issue:
+                    continue
+            elif status.upper() == "NEEDS_ALLOCATION":
+                if doc_status != "NEEDS_ALLOCATION" or is_d_issue:
+                    continue
+            elif status.upper() == "PARTIAL":
+                if doc_status != "PARTIAL" or is_internal or is_archived:
+                    continue
+            elif status.upper() == "FULLY_ALLOCATED":
+                if doc_status != "FULLY_ALLOCATED":
+                    continue
+            elif status != "ALL" and doc_status != status.upper():
                 continue
 
             doc_list.append(d)
@@ -751,6 +810,20 @@ def get_document_details(
         else:
             doc_status = "PARTIAL"
 
+        # Check document-level issue/archive/internal status
+        doc_issue = db.query(AllocationIssue).filter(
+            AllocationIssue.module == clean_doc_type,
+            AllocationIssue.document_no == clean_doc_no,
+            or_(
+                AllocationIssue.status == "Open",
+                AllocationIssue.reason.in_(["Internal Purchase", "Archived (Legacy Order)"])
+            )
+        ).first()
+
+        is_internal = bool(doc_issue and doc_issue.reason == "Internal Purchase")
+        is_archived = bool(doc_issue and doc_issue.reason == "Archived (Legacy Order)")
+        is_flagged_issue = bool(doc_issue and not is_internal and not is_archived)
+
         return {
             "doc_type": clean_doc_type,
             "document_no": clean_doc_no,
@@ -765,6 +838,11 @@ def get_document_details(
             "unallocated_lines_count": unallocated_lines,
             "total_value": round(total_value, 2),
             "allocation_status": doc_status,
+            "is_internal": is_internal,
+            "is_archived": is_archived,
+            "is_flagged_issue": is_flagged_issue,
+            "issue_reason": doc_issue.reason if doc_issue else None,
+            "issue_notes": doc_issue.notes if doc_issue else None,
             "lines": lines
         }
     except Exception as e:
@@ -1958,6 +2036,183 @@ def resolve_procurement_issue(payload: dict = Body(...), db: Session = Depends(g
     except Exception as e:
         db.rollback()
         logger.error(f"Error resolving procurement issue: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.post("/mark-internal")
+@router.post("/mark-internal")
+def mark_procurement_internal(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    Marks a PO or GRN document (or list of documents) as Internal Purchase / Company Expense.
+    Removes them from the unallocated and issues queues and displays under Internal / Office.
+    """
+    try:
+        module = str(payload.get("module") or "PO").strip().upper()
+        document_nos = payload.get("document_nos") or ([payload.get("document_no")] if payload.get("document_no") else [])
+        notes = str(payload.get("notes") or "Internal Company Purchase / Expense").strip()
+        marked_by = str(payload.get("marked_by") or "Staff").strip()
+
+        if not document_nos:
+            raise HTTPException(status_code=400, detail="Missing document_no or document_nos.")
+
+        count = 0
+        now_utc = datetime.now(timezone.utc)
+
+        for d_no in document_nos:
+            clean_dno = str(d_no).strip()
+            if not clean_dno:
+                continue
+
+            # Check if there is an existing AllocationIssue record
+            existing = db.query(AllocationIssue).filter(
+                AllocationIssue.module == module,
+                AllocationIssue.document_no == clean_dno
+            ).all()
+
+            if existing:
+                for iss in existing:
+                    iss.reason = "Internal Purchase"
+                    iss.notes = notes
+                    iss.status = "Resolved"
+                    iss.resolved_at = now_utc
+                    iss.resolved_by = marked_by
+            else:
+                if module == "PO":
+                    pal_doc = db.query(PalladiumPOLine).filter(PalladiumPOLine.document_no == clean_dno).first()
+                    cust_vend = pal_doc.vendor_name if pal_doc else None
+                    doc_amt = float(pal_doc.total_value_excl or 0.0) if pal_doc else 0.0
+                else:
+                    pal_doc = db.query(PalladiumGRNLine).filter(PalladiumGRNLine.document_no == clean_dno).first()
+                    cust_vend = pal_doc.vendor_name if pal_doc else None
+                    doc_amt = float(pal_doc.line_total_excl or 0.0) if pal_doc else 0.0
+
+                new_iss = AllocationIssue(
+                    module=module,
+                    document_no=clean_dno,
+                    amount=doc_amt,
+                    customer_vendor=cust_vend,
+                    reason="Internal Purchase",
+                    notes=notes,
+                    flagged_by=marked_by,
+                    flagged_at=now_utc,
+                    status="Resolved",
+                    resolved_at=now_utc,
+                    resolved_by=marked_by
+                )
+                db.add(new_iss)
+            count += 1
+
+        db.commit()
+        return {"status": "success", "message": f"{count} document(s) marked as Internal / Office.", "count": count}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error marking procurement internal: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.post("/archive-document")
+@router.post("/archive-document")
+def archive_procurement_document(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    Archives a PO or GRN document belonging to an old/archived order no longer on the portal.
+    Removes it from the unallocated and issues queues and displays under Archived / Old Orders.
+    """
+    try:
+        module = str(payload.get("module") or "PO").strip().upper()
+        document_nos = payload.get("document_nos") or ([payload.get("document_no")] if payload.get("document_no") else [])
+        notes = str(payload.get("notes") or "Archived - Order no longer on portal").strip()
+        marked_by = str(payload.get("marked_by") or "Staff").strip()
+
+        if not document_nos:
+            raise HTTPException(status_code=400, detail="Missing document_no or document_nos.")
+
+        count = 0
+        now_utc = datetime.now(timezone.utc)
+
+        for d_no in document_nos:
+            clean_dno = str(d_no).strip()
+            if not clean_dno:
+                continue
+
+            existing = db.query(AllocationIssue).filter(
+                AllocationIssue.module == module,
+                AllocationIssue.document_no == clean_dno
+            ).all()
+
+            if existing:
+                for iss in existing:
+                    iss.reason = "Archived (Legacy Order)"
+                    iss.notes = notes
+                    iss.status = "Resolved"
+                    iss.resolved_at = now_utc
+                    iss.resolved_by = marked_by
+            else:
+                if module == "PO":
+                    pal_doc = db.query(PalladiumPOLine).filter(PalladiumPOLine.document_no == clean_dno).first()
+                    cust_vend = pal_doc.vendor_name if pal_doc else None
+                    doc_amt = float(pal_doc.total_value_excl or 0.0) if pal_doc else 0.0
+                else:
+                    pal_doc = db.query(PalladiumGRNLine).filter(PalladiumGRNLine.document_no == clean_dno).first()
+                    cust_vend = pal_doc.vendor_name if pal_doc else None
+                    doc_amt = float(pal_doc.line_total_excl or 0.0) if pal_doc else 0.0
+
+                new_iss = AllocationIssue(
+                    module=module,
+                    document_no=clean_dno,
+                    amount=doc_amt,
+                    customer_vendor=cust_vend,
+                    reason="Archived (Legacy Order)",
+                    notes=notes,
+                    flagged_by=marked_by,
+                    flagged_at=now_utc,
+                    status="Resolved",
+                    resolved_at=now_utc,
+                    resolved_by=marked_by
+                )
+                db.add(new_iss)
+            count += 1
+
+        db.commit()
+        return {"status": "success", "message": f"{count} document(s) archived.", "count": count}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error archiving procurement document: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@public_router.post("/unmark-special")
+@router.post("/unmark-special")
+def unmark_procurement_special(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """
+    Restores an Internal or Archived document back to normal unallocated status.
+    """
+    try:
+        module = str(payload.get("module") or "PO").strip().upper()
+        document_no = str(payload.get("document_no") or "").strip()
+
+        if not document_no:
+            raise HTTPException(status_code=400, detail="Missing document_no.")
+
+        issues = db.query(AllocationIssue).filter(
+            AllocationIssue.module == module,
+            AllocationIssue.document_no == document_no,
+            AllocationIssue.reason.in_(["Internal Purchase", "Archived (Legacy Order)"])
+        ).all()
+
+        for iss in issues:
+            db.delete(iss)
+
+        db.commit()
+        return {"status": "success", "message": f"{module} {document_no} restored to active queue."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error unmarking special document: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
