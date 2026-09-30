@@ -2019,10 +2019,12 @@ def resolve_procurement_issue(payload: dict = Body(...), db: Session = Depends(g
             raise HTTPException(status_code=400, detail="Missing document_no")
 
         issues = db.query(AllocationIssue).filter(
-            AllocationIssue.module == module,
-            AllocationIssue.document_no == document_no,
+            func.upper(AllocationIssue.document_no) == document_no.upper(),
             AllocationIssue.status == "Open"
-        ).all()
+        )
+        if module:
+            issues = issues.filter(func.upper(AllocationIssue.module) == module.upper())
+        issues = issues.all()
 
         for iss in issues:
             iss.status = "Resolved"
