@@ -1573,6 +1573,17 @@ export default function SalesTracker() {
     });
 
     try {
+      // 1. Direct targeted Cloud SQL endpoint update
+      await fetch(`${API_BASE}/api/orders/${orderItem.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expected_deposit_month: newMonth,
+          expectedDepositMonth: newMonth
+        })
+      });
+
+      // 2. Sync to reactive store context
       await updateProject(targetProjectKey, 'orders', updatedOrders);
     } catch (err) {
       console.error("Failed to update expected deposit month:", err);
