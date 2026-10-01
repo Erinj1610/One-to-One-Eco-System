@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
@@ -135,6 +136,7 @@ const getFyMonthLabels = (fyStr = '2026-2027') => {
 };
 
 export default function ReportsPage() {
+  const navigate = useNavigate();
   const { projects } = useStore();
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
 
@@ -436,7 +438,34 @@ export default function ReportsPage() {
       }
     }
 
-    // Format 2: YYYY-MM-DD or ISO string
+    // Format 2: YYYY-MM (e.g. 2026-10)
+    if (typeof rawDate === 'string' && /^\d{4}-\d{2}$/.test(rawDate.trim())) {
+      const parts = rawDate.trim().split('-');
+      const year = parseInt(parts[0], 10);
+      const monthIdx = parseInt(parts[1], 10) - 1;
+      if (monthIdx >= 0 && monthIdx < 12) {
+        return { monthName: MONTHS_LIST[monthIdx], year, monthIdx };
+      }
+    }
+
+    // Format 3: Month YYYY or Mon YYYY (e.g. October 2026 or Oct 2026)
+    if (typeof rawDate === 'string') {
+      const trimmed = rawDate.trim();
+      for (let m = 0; m < 12; m++) {
+        const fullM = MONTHS_LIST[m];
+        const shortM = fullM.slice(0, 3);
+        const matchFull = new RegExp(`^${fullM}\\s+(\\d{4})$`, 'i').exec(trimmed);
+        if (matchFull) {
+          return { monthName: fullM, year: parseInt(matchFull[1], 10), monthIdx: m };
+        }
+        const matchShort = new RegExp(`^${shortM}\\s+(\\d{4})$`, 'i').exec(trimmed);
+        if (matchShort) {
+          return { monthName: fullM, year: parseInt(matchShort[1], 10), monthIdx: m };
+        }
+      }
+    }
+
+    // Format 4: YYYY-MM-DD or ISO string
     const d = new Date(rawDate);
     if (!isNaN(d.getTime())) {
       const monthIdx = d.getMonth();
@@ -804,15 +833,30 @@ export default function ReportsPage() {
         });
       }
 
-      // KPI 3 & Annual Pipeline: Unapproved / Draft orders
+      // KPI 3 & Annual Pipeline: Unapproved / Draft orders (Awaiting Deposit)
       if (order.status === 'Draft' || !order.status || order.status === 'Pending') {
         const isEligibleForPipeline = (order.status === 'Draft' || !order.status || (order.status === 'Pending' && !isEligibleForInvoiced));
         if (isEligibleForPipeline) {
-          if (rollingIdx !== -1) {
-            dynamicPipeline[div][`col${rollingIdx}`] += orderValue;
-          }
-          if (orderFy === currentFinancialYear) {
-            dynamicAnnual[div].pipeline += orderValue;
+          const rawExpected = order.expected_deposit_month || order.expectedDepositMonth;
+          const isTbc = !rawExpected || String(rawExpected).trim().toUpperCase() === 'TBC' || String(rawExpected).trim().toUpperCase() === 'NONE';
+          
+          if (!isTbc) {
+            const parsedExpected = parseDateString(rawExpected);
+            if (parsedExpected) {
+              const { monthName: expMonth, year: expYear, monthIdx: expMonthIdx } = parsedExpected;
+              const expFy = getFinancialYearForPeriod(expMonthIdx, expYear);
+              const expRollingIdx = rollingMonths.findIndex(rm => rm.monthName === expMonth && rm.year === expYear);
+              
+              if (expRollingIdx !== -1) {
+                dynamicPipeline[div][`col${expRollingIdx}`] += orderValue;
+              }
+              if (expFy === currentFinancialYear) {
+                dynamicAnnual[div].pipeline += orderValue;
+              }
+            }
+          } else {
+            // Track unallocated / unscheduled pre-deposit pipeline under Annual Blank / TBC
+            dynamicAnnual[div].tbc += orderValue;
           }
         }
       }
@@ -1177,21 +1221,29 @@ export default function ReportsPage() {
           }
         }
 
-        // Pipeline Projections (Draft & Pending orders)
+        // Pipeline Projections (Draft & Pending orders with Scheduled Expected Deposit Month)
         if (type === 'pipeline') {
           if (order.status === 'Draft' || !order.status || order.status === 'Pending') {
             const isEligibleForPipeline = (order.status === 'Draft' || !order.status || (order.status === 'Pending' && !isEligibleForInvoiced));
             if (isEligibleForPipeline) {
-              const { monthName: orderMonth, year: orderYear } = orderDateParsed;
-              if (extraFilter !== null) {
-                const targetMonth = rollingMonths[extraFilter];
-                if (orderMonth === targetMonth.monthName && orderYear === targetMonth.year) {
-                  list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue, docType: 'Pipeline Spec' });
-                }
-              } else {
-                const inRolling = rollingMonths.some(rm => rm.monthName === orderMonth && rm.year === orderYear);
-                if (inRolling) {
-                  list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue, docType: 'Pipeline Spec' });
+              const rawExpected = order.expected_deposit_month || order.expectedDepositMonth;
+              const isTbc = !rawExpected || String(rawExpected).trim().toUpperCase() === 'TBC' || String(rawExpected).trim().toUpperCase() === 'NONE';
+              
+              if (!isTbc) {
+                const parsedExpected = parseDateString(rawExpected);
+                if (parsedExpected) {
+                  const { monthName: expMonth, year: expYear } = parsedExpected;
+                  if (extraFilter !== null) {
+                    const targetMonth = rollingMonths[extraFilter];
+                    if (expMonth === targetMonth.monthName && expYear === targetMonth.year) {
+                      list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: `Exp: ${rawExpected}`, value: orderValue, docType: 'Pipeline Spec' });
+                    }
+                  } else {
+                    const inRolling = rollingMonths.some(rm => rm.monthName === expMonth && rm.year === expYear);
+                    if (inRolling) {
+                      list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: `Exp: ${rawExpected}`, value: orderValue, docType: 'Pipeline Spec' });
+                    }
+                  }
                 }
               }
             }
@@ -1782,11 +1834,31 @@ export default function ReportsPage() {
           {/* KPI 3: PIPELINE */}
           <div className="card" style={{ marginBottom: '28px', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
             <div 
-              onClick={() => toggleCollapse('kpi3')}
-              style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}
+              style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}
             >
-              {collapsedTables.kpi3 ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-              <div style={{ fontWeight: 700, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>KPI 3: Sales Pipeline Projections</div>
+              <div 
+                onClick={() => toggleCollapse('kpi3')}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}
+              >
+                {collapsedTables.kpi3 ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                <div style={{ fontWeight: 700, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  KPI 3: Sales Pipeline Projections
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                  Only shows scheduled deposit months (TBC excluded)
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline"
+                  onClick={() => navigate('/sales-tracker', { state: { view: 'pipeline' } })}
+                  style={{ fontSize: '11.5px', padding: '4px 10px', height: '28px', display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px' }}
+                >
+                  ⚡ Manage Expected Dates in SalesTracker
+                </button>
+              </div>
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>

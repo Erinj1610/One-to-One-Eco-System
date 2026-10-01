@@ -1618,7 +1618,8 @@ export function StoreProvider({ children }) {
           depositInvoiceSent: newOrder.depositInvoiceSent,
           depositPaymentDate: newOrder.depositPaymentDate,
           balanceValue: newOrder.balanceValue,
-          balancePaymentDate: newOrder.balancePaymentDate
+          balancePaymentDate: newOrder.balancePaymentDate,
+          expected_deposit_month: newOrder.expected_deposit_month || newOrder.expectedDepositMonth || null
         };
 
 

@@ -977,6 +977,7 @@ export default function SalesTracker() {
   const [pmPhone, setPmPhone] = useState('083 570 7795');
   const [pmEmail, setPmEmail] = useState('merlyn.mittins@1-to-1.world');
   const [orderDate, setOrderDate] = useState('');
+  const [expectedDepositMonth, setExpectedDepositMonth] = useState('TBC');
 
   const [quotationSentDate, setQuotationSentDate] = useState('2025-12-09');
   const [projectClass, setProjectClass] = useState('Singita');
@@ -1033,6 +1034,15 @@ export default function SalesTracker() {
   const [clientFilter, setClientFilter] = useState('All');
   const [pmFilter, setPmFilter] = useState('All');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('All');
+
+  // Top View Mode: 'ledger' (Standard Orders Ledger) | 'pipeline' (Deposit Pipeline Manager)
+  const [viewMode, setViewMode] = useState('ledger');
+  const [pipelinePmFilter, setPipelinePmFilter] = useState('All');
+  const [pipelineDivFilter, setPipelineDivFilter] = useState('All');
+  const [pipelineTbcOnly, setPipelineTbcOnly] = useState(false);
+  const [pipelineSearch, setPipelineSearch] = useState('');
+  const [pipelineSortField, setPipelineSortField] = useState('id');
+  const [pipelineSortDirection, setPipelineSortDirection] = useState('desc');
 
   // Sorting States
   const [sortField, setSortField] = useState(null);
@@ -1300,6 +1310,9 @@ export default function SalesTracker() {
 
   // Check router state from location for automatic redirection/filtering
   useEffect(() => {
+    if (location.state?.view) {
+      setViewMode(location.state.view);
+    }
     if (location.state?.projectKey) {
       setProjectFilterKey(location.state.projectKey);
     }
@@ -1453,6 +1466,137 @@ export default function SalesTracker() {
       ? <ArrowUp size={12} style={{ marginLeft: '4px', color: 'var(--text-info)' }} />
       : <ArrowDown size={12} style={{ marginLeft: '4px', color: 'var(--text-info)' }} />;
   };
+
+  // Helper: map PM Name to Division
+  const mapOrderToDivision = (o) => {
+    if (o.division && o.division !== 'Auto-Detect (PM Name)' && o.division !== 'UNALLOCATED / UNASSIGNED') return o.division;
+    const name = `${o.pmName || o.projectPm || ''} ${o.oneOneRep || ''} ${o.salesRep || ''}`.trim().toLowerCase();
+    const proj = (o.projectName || o.projectFullName || '').trim().toLowerCase();
+    if (name.includes('internal') || name.includes('office') || proj.includes('internal') || proj.includes('office') || proj.includes('decorex') || proj.includes('head office')) return 'INTERNAL - Office';
+    if (name.includes('ryan') || proj.includes('professional')) return 'MODUS PROFESSIONAL ( Ryan )';
+    if (name.includes('thando') || proj.includes('signature')) return 'MODUS SIGNATURE ( Thando )';
+    if (name.includes('peer') || name.includes('jon') || name.includes('made') || proj.includes('made')) return 'MADE ( Jon-Peer)';
+    if (name.includes('luxe') || proj.includes('luxe')) return 'LUXELINE';
+    if (name.includes('dani') || name.includes('daniel')) {
+      if (proj.includes('own') || proj.includes('personal')) return 'PROJECTS (Dani own)';
+      return 'MODUS PROJECTS ( Dani )';
+    }
+    if (name.includes('mood') || proj.includes('mood') || proj.includes('store')) return 'MOOD STORES';
+    return 'UNALLOCATED / UNASSIGNED';
+  };
+
+  // All pre-deposit prospective orders (eligible for deposit scheduling & KPI 3)
+  const preDepositOrders = useMemo(() => {
+    return allOrders.filter(o => {
+      // Must be pre-deposit: Draft, or Pending without paid deposit
+      const isPreDeposit = (o.status === 'Draft' || !o.status || o.status === 'Pending') && ((Number(o.paid) || 0) === 0 || o.paymentStatus === 'Unpaid');
+      return isPreDeposit;
+    });
+  }, [allOrders]);
+
+  // Filtered pre-deposit orders for the Deposit Pipeline Manager view
+  const filteredPipelineOrders = useMemo(() => {
+    return preDepositOrders.filter(o => {
+      const q = (pipelineSearch || '').trim().toLowerCase();
+      if (q) {
+        const matchesQ = (o.id || '').toLowerCase().includes(q) ||
+          (o.quote_name || '').toLowerCase().includes(q) ||
+          (o.projectName || '').toLowerCase().includes(q) ||
+          (o.projectClient || '').toLowerCase().includes(q) ||
+          (o.projectPm || '').toLowerCase().includes(q);
+        if (!matchesQ) return false;
+      }
+      if (pipelinePmFilter !== 'All' && o.projectPm !== pipelinePmFilter) return false;
+      const orderDiv = mapOrderToDivision(o);
+      if (pipelineDivFilter !== 'All' && orderDiv !== pipelineDivFilter) return false;
+      if (pipelineTbcOnly) {
+        const exp = String(o.expected_deposit_month || o.expectedDepositMonth || '').trim();
+        if (exp && exp.toUpperCase() !== 'TBC' && exp.toUpperCase() !== 'NONE') return false;
+      }
+      return true;
+    }).sort((a, b) => {
+      let valA = a[pipelineSortField] ?? '';
+      let valB = b[pipelineSortField] ?? '';
+      if (pipelineSortField === 'value') {
+        valA = Number(a.value) || 0;
+        valB = Number(b.value) || 0;
+      } else if (pipelineSortField === 'division') {
+        valA = mapOrderToDivision(a);
+        valB = mapOrderToDivision(b);
+      } else if (pipelineSortField === 'expected_deposit_month') {
+        valA = a.expected_deposit_month || a.expectedDepositMonth || 'TBC';
+        valB = b.expected_deposit_month || b.expectedDepositMonth || 'TBC';
+      }
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return pipelineSortDirection === 'asc' ? valA - valB : valB - valA;
+      }
+      return pipelineSortDirection === 'asc' ? String(valA).localeCompare(String(valB)) : String(valB).localeCompare(String(valA));
+    });
+  }, [preDepositOrders, pipelineSearch, pipelinePmFilter, pipelineDivFilter, pipelineTbcOnly, pipelineSortField, pipelineSortDirection]);
+
+  const handlePipelineSort = (field) => {
+    if (pipelineSortField === field) {
+      setPipelineSortDirection(pipelineSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setPipelineSortField(field);
+      setPipelineSortDirection('asc');
+    }
+  };
+
+  const renderPipelineSortIcon = (field) => {
+    if (pipelineSortField !== field) return <ArrowUpDown size={12} style={{ marginLeft: '4px', opacity: 0.5 }} />;
+    return pipelineSortDirection === 'asc' 
+      ? <ArrowUp size={12} style={{ marginLeft: '4px', color: '#f59e0b' }} />
+      : <ArrowDown size={12} style={{ marginLeft: '4px', color: '#f59e0b' }} />;
+  };
+
+  // Instant update of an order's expected deposit month with auto-sync to Cloud SQL
+  const [pipelineSavingId, setPipelineSavingId] = useState(null);
+  const handleUpdateOrderExpectedMonth = async (orderItem, newMonth) => {
+    setPipelineSavingId(orderItem.id);
+    const targetProjectKey = orderItem.projectKey;
+    const proj = projects[targetProjectKey];
+    if (!proj) {
+      setPipelineSavingId(null);
+      return;
+    }
+
+    const updatedOrders = (proj.orders || []).map(o => {
+      if (o.id === orderItem.id) {
+        return {
+          ...o,
+          expected_deposit_month: newMonth,
+          expectedDepositMonth: newMonth
+        };
+      }
+      return o;
+    });
+
+    try {
+      await updateProject(targetProjectKey, 'orders', updatedOrders);
+    } catch (err) {
+      console.error("Failed to update expected deposit month:", err);
+    } finally {
+      setTimeout(() => setPipelineSavingId(null), 500);
+    }
+  };
+
+  // Generate rolling 18 month options for dropdown
+  const monthPickerOptions = useMemo(() => {
+    const opts = ['TBC'];
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth();
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    for (let i = 0; i < 18; i++) {
+      const d = new Date(curYear, curMonth + i, 1);
+      opts.push(`${monthNames[d.getMonth()]} ${d.getFullYear()}`);
+    }
+    return opts;
+  }, []);
 
   // Dynamic statistics based on PM Cost vs True Factory Cost (Admin toggle)
   const isSupplierMarginMode = isAdmin && marginMode === 'supplier';
@@ -1693,6 +1837,7 @@ export default function SalesTracker() {
 
     const formattedToday = new Date().toISOString().split('T')[0]; // "yyyy-mm-dd"
     setOrderDate(toInputDate(order.orderDate || formattedToday));
+    setExpectedDepositMonth(order.expected_deposit_month || order.expectedDepositMonth || 'TBC');
 
     setQuotationSentDate(toInputDate(order.quotationSentDate || order.orderDate || formattedToday));
     setProjectClass(order.projectClass || proj.name || 'Singita');
@@ -2219,6 +2364,7 @@ export default function SalesTracker() {
           deliveryAddress,
           billingDetails,
           orderDate,
+          expected_deposit_month: expectedDepositMonth,
           quotationSentDate,
           projectClass,
           fileSource,
@@ -4202,12 +4348,57 @@ export default function SalesTracker() {
                   <span className="badge b-info" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>Sales Suite</span>
                   <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Central Quotations & Area-by-Area BOQ Builder</span>
                 </div>
-                <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h1 style={{ margin: '0 0 10px 0', fontSize: '24px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   📈 Sales Tracker Mirror View Dashboard
                 </h1>
+
+                {/* VIEW MODE TOGGLE BUTTONS */}
+                <div style={{ display: 'inline-flex', gap: '6px', background: 'var(--bg-secondary)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('ledger')}
+                    className="btn btn-sm"
+                    style={{
+                      padding: '6px 14px',
+                      fontSize: '12.5px',
+                      fontWeight: 600,
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: viewMode === 'ledger' ? 'var(--text-info)' : 'transparent',
+                      color: viewMode === 'ledger' ? '#ffffff' : 'var(--text-secondary)',
+                      transition: 'all 0.15s ease',
+                      boxShadow: viewMode === 'ledger' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none'
+                    }}
+                  >
+                    📑 Orders Ledger ({sortedOrders.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('pipeline')}
+                    className="btn btn-sm"
+                    style={{
+                      padding: '6px 14px',
+                      fontSize: '12.5px',
+                      fontWeight: 600,
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: viewMode === 'pipeline' ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 'transparent',
+                      color: viewMode === 'pipeline' ? '#ffffff' : 'var(--text-secondary)',
+                      transition: 'all 0.15s ease',
+                      boxShadow: viewMode === 'pipeline' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none'
+                    }}
+                  >
+                    ⚡ Deposit Pipeline Manager ({preDepositOrders.length})
+                    {preDepositOrders.filter(o => !o.expected_deposit_month || o.expected_deposit_month === 'TBC').length > 0 && (
+                      <span style={{ marginLeft: '6px', background: 'rgba(255,255,255,0.3)', padding: '1px 6px', borderRadius: '10px', fontSize: '11px', fontWeight: 700 }}>
+                        {preDepositOrders.filter(o => !o.expected_deposit_month || o.expected_deposit_month === 'TBC').length} TBC
+                      </span>
+                    )}
+                  </button>
+                </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
                 {projectFilterKey !== 'All' && (
                   <button 
                     className="btn btn-ghost" 
@@ -4229,7 +4420,9 @@ export default function SalesTracker() {
             </div>
           </div>
 
-          {/* Date range filter banner */}
+          {viewMode === 'ledger' ? (
+            <>
+              {/* Date range filter banner */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 20px', marginBottom: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <Calendar size={15} color="var(--text-info)" />
@@ -4693,6 +4886,265 @@ export default function SalesTracker() {
             </div>
           </div>
         </>
+        ) : (
+          /* DEPOSIT PIPELINE MANAGER VIEW */
+          <div className="card" style={{ border: '1.5px solid var(--border)' }}>
+            <div className="card-body" style={{ padding: '20px' }}>
+              {/* Pipeline Header Summary & Info Banner */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', padding: '16px 20px', background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(217, 119, 6, 0.03) 100%)', borderRadius: '12px', border: '1px solid rgba(245, 158, 11, 0.25)' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <span className="badge b-warning" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 800, letterSpacing: '0.5px' }}>Pre-Deposit Pipeline</span>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Orders pending initial deposit payment</span>
+                  </div>
+                  <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    ⚡ Deposit Pipeline & Expected Month Manager
+                  </h2>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                    Assign expected deposit months to feed <strong>Executive KPI 3 (Expected Deposits Pipeline)</strong>. Orders left as <strong>TBC</strong> are strictly kept off monthly KPI columns.
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ background: 'var(--bg-primary)', padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', textAlign: 'right' }}>
+                    <div style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>Total Pre-Deposit Value</div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: '#f59e0b' }}>
+                      R {preDepositOrders.reduce((sum, o) => sum + (Number(o.value) || 0), 0).toLocaleString()}
+                    </div>
+                  </div>
+                  <div style={{ background: 'var(--bg-primary)', padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', textAlign: 'right' }}>
+                    <div style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>Scheduled / TBC</div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      <span style={{ color: 'var(--text-success)' }}>{preDepositOrders.filter(o => o.expected_deposit_month && o.expected_deposit_month !== 'TBC').length}</span>
+                      <span style={{ color: 'var(--text-tertiary)', margin: '0 4px' }}>/</span>
+                      <span style={{ color: '#ef4444' }}>{preDepositOrders.filter(o => !o.expected_deposit_month || o.expected_deposit_month === 'TBC').length} TBC</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filters Bar */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+                <div style={{ display: 'flex', gap: '10px', flex: 1, minWidth: '300px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <div style={{ position: 'relative', width: '100%', maxWidth: '320px' }}>
+                    <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
+                    <input 
+                      type="text"
+                      placeholder="Search Quote, Order ID, Project, Client or PM..."
+                      className="form-control"
+                      style={{ paddingLeft: '32px', fontSize: '13px', height: '34px' }}
+                      value={pipelineSearch}
+                      onChange={e => setPipelineSearch(e.target.value)}
+                    />
+                  </div>
+
+                  <select 
+                    className="form-control"
+                    style={{ width: '160px', height: '34px', fontSize: '13px' }}
+                    value={pipelinePmFilter}
+                    onChange={e => setPipelinePmFilter(e.target.value)}
+                  >
+                    <option value="All">All PMs ({pmOptions.length})</option>
+                    {pmOptions.map(pm => (
+                      <option key={pm} value={pm}>{pm}</option>
+                    ))}
+                  </select>
+
+                  <select 
+                    className="form-control"
+                    style={{ width: '200px', height: '34px', fontSize: '13px' }}
+                    value={pipelineDivFilter}
+                    onChange={e => setPipelineDivFilter(e.target.value)}
+                  >
+                    <option value="All">All Divisions</option>
+                    <option value="MODUS PROFESSIONAL ( Ryan )">MODUS PROFESSIONAL ( Ryan )</option>
+                    <option value="MODUS SIGNATURE ( Thando )">MODUS SIGNATURE ( Thando )</option>
+                    <option value="MADE ( Jon-Peer)">MADE ( Jon-Peer)</option>
+                    <option value="LUXELINE">LUXELINE</option>
+                    <option value="MODUS PROJECTS ( Dani )">MODUS PROJECTS ( Dani )</option>
+                    <option value="PROJECTS (Dani own)">PROJECTS (Dani own)</option>
+                    <option value="MOOD STORES">MOOD STORES</option>
+                    <option value="INTERNAL - Office">INTERNAL - Office</option>
+                    <option value="UNALLOCATED / UNASSIGNED">UNALLOCATED / UNASSIGNED</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => setPipelineTbcOnly(!pipelineTbcOnly)}
+                    className="btn btn-sm"
+                    style={{
+                      height: '34px',
+                      padding: '0 12px',
+                      fontSize: '12.5px',
+                      fontWeight: 600,
+                      borderRadius: '6px',
+                      border: pipelineTbcOnly ? '1.5px solid #ef4444' : '1px solid var(--border)',
+                      background: pipelineTbcOnly ? 'rgba(239, 68, 68, 0.12)' : 'var(--bg-secondary)',
+                      color: pipelineTbcOnly ? '#ef4444' : 'var(--text-secondary)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ⚠️ TBC Only ({preDepositOrders.filter(o => !o.expected_deposit_month || o.expected_deposit_month === 'TBC').length})
+                  </button>
+
+                  {(pipelineSearch || pipelinePmFilter !== 'All' || pipelineDivFilter !== 'All' || pipelineTbcOnly) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPipelineSearch('');
+                        setPipelinePmFilter('All');
+                        setPipelineDivFilter('All');
+                        setPipelineTbcOnly(false);
+                      }}
+                      className="btn btn-ghost btn-sm"
+                      style={{ height: '34px', fontSize: '12px', color: 'var(--text-secondary)' }}
+                    >
+                      Clear Filters ×
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                  Showing {filteredPipelineOrders.length} of {preDepositOrders.length} pre-deposit orders
+                </div>
+              </div>
+
+              {/* Pipeline Orders Table */}
+              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', position: 'relative' }}>
+                <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
+                  <thead>
+                    <tr>
+                      <th onClick={() => handlePipelineSort('id')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order ID {renderPipelineSortIcon('id')}</div>
+                      </th>
+                      <th onClick={() => handlePipelineSort('quote_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Quote / Order Name {renderPipelineSortIcon('quote_name')}</div>
+                      </th>
+                      <th onClick={() => handlePipelineSort('projectName')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Linked Project {renderPipelineSortIcon('projectName')}</div>
+                      </th>
+                      <th onClick={() => handlePipelineSort('projectClient')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderPipelineSortIcon('projectClient')}</div>
+                      </th>
+                      <th onClick={() => handlePipelineSort('projectPm')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Manager {renderPipelineSortIcon('projectPm')}</div>
+                      </th>
+                      <th onClick={() => handlePipelineSort('division')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Division {renderPipelineSortIcon('division')}</div>
+                      </th>
+                      <th onClick={() => handlePipelineSort('value')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', width: '100%' }}>Order Value {renderPipelineSortIcon('value')}</div>
+                      </th>
+                      <th onClick={() => handlePipelineSort('status')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Status {renderPipelineSortIcon('status')}</div>
+                      </th>
+                      <th onClick={() => handlePipelineSort('expected_deposit_month')} style={{ cursor: 'pointer', userSelect: 'none', minWidth: '220px', background: 'rgba(245, 158, 11, 0.08)' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#f59e0b', fontWeight: 700 }}>
+                          ⚡ Expected Deposit Month {renderPipelineSortIcon('expected_deposit_month')}
+                        </div>
+                      </th>
+                      <th style={{ width: '80px', textAlign: 'center' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredPipelineOrders.map(o => {
+                      const retail = Number(o.value) || 0;
+                      const currentMonth = o.expected_deposit_month || o.expectedDepositMonth || 'TBC';
+                      const isTbc = !currentMonth || currentMonth === 'TBC';
+                      const isSaving = pipelineSavingId === o.id;
+                      const div = mapOrderToDivision(o);
+
+                      return (
+                        <tr 
+                          key={o.id}
+                          style={{
+                            background: isTbc ? 'rgba(239, 68, 68, 0.03)' : 'transparent',
+                            transition: 'background 0.15s ease'
+                          }}
+                        >
+                          <td style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-info)' }}>
+                            {o.id}
+                          </td>
+                          <td style={{ fontWeight: 600 }}>
+                            {o.quote_name || o.orderName || o.name || '—'}
+                          </td>
+                          <td>
+                            <span style={{ fontWeight: 600 }}>{o.projectName || '—'}</span>
+                          </td>
+                          <td>{o.projectClient || '—'}</td>
+                          <td>
+                            <span className="badge b-secondary" style={{ fontSize: '11px', fontWeight: 600 }}>
+                              {o.projectPm || 'Unassigned'}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                            {div}
+                          </td>
+                          <td style={{ fontWeight: 700, textAlign: 'right', color: 'var(--text-primary)' }}>
+                            R {retail.toLocaleString()}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <span className={`badge ${statusColor[o.status] || 'b-warning'}`}>{o.status || 'Draft'}</span>
+                          </td>
+                          <td style={{ background: isTbc ? 'rgba(239, 68, 68, 0.06)' : 'rgba(16, 185, 129, 0.05)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <select
+                                className="form-control"
+                                style={{
+                                  height: '32px',
+                                  fontSize: '12px',
+                                  fontWeight: 600,
+                                  borderColor: isTbc ? '#ef4444' : '#10b981',
+                                  background: 'var(--bg-primary)',
+                                  color: isTbc ? '#ef4444' : 'var(--text-primary)',
+                                  cursor: 'pointer'
+                                }}
+                                value={currentMonth}
+                                onChange={e => handleUpdateOrderExpectedMonth(o, e.target.value)}
+                              >
+                                {monthPickerOptions.map(opt => (
+                                  <option key={opt} value={opt}>
+                                    {opt === 'TBC' ? '⚠️ TBC (Unscheduled / Excluded from KPI 3)' : opt}
+                                  </option>
+                                ))}
+                              </select>
+                              {isSaving && (
+                                <span style={{ fontSize: '11px', color: 'var(--text-info)', fontWeight: 600 }}>Saving...</span>
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenWorkspace(o)}
+                              className="btn btn-ghost btn-sm"
+                              style={{ padding: '4px 10px', fontSize: '11.5px', color: 'var(--text-info)', fontWeight: 600 }}
+                              title="Open in Workspace"
+                            >
+                              Open ↗
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {filteredPipelineOrders.length === 0 && (
+                      <tr>
+                        <td colSpan={10} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
+                          No pre-deposit orders match your filters.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+        </>
         )
       ) : (
         
@@ -4911,6 +5363,12 @@ export default function SalesTracker() {
                         <span style={{ borderLeft: '1px solid var(--border)', paddingLeft: '10px' }}><strong>Project:</strong> {projectFullName || '—'}</span>
                         <span style={{ borderLeft: '1px solid var(--border)', paddingLeft: '10px' }}><strong>PM Name:</strong> {pmName || '—'}</span>
                         <span style={{ borderLeft: '1px solid var(--border)', paddingLeft: '10px' }}><strong>PF:</strong> {pfNumber || '—'}</span>
+                        <span style={{ borderLeft: '1px solid var(--border)', paddingLeft: '10px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <strong style={{ color: 'var(--text-info)' }}>⚡ Expected Deposit:</strong>
+                          <span className={`badge ${expectedDepositMonth === 'TBC' || !expectedDepositMonth ? 'b-warning' : 'b-info'}`} style={{ fontSize: '11px', fontWeight: 700 }}>
+                            {expectedDepositMonth || 'TBC'}
+                          </span>
+                        </span>
                       </>
                     )}
                   </div>
@@ -4948,6 +5406,44 @@ export default function SalesTracker() {
                     <div style={{ gridColumn: 'span 2' }}>
                       <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600 }}>PM Name</span>
                       <span style={{ fontSize: '12.5px', color: 'var(--text-primary)', fontWeight: 600 }}>{pmName || '—'}</span>
+                    </div>
+
+                    {/* Expected Deposit Month */}
+                    <div style={{ gridColumn: 'span 2', background: 'rgba(59, 130, 246, 0.06)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                      <span style={{ fontSize: '10.5px', color: 'var(--text-info)', textTransform: 'uppercase', display: 'block', fontWeight: 700, marginBottom: '4px' }}>
+                        ⚡ Expected Deposit Month (KPI 3 Pipeline Schedule)
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <select
+                          className="form-control"
+                          style={{ height: '30px', fontSize: '12px', fontWeight: 600, maxWidth: '240px' }}
+                          value={expectedDepositMonth || 'TBC'}
+                          onChange={e => setExpectedDepositMonth(e.target.value)}
+                        >
+                          <option value="TBC">TBC (Unscheduled / Hidden from KPI 3)</option>
+                          {(() => {
+                            const options = [];
+                            const now = new Date();
+                            const curYear = now.getFullYear();
+                            const curMonth = now.getMonth();
+                            const monthNames = [
+                              'January', 'February', 'March', 'April', 'May', 'June',
+                              'July', 'August', 'September', 'October', 'November', 'December'
+                            ];
+                            for (let i = 0; i < 18; i++) {
+                              const d = new Date(curYear, curMonth + i, 1);
+                              const label = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+                              options.push(<option key={label} value={label}>{label}</option>);
+                            }
+                            return options;
+                          })()}
+                        </select>
+                        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                          {expectedDepositMonth === 'TBC' || !expectedDepositMonth 
+                            ? '⚠️ Excluded from KPI 3 Monthly Columns' 
+                            : `✅ Projected in KPI 3 under ${expectedDepositMonth}`}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Date Created */}

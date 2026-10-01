@@ -428,6 +428,8 @@ def apply_order_fields(order, order_data: dict, project_id=None, project_key=Non
         order.pf_number = order_data.get("pfNumber") or order_data.get("pf_number")
     if "discount" in order_data and order_data.get("discount") is not None:
         order.discount = float(order_data.get("discount", 0.0))
+    if "expected_deposit_month" in order_data or "expectedDepositMonth" in order_data:
+        order.expected_deposit_month = order_data.get("expected_deposit_month") or order_data.get("expectedDepositMonth")
 
 @router.post("/")
 def create_order(order_data: dict, db: Session = Depends(get_db)):

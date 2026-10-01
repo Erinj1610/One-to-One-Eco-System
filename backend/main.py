@@ -245,8 +245,12 @@ def init_db():
                         conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS takeoff_data JSON;"))
                         conn.commit()
                         print("Database migration: ensured 'takeoff_data' column exists on 'orders' table.")
+                    if 'expected_deposit_month' not in order_cols:
+                        conn.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS expected_deposit_month VARCHAR;"))
+                        conn.commit()
+                        print("Database migration: ensured 'expected_deposit_month' column exists on 'orders' table.")
                 except Exception as td_err:
-                    print(f"takeoff_data migration notice: {td_err}")
+                    print(f"orders columns migration notice: {td_err}")
 
                 # Migrate palladium_po_lines table to ensure reference exists
                 try:
