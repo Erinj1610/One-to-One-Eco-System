@@ -780,6 +780,12 @@ export default function ReportsPage() {
       const orderFy = getFinancialYearForPeriod(orderMonthIdx, orderYear);
       const rollingIdx = rollingMonths.findIndex(rm => rm.monthName === orderMonth && rm.year === orderYear);
 
+      // Pre-Deposit Pipeline Check
+      const rawExpectedMonth = order.expected_deposit_month || order.expectedDepositMonth;
+      const hasScheduledDepositMonth = rawExpectedMonth && String(rawExpectedMonth).trim().toUpperCase() !== 'TBC' && String(rawExpectedMonth).trim().toUpperCase() !== 'NONE';
+      const isUnpaidProspective = (Number(order.paid) || 0) === 0 || order.paymentStatus === 'Unpaid';
+      const isPreDepositPipeline = hasScheduledDepositMonth && isUnpaidProspective;
+
       // KPI 2 (Awaiting Stock / Expected Invoices based on Item ETA):
       // Sum outstanding (un-invoiced) retail values of items in their expected delivery month.
       // Must be an active confirmed order (deposit paid, invoice issued, or PO placed) - not uncommitted / unpaid quotes.
