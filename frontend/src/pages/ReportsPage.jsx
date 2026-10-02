@@ -780,17 +780,21 @@ export default function ReportsPage() {
       const orderFy = getFinancialYearForPeriod(orderMonthIdx, orderYear);
       const rollingIdx = rollingMonths.findIndex(rm => rm.monthName === orderMonth && rm.year === orderYear);
 
-      // KPI 2 (Awaiting Stock / Expected Invoices based on Item ETA):
-      // Sum outstanding (un-invoiced) retail values of items in their expected delivery month.
-      // KPI 3 (Pipeline): Draft/unapproved order value.
-      
-      // Calculate outstanding amount for each item and place it in the item's ETA month
+      // Pre-Deposit Pipeline Check
       const rawExpectedMonth = order.expected_deposit_month || order.expectedDepositMonth;
       const hasScheduledDepositMonth = rawExpectedMonth && String(rawExpectedMonth).trim().toUpperCase() !== 'TBC' && String(rawExpectedMonth).trim().toUpperCase() !== 'NONE';
       const isUnpaidProspective = (Number(order.paid) || 0) === 0 || order.paymentStatus === 'Unpaid';
       const isPreDepositPipeline = hasScheduledDepositMonth && isUnpaidProspective;
 
-      if (order.status !== 'Draft' && order.status && !isPreDepositPipeline) {
+      // KPI 2 (Awaiting Stock / Expected Invoices based on Item ETA):
+      // Sum outstanding (un-invoiced) retail values of items in their expected delivery month.
+      // Must be an active confirmed order (deposit paid, invoice issued, or PO placed) - not uncommitted / unpaid quotes.
+      const hasDepositPaid = (Number(order.paid) || 0) > 0 || (order.depositPaymentDate && String(order.depositPaymentDate).trim() !== '');
+      const hasInvoiceIssued = hasValidInvoiceRefAndDate(order);
+      const hasPoPlaced = (Array.isArray(order.purchaseOrders) && order.purchaseOrders.length > 0) || (order.poNumber && String(order.poNumber).trim() !== '');
+      const isConfirmedOrder = hasDepositPaid || hasInvoiceIssued || hasPoPlaced;
+
+      if (order.status !== 'Draft' && order.status && isConfirmedOrder && !isPreDepositPipeline) {
         itemsList.forEach(item => {
           // Total retail value for this item
           const retailVal = (Number(item.qty) || 0) * (Number(item.unitRetail) || 0);
@@ -825,8 +829,9 @@ export default function ReportsPage() {
             dynamicAwaiting[div].allTotal += finalOutstandingVal;
 
             // Prefer item-level PO ETA first, then general item ETA, then order-level eta, then expected_delivery_date, then order PO date
-            const expectedDate = item.po_eta || item.eta || order.eta || order.expected_delivery_date || item.po_date || order.po_date;
-            const parsedExpected = parseDateString(expectedDate);
+            const rawExpectedDate = item.po_eta || item.eta || order.eta || order.expected_delivery_date || item.po_date || order.po_date;
+            const isInvalidDateStr = !rawExpectedDate || ['—', '-', 'TBD', 'TBC', 'N/A', 'NONE'].includes(String(rawExpectedDate).trim().toUpperCase());
+            const parsedExpected = !isInvalidDateStr ? parseDateString(rawExpectedDate) : null;
 
             if (parsedExpected) {
               const { monthName: expMonth, year: expYear, monthIdx: expMonthIdx } = parsedExpected;
@@ -837,19 +842,6 @@ export default function ReportsPage() {
                 dynamicAwaiting[div][`col${expRollingIdx}`] += finalOutstandingVal;
               }
               if (expFy === currentFinancialYear) {
-                dynamicAnnual[div].toInvoice += finalOutstandingVal;
-              }
-            } else {
-              // Fallback to order date month if no valid expected date is found (avoid defaulting to July if order is in another month)
-              const fallbackDate = order.orderDate || order.order_date || order.date || order.created_at || `${selectedMonthIdx + 1}/01/${selectedYear}`;
-              const parsedFallback = parseDateString(fallbackDate) || { monthName: selectedMonthName, year: selectedYear, monthIdx: selectedMonthIdx };
-              const { monthName: ordMonth, year: ordYear, monthIdx: ordMonthIdx } = parsedFallback;
-              const ordFy = getFinancialYearForPeriod(ordMonthIdx, ordYear);
-              const ordRollingIdx = rollingMonths.findIndex(rm => rm.monthName === ordMonth && rm.year === ordYear);
-              if (ordRollingIdx !== -1) {
-                dynamicAwaiting[div][`col${ordRollingIdx}`] += finalOutstandingVal;
-              }
-              if (ordFy === currentFinancialYear) {
                 dynamicAnnual[div].toInvoice += finalOutstandingVal;
               }
             }
@@ -1199,8 +1191,13 @@ export default function ReportsPage() {
         const isUnpaidProspective = (Number(order.paid) || 0) === 0 || order.paymentStatus === 'Unpaid';
         const isPreDepositPipeline = hasScheduledDepositMonth && isUnpaidProspective;
 
+        const hasDepositPaid = (Number(order.paid) || 0) > 0 || (order.depositPaymentDate && String(order.depositPaymentDate).trim() !== '');
+        const hasInvoiceIssued = hasValidInvoiceRefAndDate(order);
+        const hasPoPlaced = (Array.isArray(order.purchaseOrders) && order.purchaseOrders.length > 0) || (order.poNumber && String(order.poNumber).trim() !== '');
+        const isConfirmedOrder = hasDepositPaid || hasInvoiceIssued || hasPoPlaced;
+
         if (type === 'awaiting') {
-          if (order.status !== 'Draft' && order.status && !isPreDepositPipeline) {
+          if (order.status !== 'Draft' && order.status && isConfirmedOrder && !isPreDepositPipeline) {
             const creditNotes = (order.creditNotes && order.creditNotes.length > 0)
               ? order.creditNotes
               : (order.clientInvoices || []).filter(cinv => cinv.is_credit || String(cinv.id).toUpperCase().startsWith('CN-') || String(cinv.id).toUpperCase().startsWith('CR-'));
@@ -1230,22 +1227,24 @@ export default function ReportsPage() {
               const finalOutstandingVal = Math.max(0, outstandingVal - finalCreditedVal);
 
               if (finalOutstandingVal > 0) {
-                const expectedDate = item.po_eta || item.eta || order.eta || order.expected_delivery_date || item.po_date || order.po_date;
-                const parsedExpected = parseDateString(expectedDate) || orderDateParsed;
+                const rawExpectedDate = item.po_eta || item.eta || order.eta || order.expected_delivery_date || item.po_date || order.po_date;
+                const isInvalidDateStr = !rawExpectedDate || ['—', '-', 'TBD', 'TBC', 'N/A', 'NONE'].includes(String(rawExpectedDate).trim().toUpperCase());
+                const parsedExpected = !isInvalidDateStr ? parseDateString(rawExpectedDate) : null;
+
                 if (parsedExpected) {
                   const { monthName: expMonth, year: expYear } = parsedExpected;
                   if (extraFilter !== null) {
                     const targetMonth = rollingMonths[extraFilter];
                     if (expMonth === targetMonth.monthName && expYear === targetMonth.year) {
-                      list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: expectedDate || order.orderDate || 'N/A', value: finalOutstandingVal, docType: 'Awaiting Stock' });
+                      list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: rawExpectedDate, value: finalOutstandingVal, docType: 'Awaiting Stock' });
                     }
                   } else {
                     // Total Pipeline: include all awaiting stock items across all months
-                    list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: expectedDate || order.orderDate || 'N/A', value: finalOutstandingVal, docType: 'Awaiting Stock' });
+                    list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: rawExpectedDate, value: finalOutstandingVal, docType: 'Awaiting Stock' });
                   }
                 } else if (extraFilter === null) {
                   // Fallback for missing date when viewing all-months Total Pipeline
-                  list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: finalOutstandingVal, docType: 'Awaiting Stock' });
+                  list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: 'Unscheduled', value: finalOutstandingVal, docType: 'Awaiting Stock' });
                 }
               }
             });
@@ -1287,7 +1286,7 @@ export default function ReportsPage() {
               if (isEligibleForInvoiced) {
                 list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: invoicedValue, docType: 'Annual Billed' });
               }
-            } else if (extraFilter === 'toInvoice' && order.status !== 'Draft' && order.status && !isPreDepositPipeline) {
+            } else if (extraFilter === 'toInvoice' && order.status !== 'Draft' && order.status && isConfirmedOrder && !isPreDepositPipeline) {
               let orderOutstandingTotal = 0;
               itemsList.forEach(item => {
                 const retailVal = (Number(item.qty) || 0) * (Number(item.unitRetail) || 0);
