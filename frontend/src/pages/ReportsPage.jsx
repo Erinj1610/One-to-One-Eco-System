@@ -423,6 +423,25 @@ export default function ReportsPage() {
     return mapPmToDivision(pm, pName, rep, order.salesRep || order.sales_rep || order['Sales Rep'] || '');
   };
 
+  // Helper: Calculate deposit % and ex-vat deposit value following OrdersPage business rules
+  const getOrderDepositInfo = (order, orderValue) => {
+    const rawVal = Number(orderValue) || 0;
+    // Check order-level depositPercentage
+    let pct = null;
+    if (order.depositPercentage !== undefined && order.depositPercentage !== null && order.depositPercentage !== '') {
+      pct = Number(order.depositPercentage);
+    } else if (order.deposit_percentage !== undefined && order.deposit_percentage !== null && order.deposit_percentage !== '') {
+      pct = Number(order.deposit_percentage);
+    }
+    // Default rule: If Gross Incl. VAT < 10,000 -> 100%, else 70%
+    if (pct === null || isNaN(pct)) {
+      const grossInclVat = rawVal * 1.15;
+      pct = (grossInclVat < 10000 && grossInclVat > 0) ? 100 : 70;
+    }
+    const depositVal = rawVal * (pct / 100);
+    return { depositPercent: pct, depositValue: depositVal };
+  };
+
   const parseDateString = (rawDate) => {
     if (!rawDate) return null;
 
@@ -766,7 +785,12 @@ export default function ReportsPage() {
       // KPI 3 (Pipeline): Draft/unapproved order value.
       
       // Calculate outstanding amount for each item and place it in the item's ETA month
-      if (order.status !== 'Draft' && order.status) {
+      const rawExpectedMonth = order.expected_deposit_month || order.expectedDepositMonth;
+      const hasScheduledDepositMonth = rawExpectedMonth && String(rawExpectedMonth).trim().toUpperCase() !== 'TBC' && String(rawExpectedMonth).trim().toUpperCase() !== 'NONE';
+      const isUnpaidProspective = (Number(order.paid) || 0) === 0 || order.paymentStatus === 'Unpaid';
+      const isPreDepositPipeline = hasScheduledDepositMonth && isUnpaidProspective;
+
+      if (order.status !== 'Draft' && order.status && !isPreDepositPipeline) {
         itemsList.forEach(item => {
           // Total retail value for this item
           const retailVal = (Number(item.qty) || 0) * (Number(item.unitRetail) || 0);
@@ -833,31 +857,33 @@ export default function ReportsPage() {
         });
       }
 
-      // KPI 3 & Annual Pipeline: Unapproved / Draft orders (Awaiting Deposit)
-      if (order.status === 'Draft' || !order.status || order.status === 'Pending') {
-        const isEligibleForPipeline = (order.status === 'Draft' || !order.status || (order.status === 'Pending' && !isEligibleForInvoiced));
-        if (isEligibleForPipeline) {
-          const rawExpected = order.expected_deposit_month || order.expectedDepositMonth;
-          const isTbc = !rawExpected || String(rawExpected).trim().toUpperCase() === 'TBC' || String(rawExpected).trim().toUpperCase() === 'NONE';
-          
-          if (!isTbc) {
-            const parsedExpected = parseDateString(rawExpected);
-            if (parsedExpected) {
-              const { monthName: expMonth, year: expYear, monthIdx: expMonthIdx } = parsedExpected;
-              const expFy = getFinancialYearForPeriod(expMonthIdx, expYear);
-              const expRollingIdx = rollingMonths.findIndex(rm => rm.monthName === expMonth && rm.year === expYear);
-              
-              if (expRollingIdx !== -1) {
-                dynamicPipeline[div][`col${expRollingIdx}`] += orderValue;
-              }
-              if (expFy === currentFinancialYear) {
-                dynamicAnnual[div].pipeline += orderValue;
-              }
+      // KPI 3 & Annual Pipeline: Prospective / Pre-Deposit orders (Awaiting Deposit)
+      // Eligible if:
+      // (a) Order has an explicit scheduled deposit month (not TBC) and is unpaid / pre-deposit, OR
+      // (b) Order is Draft/Pending without paid invoice and without deposit
+      const isEligibleForPipeline = isPreDepositPipeline || ((order.status === 'Draft' || !order.status || (order.status === 'Pending' && !isEligibleForInvoiced)) && isUnpaidProspective);
+      if (isEligibleForPipeline) {
+        const rawExpected = order.expected_deposit_month || order.expectedDepositMonth;
+        const isTbc = !rawExpected || String(rawExpected).trim().toUpperCase() === 'TBC' || String(rawExpected).trim().toUpperCase() === 'NONE';
+        const { depositValue: projectedDepositVal, depositPercent } = getOrderDepositInfo(order, orderValue);
+        
+        if (!isTbc) {
+          const parsedExpected = parseDateString(rawExpected);
+          if (parsedExpected) {
+            const { monthName: expMonth, year: expYear, monthIdx: expMonthIdx } = parsedExpected;
+            const expFy = getFinancialYearForPeriod(expMonthIdx, expYear);
+            const expRollingIdx = rollingMonths.findIndex(rm => rm.monthName === expMonth && rm.year === expYear);
+            
+            if (expRollingIdx !== -1) {
+              dynamicPipeline[div][`col${expRollingIdx}`] += projectedDepositVal;
             }
-          } else {
-            // Track unallocated / unscheduled pre-deposit pipeline under Annual Blank / TBC
-            dynamicAnnual[div].tbc += orderValue;
+            if (expFy === currentFinancialYear) {
+              dynamicAnnual[div].pipeline += projectedDepositVal;
+            }
           }
+        } else {
+          // Track unallocated / unscheduled pre-deposit pipeline under Annual Blank / TBC (projected deposit value)
+          dynamicAnnual[div].tbc += projectedDepositVal;
         }
       }
     });
@@ -1168,8 +1194,13 @@ export default function ReportsPage() {
         }
 
         // To Be Invoiced (Awaiting Stock)
+        const rawExpectedMonth = order.expected_deposit_month || order.expectedDepositMonth;
+        const hasScheduledDepositMonth = rawExpectedMonth && String(rawExpectedMonth).trim().toUpperCase() !== 'TBC' && String(rawExpectedMonth).trim().toUpperCase() !== 'NONE';
+        const isUnpaidProspective = (Number(order.paid) || 0) === 0 || order.paymentStatus === 'Unpaid';
+        const isPreDepositPipeline = hasScheduledDepositMonth && isUnpaidProspective;
+
         if (type === 'awaiting') {
-          if (order.status !== 'Draft' && order.status) {
+          if (order.status !== 'Draft' && order.status && !isPreDepositPipeline) {
             const creditNotes = (order.creditNotes && order.creditNotes.length > 0)
               ? order.creditNotes
               : (order.clientInvoices || []).filter(cinv => cinv.is_credit || String(cinv.id).toUpperCase().startsWith('CN-') || String(cinv.id).toUpperCase().startsWith('CR-'));
@@ -1221,28 +1252,27 @@ export default function ReportsPage() {
           }
         }
 
-        // Pipeline Projections (Draft & Pending orders with Scheduled Expected Deposit Month)
+        // Pipeline Projections (Draft & Prospective orders with Scheduled Expected Deposit Month)
         if (type === 'pipeline') {
-          if (order.status === 'Draft' || !order.status || order.status === 'Pending') {
-            const isEligibleForPipeline = (order.status === 'Draft' || !order.status || (order.status === 'Pending' && !isEligibleForInvoiced));
-            if (isEligibleForPipeline) {
-              const rawExpected = order.expected_deposit_month || order.expectedDepositMonth;
-              const isTbc = !rawExpected || String(rawExpected).trim().toUpperCase() === 'TBC' || String(rawExpected).trim().toUpperCase() === 'NONE';
-              
-              if (!isTbc) {
-                const parsedExpected = parseDateString(rawExpected);
-                if (parsedExpected) {
-                  const { monthName: expMonth, year: expYear } = parsedExpected;
-                  if (extraFilter !== null) {
-                    const targetMonth = rollingMonths[extraFilter];
-                    if (expMonth === targetMonth.monthName && expYear === targetMonth.year) {
-                      list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: `Exp: ${rawExpected}`, value: orderValue, docType: 'Pipeline Spec' });
-                    }
-                  } else {
-                    const inRolling = rollingMonths.some(rm => rm.monthName === expMonth && rm.year === expYear);
-                    if (inRolling) {
-                      list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: `Exp: ${rawExpected}`, value: orderValue, docType: 'Pipeline Spec' });
-                    }
+          const isEligibleForPipeline = isPreDepositPipeline || ((order.status === 'Draft' || !order.status || (order.status === 'Pending' && !isEligibleForInvoiced)) && isUnpaidProspective);
+          if (isEligibleForPipeline) {
+            const rawExpected = order.expected_deposit_month || order.expectedDepositMonth;
+            const isTbc = !rawExpected || String(rawExpected).trim().toUpperCase() === 'TBC' || String(rawExpected).trim().toUpperCase() === 'NONE';
+            const { depositValue: projectedDepositVal, depositPercent } = getOrderDepositInfo(order, orderValue);
+            
+            if (!isTbc) {
+              const parsedExpected = parseDateString(rawExpected);
+              if (parsedExpected) {
+                const { monthName: expMonth, year: expYear } = parsedExpected;
+                if (extraFilter !== null) {
+                  const targetMonth = rollingMonths[extraFilter];
+                  if (expMonth === targetMonth.monthName && expYear === targetMonth.year) {
+                    list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: `Exp: ${rawExpected}`, value: projectedDepositVal, docType: `Deposit (${depositPercent}%)` });
+                  }
+                } else {
+                  const inRolling = rollingMonths.some(rm => rm.monthName === expMonth && rm.year === expYear);
+                  if (inRolling) {
+                    list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: `Exp: ${rawExpected}`, value: projectedDepositVal, docType: `Deposit (${depositPercent}%)` });
                   }
                 }
               }
@@ -1254,11 +1284,10 @@ export default function ReportsPage() {
         if (type === 'annual') {
           if (orderFy === currentFinancialYear) {
             if (extraFilter === 'invoiced') {
-              // Handled by invoiced sum logic or we show actual value here if needed
               if (isEligibleForInvoiced) {
                 list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: invoicedValue, docType: 'Annual Billed' });
               }
-            } else if (extraFilter === 'toInvoice' && order.status !== 'Draft' && order.status) {
+            } else if (extraFilter === 'toInvoice' && order.status !== 'Draft' && order.status && !isPreDepositPipeline) {
               let orderOutstandingTotal = 0;
               itemsList.forEach(item => {
                 const retailVal = (Number(item.qty) || 0) * (Number(item.unitRetail) || 0);
@@ -1275,8 +1304,18 @@ export default function ReportsPage() {
               if (orderOutstandingTotal > 0) {
                 list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderOutstandingTotal, docType: 'Annual Awaiting' });
               }
-            } else if (extraFilter === 'pipeline' && (order.status === 'Draft' || !order.status || (order.status === 'Pending' && !isEligibleForInvoiced))) {
-              list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: orderValue, docType: 'Annual Pipeline' });
+            } else if (extraFilter === 'pipeline') {
+              const isEligibleForPipeline = isPreDepositPipeline || ((order.status === 'Draft' || !order.status || (order.status === 'Pending' && !isEligibleForInvoiced)) && isUnpaidProspective);
+              if (isEligibleForPipeline && hasScheduledDepositMonth) {
+                const { depositValue: projectedDepositVal, depositPercent } = getOrderDepositInfo(order, orderValue);
+                list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: `Exp: ${rawExpectedMonth}`, value: projectedDepositVal, docType: `Annual Deposit (${depositPercent}%)` });
+              }
+            } else if (extraFilter === 'tbc') {
+              const isEligibleForPipeline = isPreDepositPipeline || ((order.status === 'Draft' || !order.status || (order.status === 'Pending' && !isEligibleForInvoiced)) && isUnpaidProspective);
+              if (isEligibleForPipeline && !hasScheduledDepositMonth) {
+                const { depositValue: projectedDepositVal, depositPercent } = getOrderDepositInfo(order, orderValue);
+                list.push({ projectName: proj.name, division: div, orderId: order.id || 'N/A', quote_name: order.quote_name || 'General Spec', date: order.orderDate || 'N/A', value: projectedDepositVal, docType: `Annual TBC Deposit (${depositPercent}%)` });
+              }
             }
           }
         }
@@ -1842,13 +1881,13 @@ export default function ReportsPage() {
               >
                 {collapsedTables.kpi3 ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
                 <div style={{ fontWeight: 700, fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  KPI 3: Sales Pipeline Projections
+                  KPI 3: Sales Pipeline Projections (Expected Deposits Ex-VAT)
                 </div>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                  Only shows scheduled deposit months (TBC excluded)
+                  Reflects expected deposit values (ex-VAT) for scheduled months (TBC excluded)
                 </span>
                 <button
                   type="button"
@@ -2050,7 +2089,12 @@ export default function ReportsPage() {
                         >
                           {formatZar(row.pipeline)}
                         </td>
-                        <td style={{ padding: '12px 16px' }}>{formatZar(row.tbc)}</td>
+                        <td 
+                          onClick={() => row.tbc > 0 && triggerDrilldown('Annual TBC Pipeline (Unscheduled)', div, 'annual', 'tbc')}
+                          style={{ padding: '12px 16px', cursor: row.tbc > 0 ? 'pointer' : 'default', textDecoration: row.tbc > 0 ? 'underline' : 'none', color: row.tbc > 0 ? '#3b82f6' : 'inherit' }}
+                        >
+                          {formatZar(row.tbc)}
+                        </td>
                         <td style={{ padding: '12px 16px', fontWeight: 600 }}>{formatZar(total)}</td>
                         <td style={{ padding: '12px 16px' }}>{formatZar(row.budget)}</td>
                         <td style={{ padding: '12px 16px', fontWeight: 600, color: getVarianceColor(variance) }}>{formatZar(variance)}</td>
@@ -2102,7 +2146,20 @@ export default function ReportsPage() {
                     >
                       {formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.pipeline, 0))}
                     </td>
-                    <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.tbc, 0))}</td>
+                    <td 
+                      onClick={() => {
+                        const tot = Object.values(dynamicAnnual).reduce((s, r) => s + r.tbc, 0);
+                        if (tot > 0) triggerDrilldown('Annual TBC Pipeline (Total)', 'ALL', 'annual', 'tbc');
+                      }}
+                      style={{ 
+                        padding: '12px 16px', 
+                        cursor: Object.values(dynamicAnnual).reduce((s, r) => s + r.tbc, 0) > 0 ? 'pointer' : 'default', 
+                        textDecoration: Object.values(dynamicAnnual).reduce((s, r) => s + r.tbc, 0) > 0 ? 'underline' : 'none', 
+                        color: Object.values(dynamicAnnual).reduce((s, r) => s + r.tbc, 0) > 0 ? '#3b82f6' : 'inherit' 
+                      }}
+                    >
+                      {formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.tbc, 0))}
+                    </td>
                     <td style={{ padding: '12px 16px', fontWeight: 600 }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + sumAnnualTotal(r), 0))}</td>
                     <td style={{ padding: '12px 16px' }}>{formatZar(Object.values(dynamicAnnual).reduce((s, r) => s + r.budget, 0))}</td>
                     <td style={{ padding: '12px 16px', color: getVarianceColor(Object.values(dynamicAnnual).reduce((s, r) => s + sumAnnualTotal(r), 0) - Object.values(dynamicAnnual).reduce((s, r) => s + r.budget, 0)) }}>
