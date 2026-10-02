@@ -788,11 +788,11 @@ export default function ReportsPage() {
 
       // KPI 2 (Awaiting Stock / Expected Invoices based on Item ETA):
       // Sum outstanding (un-invoiced) retail values of items in their expected delivery month.
-      // Must be an active confirmed order (deposit paid, invoice issued, or PO placed) - not uncommitted / unpaid quotes.
+      // Rule: Order must have received payment AND have a purchase order placed with an ETA.
       const hasDepositPaid = (Number(order.paid) || 0) > 0 || (order.depositPaymentDate && String(order.depositPaymentDate).trim() !== '');
-      const hasInvoiceIssued = hasValidInvoiceRefAndDate(order);
-      const hasPoPlaced = (Array.isArray(order.purchaseOrders) && order.purchaseOrders.length > 0) || (order.poNumber && String(order.poNumber).trim() !== '');
-      const isConfirmedOrder = hasDepositPaid || hasInvoiceIssued || hasPoPlaced;
+      const hasPoPlaced = (Array.isArray(order.purchaseOrders) && order.purchaseOrders.length > 0) ||
+        itemsList.some(it => (it.poRef && String(it.poRef).trim() !== '') || (it.po_ref && String(it.po_ref).trim() !== ''));
+      const isConfirmedOrder = hasDepositPaid && hasPoPlaced;
 
       if (order.status !== 'Draft' && order.status && isConfirmedOrder && !isPreDepositPipeline) {
         itemsList.forEach(item => {
@@ -825,15 +825,16 @@ export default function ReportsPage() {
           const finalOutstandingVal = Math.max(0, outstandingVal - finalCreditedVal);
 
           if (finalOutstandingVal > 0) {
-            // Accumulate into all-months pipeline total for KPI 2
-            dynamicAwaiting[div].allTotal += finalOutstandingVal;
-
             // Prefer item-level PO ETA first, then general item ETA, then order-level eta, then expected_delivery_date, then order PO date
             const rawExpectedDate = item.po_eta || item.eta || order.eta || order.expected_delivery_date || item.po_date || order.po_date;
             const isInvalidDateStr = !rawExpectedDate || ['—', '-', 'TBD', 'TBC', 'N/A', 'NONE'].includes(String(rawExpectedDate).trim().toUpperCase());
             const parsedExpected = !isInvalidDateStr ? parseDateString(rawExpectedDate) : null;
 
+            // Only include in KPI 2 and Total Pipeline if the item has an ETA
             if (parsedExpected) {
+              // Accumulate into all-months pipeline total for KPI 2
+              dynamicAwaiting[div].allTotal += finalOutstandingVal;
+
               const { monthName: expMonth, year: expYear, monthIdx: expMonthIdx } = parsedExpected;
               const expFy = getFinancialYearForPeriod(expMonthIdx, expYear);
               
@@ -1192,9 +1193,9 @@ export default function ReportsPage() {
         const isPreDepositPipeline = hasScheduledDepositMonth && isUnpaidProspective;
 
         const hasDepositPaid = (Number(order.paid) || 0) > 0 || (order.depositPaymentDate && String(order.depositPaymentDate).trim() !== '');
-        const hasInvoiceIssued = hasValidInvoiceRefAndDate(order);
-        const hasPoPlaced = (Array.isArray(order.purchaseOrders) && order.purchaseOrders.length > 0) || (order.poNumber && String(order.poNumber).trim() !== '');
-        const isConfirmedOrder = hasDepositPaid || hasInvoiceIssued || hasPoPlaced;
+        const hasPoPlaced = (Array.isArray(order.purchaseOrders) && order.purchaseOrders.length > 0) ||
+          itemsList.some(it => (it.poRef && String(it.poRef).trim() !== '') || (it.po_ref && String(it.po_ref).trim() !== ''));
+        const isConfirmedOrder = hasDepositPaid && hasPoPlaced;
 
         if (type === 'awaiting') {
           if (order.status !== 'Draft' && order.status && isConfirmedOrder && !isPreDepositPipeline) {
@@ -1231,6 +1232,7 @@ export default function ReportsPage() {
                 const isInvalidDateStr = !rawExpectedDate || ['—', '-', 'TBD', 'TBC', 'N/A', 'NONE'].includes(String(rawExpectedDate).trim().toUpperCase());
                 const parsedExpected = !isInvalidDateStr ? parseDateString(rawExpectedDate) : null;
 
+                // Only include in KPI 2 drilldown if the item has an ETA
                 if (parsedExpected) {
                   const { monthName: expMonth, year: expYear } = parsedExpected;
                   if (extraFilter !== null) {
@@ -1242,9 +1244,6 @@ export default function ReportsPage() {
                     // Total Pipeline: include all awaiting stock items across all months
                     list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: rawExpectedDate, value: finalOutstandingVal, docType: 'Awaiting Stock' });
                   }
-                } else if (extraFilter === null) {
-                  // Fallback for missing date when viewing all-months Total Pipeline
-                  list.push({ projectName: proj.name, division: div, orderId: `${order.id || 'N/A'} (Item: ${item.code || 'Hardware'})`, quote_name: order.quote_name || 'General Spec', date: 'Unscheduled', value: finalOutstandingVal, docType: 'Awaiting Stock' });
                 }
               }
             });
@@ -1289,6 +1288,11 @@ export default function ReportsPage() {
             } else if (extraFilter === 'toInvoice' && order.status !== 'Draft' && order.status && isConfirmedOrder && !isPreDepositPipeline) {
               let orderOutstandingTotal = 0;
               itemsList.forEach(item => {
+                const rawExpectedDate = item.po_eta || item.eta || order.eta || order.expected_delivery_date || item.po_date || order.po_date;
+                const isInvalidDateStr = !rawExpectedDate || ['—', '-', 'TBD', 'TBC', 'N/A', 'NONE'].includes(String(rawExpectedDate).trim().toUpperCase());
+                const parsedExpected = !isInvalidDateStr ? parseDateString(rawExpectedDate) : null;
+                if (!parsedExpected) return;
+
                 const retailVal = (Number(item.qty) || 0) * (Number(item.unitRetail) || 0);
                 let itemInvoicedVal = 0;
                 const iHist = Array.isArray(item.invoiceHistory) ? item.invoiceHistory : [];
