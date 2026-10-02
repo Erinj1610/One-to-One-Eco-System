@@ -289,6 +289,7 @@ class Order(Base):
     pf_number = Column(String, nullable=True)
     discount = Column(Float, default=0.0)
     vat_percentage = Column(Float, default=15.0, nullable=True)
+    expected_deposit_month = Column(String, nullable=True)
 
 
 
