@@ -1485,6 +1485,23 @@ export default function SalesTracker() {
     return 'UNALLOCATED / UNASSIGNED';
   };
 
+  // Helper: Calculate deposit % and ex-vat deposit value following OrdersPage business rules
+  const getOrderDepositInfo = (o) => {
+    const rawVal = Number(o.value) || 0;
+    let pct = null;
+    if (o.depositPercentage !== undefined && o.depositPercentage !== null && o.depositPercentage !== '') {
+      pct = Number(o.depositPercentage);
+    } else if (o.deposit_percentage !== undefined && o.deposit_percentage !== null && o.deposit_percentage !== '') {
+      pct = Number(o.deposit_percentage);
+    }
+    if (pct === null || isNaN(pct)) {
+      const grossInclVat = rawVal * 1.15;
+      pct = (grossInclVat < 10000 && grossInclVat > 0) ? 100 : 70;
+    }
+    const depositVal = rawVal * (pct / 100);
+    return { depositPercent: pct, depositValue: depositVal };
+  };
+
   // All pre-deposit prospective orders (eligible for deposit scheduling & KPI 3)
   const preDepositOrders = useMemo(() => {
     return allOrders.filter(o => {
@@ -1520,6 +1537,9 @@ export default function SalesTracker() {
       if (pipelineSortField === 'value') {
         valA = Number(a.value) || 0;
         valB = Number(b.value) || 0;
+      } else if (pipelineSortField === 'deposit_value') {
+        valA = getOrderDepositInfo(a).depositValue;
+        valB = getOrderDepositInfo(b).depositValue;
       } else if (pipelineSortField === 'division') {
         valA = mapOrderToDivision(a);
         valB = mapOrderToDivision(b);
@@ -4918,9 +4938,15 @@ export default function SalesTracker() {
 
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <div style={{ background: 'var(--bg-primary)', padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', textAlign: 'right' }}>
-                    <div style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>Total Pre-Deposit Value</div>
+                    <div style={{ fontSize: '10px', textTransform: 'uppercase', color: 'var(--text-tertiary)', fontWeight: 700 }}>Total Order Value (Ex-VAT)</div>
+                    <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      R {preDepositOrders.reduce((sum, o) => sum + (Number(o.value) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                  <div style={{ background: 'var(--bg-primary)', padding: '8px 14px', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.4)', textAlign: 'right' }}>
+                    <div style={{ fontSize: '10px', textTransform: 'uppercase', color: '#f59e0b', fontWeight: 700 }}>Projected Deposit (Ex-VAT)</div>
                     <div style={{ fontSize: '16px', fontWeight: 800, color: '#f59e0b' }}>
-                      R {preDepositOrders.reduce((sum, o) => sum + (Number(o.value) || 0), 0).toLocaleString()}
+                      R {preDepositOrders.reduce((sum, o) => sum + getOrderDepositInfo(o).depositValue, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                   </div>
                   <div style={{ background: 'var(--bg-primary)', padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', textAlign: 'right' }}>
@@ -5047,7 +5073,12 @@ export default function SalesTracker() {
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Division {renderPipelineSortIcon('division')}</div>
                       </th>
                       <th onClick={() => handlePipelineSort('value')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', width: '100%' }}>Order Value {renderPipelineSortIcon('value')}</div>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', width: '100%' }}>Order Value (Ex-VAT) {renderPipelineSortIcon('value')}</div>
+                      </th>
+                      <th onClick={() => handlePipelineSort('deposit_value')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right', background: 'rgba(245, 158, 11, 0.05)' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', width: '100%', color: '#f59e0b', fontWeight: 700 }}>
+                          Projected Deposit (Ex-VAT) {renderPipelineSortIcon('deposit_value')}
+                        </div>
                       </th>
                       <th onClick={() => handlePipelineSort('status')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Status {renderPipelineSortIcon('status')}</div>
@@ -5063,6 +5094,7 @@ export default function SalesTracker() {
                   <tbody>
                     {filteredPipelineOrders.map(o => {
                       const retail = Number(o.value) || 0;
+                      const { depositValue: depVal, depositPercent: depPct } = getOrderDepositInfo(o);
                       const currentMonth = o.expected_deposit_month || o.expectedDepositMonth || 'TBC';
                       const isTbc = !currentMonth || currentMonth === 'TBC';
                       const isSaving = pipelineSavingId === o.id;
@@ -5094,8 +5126,12 @@ export default function SalesTracker() {
                           <td style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
                             {div}
                           </td>
-                          <td style={{ fontWeight: 700, textAlign: 'right', color: 'var(--text-primary)' }}>
-                            R {retail.toLocaleString()}
+                          <td style={{ fontWeight: 600, textAlign: 'right', color: 'var(--text-primary)' }}>
+                            R {retail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td style={{ fontWeight: 700, textAlign: 'right', color: '#f59e0b', background: 'rgba(245, 158, 11, 0.03)' }}>
+                            <div>R {depVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                            <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 600 }}>({depPct}% deposit)</span>
                           </td>
                           <td style={{ textAlign: 'center' }}>
                             <span className={`badge ${statusColor[o.status] || 'b-warning'}`}>{o.status || 'Draft'}</span>
