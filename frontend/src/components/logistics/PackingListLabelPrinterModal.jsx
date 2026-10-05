@@ -4,7 +4,13 @@ import {
   ChevronLeft, ChevronRight, Layers, AlertCircle, Sparkles, Filter, RefreshCw,
   RotateCw
 } from 'lucide-react';
-import { generateCode128Svg, evaluateTokens, DEFAULT_LABEL_TEMPLATES } from '../../utils/labelGenerator';
+import { 
+  generateCode128Svg, 
+  drawCode128OnCanvas, 
+  renderLabelToDataUrl,
+  evaluateTokens, 
+  DEFAULT_LABEL_TEMPLATES 
+} from '../../utils/labelGenerator';
 
 export default function PackingListLabelPrinterModal({
   isOpen,
@@ -155,6 +161,12 @@ export default function PackingListLabelPrinterModal({
   const activePreviewIndex = Math.min(previewIndex, Math.max(0, generatedLabels.length - 1));
   const activeLabel = generatedLabels[activePreviewIndex] || null;
 
+  // Real-time canvas rasterized preview matching exact 203 DPI print engine output
+  const previewDataUrl = useMemo(() => {
+    if (!activeLabel || !currentTemplate) return null;
+    return renderLabelToDataUrl(currentTemplate, activeLabel.context, printRotation || 0);
+  }, [activeLabel, currentTemplate, printRotation]);
+
   // Toggle item selection
   const handleToggleItem = (itemId) => {
     setItemSelections(prev => {
@@ -209,7 +221,7 @@ export default function PackingListLabelPrinterModal({
     setBoxSelections(next);
   };
 
-  // Trigger high-precision continuous thermal roll printing via hidden iframe
+  // Trigger high-precision continuous thermal roll printing via canvas rasterization (203 DPI)
   const handlePrint = () => {
     if (generatedLabels.length === 0) {
       alert("No labels selected to print. Check at least one item or box.");
@@ -222,115 +234,15 @@ export default function PackingListLabelPrinterModal({
       return;
     }
 
-    const { widthMm = 50, heightMm = 25, orientation = 'landscape' } = currentTemplate;
+    const { widthMm = 50, heightMm = 32 } = currentTemplate;
     const effectiveRotation = printRotation !== undefined ? printRotation : (currentTemplate.rotation || 0);
 
-    // If rotation is 90 or 270, the physical page feeding into the thermal printer has swapped dimensions
-    const isRotated90or270 = effectiveRotation === 90 || effectiveRotation === 270;
-    const pageWidthMm = isRotated90or270 ? heightMm : widthMm;
-    const pageHeightMm = isRotated90or270 ? widthMm : heightMm;
-
-    // Build HTML for each label
-    const labelsHtml = generatedLabels.map((lbl, idx) => {
-      const fieldsHtml = (currentTemplate.fields || []).map(field => {
-        if (field.type === 'text') {
-          const text = evaluateTokens(field.content, lbl.context);
-          return `
-            <div style="
-              font-size: ${field.fontSize || 8}pt;
-              font-weight: ${field.fontWeight || 600};
-              text-align: ${field.align || 'left'};
-              margin-top: ${field.marginTop || 0}px;
-              border-bottom: ${field.borderBottom ? '1.5px solid #000' : 'none'};
-              border-top: ${field.borderTop ? '1px solid #000' : 'none'};
-              padding-bottom: ${field.borderBottom ? '2px' : '0'};
-              line-height: 1.15;
-              overflow: hidden;
-              word-break: break-word;
-            ">
-              ${text}
-            </div>
-          `;
-        }
-
-        if (field.type === 'barcode') {
-          const barVal = evaluateTokens(field.barcodeValue || '{{item.code}}', lbl.context);
-          const svg = generateCode128Svg(barVal, field.barcodeHeight || 20, 1.5, field.showBarcodeText !== false);
-          return `
-            <div style="margin-top: ${field.marginTop || 2}px; text-align: center;">
-              ${svg}
-            </div>
-          `;
-        }
-
-        if (field.type === 'box_manifest') {
-          const items = lbl.context.box?.manifestItems || [];
-          const rows = items.map(it => `
-            <div style="display:flex; justify-content:space-between; margin-bottom: 2px; border-bottom: 0.5px dotted #999; padding-bottom: 1px;">
-              <span><strong>${it.qtyDelivered || it.qty || 1}x</strong> ${it.code || it.oneOneCode || 'Item'}</span>
-              <span style="font-size:7pt; color:#444;">${it.area || it.floor || ''}</span>
-            </div>
-          `).join('');
-
-          return `
-            <div style="
-              font-size: ${field.fontSize || 7.5}pt;
-              line-height: 1.25;
-              margin-top: ${field.marginTop || 2}px;
-              border: 1px solid #000;
-              padding: 4px;
-              background: #fff;
-              max-height: 48mm;
-              overflow: hidden;
-            ">
-              ${rows || '<div>No items listed</div>'}
-            </div>
-          `;
-        }
-
-        return '';
-      }).join('');
-
-      // Inner container rotated if rotation specified
-      const innerRotationCss = effectiveRotation !== 0 ? `
-        transform: rotate(${effectiveRotation}deg);
-        transform-origin: center center;
-        width: ${widthMm}mm;
-        height: ${heightMm}mm;
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        margin-top: -${heightMm / 2}mm;
-        margin-left: -${widthMm / 2}mm;
-      ` : `
-        width: 100%;
-        height: 100%;
-      `;
-
+    // Rasterize every label onto a 203 DPI canvas with the exact rotation baked in
+    const imagesHtml = generatedLabels.map((lbl, idx) => {
+      const dataUrl = renderLabelToDataUrl(currentTemplate, lbl.context, effectiveRotation);
       return `
-        <div class="thermal-label-page" style="
-          width: ${pageWidthMm}mm;
-          height: ${pageHeightMm}mm;
-          box-sizing: border-box;
-          position: relative;
-          background: #ffffff;
-          color: #000000;
-          font-family: Arial, Helvetica, sans-serif;
-          page-break-after: always;
-          break-after: page;
-          overflow: hidden;
-        ">
-          <div style="
-            box-sizing: border-box;
-            padding: 2.5mm 3.5mm;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-            overflow: hidden;
-            ${innerRotationCss}
-          ">
-            ${fieldsHtml}
-          </div>
+        <div class="thermal-label-page">
+          <img src="${dataUrl}" class="thermal-img" alt="Label ${idx + 1}" />
         </div>
       `;
     }).join('');
@@ -342,8 +254,8 @@ export default function PackingListLabelPrinterModal({
         <title>Argox O4-250 Thermal Print - ${packingList.id}</title>
         <style>
           @page {
-            size: ${pageWidthMm}mm ${pageHeightMm}mm;
-            margin: 0;
+            size: ${widthMm}mm ${heightMm}mm;
+            margin: 0mm;
           }
           * {
             box-sizing: border-box;
@@ -351,7 +263,8 @@ export default function PackingListLabelPrinterModal({
             padding: 0;
           }
           html, body {
-            width: ${pageWidthMm}mm;
+            width: ${widthMm}mm;
+            height: 100%;
             margin: 0;
             padding: 0;
             background: #ffffff;
@@ -359,9 +272,26 @@ export default function PackingListLabelPrinterModal({
             print-color-adjust: exact;
           }
           .thermal-label-page {
+            width: ${widthMm}mm;
+            height: ${heightMm}mm;
+            page-break-before: auto;
             page-break-inside: avoid;
             page-break-after: always;
             break-after: page;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            background: #ffffff;
+          }
+          .thermal-img {
+            width: 100%;
+            height: 100%;
+            object-fit: fill;
+            display: block;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+            image-rendering: pixelated;
           }
           @media screen {
             body {
@@ -370,7 +300,7 @@ export default function PackingListLabelPrinterModal({
               display: flex;
               flex-direction: column;
               align-items: center;
-              gap: 20px;
+              gap: 16px;
             }
             .thermal-label-page {
               box-shadow: 0 4px 12px rgba(0,0,0,0.15);
@@ -380,7 +310,7 @@ export default function PackingListLabelPrinterModal({
         </style>
       </head>
       <body>
-        ${labelsHtml}
+        ${imagesHtml}
         <script>
           window.onload = function() {
             setTimeout(function() {
@@ -869,92 +799,32 @@ export default function PackingListLabelPrinterModal({
               justifyContent: 'center',
               background: '#0f172a'
             }}>
-              {activeLabel ? (
+              {activeLabel && previewDataUrl ? (
                 <div>
-                  {/* Physical Label Canvas */}
+                  {/* Physical Label Canvas Preview */}
                   <div
                     style={{
-                      width: `${currentTemplate.widthMm * 3.78}px`,
-                      minHeight: `${currentTemplate.heightMm * 3.78}px`,
                       background: '#ffffff',
-                      color: '#000000',
-                      padding: '8px 12px',
                       borderRadius: '4px',
                       boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
-                      fontFamily: 'Arial, Helvetica, sans-serif',
+                      padding: '4px',
                       display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'flex-start',
-                      boxSizing: 'border-box',
-                      transform: `rotate(${printRotation || 0}deg)`,
-                      transformOrigin: 'center center',
-                      transition: 'transform 0.2s ease'
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      overflow: 'hidden'
                     }}
                   >
-                    {(currentTemplate.fields || []).map((field, fIdx) => {
-                      if (field.type === 'text') {
-                        const text = evaluateTokens(field.content, activeLabel.context);
-                        return (
-                          <div
-                            key={fIdx}
-                            style={{
-                              fontSize: `${field.fontSize || 8}pt`,
-                              fontWeight: field.fontWeight || 600,
-                              textAlign: field.align || 'left',
-                              marginTop: `${field.marginTop || 0}px`,
-                              borderBottom: field.borderBottom ? '1.5px solid #000' : 'none',
-                              borderTop: field.borderTop ? '1px solid #000' : 'none',
-                              paddingBottom: field.borderBottom ? '2px' : '0',
-                              lineHeight: 1.15,
-                              overflow: 'hidden',
-                              wordBreak: 'break-word'
-                            }}
-                          >
-                            {text}
-                          </div>
-                        );
-                      }
-
-                      if (field.type === 'barcode') {
-                        const barVal = evaluateTokens(field.barcodeValue || '{{item.code}}', activeLabel.context);
-                        const svg = generateCode128Svg(barVal, field.barcodeHeight || 20, 1.5, field.showBarcodeText !== false);
-                        return (
-                          <div 
-                            key={fIdx}
-                            style={{ marginTop: `${field.marginTop || 2}px` }}
-                            dangerouslySetInnerHTML={{ __html: svg }}
-                          />
-                        );
-                      }
-
-                      if (field.type === 'box_manifest') {
-                        const items = activeLabel.context.box?.manifestItems || [];
-                        return (
-                          <div
-                            key={fIdx}
-                            style={{
-                              fontSize: `${field.fontSize || 7.5}pt`,
-                              lineHeight: 1.25,
-                              marginTop: `${field.marginTop || 2}px`,
-                              border: '1px solid #000',
-                              padding: '4px',
-                              background: '#fafafa',
-                              maxHeight: '120px',
-                              overflowY: 'auto'
-                            }}
-                          >
-                            {items.map((it, idx) => (
-                              <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '0.5px dotted #ccc', padding: '1px 0' }}>
-                                <span><strong>{it.qtyDelivered || it.qty || 1}x</strong> {it.code || it.oneOneCode || 'Item'}</span>
-                                <span style={{ fontSize: '7pt', color: '#666' }}>{it.area || it.floor || ''}</span>
-                              </div>
-                            ))}
-                          </div>
-                        );
-                      }
-
-                      return null;
-                    })}
+                    <img 
+                      src={previewDataUrl} 
+                      alt="Thermal Label Preview" 
+                      style={{
+                        maxWidth: '360px',
+                        maxHeight: '360px',
+                        display: 'block',
+                        imageRendering: 'pixelated',
+                        border: '1px solid #cbd5e1'
+                      }}
+                    />
                   </div>
 
                   <div style={{ marginTop: '14px', textAlign: 'center', fontSize: '11px', color: '#94a3b8' }}>

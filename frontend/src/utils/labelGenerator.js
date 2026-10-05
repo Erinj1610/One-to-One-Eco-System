@@ -87,6 +87,240 @@ export function generateCode128Svg(text, height = 40, barWidth = 2, showText = t
   </svg>`;
 }
 
+// Low-level Code 128 module bit extractor for direct canvas rendering
+export function getCode128Modules(text) {
+  if (!text) return [];
+  const clean = String(text).trim();
+  if (!clean) return [];
+
+  const CODE128_PATTERNS = [
+    "212222", "222122", "222221", "121223", "121322", "131222", "122213", "122312", "132212", "221213",
+    "221312", "231212", "112232", "122132", "122231", "113222", "123122", "123221", "223211", "221132",
+    "221231", "213212", "223112", "312131", "311222", "321122", "321221", "312212", "322112", "322211",
+    "212123", "212321", "232121", "111323", "131123", "131321", "112313", "132113", "132311", "211313",
+    "231113", "231311", "112133", "112331", "132131", "113123", "113321", "133121", "313121", "211331",
+    "231131", "213113", "213311", "213131", "311123", "311321", "331121", "312113", "312311", "332111",
+    "314111", "221411", "431111", "111224", "111422", "121124", "121421", "141122", "141221", "112214",
+    "112412", "122114", "122411", "142112", "142211", "241211", "221114", "413111", "241112", "134111",
+    "111242", "121142", "121241", "114212", "124112", "124211", "411212", "421112", "421211", "212141",
+    "214121", "412121", "111143", "111341", "131141", "114113", "114311", "411113", "411311", "113141",
+    "114131", "311141", "411131", "211412", "211214", "211232", "2331112"
+  ];
+
+  const START_B = 104;
+  const STOP = 106;
+
+  const codes = [START_B];
+  let checksum = START_B;
+
+  for (let i = 0; i < clean.length; i++) {
+    const charCode = clean.charCodeAt(i);
+    const code = charCode - 32;
+    if (code >= 0 && code <= 95) {
+      codes.push(code);
+      checksum += code * (i + 1);
+    }
+  }
+
+  const checkDigit = checksum % 103;
+  codes.push(checkDigit);
+  codes.push(STOP);
+
+  const modules = [];
+  codes.forEach(c => {
+    const pattern = CODE128_PATTERNS[c] || "";
+    let isBar = true;
+    for (let char of pattern) {
+      const width = parseInt(char, 10);
+      for (let w = 0; w < width; w++) {
+        modules.push(isBar ? 1 : 0);
+      }
+      isBar = !isBar;
+    }
+  });
+
+  return modules;
+}
+
+// Draw barcode directly onto an HTML5 Canvas context for crystal sharp 203 DPI printing
+export function drawCode128OnCanvas(ctx, text, x, y, maxWidth, height, showText = true) {
+  if (!text) return 0;
+  const clean = String(text).trim();
+  if (!clean) return 0;
+
+  const modules = getCode128Modules(clean);
+  if (!modules.length) return 0;
+
+  // Determine bar width (e.g. 1px, 2px, or 3px depending on available width)
+  let barWidth = Math.floor(maxWidth / modules.length);
+  if (barWidth < 1) barWidth = 1;
+  if (barWidth > 3) barWidth = 3;
+
+  const totalBarcodeWidth = modules.length * barWidth;
+  const startX = Math.round(x + (maxWidth - totalBarcodeWidth) / 2);
+
+  ctx.fillStyle = '#000000';
+  let curX = startX;
+  for (let i = 0; i < modules.length; i++) {
+    if (modules[i] === 1) {
+      let run = 1;
+      while (i + 1 < modules.length && modules[i + 1] === 1) {
+        run++;
+        i++;
+      }
+      ctx.fillRect(curX, y, run * barWidth, height);
+      curX += run * barWidth;
+    } else {
+      curX += barWidth;
+    }
+  }
+
+  if (showText) {
+    ctx.font = 'bold 16px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(clean, x + maxWidth / 2, y + height + 3);
+    return height + 24;
+  }
+
+  return height;
+}
+
+// Render a complete label template onto an offscreen canvas at native 203 DPI (8 dots/mm)
+// and return a PNG data URL.
+export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
+  const widthMm = template.widthMm || 50;
+  const heightMm = template.heightMm || 32;
+
+  // Thermal printers operate at ~8 dots per mm (203.2 DPI)
+  const DOTS_PER_MM = 8;
+  const nominalW = Math.round(widthMm * DOTS_PER_MM);
+  const nominalH = Math.round(heightMm * DOTS_PER_MM);
+
+  const rot = ((Number(rotationDeg) || 0) % 360 + 360) % 360;
+  const isSwap = rot === 90 || rot === 270;
+
+  // The final canvas dimensions match the physical media feeding through the printer
+  // If the user rotated 90 or 270, the physical roll width is still widthMm, but content is rotated
+  const canvas = document.createElement('canvas');
+  canvas.width = isSwap ? nominalH : nominalW;
+  canvas.height = isSwap ? nominalW : nominalH;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  // Fill solid white background
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Set up rotation transform around center
+  ctx.save();
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((rot * Math.PI) / 180);
+  ctx.translate(-nominalW / 2, -nominalH / 2);
+
+  // Printable area inside the nominal bounds (padding 3mm / 24 dots)
+  const paddingX = Math.round(2.5 * DOTS_PER_MM);
+  let curY = Math.round(2 * DOTS_PER_MM);
+  const contentWidth = nominalW - paddingX * 2;
+
+  (template.fields || []).forEach(field => {
+    const marginTop = Math.round((field.marginTop || 0) * DOTS_PER_MM * 0.35);
+    curY += marginTop;
+
+    if (field.type === 'text') {
+      const text = evaluateTokens(field.content, context);
+      const fontSizePx = Math.round((field.fontSize || 8) * 2.8);
+      const fontWeight = field.fontWeight || 600;
+      ctx.font = `${fontWeight} ${fontSizePx}px Arial, Helvetica, sans-serif`;
+      ctx.fillStyle = '#000000';
+      ctx.textBaseline = 'top';
+
+      let drawX = paddingX;
+      if (field.align === 'center') {
+        ctx.textAlign = 'center';
+        drawX = paddingX + contentWidth / 2;
+      } else if (field.align === 'right') {
+        ctx.textAlign = 'right';
+        drawX = paddingX + contentWidth;
+      } else {
+        ctx.textAlign = 'left';
+        drawX = paddingX;
+      }
+
+      if (field.borderTop) {
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(paddingX, curY);
+        ctx.lineTo(paddingX + contentWidth, curY);
+        ctx.stroke();
+        curY += 4;
+      }
+
+      ctx.fillText(text, drawX, curY);
+      curY += fontSizePx + 4;
+
+      if (field.borderBottom) {
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(paddingX, curY);
+        ctx.lineTo(paddingX + contentWidth, curY);
+        ctx.stroke();
+        curY += 4;
+      }
+    } else if (field.type === 'barcode') {
+      const barVal = evaluateTokens(field.barcodeValue || '{{item.code}}', context);
+      const barHeight = Math.round((field.barcodeHeight || 20) * DOTS_PER_MM * 0.35);
+      const drawnH = drawCode128OnCanvas(
+        ctx,
+        barVal,
+        paddingX,
+        curY,
+        contentWidth,
+        barHeight,
+        field.showBarcodeText !== false
+      );
+      curY += drawnH + 4;
+    } else if (field.type === 'box_manifest') {
+      const items = context.box?.manifestItems || [];
+      const fontSizePx = Math.round((field.fontSize || 7.5) * 2.5);
+      ctx.font = `600 ${fontSizePx}px Arial, Helvetica, sans-serif`;
+      ctx.fillStyle = '#000000';
+
+      // Draw border box for manifest
+      const boxStartY = curY;
+      const rowH = fontSizePx + 6;
+      const maxRows = field.maxLines || 6;
+      const displayItems = items.slice(0, maxRows);
+
+      displayItems.forEach((it, idx) => {
+        const itemY = boxStartY + idx * rowH + 4;
+        const leftTxt = `${it.qtyDelivered || it.qty || 1}x ${it.code || it.oneOneCode || 'Item'}`;
+        const rightTxt = `${it.area || it.floor || ''}`;
+
+        ctx.textAlign = 'left';
+        ctx.fillText(leftTxt, paddingX + 6, itemY);
+
+        ctx.textAlign = 'right';
+        ctx.fillText(rightTxt, paddingX + contentWidth - 6, itemY);
+      });
+
+      const totalBoxH = Math.max(displayItems.length * rowH + 8, 30);
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(paddingX, boxStartY, contentWidth, totalBoxH);
+
+      curY += totalBoxH + 4;
+    }
+  });
+
+  ctx.restore();
+
+  return canvas.toDataURL('image/png');
+}
+
 function escapeXml(unsafe) {
   return String(unsafe).replace(/[<>&'"]/g, (c) => {
     switch (c) {
@@ -137,6 +371,23 @@ export const VARIABLE_DICTIONARY = [
 
 // Pre-configured Industry Standard Thermal Templates
 export const DEFAULT_LABEL_TEMPLATES = [
+  {
+    id: 'argox_item_50x32',
+    name: 'Argox Roll Fitting Label (50mm × 32mm)',
+    description: 'Exact match for Argox O4-250 50mm width roll with 32mm pitch. Pre-configured for crystal clear thermal printing.',
+    widthMm: 50,
+    heightMm: 32,
+    orientation: 'landscape',
+    rotation: 0,
+    type: 'item',
+    fields: [
+      { id: 'f_brand', type: 'text', content: 'ONE TO ONE • {{project.name}}', fontSize: 7.5, fontWeight: 800, align: 'center', borderBottom: true },
+      { id: 'f_code', type: 'text', content: '{{item.code}}', fontSize: 11, fontWeight: 900, align: 'center', marginTop: 1 },
+      { id: 'f_desc', type: 'text', content: '{{item.description}}', fontSize: 7, fontWeight: 500, align: 'center', maxLines: 1, marginTop: 1 },
+      { id: 'f_barcode', type: 'barcode', barcodeValue: '{{item.code}}', barcodeHeight: 22, showBarcodeText: true, marginTop: 2 },
+      { id: 'f_meta', type: 'text', content: '{{item.floor}} • {{item.area}} ({{item.boxNumber}})', fontSize: 7, fontWeight: 700, align: 'center', marginTop: 1, borderTop: true }
+    ]
+  },
   {
     id: 'hardware_item_50x25',
     name: 'Standard Hardware Label (50mm × 25mm)',
