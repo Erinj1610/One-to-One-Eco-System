@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
   X, Plus, Trash2, Edit3, Save, RotateCcw, Copy, 
-  Tag, Box, Check, HelpCircle, Eye, Sliders, ChevronDown
+  Tag, Box, Check, HelpCircle, Eye, Sliders, ChevronDown,
+  ArrowLeftRight, RotateCw
 } from 'lucide-react';
 import { VARIABLE_DICTIONARY, DEFAULT_LABEL_TEMPLATES, generateCode128Svg } from '../../utils/labelGenerator';
 
@@ -327,7 +328,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                     <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                       📐 Dimensions & Target
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '8px', alignItems: 'flex-end', marginBottom: '10px' }}>
                       <div>
                         <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Width (mm)</label>
                         <input 
@@ -338,6 +339,20 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                           style={{ width: '100%', fontSize: '12px' }}
                         />
                       </div>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-xs"
+                        title="Swap Width and Height"
+                        style={{ border: '1px solid var(--border)', padding: '6px 8px', marginBottom: '2px' }}
+                        onClick={() => setEditForm({
+                          ...editForm,
+                          widthMm: editForm.heightMm,
+                          heightMm: editForm.widthMm,
+                          orientation: editForm.orientation === 'portrait' ? 'landscape' : 'portrait'
+                        })}
+                      >
+                        <ArrowLeftRight size={13} />
+                      </button>
                       <div>
                         <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Height (mm)</label>
                         <input 
@@ -349,7 +364,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                         />
                       </div>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                       <div>
                         <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Type</label>
                         <select 
@@ -366,12 +381,35 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                         <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Orientation</label>
                         <select 
                           className="select select-sm" 
-                          value={editForm.orientation} 
-                          onChange={e => setEditForm({ ...editForm, orientation: e.target.value })}
+                          value={editForm.orientation || 'landscape'} 
+                          onChange={e => {
+                            const newOri = e.target.value;
+                            setEditForm({ 
+                              ...editForm, 
+                              orientation: newOri,
+                              // If switching to portrait and rotation is 0, offer 90deg or update orientation
+                            });
+                          }}
                           style={{ width: '100%', fontSize: '12px' }}
                         >
                           <option value="landscape">Landscape</option>
                           <option value="portrait">Portrait</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <RotateCw size={11} /> Print Rotation
+                        </label>
+                        <select
+                          className="select select-sm"
+                          value={editForm.rotation ?? 0}
+                          onChange={e => setEditForm({ ...editForm, rotation: Number(e.target.value) })}
+                          style={{ width: '100%', fontSize: '12px' }}
+                        >
+                          <option value="0">0° (Standard)</option>
+                          <option value="90">90° (Clockwise)</option>
+                          <option value="180">180° (Inverted)</option>
+                          <option value="270">270° (Counter)</option>
                         </select>
                       </div>
                     </div>
@@ -530,7 +568,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                 {/* The Physical Thermal Label Container */}
                 <div 
                   style={{
-                    width: `${activeObj.widthMm * 3.78}px`, // ~3.78px per mm for 96 DPI CSS screen preview
+                    width: `${activeObj.widthMm * 3.78}px`,
                     minHeight: `${activeObj.heightMm * 3.78}px`,
                     background: '#ffffff',
                     color: '#000000',
@@ -541,7 +579,10 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                     flexDirection: 'column',
                     justifyContent: 'space-between',
                     fontFamily: 'Arial, Helvetica, sans-serif',
-                    boxSizing: 'border-box'
+                    boxSizing: 'border-box',
+                    transform: `rotate(${activeObj.rotation || 0}deg)`,
+                    transformOrigin: 'center center',
+                    transition: 'transform 0.2s ease'
                   }}
                 >
                   <div style={{ display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>

@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { 
   X, Printer, Tag, Box, Settings, CheckSquare, Square, 
-  ChevronLeft, ChevronRight, Layers, AlertCircle, Sparkles, Filter, RefreshCw
+  ChevronLeft, ChevronRight, Layers, AlertCircle, Sparkles, Filter, RefreshCw,
+  RotateCw
 } from 'lucide-react';
 import { generateCode128Svg, evaluateTokens, DEFAULT_LABEL_TEMPLATES } from '../../utils/labelGenerator';
 
@@ -26,6 +27,10 @@ export default function PackingListLabelPrinterModal({
 
   // Selected Template ID
   const [selectedTemplateId, setSelectedTemplateId] = useState(activeTemplatePool[0]?.id || availableTemplates[0]?.id);
+  const currentTemplate = availableTemplates.find(t => t.id === selectedTemplateId) || availableTemplates[0];
+
+  // Print Rotation state (degrees: 0, 90, 180, 270)
+  const [printRotation, setPrintRotation] = useState(currentTemplate?.rotation ?? 0);
 
   // When mode changes, switch to a template that matches the mode if possible
   const handleModeChange = (newMode) => {
@@ -33,10 +38,9 @@ export default function PackingListLabelPrinterModal({
     const matching = availableTemplates.filter(t => t.type === newMode);
     if (matching.length > 0) {
       setSelectedTemplateId(matching[0].id);
+      setPrintRotation(matching[0].rotation ?? 0);
     }
   };
-
-  const currentTemplate = availableTemplates.find(t => t.id === selectedTemplateId) || availableTemplates[0];
 
   // Raw items from the packing list
   const plItems = packingList.items || [];
@@ -219,7 +223,12 @@ export default function PackingListLabelPrinterModal({
     }
 
     const { widthMm = 50, heightMm = 25, orientation = 'landscape' } = currentTemplate;
-    const isLandscape = orientation === 'landscape';
+    const effectiveRotation = printRotation !== undefined ? printRotation : (currentTemplate.rotation || 0);
+
+    // If rotation is 90 or 270, the physical page feeding into the thermal printer has swapped dimensions
+    const isRotated90or270 = effectiveRotation === 90 || effectiveRotation === 270;
+    const pageWidthMm = isRotated90or270 ? heightMm : widthMm;
+    const pageHeightMm = isRotated90or270 ? widthMm : heightMm;
 
     // Build HTML for each label
     const labelsHtml = generatedLabels.map((lbl, idx) => {
@@ -282,23 +291,46 @@ export default function PackingListLabelPrinterModal({
         return '';
       }).join('');
 
+      // Inner container rotated if rotation specified
+      const innerRotationCss = effectiveRotation !== 0 ? `
+        transform: rotate(${effectiveRotation}deg);
+        transform-origin: center center;
+        width: ${widthMm}mm;
+        height: ${heightMm}mm;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        margin-top: -${heightMm / 2}mm;
+        margin-left: -${widthMm / 2}mm;
+      ` : `
+        width: 100%;
+        height: 100%;
+      `;
+
       return `
         <div class="thermal-label-page" style="
-          width: ${widthMm}mm;
-          height: ${heightMm}mm;
+          width: ${pageWidthMm}mm;
+          height: ${pageHeightMm}mm;
           box-sizing: border-box;
-          padding: 2.5mm 3.5mm;
+          position: relative;
           background: #ffffff;
           color: #000000;
           font-family: Arial, Helvetica, sans-serif;
           page-break-after: always;
           break-after: page;
-          display: flex;
-          flex-direction: column;
-          justify-content: flex-start;
           overflow: hidden;
         ">
-          ${fieldsHtml}
+          <div style="
+            box-sizing: border-box;
+            padding: 2.5mm 3.5mm;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            overflow: hidden;
+            ${innerRotationCss}
+          ">
+            ${fieldsHtml}
+          </div>
         </div>
       `;
     }).join('');
@@ -310,7 +342,7 @@ export default function PackingListLabelPrinterModal({
         <title>Argox O4-250 Thermal Print - ${packingList.id}</title>
         <style>
           @page {
-            size: ${widthMm}mm ${heightMm}mm;
+            size: ${pageWidthMm}mm ${pageHeightMm}mm;
             margin: 0;
           }
           * {
@@ -319,7 +351,7 @@ export default function PackingListLabelPrinterModal({
             padding: 0;
           }
           html, body {
-            width: ${widthMm}mm;
+            width: ${pageWidthMm}mm;
             margin: 0;
             padding: 0;
             background: #ffffff;
@@ -519,29 +551,57 @@ export default function PackingListLabelPrinterModal({
           </div>
 
           {/* Template Selector Dropdown */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              Label Size & Template:
+              Template:
             </span>
             <select
               value={selectedTemplateId}
-              onChange={e => setSelectedTemplateId(e.target.value)}
+              onChange={e => {
+                setSelectedTemplateId(e.target.value);
+                const found = availableTemplates.find(t => t.id === e.target.value);
+                setPrintRotation(found?.rotation ?? 0);
+              }}
               className="form-control"
               style={{
                 fontSize: '12px',
                 fontWeight: 600,
-                padding: '6px 12px',
+                padding: '6px 10px',
                 borderRadius: '6px',
                 border: '1px solid var(--border)',
                 background: 'var(--bg-primary)',
-                minWidth: '240px'
+                minWidth: '220px'
               }}
             >
               {availableTemplates.map(t => (
                 <option key={t.id} value={t.id}>
-                  {t.name} ({t.widthMm}×{t.heightMm}mm - {t.type.toUpperCase()})
+                  {t.name} ({t.widthMm}×{t.heightMm}mm)
                 </option>
               ))}
+            </select>
+          </div>
+
+          {/* Quick Rotation & Orientation Controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-primary)', padding: '3px 8px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <RotateCw size={12} /> Rotation:
+            </span>
+            <select
+              value={printRotation}
+              onChange={e => setPrintRotation(Number(e.target.value))}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-primary)',
+                fontSize: '11.5px',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              <option value="0">0° (Standard)</option>
+              <option value="90">90° (Clockwise)</option>
+              <option value="180">180° (Inverted)</option>
+              <option value="270">270° (Counter-CW)</option>
             </select>
           </div>
 
@@ -825,7 +885,10 @@ export default function PackingListLabelPrinterModal({
                       display: 'flex',
                       flexDirection: 'column',
                       justifyContent: 'flex-start',
-                      boxSizing: 'border-box'
+                      boxSizing: 'border-box',
+                      transform: `rotate(${printRotation || 0}deg)`,
+                      transformOrigin: 'center center',
+                      transition: 'transform 0.2s ease'
                     }}
                   >
                     {(currentTemplate.fields || []).map((field, fIdx) => {
@@ -894,8 +957,8 @@ export default function PackingListLabelPrinterModal({
                     })}
                   </div>
 
-                  <div style={{ marginTop: '12px', textAlign: 'center', fontSize: '11px', color: '#94a3b8' }}>
-                    Label Size: <strong>{currentTemplate.widthMm}mm × {currentTemplate.heightMm}mm</strong> • Continuous Roll
+                  <div style={{ marginTop: '14px', textAlign: 'center', fontSize: '11px', color: '#94a3b8' }}>
+                    Label Size: <strong>{currentTemplate.widthMm}mm × {currentTemplate.heightMm}mm</strong> • Continuous Roll • Rotation: <strong>{printRotation || 0}°</strong>
                   </div>
                 </div>
               ) : (

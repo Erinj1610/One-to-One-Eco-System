@@ -144,6 +144,7 @@ export const DEFAULT_LABEL_TEMPLATES = [
     widthMm: 50,
     heightMm: 25,
     orientation: 'landscape',
+    rotation: 0,
     type: 'item', // 'item' | 'box'
     fields: [
       { id: 'f_brand', type: 'text', content: 'ONE TO ONE LIGHTING • {{project.name}}', fontSize: 7, fontWeight: 700, align: 'center', borderBottom: true },
