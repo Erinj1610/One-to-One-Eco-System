@@ -4,8 +4,12 @@ import { useStore } from '../context/StoreContext';
 import { 
   Truck, ClipboardList, FileText, Plus, Printer, 
   ArrowLeft, Search, CheckCircle2, AlertCircle, Eye, Trash2, 
-  Package, Layers, Filter, Check, Clock, Box, Sparkles, X, ChevronDown, ChevronRight
+  Package, Layers, Filter, Check, Clock, Box, Sparkles, X, ChevronDown, ChevronRight,
+  Tag, Settings
 } from 'lucide-react';
+import LabelTemplateModal from '../components/logistics/LabelTemplateModal';
+import PackingListLabelPrinterModal from '../components/logistics/PackingListLabelPrinterModal';
+import { DEFAULT_LABEL_TEMPLATES } from '../utils/labelGenerator';
 
 export default function LogisticsPage() {
   const navigate = useNavigate();
@@ -55,6 +59,44 @@ export default function LogisticsPage() {
   const [plOrderDropdownOpen, setPlOrderDropdownOpen] = useState(false);
   const [dnOrderSearchQuery, setDnOrderSearchQuery] = useState('');
   const [dnOrderDropdownOpen, setDnOrderDropdownOpen] = useState(false);
+
+  // Label Printing Engine States
+  const [showLabelPrinterModal, setShowLabelPrinterModal] = useState(false);
+  const [showLabelTemplateModal, setShowLabelTemplateModal] = useState(false);
+  const [labelTargetDoc, setLabelTargetDoc] = useState(null);
+  const [labelTemplates, setLabelTemplates] = useState(DEFAULT_LABEL_TEMPLATES);
+
+  // Load custom label templates from settings on mount
+  useEffect(() => {
+    fetch('/api/settings/label_templates')
+      .then(res => {
+        if (!res.ok) throw new Error('No custom templates');
+        return res.json();
+      })
+      .then(data => {
+        if (data && data.value && Array.isArray(data.value) && data.value.length > 0) {
+          setLabelTemplates(data.value);
+        }
+      })
+      .catch(() => {
+        // Fallback to DEFAULT_LABEL_TEMPLATES
+      });
+  }, []);
+
+  const handleSaveTemplates = (newTemplates) => {
+    setLabelTemplates(newTemplates);
+    fetch('/api/settings/label_templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: newTemplates })
+    }).catch(err => console.error('Failed to save label templates:', err));
+  };
+
+  const handleOpenLabelPrinter = (doc) => {
+    if (!doc) return;
+    setLabelTargetDoc(doc);
+    setShowLabelPrinterModal(true);
+  };
 
   // Form states for creating a Packing List
   const [plOrderKey, setPlOrderKey] = useState(''); // "projectKey_orderId"
@@ -596,6 +638,14 @@ export default function LogisticsPage() {
           <button 
             className="btn btn-ghost btn-sm" 
             style={{ border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 600 }}
+            onClick={() => setShowLabelTemplateModal(true)}
+            title="Configure thermal label sizes, layouts and custom variables"
+          >
+            <Tag size={15} style={{ color: 'var(--text-info)' }} /> Label Templates & Designer
+          </button>
+          <button 
+            className="btn btn-ghost btn-sm" 
+            style={{ border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 600 }}
             onClick={handleOpenPlModal}
           >
             <Plus size={15} /> New Packing List
@@ -908,11 +958,26 @@ export default function LogisticsPage() {
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
                                   <span>Issued: {doc.date}</span>
-                                  {isPL && (
-                                    <span style={{ color: doc.deliveryNoteId ? 'var(--text-success)' : 'var(--text-warning)', fontWeight: 600 }}>
-                                      {doc.deliveryNoteId ? `Delivered (${doc.deliveryNoteId})` : 'Packed (Ready)'}
-                                    </span>
-                                  )}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    {isPL && (
+                                      <button
+                                        className="btn btn-ghost btn-xs"
+                                        title="Print Thermal Labels"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenLabelPrinter(doc);
+                                        }}
+                                        style={{ padding: '2px 5px', color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)' }}
+                                      >
+                                        <Tag size={11} /> Labels
+                                      </button>
+                                    )}
+                                    {isPL && (
+                                      <span style={{ color: doc.deliveryNoteId ? 'var(--text-success)' : 'var(--text-warning)', fontWeight: 600 }}>
+                                        {doc.deliveryNoteId ? `Delivered (${doc.deliveryNoteId})` : 'Packed (Ready)'}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             );
@@ -1010,6 +1075,16 @@ export default function LogisticsPage() {
                         </td>
                         <td style={{ padding: '10px 14px', textAlign: 'right' }} onClick={e => e.stopPropagation()}>
                           <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                            {isPL && (
+                              <button
+                                className="btn btn-ghost btn-xs"
+                                title="Print Thermal Labels (Argox O4-250)"
+                                style={{ color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)' }}
+                                onClick={() => handleOpenLabelPrinter(doc)}
+                              >
+                                <Tag size={13} />
+                              </button>
+                            )}
                             <button
                               className="btn btn-ghost btn-xs"
                               title="Inspect & Print"
@@ -1102,6 +1177,15 @@ export default function LogisticsPage() {
               </div>
 
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {activeDoc.type === 'packing_list' && (
+                  <button 
+                    className="btn btn-ghost btn-sm"
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, border: '1px solid var(--border)', color: 'var(--text-info)' }}
+                    onClick={() => handleOpenLabelPrinter(activeDoc)}
+                  >
+                    <Tag size={14} /> Print Thermal Labels (Argox)
+                  </button>
+                )}
                 <button 
                   className="btn btn-primary btn-sm"
                   style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600 }}
@@ -2006,6 +2090,30 @@ export default function LogisticsPage() {
 
           </div>
         </div>
+      )}
+
+      {/* THERMAL LABEL TEMPLATE DESIGNER MODAL */}
+      <LabelTemplateModal
+        isOpen={showLabelTemplateModal}
+        onClose={() => setShowLabelTemplateModal(false)}
+        templates={labelTemplates}
+        onSaveTemplates={handleSaveTemplates}
+      />
+
+      {/* PACKING LIST THERMAL LABEL PRINTER MODAL */}
+      {showLabelPrinterModal && labelTargetDoc && (
+        <PackingListLabelPrinterModal
+          isOpen={showLabelPrinterModal}
+          onClose={() => {
+            setShowLabelPrinterModal(false);
+            setLabelTargetDoc(null);
+          }}
+          packingList={labelTargetDoc}
+          project={projects[labelTargetDoc.projectKey] || { name: labelTargetDoc.projectName, client: labelTargetDoc.projectClient }}
+          order={labelTargetDoc.orderObj || { id: labelTargetDoc.orderId }}
+          templates={labelTemplates}
+          onOpenTemplateManager={() => setShowLabelTemplateModal(true)}
+        />
       )}
 
     </div>
