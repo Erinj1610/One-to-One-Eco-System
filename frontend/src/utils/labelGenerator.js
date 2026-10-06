@@ -271,7 +271,13 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
       const isUnderline = !!field.underline;
       const fontStyleStr = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : 'normal '}`;
 
-      let baseFontSize = (field.fontSize || 8) * 2.8;
+      // Font scaling: 1 pt in design studio = (pt * 1.3 display px / 6.5 BASE_PIXELS_PER_MM) * 8 DOTS_PER_MM = pt * 1.6
+      // Standard 72 DPI to 203 DPI point conversion: 1 pt = 203 / 72 = 2.82 dots
+      // In the designer studio, text renders with font-size = fontSize * 1.3 px.
+      // At 6.5 display px/mm, that ratio is (fontSize * 1.3) / 6.5 mm = fontSize * 0.2 mm.
+      // On the 8 dots/mm thermal canvas, fontSize * 0.2 mm * 8 dots/mm = fontSize * 1.6 dots!
+      // Previously fontSize was multiplied by 2.8, which made the printed text 75% larger than the designer!
+      let baseFontSize = (field.fontSize || 8) * 1.6;
       ctx.font = `${fontStyleStr}${Math.round(baseFontSize)}px Arial, Helvetica, sans-serif`;
       ctx.fillStyle = '#000000';
       ctx.textBaseline = 'top';
@@ -287,9 +293,17 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
       }
 
       const fontSizePx = Math.round(baseFontSize);
+      const boxH = field.hMm ? Math.round(field.hMm * DOTS_PER_MM) : (fontSizePx + 6);
+
+      // Save context and clip strictly to bounding box [elemX, curY, elemW, boxH]
+      // This guarantees text NEVER overflows into adjacent columns, lines, or boundaries!
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(elemX - 1, curY - 1, elemW + 2, boxH + 2);
+      ctx.clip();
 
       if (field.wrap) {
-        // Multi-line word wrap within elemW and elemH
+        // Multi-line word wrap within elemW and boxH
         const words = text.split(' ');
         let lines = [];
         let curLine = '';
@@ -306,9 +320,8 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
         }
         if (curLine) lines.push(curLine);
 
-        const lineHeight = fontSizePx * 1.25;
+        const lineHeight = fontSizePx * 1.2;
         const totalTextH = lines.length * lineHeight;
-        const boxH = field.hMm ? Math.round(field.hMm * DOTS_PER_MM) : totalTextH;
 
         // Vertical Alignment
         let startY = curY;
@@ -353,7 +366,6 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
         if (!isExplicit) flowY = curY + boxH + 4;
       } else {
         // Single Line text
-        const boxH = field.hMm ? Math.round(field.hMm * DOTS_PER_MM) : (fontSizePx + 4);
         let startY = curY;
         if (field.vAlign === 'middle') {
           startY = curY + Math.max(0, (boxH - fontSizePx) / 2);
@@ -409,6 +421,8 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
 
         if (!isExplicit) flowY = curY + fontSizePx + 4 + (field.borderBottom ? 3 : 0);
       }
+
+      ctx.restore(); // Restore clipping region
     } else if (field.type === 'line') {
       // Vector Divider Line (Horizontal or Vertical)
       const thickness = Math.max(1, Math.round((field.thicknessMm || 0.5) * DOTS_PER_MM));
@@ -568,6 +582,7 @@ function escapeXml(unsafe) {
 export const VARIABLE_DICTIONARY = [
   { group: 'Item Details', token: '{{item.code}}', label: 'Item Code', example: 'DL-2223/31' },
   { group: 'Item Details', token: '{{item.one_one_code}}', label: '1-to-1 SKU / System Code', example: '2223/31' },
+  { group: 'Item Details', token: '{{item.plan_code}}', label: 'Plan Code / Fitting Mark', example: 'GS1a' },
   { group: 'Item Details', token: '{{item.description}}', label: 'Item Description', example: 'Downlight 2223 Anti-Glare GU10 White' },
   { group: 'Item Details', token: '{{item.brand}}', label: 'Brand / Material', example: 'Spazio' },
   { group: 'Item Details', token: '{{item.floor}}', label: 'Floor', example: 'First Floor' },
@@ -707,9 +722,13 @@ export function evaluateTokens(templateString, context) {
   const { item = {}, project = {}, order = {}, packingList = {}, box = {} } = context;
   const todayStr = new Date().toLocaleDateString('en-GB');
 
+  const planCodeVal = item.planCode || item.plan_code || item.fittingCode || item.code || 'GS1a';
+
   const replacements = {
     '{{item.code}}': item.code || item.oneOneCode || 'N/A',
-    '{{item.one_one_code}}': item.oneOneCode || item.code || 'N/A',
+    '{{item.one_one_code}}': item.oneOneCode || item.one_one_code || item.sku || item.code || 'N/A',
+    '{{item.plan_code}}': planCodeVal,
+    '{{item.planCode}}': planCodeVal,
     '{{item.description}}': item.description || item.name || 'Hardware Fitting',
     '{{item.brand}}': item.brand || item.supplier || '—',
     '{{item.floor}}': item.floor || 'General',

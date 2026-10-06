@@ -64,6 +64,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
     item: {
       code: 'DL-2223/31',
       oneOneCode: '2223/31',
+      planCode: 'GS1a',
       description: 'Downlight - 2223 Anti-Glare GU10 IP20 White',
       brand: 'Spazio',
       floor: 'First Floor',
@@ -315,20 +316,21 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
       const newX = Math.max(0, (labelW - fieldW) / 2);
       updateField(selectedFieldIndex, { xMm: Math.round(newX * 2) / 2, align: 'center' });
     } else if (alignment === 'left') {
-      updateField(selectedFieldIndex, { xMm: margins.left || 2, align: 'left' });
+      updateField(selectedFieldIndex, { xMm: Number(margins.left) || 0, align: 'left' });
     } else if (alignment === 'right') {
-      const newX = Math.max(0, labelW - (margins.right || 2) - fieldW);
+      const newX = Math.max(0, labelW - (Number(margins.right) || 0) - fieldW);
       updateField(selectedFieldIndex, { xMm: Math.round(newX * 2) / 2, align: 'right' });
     } else if (alignment === 'full_width') {
-      const fullW = Math.max(10, labelW - (margins.left || 2) - (margins.right || 2));
-      updateField(selectedFieldIndex, { xMm: margins.left || 2, wMm: Math.round(fullW * 2) / 2 });
+      const startX = Number(margins.left) || 0;
+      const fullW = Math.max(10, labelW - startX - (Number(margins.right) || 0));
+      updateField(selectedFieldIndex, { xMm: startX, wMm: Math.round(fullW * 2) / 2 });
     } else if (alignment === 'top') {
-      updateField(selectedFieldIndex, { yMm: margins.top || 1.5, vAlign: 'top' });
+      updateField(selectedFieldIndex, { yMm: Number(margins.top) || 0, vAlign: 'top' });
     } else if (alignment === 'middle') {
       const newY = Math.max(0, (labelH - fieldH) / 2);
       updateField(selectedFieldIndex, { yMm: Math.round(newY * 2) / 2, vAlign: 'middle' });
     } else if (alignment === 'bottom') {
-      const newY = Math.max(0, labelH - (margins.bottom || 1.5) - fieldH);
+      const newY = Math.max(0, labelH - (Number(margins.bottom) || 0) - fieldH);
       updateField(selectedFieldIndex, { yMm: Math.round(newY * 2) / 2, vAlign: 'bottom' });
     }
   };
@@ -691,6 +693,14 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                     const wPx = (field.wMm !== undefined ? field.wMm : (activeObj.widthMm - 4)) * PIXELS_PER_MM;
                     const hPx = (field.hMm !== undefined ? field.hMm : 6) * PIXELS_PER_MM;
 
+                    const isVertLine = field.type === 'line' && field.orientation === 'vertical';
+                    const elementWidthPx = isVertLine 
+                      ? Math.max(2, Math.round((field.wMm || field.thicknessMm || 0.5) * PIXELS_PER_MM))
+                      : `${wPx}px`;
+                    const elementHeightPx = isVertLine
+                      ? `${Math.round((field.hMm || 20) * PIXELS_PER_MM)}px`
+                      : (field.hMm ? `${hPx}px` : 'auto');
+
                     return (
                       <div
                         key={field.id || idx}
@@ -703,16 +713,16 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                           position: 'absolute',
                           left: `${xPx}px`,
                           top: `${yPx}px`,
-                          width: `${wPx}px`,
-                          minHeight: field.type === 'line' ? (field.orientation === 'vertical' ? `${Math.round((field.hMm || 10) * PIXELS_PER_MM)}px` : '2px') : `${hPx}px`,
-                          height: field.type === 'line' && field.orientation === 'vertical' ? `${Math.round((field.hMm || 10) * PIXELS_PER_MM)}px` : (field.hMm ? `${hPx}px` : 'auto'),
+                          width: elementWidthPx,
+                          height: elementHeightPx,
+                          minHeight: field.type === 'line' ? '2px' : `${hPx}px`,
                           border: isSelected 
                             ? '1.5px solid #3b82f6' 
                             : isEditing ? '1px dashed rgba(0,0,0,0.15)' : 'none',
                           background: isSelected ? 'rgba(59, 130, 246, 0.06)' : 'transparent',
                           cursor: isEditing ? 'move' : 'default',
                           zIndex: isSelected ? 10 : 2,
-                          padding: '1px 2px',
+                          padding: field.type === 'line' ? 0 : '1px 2px',
                           boxSizing: 'border-box',
                           display: 'flex',
                           flexDirection: 'column',
@@ -747,12 +757,14 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                         {field.type === 'line' && (
                           <div 
                             style={{
-                              width: field.orientation === 'vertical' ? `${Math.max(1, (field.thicknessMm || 0.5) * 1.5)}px` : '100%',
-                              height: field.orientation === 'vertical' ? '100%' : `${Math.max(1, (field.thicknessMm || 0.5) * 1.5)}px`,
+                              width: '100%',
+                              height: '100%',
+                              minWidth: field.orientation === 'vertical' ? `${Math.max(1, (field.thicknessMm || 0.5) * 1.5)}px` : '100%',
+                              minHeight: field.orientation === 'vertical' ? '100%' : `${Math.max(1, (field.thicknessMm || 0.5) * 1.5)}px`,
                               background: field.lineStyle === 'dashed' || field.lineStyle === 'dotted' ? 'transparent' : '#000',
                               borderTop: (field.orientation !== 'vertical' && field.lineStyle !== 'solid') ? `${(field.thicknessMm || 0.5) * 1.5}px ${field.lineStyle} #000` : 'none',
                               borderLeft: (field.orientation === 'vertical' && field.lineStyle !== 'solid') ? `${(field.thicknessMm || 0.5) * 1.5}px ${field.lineStyle} #000` : 'none',
-                              margin: field.orientation === 'vertical' ? '0 auto' : '2px 0'
+                              margin: '0 auto'
                             }}
                           />
                         )}
@@ -932,25 +944,31 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                               />
                             </div>
                             <div>
-                              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Width (mm)</label>
+                              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                {selectedField.type === 'line' 
+                                  ? (selectedField.orientation === 'vertical' ? 'Thickness (mm)' : 'Length (mm)')
+                                  : 'Width (mm)'}
+                              </label>
                               <input 
                                 type="number" 
                                 step="0.5" 
                                 className="input input-xs" 
-                                value={selectedField.wMm ?? 46} 
-                                onChange={e => updateField(selectedFieldIndex, { wMm: Number(e.target.value) || 10 })}
+                                value={selectedField.wMm ?? (selectedField.orientation === 'vertical' ? 1 : 46)} 
+                                onChange={e => updateField(selectedFieldIndex, { wMm: Number(e.target.value) || 1 })}
                                 style={{ width: '100%', fontSize: '11px' }}
                               />
                             </div>
-                            {selectedField.type !== 'line' && (
+                            {(selectedField.type !== 'line' || selectedField.orientation === 'vertical') && (
                               <div>
-                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Height (mm)</label>
+                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                  {selectedField.type === 'line' ? 'Height / Length (mm)' : 'Height (mm)'}
+                                </label>
                                 <input 
                                   type="number" 
                                   step="0.5" 
                                   className="input input-xs" 
-                                  value={selectedField.hMm ?? 6} 
-                                  onChange={e => updateField(selectedFieldIndex, { hMm: Number(e.target.value) || 4 })}
+                                  value={selectedField.hMm ?? (selectedField.orientation === 'vertical' ? 20 : 6)} 
+                                  onChange={e => updateField(selectedFieldIndex, { hMm: Number(e.target.value) || 1 })}
                                   style={{ width: '100%', fontSize: '11px' }}
                                 />
                               </div>
@@ -1102,7 +1120,22 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                                 <select 
                                   className="select select-xs" 
                                   value={selectedField.orientation || 'horizontal'} 
-                                  onChange={e => updateField(selectedFieldIndex, { orientation: e.target.value })}
+                                  onChange={e => {
+                                    const nextOrient = e.target.value;
+                                    if (nextOrient === 'vertical') {
+                                      updateField(selectedFieldIndex, { 
+                                        orientation: nextOrient,
+                                        wMm: selectedField.thicknessMm || 0.5,
+                                        hMm: selectedField.hMm || 20
+                                      });
+                                    } else {
+                                      updateField(selectedFieldIndex, { 
+                                        orientation: nextOrient,
+                                        wMm: selectedField.wMm && selectedField.wMm > 2 ? selectedField.wMm : (editForm.widthMm - 4),
+                                        hMm: selectedField.thicknessMm || 0.5
+                                      });
+                                    }
+                                  }}
                                   style={{ width: '100%', fontSize: '11px' }}
                                 >
                                   <option value="horizontal">Horizontal (Divider)</option>
