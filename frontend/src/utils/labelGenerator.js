@@ -299,11 +299,15 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
       // This guarantees text NEVER overflows into adjacent columns, lines, or boundaries!
       ctx.save();
       ctx.beginPath();
-      ctx.rect(elemX - 1, curY - 1, elemW + 2, boxH + 2);
+      ctx.rect(elemX, curY, elemW, boxH);
       ctx.clip();
 
+      // Text padding matching DOM visual designer (1px 2px DOM => ~2 dots at 203 DPI)
+      const padX = 2;
+      const usableW = Math.max(2, elemW - (padX * 2));
+
       if (field.wrap) {
-        // Multi-line word wrap within elemW and boxH
+        // Multi-line word wrap within usableW and boxH
         const words = text.split(' ');
         let lines = [];
         let curLine = '';
@@ -311,7 +315,7 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
         for (let w = 0; w < words.length; w++) {
           const testLine = curLine ? `${curLine} ${words[w]}` : words[w];
           const testW = ctx.measureText(testLine).width;
-          if (testW > elemW && curLine) {
+          if (testW > usableW && curLine) {
             lines.push(curLine);
             curLine = words[w];
           } else {
@@ -333,16 +337,16 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
 
         lines.forEach((lineText, lIdx) => {
           const lineY = startY + lIdx * lineHeight;
-          let drawX = elemX;
+          let drawX = elemX + padX;
           if (field.align === 'center') {
             ctx.textAlign = 'center';
             drawX = elemX + elemW / 2;
           } else if (field.align === 'right') {
             ctx.textAlign = 'right';
-            drawX = elemX + elemW;
+            drawX = elemX + elemW - padX;
           } else {
             ctx.textAlign = 'left';
-            drawX = elemX;
+            drawX = elemX + padX;
           }
 
           ctx.fillText(lineText, drawX, lineY);
@@ -350,9 +354,9 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
           if (isUnderline) {
             const lineMetrics = ctx.measureText(lineText);
             const lineTextW = lineMetrics.width;
-            let uX = elemX;
+            let uX = elemX + padX;
             if (field.align === 'center') uX = elemX + (elemW - lineTextW) / 2;
-            else if (field.align === 'right') uX = elemX + elemW - lineTextW;
+            else if (field.align === 'right') uX = elemX + elemW - padX - lineTextW;
 
             ctx.strokeStyle = '#000000';
             ctx.lineWidth = Math.max(1, fontSizePx * 0.08);
@@ -373,25 +377,25 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
           startY = curY + Math.max(0, boxH - fontSizePx - 2);
         }
 
-        let drawX = elemX;
+        let drawX = elemX + padX;
         if (field.align === 'center') {
           ctx.textAlign = 'center';
           drawX = elemX + elemW / 2;
         } else if (field.align === 'right') {
           ctx.textAlign = 'right';
-          drawX = elemX + elemW;
+          drawX = elemX + elemW - padX;
         } else {
           ctx.textAlign = 'left';
-          drawX = elemX;
+          drawX = elemX + padX;
         }
 
         ctx.fillText(text, drawX, startY);
 
         if (isUnderline) {
-          const textW = Math.min(elemW, ctx.measureText(text).width);
-          let uX = elemX;
+          const textW = Math.min(usableW, ctx.measureText(text).width);
+          let uX = elemX + padX;
           if (field.align === 'center') uX = elemX + (elemW - textW) / 2;
-          else if (field.align === 'right') uX = elemX + elemW - textW;
+          else if (field.align === 'right') uX = elemX + elemW - padX - textW;
 
           ctx.strokeStyle = '#000000';
           ctx.lineWidth = Math.max(1, fontSizePx * 0.08);
@@ -426,28 +430,41 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
     } else if (field.type === 'line') {
       // Vector Divider Line (Horizontal or Vertical)
       const thickness = Math.max(1, Math.round((field.thicknessMm || 0.5) * DOTS_PER_MM));
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = thickness;
+      const isSolid = !field.lineStyle || field.lineStyle === 'solid';
 
-      if (field.lineStyle === 'dashed') {
-        ctx.setLineDash([8, 6]);
-      } else if (field.lineStyle === 'dotted') {
-        ctx.setLineDash([3, 3]);
+      if (isSolid) {
+        // Crisp pixel-perfect solid rectangle rendering (no stroke expansion or subpixel fuzziness)
+        ctx.fillStyle = '#000000';
+        if (field.orientation === 'vertical') {
+          const lineH = Math.round((field.hMm || 10) * DOTS_PER_MM);
+          ctx.fillRect(elemX, curY, thickness, lineH);
+        } else {
+          ctx.fillRect(elemX, curY, elemW, thickness);
+        }
       } else {
-        ctx.setLineDash([]);
-      }
+        // Dashed / Dotted lines using vector stroke
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = thickness;
+        if (field.lineStyle === 'dashed') {
+          ctx.setLineDash([8, 6]);
+        } else if (field.lineStyle === 'dotted') {
+          ctx.setLineDash([3, 3]);
+        } else {
+          ctx.setLineDash([]);
+        }
 
-      ctx.beginPath();
-      if (field.orientation === 'vertical') {
-        const lineH = Math.round((field.hMm || 10) * DOTS_PER_MM);
-        ctx.moveTo(elemX, curY);
-        ctx.lineTo(elemX, curY + lineH);
-      } else {
-        ctx.moveTo(elemX, curY);
-        ctx.lineTo(elemX + elemW, curY);
+        ctx.beginPath();
+        if (field.orientation === 'vertical') {
+          const lineH = Math.round((field.hMm || 10) * DOTS_PER_MM);
+          ctx.moveTo(elemX + thickness / 2, curY);
+          ctx.lineTo(elemX + thickness / 2, curY + lineH);
+        } else {
+          ctx.moveTo(elemX, curY + thickness / 2);
+          ctx.lineTo(elemX + elemW, curY + thickness / 2);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]); // Reset dash
       }
-      ctx.stroke();
-      ctx.setLineDash([]); // Reset dash
 
       if (!isExplicit) {
         flowY = curY + thickness + 3;

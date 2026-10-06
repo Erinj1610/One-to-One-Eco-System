@@ -734,7 +734,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                         {field.type === 'text' && (
                           <div
                             style={{
-                              fontSize: `${(field.fontSize || 8) * 1.3}px`,
+                              fontSize: `${(field.fontSize || 8) * 1.3 * (zoomLevel / 1.5)}px`,
                               fontWeight: field.fontWeight || (field.bold ? 700 : 600),
                               fontStyle: field.italic ? 'italic' : 'normal',
                               textDecoration: field.underline ? 'underline' : 'none',
