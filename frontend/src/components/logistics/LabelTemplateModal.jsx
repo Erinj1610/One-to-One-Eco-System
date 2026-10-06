@@ -15,9 +15,35 @@ import {
   renderLabelToDataUrl,
   evaluateTokens
 } from '../../utils/labelGenerator';
+import { API_BASE } from '../../api_config';
+
+const STORAGE_KEY = 'oto_custom_label_templates';
 
 export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveTemplates }) {
-  const [activeTemplates, setActiveTemplates] = useState(templates || DEFAULT_LABEL_TEMPLATES);
+  // Load initial templates from: 1) props, 2) localStorage cache, 3) factory defaults
+  const [activeTemplates, setActiveTemplates] = useState(() => {
+    if (templates && templates.length > 0) return templates;
+    try {
+      const cached = localStorage.getItem(STORAGE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn("Error reading localStorage templates:", e);
+    }
+    return DEFAULT_LABEL_TEMPLATES;
+  });
+
+  // Keep activeTemplates updated whenever parent passes loaded templates from Cloud SQL
+  useEffect(() => {
+    if (templates && templates.length > 0) {
+      setActiveTemplates(templates);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
+      } catch (e) {}
+    }
+  }, [templates]);
   const [selectedTemplateId, setSelectedTemplateId] = useState(activeTemplates[0]?.id || 'argox_item_50x32');
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState(null);
@@ -150,6 +176,21 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
     setIsEditing(false);
     setEditForm(null);
     setSelectedFieldIndex(null);
+
+    // Immediate redundant local save
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.warn("Failed to cache templates in localStorage:", e);
+    }
+
+    // Direct background cloud sync
+    fetch(`${API_BASE}/api/settings/label_templates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: updated })
+    }).catch(err => console.error('Cloud save label_templates error:', err));
+
     if (onSaveTemplates) onSaveTemplates(updated);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2500);

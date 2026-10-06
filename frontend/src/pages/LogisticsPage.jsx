@@ -10,6 +10,9 @@ import {
 import LabelTemplateModal from '../components/logistics/LabelTemplateModal';
 import PackingListLabelPrinterModal from '../components/logistics/PackingListLabelPrinterModal';
 import { DEFAULT_LABEL_TEMPLATES } from '../utils/labelGenerator';
+import { API_BASE } from '../api_config';
+
+const LABEL_TEMPLATES_STORAGE_KEY = 'oto_custom_label_templates';
 
 export default function LogisticsPage() {
   const navigate = useNavigate();
@@ -64,11 +67,22 @@ export default function LogisticsPage() {
   const [showLabelPrinterModal, setShowLabelPrinterModal] = useState(false);
   const [showLabelTemplateModal, setShowLabelTemplateModal] = useState(false);
   const [labelTargetDoc, setLabelTargetDoc] = useState(null);
-  const [labelTemplates, setLabelTemplates] = useState(DEFAULT_LABEL_TEMPLATES);
+  const [labelTemplates, setLabelTemplates] = useState(() => {
+    try {
+      const cached = localStorage.getItem(LABEL_TEMPLATES_STORAGE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn("Failed reading localStorage label templates:", e);
+    }
+    return DEFAULT_LABEL_TEMPLATES;
+  });
 
-  // Load custom label templates from settings on mount
+  // Load custom label templates from Cloud SQL on mount
   useEffect(() => {
-    fetch('/api/settings/label_templates')
+    fetch(`${API_BASE}/api/settings/label_templates`)
       .then(res => {
         if (!res.ok) throw new Error('No custom templates');
         return res.json();
@@ -76,20 +90,26 @@ export default function LogisticsPage() {
       .then(data => {
         if (data && data.value && Array.isArray(data.value) && data.value.length > 0) {
           setLabelTemplates(data.value);
+          try {
+            localStorage.setItem(LABEL_TEMPLATES_STORAGE_KEY, JSON.stringify(data.value));
+          } catch (e) {}
         }
       })
-      .catch(() => {
-        // Fallback to DEFAULT_LABEL_TEMPLATES
+      .catch((err) => {
+        console.warn("Using local label templates:", err);
       });
   }, []);
 
   const handleSaveTemplates = (newTemplates) => {
     setLabelTemplates(newTemplates);
-    fetch('/api/settings/label_templates', {
+    try {
+      localStorage.setItem(LABEL_TEMPLATES_STORAGE_KEY, JSON.stringify(newTemplates));
+    } catch (e) {}
+    fetch(`${API_BASE}/api/settings/label_templates`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ value: newTemplates })
-    }).catch(err => console.error('Failed to save label templates:', err));
+    }).catch(err => console.error('Failed to save label templates to Cloud SQL:', err));
   };
 
   const handleOpenLabelPrinter = (doc) => {
