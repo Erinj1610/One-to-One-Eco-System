@@ -274,11 +274,11 @@ export default function PackingListLabelPrinterModal({
       return;
     }
 
-    const printWidthMm = Number(currentTemplate.carrierWebMm?.width ?? currentTemplate.widthMm ?? 50);
-    const printHeightMm = Number(currentTemplate.carrierWebMm?.height ?? currentTemplate.heightMm ?? 32);
+    const printWidthMm = Number(currentTemplate.widthMm ?? currentTemplate.labelMm?.width ?? 50);
+    const printHeightMm = Number(currentTemplate.heightMm ?? currentTemplate.labelMm?.height ?? 30);
     const effectiveRotation = printRotation !== undefined ? printRotation : (currentTemplate.rotation || 0);
 
-    // Render 203 DPI rasterized base64 PNGs
+    // Render 203 DPI rasterized base64 PNGs matching the 50mm x 30mm sticker
     const dataUrls = generatedLabels.map(lbl => {
       return renderLabelToDataUrl(currentTemplate, lbl.context, effectiveRotation);
     });

@@ -44,7 +44,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
       } catch (e) {}
     }
   }, [templates]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState(activeTemplates[0]?.id || 'argox_item_50x32');
+  const [selectedTemplateId, setSelectedTemplateId] = useState(activeTemplates[0]?.id || 'argox_item_50x30');
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -637,8 +637,8 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
               >
                 {/* Canvas Status & Helper Bar */}
                 <div style={{ marginBottom: '14px', color: '#94a3b8', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <span>Roll: <strong>{activeObj.widthMm}mm × {activeObj.heightMm}mm</strong></span>
-                  <span>Margins: Top <strong>{activeObj.marginMm?.top ?? 1.5}mm</strong>, Left <strong>{activeObj.marginMm?.left ?? 2}mm</strong></span>
+                  <span>Sticker: <strong>{activeObj.widthMm}mm × {activeObj.heightMm}mm</strong></span>
+                  <span>Margins: Top <strong>{activeObj.marginMm?.top ?? 0}mm</strong>, Left <strong>{activeObj.marginMm?.left ?? 0}mm</strong></span>
                   {isEditing && (
                     <span style={{ color: '#38bdf8' }}>💡 Click any element to drag, reposition, and edit</span>
                   )}

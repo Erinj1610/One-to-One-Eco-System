@@ -190,28 +190,20 @@ export function drawCode128OnCanvas(ctx, text, x, y, maxWidth, height, showText 
 // Render a complete label template onto an offscreen canvas at native 203 DPI (8 dots/mm)
 // and return a PNG data URL.
 export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
-  // Physical Carrier Web (total paper roll passing through printer throat, e.g. 54mm x 33mm)
-  // If carrierWebMm is defined, use it as the physical printer feed size. Otherwise fallback to widthMm.
-  const carrierW = Number(template.carrierWebMm?.width ?? template.widthMm ?? 50);
-  const carrierH = Number(template.carrierWebMm?.height ?? template.heightMm ?? 32);
-
-  // Sticker Die-Cut Dimensions (actual peel-off label sticker, e.g. 50mm x 32mm)
-  const stickerW = Number(template.labelMm?.width ?? template.widthMm ?? 50);
-  const stickerH = Number(template.labelMm?.height ?? template.heightMm ?? 32);
-
-  // Carrier Liner Border / Gaps (distance from backing paper edge to sticker edge)
-  const linerLeft = Number(template.carrierLinerMm?.left ?? 0);
-  const linerTop = Number(template.carrierLinerMm?.top ?? 0);
+  // Sticker Die-Cut Dimensions (actual peel-off label sticker, e.g. 50mm x 30mm)
+  // The canvas sent to QZ Tray and thermal preview matches the physical sticker directly.
+  const stickerW = Number(template.widthMm ?? template.labelMm?.width ?? 50);
+  const stickerH = Number(template.heightMm ?? template.labelMm?.height ?? 30);
 
   // Thermal printers operate at ~8 dots per mm (203.2 DPI)
   const DOTS_PER_MM = 8;
-  const nominalW = Math.round(carrierW * DOTS_PER_MM);
-  const nominalH = Math.round(carrierH * DOTS_PER_MM);
+  const nominalW = Math.round(stickerW * DOTS_PER_MM);
+  const nominalH = Math.round(stickerH * DOTS_PER_MM);
 
   const rot = ((Number(rotationDeg) || 0) % 360 + 360) % 360;
   const isSwap = rot === 90 || rot === 270;
 
-  // The final media canvas dimensions that matches the physical printer feed (@page width & height)
+  // The final media canvas dimensions that matches the physical sticker
   const outputCanvas = document.createElement('canvas');
   outputCanvas.width = nominalW;
   outputCanvas.height = nominalH;
@@ -234,34 +226,34 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, layoutW, layoutH);
 
-  // Sticker offset within the carrier web
-  const stickerOffsetX = Math.round(linerLeft * DOTS_PER_MM);
-  const stickerOffsetY = Math.round(linerTop * DOTS_PER_MM);
+  // Sticker coordinate origin is (0, 0)
+  const stickerOffsetX = 0;
+  const stickerOffsetY = 0;
 
   // Internal safe margins inside the sticker
-  const marginMm = template.marginMm || { top: 1.5, bottom: 1.5, left: 2.0, right: 2.0 };
-  const padLeft = Math.round((Number(marginMm.left) || 2) * DOTS_PER_MM);
-  const padRight = Math.round((Number(marginMm.right) || 2) * DOTS_PER_MM);
-  const padTop = Math.round((Number(marginMm.top) || 1.5) * DOTS_PER_MM);
-  const padBottom = Math.round((Number(marginMm.bottom) || 1.5) * DOTS_PER_MM);
+  const marginMm = template.marginMm || { top: 0, bottom: 0, left: 0, right: 0 };
+  const padLeft = Math.round((Number(marginMm.left) || 0) * DOTS_PER_MM);
+  const padRight = Math.round((Number(marginMm.right) || 0) * DOTS_PER_MM);
+  const padTop = Math.round((Number(marginMm.top) || 0) * DOTS_PER_MM);
+  const padBottom = Math.round((Number(marginMm.bottom) || 0) * DOTS_PER_MM);
 
-  const stickerPixelW = Math.round(stickerW * DOTS_PER_MM);
+  const stickerPixelW = nominalW;
   const contentWidth = Math.max(10, stickerPixelW - padLeft - padRight);
-  let flowY = stickerOffsetY + padTop;
+  let flowY = padTop;
 
   (template.fields || []).forEach(field => {
     // Coordinate origin is the top-left of the peel-off sticker
     const isExplicit = field.xMm !== undefined && field.yMm !== undefined;
     const elemX = isExplicit 
-      ? stickerOffsetX + Math.round(Number(field.xMm) * DOTS_PER_MM) 
-      : (stickerOffsetX + padLeft);
+      ? Math.round(Number(field.xMm) * DOTS_PER_MM) 
+      : padLeft;
     const elemW = (field.wMm !== undefined && Number(field.wMm) > 0)
       ? Math.round(Number(field.wMm) * DOTS_PER_MM)
       : contentWidth;
 
     const marginTop = Math.round((field.marginTop || 0) * DOTS_PER_MM * 0.35);
     const curY = isExplicit 
-      ? stickerOffsetY + Math.round(Number(field.yMm) * DOTS_PER_MM) 
+      ? Math.round(Number(field.yMm) * DOTS_PER_MM) 
       : (flowY + marginTop);
 
     if (field.type === 'text') {
@@ -635,26 +627,35 @@ export const VARIABLE_DICTIONARY = [
 // Pre-configured Industry Standard Thermal Templates
 export const DEFAULT_LABEL_TEMPLATES = [
   {
-    id: 'argox_item_50x32',
-    name: 'Argox Roll Fitting Label (50mm × 32mm)',
-    description: 'Exact match for Argox O4-250: 54mm carrier roll backing web with 50mm × 32mm peel-off sticker.',
+    id: 'argox_item_50x30',
+    name: 'Argox 4-Quadrant Fitting Label (50mm × 30mm)',
+    description: 'Argox O4-250 2x2 quadrant layout: Plan Code, 1-TO-1 Code, Floor, and Area across a 50mm × 30mm peel-off sticker.',
     widthMm: 50,
-    heightMm: 32,
-    carrierWebMm: { width: 54, height: 33 },
-    labelMm: { width: 50, height: 32 },
-    carrierLinerMm: { left: 2.0, top: 0.5 },
+    heightMm: 30,
     orientation: 'landscape',
     rotation: 0,
-    marginMm: { top: 1.5, bottom: 1.5, left: 1.5, right: 1.5 },
+    marginMm: { top: 0, bottom: 0, left: 0, right: 0 },
     type: 'item',
     fields: [
-      { id: 'f_brand', type: 'text', content: 'ONE TO ONE • {{project.name}}', fontSize: 7.5, fontWeight: 800, align: 'center', xMm: 1.5, yMm: 1.5, wMm: 47 },
-      { id: 'f_div1', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', xMm: 1.5, yMm: 5.5, wMm: 47 },
-      { id: 'f_code', type: 'text', content: '{{item.code}}', fontSize: 11, fontWeight: 900, align: 'center', xMm: 1.5, yMm: 7, wMm: 47 },
-      { id: 'f_desc', type: 'text', content: '{{item.description}}', fontSize: 7, fontWeight: 500, align: 'center', xMm: 1.5, yMm: 12, wMm: 47 },
-      { id: 'f_barcode', type: 'barcode', barcodeValue: '{{item.code}}', barcodeHeight: 18, showBarcodeText: true, xMm: 1.5, yMm: 15.5, wMm: 47 },
-      { id: 'f_div2', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', xMm: 1.5, yMm: 26, wMm: 47 },
-      { id: 'f_meta', type: 'text', content: '{{item.floor}} • {{item.area}} ({{item.boxNumber}})', fontSize: 7, fontWeight: 700, align: 'center', xMm: 1.5, yMm: 27.5, wMm: 47 }
+      // Top-Left: Plan Code
+      { id: 'f_lbl_plancode', type: 'text', content: 'Plan Code', fontSize: 6.5, fontWeight: 700, underline: true, align: 'left', xMm: 1, yMm: 1, wMm: 23, hMm: 3.5 },
+      { id: 'f_val_plancode', type: 'text', content: '{{item.plan_code}}', fontSize: 13, fontWeight: 900, align: 'center', shrinkToFit: true, xMm: 1, yMm: 4.5, wMm: 23, hMm: 9.5 },
+      
+      // Top-Right: 1-TO-1 Code
+      { id: 'f_lbl_code', type: 'text', content: '1-TO-1 Code', fontSize: 6.5, fontWeight: 700, underline: true, align: 'left', xMm: 26, yMm: 1, wMm: 23, hMm: 3.5 },
+      { id: 'f_val_code', type: 'text', content: '{{item.code}}', fontSize: 9.5, fontWeight: 800, align: 'center', shrinkToFit: true, xMm: 26, yMm: 4.5, wMm: 23, hMm: 9.5 },
+
+      // Center Divider Lines
+      { id: 'f_div_h', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', xMm: 0, yMm: 14.5, wMm: 50, hMm: 0.5 },
+      { id: 'f_div_v', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'vertical', xMm: 24.75, yMm: 0, wMm: 0.5, hMm: 30 },
+
+      // Bottom-Left: Floor
+      { id: 'f_lbl_floor', type: 'text', content: 'Floor', fontSize: 6.5, fontWeight: 700, underline: true, align: 'left', xMm: 1, yMm: 15.5, wMm: 23, hMm: 3.5 },
+      { id: 'f_val_floor', type: 'text', content: '{{item.floor}}', fontSize: 9, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 1, yMm: 19, wMm: 23, hMm: 10 },
+
+      // Bottom-Right: Area
+      { id: 'f_lbl_area', type: 'text', content: 'Area', fontSize: 6.5, fontWeight: 700, underline: true, align: 'left', xMm: 26, yMm: 15.5, wMm: 23, hMm: 3.5 },
+      { id: 'f_val_area', type: 'text', content: '{{item.area}}', fontSize: 9, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 26, yMm: 19, wMm: 23, hMm: 10 }
     ]
   },
   {
