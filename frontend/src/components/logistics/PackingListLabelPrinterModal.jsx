@@ -274,7 +274,8 @@ export default function PackingListLabelPrinterModal({
       return;
     }
 
-    const { widthMm = 50, heightMm = 32 } = currentTemplate;
+    const printWidthMm = Number(currentTemplate.carrierWebMm?.width ?? currentTemplate.widthMm ?? 50);
+    const printHeightMm = Number(currentTemplate.carrierWebMm?.height ?? currentTemplate.heightMm ?? 32);
     const effectiveRotation = printRotation !== undefined ? printRotation : (currentTemplate.rotation || 0);
 
     // Render 203 DPI rasterized base64 PNGs
@@ -286,7 +287,7 @@ export default function PackingListLabelPrinterModal({
     if (qzStatus === 'connected' && selectedPrinter) {
       try {
         setIsDirectPrinting(true);
-        await printDirectLabels(selectedPrinter, dataUrls, { widthMm, heightMm });
+        await printDirectLabels(selectedPrinter, dataUrls, { widthMm: printWidthMm, heightMm: printHeightMm });
         setIsDirectPrinting(false);
         return;
       } catch (err) {

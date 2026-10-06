@@ -1231,39 +1231,167 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                     ) : (
                       /* Global Label & Margin Configuration (When no element selected) */
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                        <div>
-                          <div style={{ fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                            📐 Label Roll Geometry
+                        
+                        {/* 1. PHYSICAL CARRIER ROLL (FEED WEB) */}
+                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-info)', marginBottom: '6px' }}>
+                            🎞️ Carrier Roll Web (Backing Paper)
                           </div>
+                          <p style={{ margin: '0 0 8px 0', fontSize: '10px', color: 'var(--text-secondary)' }}>
+                            Continuous roll width fed through the Argox printer throat.
+                          </p>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
-                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Width (mm)</label>
+                              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Roll Width (mm):</label>
                               <input 
                                 type="number" 
+                                step="0.5"
                                 className="input input-xs" 
-                                value={editForm.widthMm} 
-                                onChange={e => setEditForm({ ...editForm, widthMm: Number(e.target.value) || 10 })}
+                                value={editForm.carrierWebMm?.width ?? 54} 
+                                onChange={e => {
+                                  const val = Number(e.target.value) || 10;
+                                  setEditForm({ 
+                                    ...editForm, 
+                                    carrierWebMm: { 
+                                      width: val, 
+                                      height: editForm.carrierWebMm?.height ?? (editForm.heightMm || 32) 
+                                    } 
+                                  });
+                                }}
                                 style={{ width: '100%', fontSize: '11px' }}
                               />
                             </div>
                             <div>
-                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Pitch / Height (mm)</label>
+                              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Feed Pitch (mm):</label>
                               <input 
                                 type="number" 
+                                step="0.5"
                                 className="input input-xs" 
-                                value={editForm.heightMm} 
-                                onChange={e => setEditForm({ ...editForm, heightMm: Number(e.target.value) || 10 })}
+                                value={editForm.carrierWebMm?.height ?? 33} 
+                                onChange={e => {
+                                  const val = Number(e.target.value) || 10;
+                                  setEditForm({ 
+                                    ...editForm, 
+                                    carrierWebMm: { 
+                                      width: editForm.carrierWebMm?.width ?? 54, 
+                                      height: val 
+                                    } 
+                                  });
+                                }}
                                 style={{ width: '100%', fontSize: '11px' }}
                               />
                             </div>
                           </div>
                         </div>
 
-                        {/* Millimeter Margins & Spacers */}
+                        {/* 2. DIE-CUT PEEL-OFF STICKER DIMENSIONS */}
+                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: '#10b981', marginBottom: '6px' }}>
+                            🏷️ Peel-off Sticker Dimensions
+                          </div>
+                          <p style={{ margin: '0 0 8px 0', fontSize: '10px', color: 'var(--text-secondary)' }}>
+                            The actual white adhesive sticker surface.
+                          </p>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div>
+                              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Sticker Width (mm):</label>
+                              <input 
+                                type="number" 
+                                step="0.5"
+                                className="input input-xs" 
+                                value={editForm.labelMm?.width ?? editForm.widthMm ?? 50} 
+                                onChange={e => {
+                                  const val = Number(e.target.value) || 10;
+                                  setEditForm({ 
+                                    ...editForm, 
+                                    widthMm: val,
+                                    labelMm: { 
+                                      width: val, 
+                                      height: editForm.labelMm?.height ?? editForm.heightMm ?? 32 
+                                    } 
+                                  });
+                                }}
+                                style={{ width: '100%', fontSize: '11px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Sticker Height (mm):</label>
+                              <input 
+                                type="number" 
+                                step="0.5"
+                                className="input input-xs" 
+                                value={editForm.labelMm?.height ?? editForm.heightMm ?? 32} 
+                                onChange={e => {
+                                  const val = Number(e.target.value) || 10;
+                                  setEditForm({ 
+                                    ...editForm, 
+                                    heightMm: val,
+                                    labelMm: { 
+                                      width: editForm.labelMm?.width ?? editForm.widthMm ?? 50, 
+                                      height: val 
+                                    } 
+                                  });
+                                }}
+                                style={{ width: '100%', fontSize: '11px' }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 3. LINER EDGE SPACING (BORDER BETWEEN CARRIER & STICKER) */}
                         <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px' }}>
                           <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                            Safe Margins (mm)
+                            Liner Spacing / Inset (mm)
                           </div>
+                          <p style={{ margin: '0 0 8px 0', fontSize: '10px', color: 'var(--text-secondary)' }}>
+                            Border between roll backing edge and sticker edge (e.g. 2mm left gives 54mm roll with 50mm sticker centered).
+                          </p>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div>
+                              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Liner Left Inset (mm):</label>
+                              <input 
+                                type="number" 
+                                step="0.1" 
+                                className="input input-xs" 
+                                value={editForm.carrierLinerMm?.left ?? 2.0} 
+                                onChange={e => setEditForm({ 
+                                  ...editForm, 
+                                  carrierLinerMm: { 
+                                    ...editForm.carrierLinerMm, 
+                                    left: Number(e.target.value) || 0 
+                                  } 
+                                })}
+                                style={{ width: '100%', fontSize: '11px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Liner Top Inset (mm):</label>
+                              <input 
+                                type="number" 
+                                step="0.1" 
+                                className="input input-xs" 
+                                value={editForm.carrierLinerMm?.top ?? 0.5} 
+                                onChange={e => setEditForm({ 
+                                  ...editForm, 
+                                  carrierLinerMm: { 
+                                    ...editForm.carrierLinerMm, 
+                                    top: Number(e.target.value) || 0 
+                                  } 
+                                })}
+                                style={{ width: '100%', fontSize: '11px' }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 4. SAFE PRINT MARGINS (INTERNAL GUIDES ON STICKER) */}
+                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                            Inner Safe Margins (mm)
+                          </div>
+                          <p style={{ margin: '0 0 8px 0', fontSize: '10px', color: 'var(--text-secondary)' }}>
+                            Dotted blue alignment boundary inside the sticker.
+                          </p>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
                               <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Top (mm)</label>
@@ -1299,7 +1427,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                                 type="number" 
                                 step="0.5" 
                                 className="input input-xs" 
-                                value={editForm.marginMm?.left ?? 2.0} 
+                                value={editForm.marginMm?.left ?? 1.5} 
                                 onChange={e => setEditForm({ 
                                   ...editForm, 
                                   marginMm: { ...editForm.marginMm, left: Number(e.target.value) || 0 } 
@@ -1313,7 +1441,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                                 type="number" 
                                 step="0.5" 
                                 className="input input-xs" 
-                                value={editForm.marginMm?.right ?? 2.0} 
+                                value={editForm.marginMm?.right ?? 1.5} 
                                 onChange={e => setEditForm({ 
                                   ...editForm, 
                                   marginMm: { ...editForm.marginMm, right: Number(e.target.value) || 0 } 
@@ -1325,7 +1453,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                         </div>
 
                         <div style={{ color: '#64748b', fontSize: '11px', lineHeight: 1.4, background: 'rgba(59, 130, 246, 0.05)', padding: '8px', borderRadius: '6px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-                          <strong>💡 Roll Note:</strong> Set <em>Width</em> and <em>Pitch</em> to your physical roll size (e.g. 50mm × 32mm). Safe margins are internal padding guides for element alignment and do <u>not</u> add extra millimeters to the physical paper size.
+                          <strong>💡 BarTender Precision:</strong> Carrier roll is 54mm web width. The peel-off sticker is 50mm. Elements position from 0 to 50mm on the sticker without being constrained or offset by carrier liners.
                         </div>
                       </div>
                     )}

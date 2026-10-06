@@ -187,21 +187,31 @@ export function drawCode128OnCanvas(ctx, text, x, y, maxWidth, height, showText 
 }
 
 // Render a complete label template onto an offscreen canvas at native 203 DPI (8 dots/mm)
+// Render a complete label template onto an offscreen canvas at native 203 DPI (8 dots/mm)
 // and return a PNG data URL.
 export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
-  const widthMm = template.widthMm || 50;
-  const heightMm = template.heightMm || 32;
+  // Physical Carrier Web (total paper roll passing through printer throat, e.g. 54mm x 33mm)
+  // If carrierWebMm is defined, use it as the physical printer feed size. Otherwise fallback to widthMm.
+  const carrierW = Number(template.carrierWebMm?.width ?? template.widthMm ?? 50);
+  const carrierH = Number(template.carrierWebMm?.height ?? template.heightMm ?? 32);
+
+  // Sticker Die-Cut Dimensions (actual peel-off label sticker, e.g. 50mm x 32mm)
+  const stickerW = Number(template.labelMm?.width ?? template.widthMm ?? 50);
+  const stickerH = Number(template.labelMm?.height ?? template.heightMm ?? 32);
+
+  // Carrier Liner Border / Gaps (distance from backing paper edge to sticker edge)
+  const linerLeft = Number(template.carrierLinerMm?.left ?? 0);
+  const linerTop = Number(template.carrierLinerMm?.top ?? 0);
 
   // Thermal printers operate at ~8 dots per mm (203.2 DPI)
   const DOTS_PER_MM = 8;
-  const nominalW = Math.round(widthMm * DOTS_PER_MM);
-  const nominalH = Math.round(heightMm * DOTS_PER_MM);
+  const nominalW = Math.round(carrierW * DOTS_PER_MM);
+  const nominalH = Math.round(carrierH * DOTS_PER_MM);
 
   const rot = ((Number(rotationDeg) || 0) % 360 + 360) % 360;
   const isSwap = rot === 90 || rot === 270;
 
   // The final media canvas dimensions that matches the physical printer feed (@page width & height)
-  // Physical printer media: width = nominalW (50mm = 400px), height = nominalH (32mm = 256px)
   const outputCanvas = document.createElement('canvas');
   outputCanvas.width = nominalW;
   outputCanvas.height = nominalH;
@@ -212,9 +222,6 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
   outCtx.fillStyle = '#ffffff';
   outCtx.fillRect(0, 0, outputCanvas.width, outputCanvas.height);
 
-  // Content is laid out on an unrotated virtual surface.
-  // When rotated 90 or 270 degrees, the content layout area has width = nominalH and height = nominalW
-  // so text and barcodes naturally fit the rotated aspect ratio without being squished!
   const layoutW = isSwap ? nominalH : nominalW;
   const layoutH = isSwap ? nominalW : nominalH;
 
@@ -227,28 +234,35 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, layoutW, layoutH);
 
-  // Printable margins inside layout surface (default 2mm horizontal, 1.5mm vertical if not defined)
+  // Sticker offset within the carrier web
+  const stickerOffsetX = Math.round(linerLeft * DOTS_PER_MM);
+  const stickerOffsetY = Math.round(linerTop * DOTS_PER_MM);
+
+  // Internal safe margins inside the sticker
   const marginMm = template.marginMm || { top: 1.5, bottom: 1.5, left: 2.0, right: 2.0 };
   const padLeft = Math.round((Number(marginMm.left) || 2) * DOTS_PER_MM);
   const padRight = Math.round((Number(marginMm.right) || 2) * DOTS_PER_MM);
   const padTop = Math.round((Number(marginMm.top) || 1.5) * DOTS_PER_MM);
   const padBottom = Math.round((Number(marginMm.bottom) || 1.5) * DOTS_PER_MM);
 
-  const contentWidth = Math.max(10, layoutW - padLeft - padRight);
-  let flowY = padTop;
+  const stickerPixelW = Math.round(stickerW * DOTS_PER_MM);
+  const contentWidth = Math.max(10, stickerPixelW - padLeft - padRight);
+  let flowY = stickerOffsetY + padTop;
 
   (template.fields || []).forEach(field => {
-    // If element has explicit millimeter coordinates (from visual drag-and-drop), use them directly!
+    // Coordinate origin is the top-left of the peel-off sticker
     const isExplicit = field.xMm !== undefined && field.yMm !== undefined;
     const elemX = isExplicit 
-      ? Math.round(Number(field.xMm) * DOTS_PER_MM) 
-      : padLeft;
+      ? stickerOffsetX + Math.round(Number(field.xMm) * DOTS_PER_MM) 
+      : (stickerOffsetX + padLeft);
     const elemW = (field.wMm !== undefined && Number(field.wMm) > 0)
       ? Math.round(Number(field.wMm) * DOTS_PER_MM)
       : contentWidth;
 
     const marginTop = Math.round((field.marginTop || 0) * DOTS_PER_MM * 0.35);
-    const curY = isExplicit ? Math.round(Number(field.yMm) * DOTS_PER_MM) : (flowY + marginTop);
+    const curY = isExplicit 
+      ? stickerOffsetY + Math.round(Number(field.yMm) * DOTS_PER_MM) 
+      : (flowY + marginTop);
 
     if (field.type === 'text') {
       const text = evaluateTokens(field.content, context);
@@ -591,21 +605,24 @@ export const DEFAULT_LABEL_TEMPLATES = [
   {
     id: 'argox_item_50x32',
     name: 'Argox Roll Fitting Label (50mm × 32mm)',
-    description: 'Exact match for Argox O4-250 50mm width roll with 32mm pitch. Pre-configured for crystal clear thermal printing.',
+    description: 'Exact match for Argox O4-250: 54mm carrier roll backing web with 50mm × 32mm peel-off sticker.',
     widthMm: 50,
     heightMm: 32,
+    carrierWebMm: { width: 54, height: 33 },
+    labelMm: { width: 50, height: 32 },
+    carrierLinerMm: { left: 2.0, top: 0.5 },
     orientation: 'landscape',
     rotation: 0,
-    marginMm: { top: 1.5, bottom: 1.5, left: 2.0, right: 2.0 },
+    marginMm: { top: 1.5, bottom: 1.5, left: 1.5, right: 1.5 },
     type: 'item',
     fields: [
-      { id: 'f_brand', type: 'text', content: 'ONE TO ONE • {{project.name}}', fontSize: 7.5, fontWeight: 800, align: 'center' },
-      { id: 'f_div1', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal' },
-      { id: 'f_code', type: 'text', content: '{{item.code}}', fontSize: 11, fontWeight: 900, align: 'center', marginTop: 1 },
-      { id: 'f_desc', type: 'text', content: '{{item.description}}', fontSize: 7, fontWeight: 500, align: 'center', maxLines: 1, marginTop: 1 },
-      { id: 'f_barcode', type: 'barcode', barcodeValue: '{{item.code}}', barcodeHeight: 22, showBarcodeText: true, marginTop: 2 },
-      { id: 'f_div2', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', marginTop: 1 },
-      { id: 'f_meta', type: 'text', content: '{{item.floor}} • {{item.area}} ({{item.boxNumber}})', fontSize: 7, fontWeight: 700, align: 'center', marginTop: 1 }
+      { id: 'f_brand', type: 'text', content: 'ONE TO ONE • {{project.name}}', fontSize: 7.5, fontWeight: 800, align: 'center', xMm: 1.5, yMm: 1.5, wMm: 47 },
+      { id: 'f_div1', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', xMm: 1.5, yMm: 5.5, wMm: 47 },
+      { id: 'f_code', type: 'text', content: '{{item.code}}', fontSize: 11, fontWeight: 900, align: 'center', xMm: 1.5, yMm: 7, wMm: 47 },
+      { id: 'f_desc', type: 'text', content: '{{item.description}}', fontSize: 7, fontWeight: 500, align: 'center', xMm: 1.5, yMm: 12, wMm: 47 },
+      { id: 'f_barcode', type: 'barcode', barcodeValue: '{{item.code}}', barcodeHeight: 18, showBarcodeText: true, xMm: 1.5, yMm: 15.5, wMm: 47 },
+      { id: 'f_div2', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', xMm: 1.5, yMm: 26, wMm: 47 },
+      { id: 'f_meta', type: 'text', content: '{{item.floor}} • {{item.area}} ({{item.boxNumber}})', fontSize: 7, fontWeight: 700, align: 'center', xMm: 1.5, yMm: 27.5, wMm: 47 }
     ]
   },
   {
