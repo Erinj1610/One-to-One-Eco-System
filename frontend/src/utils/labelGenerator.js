@@ -200,29 +200,37 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
   const rot = ((Number(rotationDeg) || 0) % 360 + 360) % 360;
   const isSwap = rot === 90 || rot === 270;
 
-  // The final canvas dimensions match the physical media feeding through the printer
-  // If the user rotated 90 or 270, the physical roll width is still widthMm, but content is rotated
-  const canvas = document.createElement('canvas');
-  canvas.width = isSwap ? nominalH : nominalW;
-  canvas.height = isSwap ? nominalW : nominalH;
+  // The final media canvas dimensions that matches the physical printer feed (@page width & height)
+  // Physical printer media: width = nominalW (50mm = 400px), height = nominalH (32mm = 256px)
+  const outputCanvas = document.createElement('canvas');
+  outputCanvas.width = nominalW;
+  outputCanvas.height = nominalH;
 
-  const ctx = canvas.getContext('2d');
+  const outCtx = outputCanvas.getContext('2d');
+  if (!outCtx) return '';
+
+  outCtx.fillStyle = '#ffffff';
+  outCtx.fillRect(0, 0, outputCanvas.width, outputCanvas.height);
+
+  // Content is laid out on an unrotated virtual surface.
+  // When rotated 90 or 270 degrees, the content layout area has width = nominalH and height = nominalW
+  // so text and barcodes naturally fit the rotated aspect ratio without being squished!
+  const layoutW = isSwap ? nominalH : nominalW;
+  const layoutH = isSwap ? nominalW : nominalH;
+
+  const contentCanvas = document.createElement('canvas');
+  contentCanvas.width = layoutW;
+  contentCanvas.height = layoutH;
+  const ctx = contentCanvas.getContext('2d');
   if (!ctx) return '';
 
-  // Fill solid white background
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, layoutW, layoutH);
 
-  // Set up rotation transform around center
-  ctx.save();
-  ctx.translate(canvas.width / 2, canvas.height / 2);
-  ctx.rotate((rot * Math.PI) / 180);
-  ctx.translate(-nominalW / 2, -nominalH / 2);
-
-  // Printable area inside the nominal bounds (padding 3mm / 24 dots)
+  // Printable area inside layout surface
   const paddingX = Math.round(2.5 * DOTS_PER_MM);
   let curY = Math.round(2 * DOTS_PER_MM);
-  const contentWidth = nominalW - paddingX * 2;
+  const contentWidth = layoutW - paddingX * 2;
 
   (template.fields || []).forEach(field => {
     const marginTop = Math.round((field.marginTop || 0) * DOTS_PER_MM * 0.35);
@@ -316,9 +324,14 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
     }
   });
 
-  ctx.restore();
+  // Stamp contentCanvas onto outputCanvas rotated by `rot`
+  outCtx.save();
+  outCtx.translate(outputCanvas.width / 2, outputCanvas.height / 2);
+  outCtx.rotate((rot * Math.PI) / 180);
+  outCtx.drawImage(contentCanvas, -layoutW / 2, -layoutH / 2);
+  outCtx.restore();
 
-  return canvas.toDataURL('image/png');
+  return outputCanvas.toDataURL('image/png');
 }
 
 function escapeXml(unsafe) {
