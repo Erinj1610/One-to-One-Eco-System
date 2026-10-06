@@ -11,6 +11,7 @@ import {
   evaluateTokens, 
   DEFAULT_LABEL_TEMPLATES 
 } from '../../utils/labelGenerator';
+import { listPrinters, printDirectLabels, connectQz } from '../../services/qzPrintService';
 
 export default function PackingListLabelPrinterModal({
   isOpen,
@@ -37,6 +38,55 @@ export default function PackingListLabelPrinterModal({
 
   // Print Rotation state (degrees: 0, 90, 180, 270)
   const [printRotation, setPrintRotation] = useState(currentTemplate?.rotation ?? 0);
+
+  // Available Windows printers discovered via QZ Tray
+  const [printers, setPrinters] = useState([]);
+  const [selectedPrinter, setSelectedPrinter] = useState(() => {
+    return localStorage.getItem('oto_selected_label_printer') || '';
+  });
+  const [qzStatus, setQzStatus] = useState('checking'); // 'connected' | 'disconnected' | 'checking'
+  const [isDirectPrinting, setIsDirectPrinting] = useState(false);
+
+  // Auto-discover Windows printers via QZ Tray on modal open
+  React.useEffect(() => {
+    let isMounted = true;
+    const fetchPrinters = async () => {
+      try {
+        setQzStatus('checking');
+        const list = await listPrinters();
+        if (!isMounted) return;
+        setPrinters(list || []);
+        setQzStatus('connected');
+
+        // Auto-select Argox or previously saved printer
+        const saved = localStorage.getItem('oto_selected_label_printer');
+        if (saved && list.includes(saved)) {
+          setSelectedPrinter(saved);
+        } else {
+          // Look for Argox or any thermal printer
+          const argox = list.find(p => p.toLowerCase().includes('argox') || p.toLowerCase().includes('o4-250'));
+          if (argox) {
+            setSelectedPrinter(argox);
+            localStorage.setItem('oto_selected_label_printer', argox);
+          } else if (list.length > 0) {
+            setSelectedPrinter(list[0]);
+          }
+        }
+      } catch (err) {
+        if (!isMounted) return;
+        console.warn("Could not list local printers via QZ Tray:", err);
+        setQzStatus('disconnected');
+      }
+    };
+
+    fetchPrinters();
+    return () => { isMounted = false; };
+  }, []);
+
+  const handleSelectPrinter = (pName) => {
+    setSelectedPrinter(pName);
+    localStorage.setItem('oto_selected_label_printer', pName);
+  };
 
   // When mode changes, switch to a template that matches the mode if possible
   const handleModeChange = (newMode) => {
@@ -221,31 +271,48 @@ export default function PackingListLabelPrinterModal({
     setBoxSelections(next);
   };
 
-  // Trigger high-precision continuous thermal roll printing via canvas rasterization (203 DPI)
-  const handlePrint = () => {
+  // Master Print Action: Direct silent spooling via QZ Tray (or fallback to browser window)
+  const handlePrint = async () => {
     if (generatedLabels.length === 0) {
       alert("No labels selected to print. Check at least one item or box.");
-      return;
-    }
-
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    if (!printWindow) {
-      alert("Please allow pop-ups to open the thermal print dialog.");
       return;
     }
 
     const { widthMm = 50, heightMm = 32 } = currentTemplate;
     const effectiveRotation = printRotation !== undefined ? printRotation : (currentTemplate.rotation || 0);
 
-    // Rasterize every label onto a 203 DPI canvas with the exact rotation baked in
-    const imagesHtml = generatedLabels.map((lbl, idx) => {
-      const dataUrl = renderLabelToDataUrl(currentTemplate, lbl.context, effectiveRotation);
-      return `
-        <div class="thermal-label-page">
-          <img src="${dataUrl}" class="thermal-img" alt="Label ${idx + 1}" />
-        </div>
-      `;
-    }).join('');
+    // Render 203 DPI rasterized base64 PNGs
+    const dataUrls = generatedLabels.map(lbl => {
+      return renderLabelToDataUrl(currentTemplate, lbl.context, effectiveRotation);
+    });
+
+    // 1. If QZ Tray is active and a printer is selected, print SILENTLY directly to the Windows Spooler!
+    if (qzStatus === 'connected' && selectedPrinter) {
+      try {
+        setIsDirectPrinting(true);
+        await printDirectLabels(selectedPrinter, dataUrls, { widthMm, heightMm });
+        setIsDirectPrinting(false);
+        return;
+      } catch (err) {
+        setIsDirectPrinting(false);
+        console.error("Direct printing failed, falling back to browser window:", err);
+        const proceed = window.confirm(`Direct print to "${selectedPrinter}" encountered an issue: ${err.message || err}.\n\nWould you like to open the browser print dialog instead?`);
+        if (!proceed) return;
+      }
+    }
+
+    // 2. Fallback: Open browser print window
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    if (!printWindow) {
+      alert("Please allow pop-ups to open the thermal print dialog.");
+      return;
+    }
+
+    const imagesHtml = dataUrls.map((dataUrl, idx) => `
+      <div class="thermal-label-page">
+        <img src="${dataUrl}" class="thermal-img" alt="Label ${idx + 1}" />
+      </div>
+    `).join('');
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -535,11 +602,58 @@ export default function PackingListLabelPrinterModal({
             </select>
           </div>
 
+          {/* Printer Destination Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-primary)', padding: '4px 10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <Printer size={13} style={{ color: qzStatus === 'connected' ? '#10b981' : '#f59e0b' }} /> 
+              Destination:
+            </span>
+            {qzStatus === 'connected' ? (
+              <select
+                value={selectedPrinter}
+                onChange={e => handleSelectPrinter(e.target.value)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-primary)',
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  maxWidth: '180px',
+                  cursor: 'pointer'
+                }}
+                title={`Spooling directly to ${selectedPrinter}`}
+              >
+                {printers.map(p => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                  {qzStatus === 'checking' ? 'Detecting...' : 'Browser Print Dialog'}
+                </span>
+                {qzStatus === 'disconnected' && (
+                  <a
+                    href="https://qz.io/download/"
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ fontSize: '10px', color: 'var(--text-info)', textDecoration: 'underline' }}
+                    title="Install QZ Tray once on this laptop to enable 1-click silent direct printing"
+                  >
+                    (Get QZ Tray for Direct Print)
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Master Print Action */}
           <button
             className="btn btn-primary"
             onClick={handlePrint}
-            disabled={generatedLabels.length === 0}
+            disabled={generatedLabels.length === 0 || isDirectPrinting}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -547,10 +661,15 @@ export default function PackingListLabelPrinterModal({
               padding: '8px 20px',
               fontSize: '13px',
               fontWeight: 700,
-              boxShadow: '0 4px 12px rgba(59, 130, 246, 0.35)'
+              boxShadow: '0 4px 12px rgba(59, 130, 246, 0.35)',
+              opacity: isDirectPrinting ? 0.7 : 1
             }}
           >
-            <Printer size={16} /> Print {generatedLabels.length} {generatedLabels.length === 1 ? 'Label' : 'Labels'}
+            <Printer size={16} /> 
+            {isDirectPrinting 
+              ? 'Sending to Printer...' 
+              : `Print ${generatedLabels.length} ${generatedLabels.length === 1 ? 'Label' : 'Labels'}`
+            }
           </button>
         </div>
 
