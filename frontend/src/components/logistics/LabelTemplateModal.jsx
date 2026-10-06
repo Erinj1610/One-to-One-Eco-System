@@ -28,6 +28,50 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
   const [snapToGrid, setSnapToGrid] = useState(true);
   const canvasRef = useRef(null);
 
+  // Mock context for preview
+  const mockContext = useMemo(() => ({
+    item: {
+      code: 'DL-2223/31',
+      oneOneCode: '2223/31',
+      description: 'Downlight - 2223 Anti-Glare GU10 IP20 White',
+      brand: 'Spazio',
+      floor: 'First Floor',
+      area: 'Kitchen',
+      type: 'Downlight',
+      dimming: 'Phase-Dim',
+      boxNumber: 'Box 1',
+      qtyDelivered: 14,
+      serial: '1 of 14'
+    },
+    project: {
+      name: 'Reid Stanford Villa',
+      client: 'Stanford Holdings',
+      deliveryAddress: '14 Mountain View Road, Camps Bay, Cape Town',
+      pm: 'Dani'
+    },
+    order: {
+      id: 'Q-2026-0576',
+      quote_name: 'General Spec Option 2'
+    },
+    packingList: {
+      id: 'PL-000000001',
+      deliveryNoteId: 'DN-000000001'
+    },
+    box: {
+      number: 'Box 1',
+      index: '1',
+      total: '3',
+      itemsCount: '26',
+      manifestSummary: '14x DL-2223/31 (Downlight)\n10x LA.4205 (5W Lamp)\n2x DRV-24V (Power Supply)'
+    }
+  }), []);
+
+  useEffect(() => {
+    const handleGlobalUp = () => setDraggingFieldIdx(null);
+    window.addEventListener('mouseup', handleGlobalUp);
+    return () => window.removeEventListener('mouseup', handleGlobalUp);
+  }, []);
+
   if (!isOpen) return null;
 
   const currentTemplate = activeTemplates.find(t => t.id === selectedTemplateId) || activeTemplates[0];
@@ -195,44 +239,6 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
     }
   };
 
-  // Mock context for preview
-  const mockContext = useMemo(() => ({
-    item: {
-      code: 'DL-2223/31',
-      oneOneCode: '2223/31',
-      description: 'Downlight - 2223 Anti-Glare GU10 IP20 White',
-      brand: 'Spazio',
-      floor: 'First Floor',
-      area: 'Kitchen',
-      type: 'Downlight',
-      dimming: 'Phase-Dim',
-      boxNumber: 'Box 1',
-      qtyDelivered: 14,
-      serial: '1 of 14'
-    },
-    project: {
-      name: 'Reid Stanford Villa',
-      client: 'Stanford Holdings',
-      deliveryAddress: '14 Mountain View Road, Camps Bay, Cape Town',
-      pm: 'Dani'
-    },
-    order: {
-      id: 'Q-2026-0576',
-      quote_name: 'General Spec Option 2'
-    },
-    packingList: {
-      id: 'PL-000000001',
-      deliveryNoteId: 'DN-000000001'
-    },
-    box: {
-      number: 'Box 1',
-      index: '1',
-      total: '3',
-      itemsCount: '26',
-      manifestSummary: '14x DL-2223/31 (Downlight)\n10x LA.4205 (5W Lamp)\n2x DRV-24V (Power Supply)'
-    }
-  }), []);
-
   const activeObj = isEditing ? editForm : currentTemplate;
 
   // Scale multiplier: 1 mm = ~6 display pixels on screen for clear editing
@@ -302,12 +308,6 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
   const handleCanvasMouseUp = () => {
     setDraggingFieldIdx(null);
   };
-
-  useEffect(() => {
-    const handleGlobalUp = () => setDraggingFieldIdx(null);
-    window.addEventListener('mouseup', handleGlobalUp);
-    return () => window.removeEventListener('mouseup', handleGlobalUp);
-  }, []);
 
   const selectedField = (isEditing && editForm && selectedFieldIndex !== null) 
     ? editForm.fields[selectedFieldIndex] 
