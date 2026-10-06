@@ -252,49 +252,151 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
 
     if (field.type === 'text') {
       const text = evaluateTokens(field.content, context);
-      const fontSizePx = Math.round((field.fontSize || 8) * 2.8);
-      const fontWeight = field.fontWeight || 600;
-      ctx.font = `${fontWeight} ${fontSizePx}px Arial, Helvetica, sans-serif`;
+      const isBold = field.fontWeight ? (field.fontWeight >= 700 || field.fontWeight === 'bold') : false;
+      const isItalic = !!field.italic;
+      const isUnderline = !!field.underline;
+      const fontStyleStr = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : 'normal '}`;
+
+      let baseFontSize = (field.fontSize || 8) * 2.8;
+      ctx.font = `${fontStyleStr}${Math.round(baseFontSize)}px Arial, Helvetica, sans-serif`;
       ctx.fillStyle = '#000000';
       ctx.textBaseline = 'top';
 
-      let drawX = elemX;
-      if (field.align === 'center') {
-        ctx.textAlign = 'center';
-        drawX = elemX + elemW / 2;
-      } else if (field.align === 'right') {
-        ctx.textAlign = 'right';
-        drawX = elemX + elemW;
+      // Auto Shrink-to-Fit: If text overflows the box width, iteratively decrease font size
+      if (field.shrinkToFit && !field.wrap) {
+        let measuredW = ctx.measureText(text).width;
+        while (measuredW > elemW && baseFontSize > 8) {
+          baseFontSize -= 1;
+          ctx.font = `${fontStyleStr}${Math.round(baseFontSize)}px Arial, Helvetica, sans-serif`;
+          measuredW = ctx.measureText(text).width;
+        }
+      }
+
+      const fontSizePx = Math.round(baseFontSize);
+
+      if (field.wrap) {
+        // Multi-line word wrap within elemW and elemH
+        const words = text.split(' ');
+        let lines = [];
+        let curLine = '';
+
+        for (let w = 0; w < words.length; w++) {
+          const testLine = curLine ? `${curLine} ${words[w]}` : words[w];
+          const testW = ctx.measureText(testLine).width;
+          if (testW > elemW && curLine) {
+            lines.push(curLine);
+            curLine = words[w];
+          } else {
+            curLine = testLine;
+          }
+        }
+        if (curLine) lines.push(curLine);
+
+        const lineHeight = fontSizePx * 1.25;
+        const totalTextH = lines.length * lineHeight;
+        const boxH = field.hMm ? Math.round(field.hMm * DOTS_PER_MM) : totalTextH;
+
+        // Vertical Alignment
+        let startY = curY;
+        if (field.vAlign === 'middle') {
+          startY = curY + Math.max(0, (boxH - totalTextH) / 2);
+        } else if (field.vAlign === 'bottom') {
+          startY = curY + Math.max(0, boxH - totalTextH);
+        }
+
+        lines.forEach((lineText, lIdx) => {
+          const lineY = startY + lIdx * lineHeight;
+          let drawX = elemX;
+          if (field.align === 'center') {
+            ctx.textAlign = 'center';
+            drawX = elemX + elemW / 2;
+          } else if (field.align === 'right') {
+            ctx.textAlign = 'right';
+            drawX = elemX + elemW;
+          } else {
+            ctx.textAlign = 'left';
+            drawX = elemX;
+          }
+
+          ctx.fillText(lineText, drawX, lineY);
+
+          if (isUnderline) {
+            const lineMetrics = ctx.measureText(lineText);
+            const lineTextW = lineMetrics.width;
+            let uX = elemX;
+            if (field.align === 'center') uX = elemX + (elemW - lineTextW) / 2;
+            else if (field.align === 'right') uX = elemX + elemW - lineTextW;
+
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = Math.max(1, fontSizePx * 0.08);
+            ctx.beginPath();
+            ctx.moveTo(uX, lineY + fontSizePx + 1);
+            ctx.lineTo(uX + lineTextW, lineY + fontSizePx + 1);
+            ctx.stroke();
+          }
+        });
+
+        if (!isExplicit) flowY = curY + boxH + 4;
       } else {
-        ctx.textAlign = 'left';
-        drawX = elemX;
-      }
+        // Single Line text
+        const boxH = field.hMm ? Math.round(field.hMm * DOTS_PER_MM) : (fontSizePx + 4);
+        let startY = curY;
+        if (field.vAlign === 'middle') {
+          startY = curY + Math.max(0, (boxH - fontSizePx) / 2);
+        } else if (field.vAlign === 'bottom') {
+          startY = curY + Math.max(0, boxH - fontSizePx - 2);
+        }
 
-      if (field.borderTop) {
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(elemX, curY);
-        ctx.lineTo(elemX + elemW, curY);
-        ctx.stroke();
-      }
+        let drawX = elemX;
+        if (field.align === 'center') {
+          ctx.textAlign = 'center';
+          drawX = elemX + elemW / 2;
+        } else if (field.align === 'right') {
+          ctx.textAlign = 'right';
+          drawX = elemX + elemW;
+        } else {
+          ctx.textAlign = 'left';
+          drawX = elemX;
+        }
 
-      ctx.fillText(text, drawX, curY);
+        ctx.fillText(text, drawX, startY);
 
-      if (field.borderBottom) {
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(elemX, curY + fontSizePx + 3);
-        ctx.lineTo(elemX + elemW, curY + fontSizePx + 3);
-        ctx.stroke();
-      }
+        if (isUnderline) {
+          const textW = Math.min(elemW, ctx.measureText(text).width);
+          let uX = elemX;
+          if (field.align === 'center') uX = elemX + (elemW - textW) / 2;
+          else if (field.align === 'right') uX = elemX + elemW - textW;
 
-      if (!isExplicit) {
-        flowY = curY + fontSizePx + 4 + (field.borderBottom ? 3 : 0);
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = Math.max(1, fontSizePx * 0.08);
+          ctx.beginPath();
+          ctx.moveTo(uX, startY + fontSizePx + 1);
+          ctx.lineTo(uX + textW, startY + fontSizePx + 1);
+          ctx.stroke();
+        }
+
+        if (field.borderTop) {
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(elemX, curY);
+          ctx.lineTo(elemX + elemW, curY);
+          ctx.stroke();
+        }
+
+        if (field.borderBottom) {
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(elemX, curY + fontSizePx + 3);
+          ctx.lineTo(elemX + elemW, curY + fontSizePx + 3);
+          ctx.stroke();
+        }
+
+        if (!isExplicit) flowY = curY + fontSizePx + 4 + (field.borderBottom ? 3 : 0);
       }
     } else if (field.type === 'line') {
-      // Vector Divider Line
+      // Vector Divider Line (Horizontal or Vertical)
       const thickness = Math.max(1, Math.round((field.thicknessMm || 0.5) * DOTS_PER_MM));
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = thickness;
@@ -338,6 +440,18 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
 
       if (!isExplicit) {
         flowY = curY + boxH + 4;
+      }
+    } else if (field.type === 'image' && field.imageData) {
+      // High-contrast custom image / logo
+      try {
+        const img = new Image();
+        img.src = field.imageData;
+        if (img.complete && img.naturalWidth > 0) {
+          const imgH = Math.round((field.hMm || 10) * DOTS_PER_MM);
+          ctx.drawImage(img, elemX, curY, elemW, imgH);
+        }
+      } catch (err) {
+        console.error("Failed to render custom label image:", err);
       }
     } else if (field.type === 'barcode') {
       const barVal = evaluateTokens(field.barcodeValue || '{{item.code}}', context);
@@ -394,6 +508,32 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
   outCtx.rotate((rot * Math.PI) / 180);
   outCtx.drawImage(contentCanvas, -layoutW / 2, -layoutH / 2);
   outCtx.restore();
+
+  // Bilevel Monochrome Post-Processing Pass:
+  // Convert any anti-aliased gray pixels into strictly pure black (#000000) or pure white (#ffffff)
+  // This eliminates the halftone dithering "dots" produced by thermal printheads when receiving gray pixels!
+  try {
+    const imgData = outCtx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
+    const data = imgData.data;
+    const threshold = 180; // Pixels darker than 180 brightness become solid 100% black
+    for (let i = 0; i < data.length; i += 4) {
+      // Perceived luminance: 0.299R + 0.587G + 0.114B
+      const brightness = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+      if (brightness < threshold) {
+        data[i] = 0;       // R
+        data[i + 1] = 0;   // G
+        data[i + 2] = 0;   // B
+      } else {
+        data[i] = 255;     // R
+        data[i + 1] = 255; // G
+        data[i + 2] = 255; // B
+      }
+      data[i + 3] = 255; // Full opacity
+    }
+    outCtx.putImageData(imgData, 0, 0);
+  } catch (err) {
+    console.warn("Monochrome threshold filter skipped:", err);
+  }
 
   return outputCanvas.toDataURL('image/png');
 }

@@ -4,13 +4,16 @@ import {
   Tag, Box, Check, Eye, Sliders, ChevronDown,
   ArrowLeftRight, RotateCw, Move, Minus, Square, AlignCenter,
   AlignLeft, AlignRight, Maximize2, Grid, MousePointer, Info,
-  ZoomIn, ZoomOut
+  ZoomIn, ZoomOut, Bold, Italic, Underline, Image as ImageIcon,
+  AlignVerticalJustifyStart, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd,
+  WrapText, Minimize
 } from 'lucide-react';
 import { 
   VARIABLE_DICTIONARY, 
   DEFAULT_LABEL_TEMPLATES, 
   generateCode128Svg,
-  renderLabelToDataUrl 
+  renderLabelToDataUrl,
+  evaluateTokens
 } from '../../utils/labelGenerator';
 
 export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveTemplates }) {
@@ -70,9 +73,27 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
 
   useEffect(() => {
     const handleGlobalUp = () => setDraggingFieldIdx(null);
+    const handleKeyDown = (e) => {
+      if (!isEditing || selectedFieldIndex === null) return;
+      const isInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName);
+      if (isInput) return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        duplicateField(selectedFieldIndex);
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        removeField(selectedFieldIndex);
+      }
+    };
+
     window.addEventListener('mouseup', handleGlobalUp);
-    return () => window.removeEventListener('mouseup', handleGlobalUp);
-  }, []);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('mouseup', handleGlobalUp);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isEditing, selectedFieldIndex, editForm]);
 
   if (!isOpen) return null;
 
@@ -178,20 +199,27 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
       type,
       xMm: Number(margins.left || 2),
       yMm: Math.round(nextY * 2) / 2,
-      wMm: Math.round(defaultWidth * 2) / 2,
-      hMm: type === 'line' ? 1 : type === 'box_frame' ? 8 : 6,
+      wMm: type === 'image' ? 20 : Math.round(defaultWidth * 2) / 2,
+      hMm: type === 'line' ? 1 : type === 'box_frame' ? 8 : type === 'image' ? 12 : 6,
       content: type === 'text' ? 'ONE TO ONE • {{project.name}}' : '',
       barcodeValue: type === 'barcode' ? '{{item.code}}' : '',
       barcodeHeight: 18,
       showBarcodeText: true,
       fontSize: 8,
       fontWeight: 700,
+      bold: true,
+      italic: false,
+      underline: false,
       align: 'center',
+      vAlign: 'top',
+      wrap: false,
+      shrinkToFit: false,
       thicknessMm: type === 'line' ? 0.5 : 1,
       lineStyle: 'solid',
       orientation: 'horizontal',
       borderThicknessMm: 1,
-      filled: false
+      filled: false,
+      imageData: ''
     };
 
     const newFields = [...(editForm.fields || []), newField];
@@ -217,15 +245,30 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
     }
   };
 
-  // One-click alignment tools
+  const duplicateField = (index) => {
+    if (!editForm || index === null || !editForm.fields?.[index]) return;
+    const source = editForm.fields[index];
+    const clone = JSON.parse(JSON.stringify(source));
+    clone.id = `f_${Date.now()}`;
+    clone.xMm = Math.min((editForm.widthMm || 50) - (clone.wMm || 10), (clone.xMm || 2) + 2);
+    clone.yMm = Math.min((editForm.heightMm || 32) - (clone.hMm || 4), (clone.yMm || 2) + 2);
+
+    const newFields = [...(editForm.fields || []), clone];
+    setEditForm({ ...editForm, fields: newFields });
+    setSelectedFieldIndex(newFields.length - 1);
+  };
+
+  // Alignment tools
   const handleAlignSelected = (alignment) => {
     if (!editForm || selectedFieldIndex === null) return;
     const field = editForm.fields[selectedFieldIndex];
     if (!field) return;
 
     const labelW = editForm.widthMm || 50;
-    const margins = editForm.marginMm || { left: 2, right: 2 };
+    const labelH = editForm.heightMm || 32;
+    const margins = editForm.marginMm || { top: 1.5, bottom: 1.5, left: 2, right: 2 };
     const fieldW = field.wMm || (labelW - margins.left - margins.right);
+    const fieldH = field.hMm || 6;
 
     if (alignment === 'center') {
       const newX = Math.max(0, (labelW - fieldW) / 2);
@@ -238,6 +281,14 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
     } else if (alignment === 'full_width') {
       const fullW = Math.max(10, labelW - (margins.left || 2) - (margins.right || 2));
       updateField(selectedFieldIndex, { xMm: margins.left || 2, wMm: Math.round(fullW * 2) / 2 });
+    } else if (alignment === 'top') {
+      updateField(selectedFieldIndex, { yMm: margins.top || 1.5, vAlign: 'top' });
+    } else if (alignment === 'middle') {
+      const newY = Math.max(0, (labelH - fieldH) / 2);
+      updateField(selectedFieldIndex, { yMm: Math.round(newY * 2) / 2, vAlign: 'middle' });
+    } else if (alignment === 'bottom') {
+      const newY = Math.max(0, labelH - (margins.bottom || 1.5) - fieldH);
+      updateField(selectedFieldIndex, { yMm: Math.round(newY * 2) / 2, vAlign: 'bottom' });
     }
   };
 
@@ -612,7 +663,8 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                           left: `${xPx}px`,
                           top: `${yPx}px`,
                           width: `${wPx}px`,
-                          minHeight: field.type === 'line' ? '2px' : `${hPx}px`,
+                          minHeight: field.type === 'line' ? (field.orientation === 'vertical' ? `${Math.round((field.hMm || 10) * PIXELS_PER_MM)}px` : '2px') : `${hPx}px`,
+                          height: field.type === 'line' && field.orientation === 'vertical' ? `${Math.round((field.hMm || 10) * PIXELS_PER_MM)}px` : (field.hMm ? `${hPx}px` : 'auto'),
                           border: isSelected 
                             ? '1.5px solid #3b82f6' 
                             : isEditing ? '1px dashed rgba(0,0,0,0.15)' : 'none',
@@ -623,7 +675,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                           boxSizing: 'border-box',
                           display: 'flex',
                           flexDirection: 'column',
-                          justifyContent: 'center',
+                          justifyContent: field.vAlign === 'middle' ? 'center' : field.vAlign === 'bottom' ? 'flex-end' : 'flex-start',
                           overflow: 'hidden'
                         }}
                       >
@@ -632,23 +684,21 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                           <div
                             style={{
                               fontSize: `${(field.fontSize || 8) * 1.3}px`,
-                              fontWeight: field.fontWeight || 600,
+                              fontWeight: field.fontWeight || (field.bold ? 700 : 600),
+                              fontStyle: field.italic ? 'italic' : 'normal',
+                              textDecoration: field.underline ? 'underline' : 'none',
                               textAlign: field.align || 'center',
                               color: '#000',
                               lineHeight: 1.15,
-                              whiteSpace: 'nowrap',
+                              whiteSpace: field.wrap ? 'normal' : 'nowrap',
+                              wordBreak: field.wrap ? 'break-word' : 'normal',
                               overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              fontFamily: 'Arial, Helvetica, sans-serif'
+                              textOverflow: field.wrap ? 'clip' : 'ellipsis',
+                              fontFamily: 'Arial, Helvetica, sans-serif',
+                              width: '100%'
                             }}
                           >
-                            {field.content
-                              ?.replace('{{item.code}}', mockContext.item.code)
-                              ?.replace('{{project.name}}', mockContext.project.name)
-                              ?.replace('{{item.floor}}', mockContext.item.floor)
-                              ?.replace('{{item.area}}', mockContext.item.area)
-                              ?.replace('{{item.boxNumber}}', mockContext.item.boxNumber)
-                              ?.replace('{{item.description}}', mockContext.item.description) || 'Text'}
+                            {evaluateTokens(field.content, mockContext) || 'Text'}
                           </div>
                         )}
 
@@ -656,11 +706,12 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                         {field.type === 'line' && (
                           <div 
                             style={{
-                              width: '100%',
-                              height: `${Math.max(1, (field.thicknessMm || 0.5) * 1.5)}px`,
+                              width: field.orientation === 'vertical' ? `${Math.max(1, (field.thicknessMm || 0.5) * 1.5)}px` : '100%',
+                              height: field.orientation === 'vertical' ? '100%' : `${Math.max(1, (field.thicknessMm || 0.5) * 1.5)}px`,
                               background: field.lineStyle === 'dashed' || field.lineStyle === 'dotted' ? 'transparent' : '#000',
-                              borderTop: field.lineStyle !== 'solid' ? `${(field.thicknessMm || 0.5) * 1.5}px ${field.lineStyle} #000` : 'none',
-                              margin: '2px 0'
+                              borderTop: (field.orientation !== 'vertical' && field.lineStyle !== 'solid') ? `${(field.thicknessMm || 0.5) * 1.5}px ${field.lineStyle} #000` : 'none',
+                              borderLeft: (field.orientation === 'vertical' && field.lineStyle !== 'solid') ? `${(field.thicknessMm || 0.5) * 1.5}px ${field.lineStyle} #000` : 'none',
+                              margin: field.orientation === 'vertical' ? '0 auto' : '2px 0'
                             }}
                           />
                         )}
@@ -670,7 +721,8 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                           <div 
                             style={{
                               width: '100%',
-                              height: `${hPx}px`,
+                              height: '100%',
+                              minHeight: `${hPx}px`,
                               border: `${field.borderThicknessMm || 1}px solid #000`,
                               background: field.filled ? '#000' : 'transparent',
                               borderRadius: '1px'
@@ -678,12 +730,29 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                           />
                         )}
 
+                        {/* IMAGE / LOGO */}
+                        {field.type === 'image' && (
+                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {field.imageData ? (
+                              <img 
+                                src={field.imageData} 
+                                alt="Label Logo" 
+                                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: 'contrast(150%) grayscale(100%)' }} 
+                              />
+                            ) : (
+                              <div style={{ fontSize: '9px', color: '#64748b', border: '1px dashed #cbd5e1', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                No Image Selected
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* CODE 128 BARCODE */}
                         {field.type === 'barcode' && (
-                          <div style={{ textAlign: 'center' }}>
+                          <div style={{ textAlign: 'center', width: '100%' }}>
                             <div 
                               dangerouslySetInnerHTML={{ 
-                                __html: generateCode128Svg(mockContext.item.code, (field.barcodeHeight || 18) * 1.1, 1.2, field.showBarcodeText !== false) 
+                                __html: generateCode128Svg(evaluateTokens(field.barcodeValue || '{{item.code}}', mockContext), (field.barcodeHeight || 18) * 1.1, 1.2, field.showBarcodeText !== false) 
                               }} 
                             />
                           </div>
@@ -728,28 +797,49 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                       <button className="btn btn-ghost btn-xs" onClick={() => addField('barcode')} style={{ border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
                         <Tag size={11} /> Barcode
                       </button>
+                      <button className="btn btn-ghost btn-xs" onClick={() => addField('image')} style={{ border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', gridColumn: 'span 2' }}>
+                        <ImageIcon size={11} /> Custom Logo / Image
+                      </button>
                     </div>
                   </div>
 
                   {/* Alignment Toolbar (When element selected) */}
                   {selectedField && (
-                    <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', background: 'rgba(59, 130, 246, 0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-info)' }}>
-                        Align:
-                      </span>
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        <button className="btn btn-ghost btn-xs" onClick={() => handleAlignSelected('left')} title="Align Left">
-                          <AlignLeft size={13} />
-                        </button>
-                        <button className="btn btn-ghost btn-xs" onClick={() => handleAlignSelected('center')} title="Align Center">
-                          <AlignCenter size={13} />
-                        </button>
-                        <button className="btn btn-ghost btn-xs" onClick={() => handleAlignSelected('right')} title="Align Right">
-                          <AlignRight size={13} />
-                        </button>
-                        <button className="btn btn-ghost btn-xs" onClick={() => handleAlignSelected('full_width')} title="Stretch Full Printable Width">
-                          <Maximize2 size={13} /> Full Width
-                        </button>
+                    <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', background: 'rgba(59, 130, 246, 0.05)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-info)' }}>
+                          H-Align:
+                        </span>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button className="btn btn-ghost btn-xs" onClick={() => handleAlignSelected('left')} title="Align Left (Safe Margin)">
+                            <AlignLeft size={13} />
+                          </button>
+                          <button className="btn btn-ghost btn-xs" onClick={() => handleAlignSelected('center')} title="Align Center">
+                            <AlignCenter size={13} />
+                          </button>
+                          <button className="btn btn-ghost btn-xs" onClick={() => handleAlignSelected('right')} title="Align Right (Safe Margin)">
+                            <AlignRight size={13} />
+                          </button>
+                          <button className="btn btn-ghost btn-xs" onClick={() => handleAlignSelected('full_width')} title="Stretch Full Printable Width">
+                            <Maximize2 size={13} /> Full Width
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-info)' }}>
+                          V-Align:
+                        </span>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button className="btn btn-ghost btn-xs" onClick={() => handleAlignSelected('top')} title="Align to Top Margin">
+                            <AlignVerticalJustifyStart size={13} /> Top
+                          </button>
+                          <button className="btn btn-ghost btn-xs" onClick={() => handleAlignSelected('middle')} title="Center Vertically">
+                            <AlignVerticalJustifyCenter size={13} /> Middle
+                          </button>
+                          <button className="btn btn-ghost btn-xs" onClick={() => handleAlignSelected('bottom')} title="Align to Bottom Margin">
+                            <AlignVerticalJustifyEnd size={13} /> Bottom
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -762,9 +852,14 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                           <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase' }}>
                             #{selectedFieldIndex + 1} {selectedField.type} Settings
                           </span>
-                          <button className="btn btn-ghost btn-xs" style={{ color: 'var(--text-danger)' }} onClick={() => removeField(selectedFieldIndex)}>
-                            <Trash2 size={12} /> Remove
-                          </button>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button className="btn btn-ghost btn-xs" style={{ border: '1px solid var(--border)' }} onClick={() => duplicateField(selectedFieldIndex)} title="Duplicate Element (Ctrl+D)">
+                              <Copy size={11} /> Clone
+                            </button>
+                            <button className="btn btn-ghost btn-xs" style={{ color: 'var(--text-danger)', border: '1px solid var(--border)' }} onClick={() => removeField(selectedFieldIndex)}>
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
                         </div>
 
                         {/* Coordinates (mm) */}
@@ -835,6 +930,67 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                                 style={{ width: '100%', fontSize: '11px', fontFamily: 'monospace', marginTop: '4px' }}
                               />
                             </div>
+                            {/* Typography Style Toolbar (B, I, U) */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px 8px' }}>
+                              <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)' }}>Format:</span>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-xs"
+                                  style={{
+                                    border: '1px solid var(--border)',
+                                    fontWeight: 'bold',
+                                    background: (selectedField.bold || selectedField.fontWeight >= 700) ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                                    color: (selectedField.bold || selectedField.fontWeight >= 700) ? 'var(--text-info)' : 'var(--text-primary)',
+                                    width: '26px',
+                                    height: '24px',
+                                    padding: 0
+                                  }}
+                                  onClick={() => {
+                                    const nextBold = !(selectedField.bold || selectedField.fontWeight >= 700);
+                                    updateField(selectedFieldIndex, { bold: nextBold, fontWeight: nextBold ? 800 : 400 });
+                                  }}
+                                  title="Bold"
+                                >
+                                  <Bold size={12} />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-xs"
+                                  style={{
+                                    border: '1px solid var(--border)',
+                                    fontStyle: 'italic',
+                                    background: selectedField.italic ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                                    color: selectedField.italic ? 'var(--text-info)' : 'var(--text-primary)',
+                                    width: '26px',
+                                    height: '24px',
+                                    padding: 0
+                                  }}
+                                  onClick={() => updateField(selectedFieldIndex, { italic: !selectedField.italic })}
+                                  title="Italic"
+                                >
+                                  <Italic size={12} />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-xs"
+                                  style={{
+                                    border: '1px solid var(--border)',
+                                    textDecoration: 'underline',
+                                    background: selectedField.underline ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                                    color: selectedField.underline ? 'var(--text-info)' : 'var(--text-primary)',
+                                    width: '26px',
+                                    height: '24px',
+                                    padding: 0
+                                  }}
+                                  onClick={() => updateField(selectedFieldIndex, { underline: !selectedField.underline })}
+                                  title="Underline"
+                                >
+                                  <Underline size={12} />
+                                </button>
+                              </div>
+                            </div>
+
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                               <div>
                                 <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Font Size (pt):</label>
@@ -848,7 +1004,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                                 />
                               </div>
                               <div>
-                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Alignment:</label>
+                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>H-Align:</label>
                                 <select 
                                   className="select select-xs" 
                                   value={selectedField.align || 'center'} 
@@ -861,6 +1017,38 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                                 </select>
                               </div>
                             </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                              <div>
+                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>V-Align:</label>
+                                <select 
+                                  className="select select-xs" 
+                                  value={selectedField.vAlign || 'top'} 
+                                  onChange={e => updateField(selectedFieldIndex, { vAlign: e.target.value })}
+                                  style={{ width: '100%', fontSize: '11px' }}
+                                >
+                                  <option value="top">Top</option>
+                                  <option value="middle">Middle (Center)</option>
+                                  <option value="bottom">Bottom</option>
+                                </select>
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', justifyContent: 'flex-end' }}>
+                                <label style={{ fontSize: '10.5px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={!!selectedField.wrap} 
+                                    onChange={e => updateField(selectedFieldIndex, { wrap: e.target.checked })}
+                                  /> Multi-line Wrap
+                                </label>
+                                <label style={{ fontSize: '10.5px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={!!selectedField.shrinkToFit} 
+                                    onChange={e => updateField(selectedFieldIndex, { shrinkToFit: e.target.checked })}
+                                  /> Auto Shrink to Fit
+                                </label>
+                              </div>
+                            </div>
                           </div>
                         )}
 
@@ -868,6 +1056,18 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                         {selectedField.type === 'line' && (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                              <div>
+                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Orientation:</label>
+                                <select 
+                                  className="select select-xs" 
+                                  value={selectedField.orientation || 'horizontal'} 
+                                  onChange={e => updateField(selectedFieldIndex, { orientation: e.target.value })}
+                                  style={{ width: '100%', fontSize: '11px' }}
+                                >
+                                  <option value="horizontal">Horizontal (Divider)</option>
+                                  <option value="vertical">Vertical (Column)</option>
+                                </select>
+                              </div>
                               <div>
                                 <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Thickness (mm):</label>
                                 <input 
@@ -879,19 +1079,19 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                                   style={{ width: '100%', fontSize: '11px' }}
                                 />
                               </div>
-                              <div>
-                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Style:</label>
-                                <select 
-                                  className="select select-xs" 
-                                  value={selectedField.lineStyle || 'solid'} 
-                                  onChange={e => updateField(selectedFieldIndex, { lineStyle: e.target.value })}
-                                  style={{ width: '100%', fontSize: '11px' }}
-                                >
-                                  <option value="solid">Solid Line</option>
-                                  <option value="dashed">Dashed Line</option>
-                                  <option value="dotted">Dotted Line</option>
-                                </select>
-                              </div>
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Line Style:</label>
+                              <select 
+                                className="select select-xs" 
+                                value={selectedField.lineStyle || 'solid'} 
+                                onChange={e => updateField(selectedFieldIndex, { lineStyle: e.target.value })}
+                                style={{ width: '100%', fontSize: '11px' }}
+                              >
+                                <option value="solid">Solid Line</option>
+                                <option value="dashed">Dashed Line</option>
+                                <option value="dotted">Dotted Line</option>
+                              </select>
                             </div>
                           </div>
                         )}
@@ -921,6 +1121,44 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                                 </label>
                               </div>
                             </div>
+                          </div>
+                        )}
+
+                        {/* IMAGE / LOGO SPECIFIC PROPERTIES */}
+                        {selectedField.type === 'image' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <div>
+                              <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                                Upload Logo / Image:
+                              </label>
+                              <input 
+                                type="file" 
+                                accept="image/png, image/jpeg, image/svg+xml, image/webp"
+                                className="input input-xs"
+                                style={{ width: '100%', fontSize: '11px', padding: '4px' }}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  const reader = new FileReader();
+                                  reader.onload = (uploadEvt) => {
+                                    updateField(selectedFieldIndex, { imageData: uploadEvt.target.result });
+                                  };
+                                  reader.readAsDataURL(file);
+                                }}
+                              />
+                            </div>
+                            {selectedField.imageData && (
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px 8px' }}>
+                                <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Image Loaded</span>
+                                <button 
+                                  className="btn btn-ghost btn-xs" 
+                                  style={{ color: 'var(--text-danger)', fontSize: '10px', height: '20px' }}
+                                  onClick={() => updateField(selectedFieldIndex, { imageData: '' })}
+                                >
+                                  Clear Image
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -1045,8 +1283,8 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                           </div>
                         </div>
 
-                        <div style={{ color: '#64748b', fontSize: '11px', lineHeight: 1.4 }}>
-                          Select any element on the canvas to inspect its millimeter coordinates, font size, or alignment.
+                        <div style={{ color: '#64748b', fontSize: '11px', lineHeight: 1.4, background: 'rgba(59, 130, 246, 0.05)', padding: '8px', borderRadius: '6px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                          <strong>💡 Roll Note:</strong> Set <em>Width</em> and <em>Pitch</em> to your physical roll size (e.g. 50mm × 32mm). Safe margins are internal padding guides for element alignment and do <u>not</u> add extra millimeters to the physical paper size.
                         </div>
                       </div>
                     )}
