@@ -23,17 +23,35 @@ export async function connectQz() {
 
   try {
     isConnecting = true;
-    // Set up certificate promise if needed (unsigned mode is accepted by default in local installations or user confirmation)
-    if (!qz.security.getCertificatePromise()) {
+    // Set up certificate and signature callbacks for unsigned connections
+    try {
       qz.security.setCertificatePromise(() => Promise.resolve());
       qz.security.setSignaturePromise(() => Promise.resolve());
-    }
+    } catch (_) {}
 
-    await qz.websocket.connect({ retries: 2, delay: 1 });
+    // When running from https://, QZ Tray connects via secure wss on port 8181
+    const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+    
+    await qz.websocket.connect({
+      host: 'localhost',
+      usingSecure: isHttps,
+      retries: 3,
+      delay: 1
+    });
     return true;
   } catch (err) {
-    console.warn("QZ Tray is not connected:", err);
-    return false;
+    console.warn("Primary QZ Tray connect failed, attempting fallback:", err);
+    try {
+      // Fallback: try connecting without forcing secure or with inverted secure
+      await qz.websocket.connect({
+        retries: 2,
+        delay: 1
+      });
+      return true;
+    } catch (fallbackErr) {
+      console.warn("QZ Tray fallback connection also failed:", fallbackErr);
+      return false;
+    }
   } finally {
     isConnecting = false;
   }
