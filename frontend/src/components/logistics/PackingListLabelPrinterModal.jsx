@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   X, Printer, Tag, Box, Settings, CheckSquare, Square, 
   ChevronLeft, ChevronRight, Layers, AlertCircle, Sparkles, Filter, RefreshCw,
-  RotateCw
+  RotateCw, Download, ExternalLink, CheckCircle
 } from 'lucide-react';
 import { 
   generateCode128Svg, 
@@ -46,41 +46,37 @@ export default function PackingListLabelPrinterModal({
   });
   const [qzStatus, setQzStatus] = useState('checking'); // 'connected' | 'disconnected' | 'checking'
   const [isDirectPrinting, setIsDirectPrinting] = useState(false);
+  const [showSetupBanner, setShowSetupBanner] = useState(true);
 
-  // Auto-discover Windows printers via QZ Tray on modal open
-  React.useEffect(() => {
-    let isMounted = true;
-    const fetchPrinters = async () => {
-      try {
-        setQzStatus('checking');
-        const list = await listPrinters();
-        if (!isMounted) return;
-        setPrinters(list || []);
-        setQzStatus('connected');
+  // Auto-discover Windows printers via QZ Tray on modal open or user click
+  const fetchPrinters = async () => {
+    try {
+      setQzStatus('checking');
+      const list = await listPrinters();
+      setPrinters(list || []);
+      setQzStatus('connected');
 
-        // Auto-select Argox or previously saved printer
-        const saved = localStorage.getItem('oto_selected_label_printer');
-        if (saved && list.includes(saved)) {
-          setSelectedPrinter(saved);
-        } else {
-          // Look for Argox or any thermal printer
-          const argox = list.find(p => p.toLowerCase().includes('argox') || p.toLowerCase().includes('o4-250'));
-          if (argox) {
-            setSelectedPrinter(argox);
-            localStorage.setItem('oto_selected_label_printer', argox);
-          } else if (list.length > 0) {
-            setSelectedPrinter(list[0]);
-          }
+      // Auto-select Argox or previously saved printer
+      const saved = localStorage.getItem('oto_selected_label_printer');
+      if (saved && list.includes(saved)) {
+        setSelectedPrinter(saved);
+      } else {
+        const argox = list.find(p => p.toLowerCase().includes('argox') || p.toLowerCase().includes('o4-250'));
+        if (argox) {
+          setSelectedPrinter(argox);
+          localStorage.setItem('oto_selected_label_printer', argox);
+        } else if (list.length > 0) {
+          setSelectedPrinter(list[0]);
         }
-      } catch (err) {
-        if (!isMounted) return;
-        console.warn("Could not list local printers via QZ Tray:", err);
-        setQzStatus('disconnected');
       }
-    };
+    } catch (err) {
+      console.warn("Could not list local printers via QZ Tray:", err);
+      setQzStatus('disconnected');
+    }
+  };
 
+  React.useEffect(() => {
     fetchPrinters();
-    return () => { isMounted = false; };
   }, []);
 
   const handleSelectPrinter = (pName) => {
@@ -492,6 +488,81 @@ export default function PackingListLabelPrinterModal({
             </button>
           </div>
         </div>
+
+        {/* 1-TIME SEAMLESS DIRECT PRINT ASSISTANT BANNER */}
+        {qzStatus === 'disconnected' && showSetupBanner && (
+          <div style={{
+            background: 'linear-gradient(90deg, rgba(59, 130, 246, 0.12), rgba(16, 185, 129, 0.12))',
+            borderBottom: '1px solid rgba(59, 130, 246, 0.25)',
+            padding: '10px 22px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '14px',
+            fontSize: '12px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '6px',
+                background: '#3b82f6',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                <Download size={15} />
+              </div>
+              <div>
+                <strong style={{ color: 'var(--text-primary)' }}>1-Time Setup for Direct Thermal Printing:</strong>
+                <span style={{ color: 'var(--text-secondary)', marginLeft: '6px' }}>
+                  Install the lightweight print bridge once to enable instant, silent printing directly to your Argox O4-250 with zero browser menus.
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+              <a
+                href="https://github.com/qzind/tray/releases/download/v2.2.4/qz-tray-2.2.4.exe"
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-sm"
+                style={{
+                  background: '#3b82f6',
+                  color: '#fff',
+                  border: 'none',
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '5px 12px',
+                  borderRadius: '6px'
+                }}
+              >
+                <Download size={13} /> Download Windows Bridge (.exe)
+              </a>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={fetchPrinters}
+                style={{ fontSize: '11px', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                title="Click after installing to connect immediately"
+              >
+                <RefreshCw size={12} /> I've Installed It (Connect)
+              </button>
+              <button
+                className="btn btn-ghost btn-xs"
+                onClick={() => setShowSetupBanner(false)}
+                style={{ color: 'var(--text-tertiary)', padding: '4px' }}
+                title="Dismiss"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* WORKSPACE TOOLBAR & CONFIGURATION */}
         <div style={{
