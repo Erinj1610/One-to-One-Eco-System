@@ -1,46 +1,72 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   X, Plus, Trash2, Edit3, Save, RotateCcw, Copy, 
-  Tag, Box, Check, HelpCircle, Eye, Sliders, ChevronDown,
-  ArrowLeftRight, RotateCw
+  Tag, Box, Check, Eye, Sliders, ChevronDown,
+  ArrowLeftRight, RotateCw, Move, Minus, Square, AlignCenter,
+  AlignLeft, AlignRight, Maximize2, Grid, MousePointer, Info
 } from 'lucide-react';
-import { VARIABLE_DICTIONARY, DEFAULT_LABEL_TEMPLATES, generateCode128Svg } from '../../utils/labelGenerator';
+import { 
+  VARIABLE_DICTIONARY, 
+  DEFAULT_LABEL_TEMPLATES, 
+  generateCode128Svg,
+  renderLabelToDataUrl 
+} from '../../utils/labelGenerator';
 
 export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveTemplates }) {
   const [activeTemplates, setActiveTemplates] = useState(templates || DEFAULT_LABEL_TEMPLATES);
-  const [selectedTemplateId, setSelectedTemplateId] = useState(activeTemplates[0]?.id || 'hardware_item_50x25');
+  const [selectedTemplateId, setSelectedTemplateId] = useState(activeTemplates[0]?.id || 'argox_item_50x32');
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Active selected field index in visual canvas
+  const [selectedFieldIndex, setSelectedFieldIndex] = useState(null);
+
+  // Dragging state on visual canvas
+  const [draggingFieldIdx, setDraggingFieldIdx] = useState(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [snapToGrid, setSnapToGrid] = useState(true);
+  const canvasRef = useRef(null);
 
   if (!isOpen) return null;
 
   const currentTemplate = activeTemplates.find(t => t.id === selectedTemplateId) || activeTemplates[0];
 
   const handleStartEdit = (template) => {
-    setEditForm(JSON.parse(JSON.stringify(template)));
+    const clone = JSON.parse(JSON.stringify(template));
+    // Ensure margin defaults
+    if (!clone.marginMm) {
+      clone.marginMm = { top: 1.5, bottom: 1.5, left: 2.0, right: 2.0 };
+    }
+    setEditForm(clone);
     setIsEditing(true);
+    setSelectedFieldIndex(null);
   };
 
   const handleCreateNew = () => {
     const newId = `custom_label_${Date.now()}`;
     const newTemplate = {
       id: newId,
-      name: 'New Custom Thermal Label',
-      description: 'Custom dimensions configured for Argox O4-250.',
+      name: 'New Argox Custom Label',
+      description: 'Custom dimensions with interactive drag-and-drop alignment.',
       widthMm: 50,
-      heightMm: 25,
+      heightMm: 32,
       orientation: 'landscape',
+      rotation: 0,
+      marginMm: { top: 1.5, bottom: 1.5, left: 2.0, right: 2.0 },
       type: 'item',
       fields: [
-        { id: 'f1', type: 'text', content: 'ONE TO ONE • {{project.name}}', fontSize: 7, fontWeight: 700, align: 'center', borderBottom: true },
-        { id: 'f2', type: 'text', content: '{{item.code}}', fontSize: 11, fontWeight: 800, align: 'center', marginTop: 1 },
-        { id: 'f3', type: 'text', content: '{{item.description}}', fontSize: 7, fontWeight: 500, align: 'center', maxLines: 1 },
-        { id: 'f4', type: 'barcode', barcodeValue: '{{item.code}}', barcodeHeight: 18, showBarcodeText: true, marginTop: 1 }
+        { id: 'f1', type: 'text', content: 'ONE TO ONE • {{project.name}}', fontSize: 7.5, fontWeight: 800, align: 'center', xMm: 2, yMm: 2, wMm: 46 },
+        { id: 'f2', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', xMm: 2, yMm: 6, wMm: 46 },
+        { id: 'f3', type: 'text', content: '{{item.code}}', fontSize: 11, fontWeight: 900, align: 'center', xMm: 2, yMm: 7.5, wMm: 46 },
+        { id: 'f4', type: 'barcode', barcodeValue: '{{item.code}}', barcodeHeight: 18, showBarcodeText: true, xMm: 2, yMm: 12.5, wMm: 46 },
+        { id: 'f5', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', xMm: 2, yMm: 25.5, wMm: 46 },
+        { id: 'f6', type: 'text', content: '{{item.floor}} • {{item.area}} ({{item.boxNumber}})', fontSize: 7, fontWeight: 700, align: 'center', xMm: 2, yMm: 27, wMm: 46 }
       ]
     };
     setEditForm(newTemplate);
     setIsEditing(true);
+    setSelectedFieldIndex(0);
   };
 
   const handleSaveEdit = () => {
@@ -56,6 +82,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
     setSelectedTemplateId(editForm.id);
     setIsEditing(false);
     setEditForm(null);
+    setSelectedFieldIndex(null);
     if (onSaveTemplates) onSaveTemplates(updated);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2500);
@@ -63,7 +90,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
 
   const handleDelete = (id) => {
     if (DEFAULT_LABEL_TEMPLATES.some(d => d.id === id)) {
-      alert("Built-in templates cannot be deleted, but you can duplicate or customize them.");
+      alert("Factory default templates cannot be deleted, but you can customize or duplicate them.");
       return;
     }
     if (!window.confirm("Are you sure you want to delete this custom template?")) return;
@@ -95,22 +122,35 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
   // Field manipulation helpers in edit mode
   const addField = (type) => {
     if (!editForm) return;
+    const wMm = editForm.widthMm || 50;
+    const margins = editForm.marginMm || { top: 1.5, bottom: 1.5, left: 2.0, right: 2.0 };
+    const defaultWidth = Math.max(10, wMm - (margins.left || 2) - (margins.right || 2));
+    const nextY = Math.min((editForm.heightMm || 32) - 8, ((editForm.fields || []).length * 4) + (margins.top || 2));
+
     const newField = {
       id: `f_${Date.now()}`,
       type,
-      content: type === 'text' ? 'Text with {{item.code}}' : '',
+      xMm: Number(margins.left || 2),
+      yMm: Math.round(nextY * 2) / 2,
+      wMm: Math.round(defaultWidth * 2) / 2,
+      hMm: type === 'line' ? 1 : type === 'box_frame' ? 8 : 6,
+      content: type === 'text' ? 'ONE TO ONE • {{project.name}}' : '',
       barcodeValue: type === 'barcode' ? '{{item.code}}' : '',
-      barcodeHeight: 20,
+      barcodeHeight: 18,
       showBarcodeText: true,
       fontSize: 8,
-      fontWeight: 600,
-      align: 'left',
-      marginTop: 2
+      fontWeight: 700,
+      align: 'center',
+      thicknessMm: type === 'line' ? 0.5 : 1,
+      lineStyle: 'solid',
+      orientation: 'horizontal',
+      borderThicknessMm: 1,
+      filled: false
     };
-    setEditForm({
-      ...editForm,
-      fields: [...(editForm.fields || []), newField]
-    });
+
+    const newFields = [...(editForm.fields || []), newField];
+    setEditForm({ ...editForm, fields: newFields });
+    setSelectedFieldIndex(newFields.length - 1);
   };
 
   const updateField = (index, updates) => {
@@ -124,10 +164,39 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
     if (!editForm) return;
     const updatedFields = (editForm.fields || []).filter((_, i) => i !== index);
     setEditForm({ ...editForm, fields: updatedFields });
+    if (selectedFieldIndex === index) {
+      setSelectedFieldIndex(null);
+    } else if (selectedFieldIndex > index) {
+      setSelectedFieldIndex(selectedFieldIndex - 1);
+    }
+  };
+
+  // One-click alignment tools
+  const handleAlignSelected = (alignment) => {
+    if (!editForm || selectedFieldIndex === null) return;
+    const field = editForm.fields[selectedFieldIndex];
+    if (!field) return;
+
+    const labelW = editForm.widthMm || 50;
+    const margins = editForm.marginMm || { left: 2, right: 2 };
+    const fieldW = field.wMm || (labelW - margins.left - margins.right);
+
+    if (alignment === 'center') {
+      const newX = Math.max(0, (labelW - fieldW) / 2);
+      updateField(selectedFieldIndex, { xMm: Math.round(newX * 2) / 2, align: 'center' });
+    } else if (alignment === 'left') {
+      updateField(selectedFieldIndex, { xMm: margins.left || 2, align: 'left' });
+    } else if (alignment === 'right') {
+      const newX = Math.max(0, labelW - (margins.right || 2) - fieldW);
+      updateField(selectedFieldIndex, { xMm: Math.round(newX * 2) / 2, align: 'right' });
+    } else if (alignment === 'full_width') {
+      const fullW = Math.max(10, labelW - (margins.left || 2) - (margins.right || 2));
+      updateField(selectedFieldIndex, { xMm: margins.left || 2, wMm: Math.round(fullW * 2) / 2 });
+    }
   };
 
   // Mock context for preview
-  const mockContext = {
+  const mockContext = useMemo(() => ({
     item: {
       code: 'DL-2223/31',
       oneOneCode: '2223/31',
@@ -162,9 +231,87 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
       itemsCount: '26',
       manifestSummary: '14x DL-2223/31 (Downlight)\n10x LA.4205 (5W Lamp)\n2x DRV-24V (Power Supply)'
     }
-  };
+  }), []);
 
   const activeObj = isEditing ? editForm : currentTemplate;
+
+  // Scale multiplier: 1 mm = ~6 display pixels on screen for clear editing
+  const PIXELS_PER_MM = 6.5;
+  const canvasWidthPx = Math.round((activeObj.widthMm || 50) * PIXELS_PER_MM);
+  const canvasHeightPx = Math.round((activeObj.heightMm || 32) * PIXELS_PER_MM);
+
+  // Mouse drag handlers on visual canvas
+  const handleCanvasMouseDown = (e, idx) => {
+    if (!isEditing) return;
+    e.stopPropagation();
+    setSelectedFieldIndex(idx);
+    setDraggingFieldIdx(idx);
+
+    const canvasRect = canvasRef.current.getBoundingClientRect();
+    const clickMmX = (e.clientX - canvasRect.left) / PIXELS_PER_MM;
+    const clickMmY = (e.clientY - canvasRect.top) / PIXELS_PER_MM;
+
+    const field = editForm.fields[idx];
+    const curX = field.xMm !== undefined ? field.xMm : (editForm.marginMm?.left || 2);
+    const curY = field.yMm !== undefined ? field.yMm : 2;
+
+    setDragOffset({
+      x: clickMmX - curX,
+      y: clickMmY - curY
+    });
+  };
+
+  const handleCanvasMouseMove = (e) => {
+    if (draggingFieldIdx === null || !canvasRef.current || !isEditing) return;
+
+    const canvasRect = canvasRef.current.getBoundingClientRect();
+    const mouseMmX = (e.clientX - canvasRect.left) / PIXELS_PER_MM;
+    const mouseMmY = (e.clientY - canvasRect.top) / PIXELS_PER_MM;
+
+    let targetX = mouseMmX - dragOffset.x;
+    let targetY = mouseMmY - dragOffset.y;
+
+    // Raster Grid Snapping (0.5mm step)
+    if (snapToGrid) {
+      targetX = Math.round(targetX * 2) / 2;
+      targetY = Math.round(targetY * 2) / 2;
+    }
+
+    // Boundary constraints
+    const maxW = editForm.widthMm || 50;
+    const maxH = editForm.heightMm || 32;
+    const field = editForm.fields[draggingFieldIdx];
+    const fieldW = field.wMm || 10;
+    const fieldH = field.hMm || 4;
+
+    targetX = Math.max(0, Math.min(maxW - fieldW, targetX));
+    targetY = Math.max(0, Math.min(maxH - fieldH, targetY));
+
+    // Center auto-snapping guide
+    const centerX = (maxW - fieldW) / 2;
+    if (Math.abs(targetX - centerX) < 0.8) {
+      targetX = Math.round(centerX * 2) / 2;
+    }
+
+    updateField(draggingFieldIdx, {
+      xMm: targetX,
+      yMm: targetY
+    });
+  };
+
+  const handleCanvasMouseUp = () => {
+    setDraggingFieldIdx(null);
+  };
+
+  useEffect(() => {
+    const handleGlobalUp = () => setDraggingFieldIdx(null);
+    window.addEventListener('mouseup', handleGlobalUp);
+    return () => window.removeEventListener('mouseup', handleGlobalUp);
+  }, []);
+
+  const selectedField = (isEditing && editForm && selectedFieldIndex !== null) 
+    ? editForm.fields[selectedFieldIndex] 
+    : null;
 
   return (
     <div 
@@ -173,7 +320,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
         inset: 0,
         zIndex: 1300,
         background: 'rgba(0, 0, 0, 0.75)',
-        backdropFilter: 'blur(4px)',
+        backdropFilter: 'blur(5px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -185,27 +332,31 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
         style={{
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border)',
-          borderRadius: '12px',
+          borderRadius: '14px',
           width: '100%',
-          maxWidth: '1100px',
-          maxHeight: '92vh',
+          maxWidth: '1240px',
+          height: '94vh',
+          maxHeight: '920px',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)'
+          boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.7)'
         }}
       >
         {/* Top Header */}
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Tag size={18} style={{ color: 'var(--text-info)' }} />
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>
-                Thermal Label Template Manager & Custom Designer
+                Visual Label Template Designer & Vector Studio
               </h3>
+              <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.15)', color: 'var(--text-info)', fontFamily: 'monospace' }}>
+                Argox O4-250 (203 DPI)
+              </span>
             </div>
             <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-              Configure exact millimeter dimensions, barcode rules, and variable templates for your Argox O4-250 label printer
+              Interactive drag-and-drop label designer with real millimeter grid snapping, divider lines, and outline frames
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -214,8 +365,8 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                 <Check size={14} /> Saved Successfully
               </span>
             )}
-            <button className="btn btn-ghost btn-xs" onClick={handleResetDefaults} title="Reset to standard default sizes" style={{ border: '1px solid var(--border)' }}>
-              <RotateCcw size={12} /> Reset Defaults
+            <button className="btn btn-ghost btn-xs" onClick={handleResetDefaults} title="Reset to standard factory templates" style={{ border: '1px solid var(--border)' }}>
+              <RotateCcw size={12} /> Factory Defaults
             </button>
             <button className="btn btn-ghost btn-sm" onClick={onClose}>
               <X size={16} />
@@ -223,14 +374,14 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
           </div>
         </div>
 
-        {/* Body Layout: Sidebar list vs Main Editor/Preview */}
+        {/* Body Layout: Sidebar list vs Main Interactive Studio */}
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
           
-          {/* Left Column: Template List */}
-          <div style={{ width: '280px', borderRight: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' }}>
+          {/* Left Column: Template Library (250px) */}
+          <div style={{ width: '250px', borderRight: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
-                Saved Templates ({activeTemplates.length})
+              <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                Templates ({activeTemplates.length})
               </span>
               <button className="btn btn-primary btn-xs" onClick={handleCreateNew} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
                 <Plus size={12} /> New
@@ -246,6 +397,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                       setSelectedTemplateId(tmpl.id);
                       setIsEditing(false);
                       setEditForm(null);
+                      setSelectedFieldIndex(null);
                     }}
                     style={{
                       padding: '10px 12px',
@@ -264,13 +416,13 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                       </span>
                     </div>
                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', fontFamily: 'monospace' }}>
-                      {tmpl.widthMm}mm × {tmpl.heightMm}mm ({tmpl.orientation})
+                      {tmpl.widthMm}mm × {tmpl.heightMm}mm
                     </div>
                     <div style={{ display: 'flex', gap: '6px', marginTop: '8px', justifyContent: 'flex-end' }}>
                       <button className="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); handleDuplicate(tmpl); }} title="Duplicate">
                         <Copy size={11} />
                       </button>
-                      <button className="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); handleStartEdit(tmpl); }} title="Edit Design">
+                      <button className="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); handleStartEdit(tmpl); }} title="Edit in Visual Designer">
                         <Edit3 size={11} />
                       </button>
                       {!DEFAULT_LABEL_TEMPLATES.some(d => d.id === tmpl.id) && (
@@ -285,23 +437,42 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
             </div>
           </div>
 
-          {/* Right Column: Active Designer / Live Preview */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto', background: 'var(--bg-secondary)' }}>
+          {/* Center + Right: Visual Studio & Inspector */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             
-            {/* Action Bar */}
-            <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
+            {/* Action Bar & Quick Tooling */}
+            <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <span style={{ fontWeight: 800, fontSize: '14px', color: 'var(--text-primary)' }}>
                   {isEditing ? `Editing: ${editForm.name}` : currentTemplate.name}
                 </span>
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', marginLeft: '10px' }}>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
                   ({activeObj.widthMm}mm × {activeObj.heightMm}mm)
                 </span>
+                {isEditing && (
+                  <button 
+                    onClick={() => setSnapToGrid(!snapToGrid)}
+                    className="btn btn-ghost btn-xs"
+                    style={{ 
+                      border: '1px solid var(--border)',
+                      fontSize: '11px',
+                      background: snapToGrid ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                      color: snapToGrid ? 'var(--text-info)' : 'var(--text-secondary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                    title="Toggle 0.5mm raster grid snapping"
+                  >
+                    <Grid size={12} /> Grid Snap {snapToGrid ? 'ON (0.5mm)' : 'OFF'}
+                  </button>
+                )}
               </div>
+
               <div style={{ display: 'flex', gap: '8px' }}>
                 {isEditing ? (
                   <>
-                    <button className="btn btn-ghost btn-sm" onClick={() => { setIsEditing(false); setEditForm(null); }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => { setIsEditing(false); setEditForm(null); setSelectedFieldIndex(null); }}>
                       Cancel
                     </button>
                     <button className="btn btn-primary btn-sm" onClick={handleSaveEdit} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -310,232 +481,545 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                   </>
                 ) : (
                   <button className="btn btn-primary btn-sm" onClick={() => handleStartEdit(currentTemplate)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Edit3 size={14} /> Customize This Layout
+                    <Edit3 size={14} /> Open Drag-and-Drop Designer
                   </button>
                 )}
               </div>
             </div>
 
-            {/* Split: Editor controls (if editing) & Visual Thermal Preview */}
-            <div style={{ display: 'flex', flex: 1, padding: '16px', gap: '16px', overflowY: 'auto' }}>
+            {/* Main Interactive Studio Body */}
+            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
               
-              {/* Controls Column (when editing) */}
-              {isEditing && editForm && (
-                <div style={{ width: '420px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
-                  
-                  {/* General Config */}
-                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                      📐 Dimensions & Target
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '8px', alignItems: 'flex-end', marginBottom: '10px' }}>
-                      <div>
-                        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Width (mm)</label>
-                        <input 
-                          type="number" 
-                          className="input input-sm" 
-                          value={editForm.widthMm} 
-                          onChange={e => setEditForm({ ...editForm, widthMm: Number(e.target.value) || 10 })}
-                          style={{ width: '100%', fontSize: '12px' }}
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-xs"
-                        title="Swap Width and Height"
-                        style={{ border: '1px solid var(--border)', padding: '6px 8px', marginBottom: '2px' }}
-                        onClick={() => setEditForm({
-                          ...editForm,
-                          widthMm: editForm.heightMm,
-                          heightMm: editForm.widthMm,
-                          orientation: editForm.orientation === 'portrait' ? 'landscape' : 'portrait'
-                        })}
+              {/* Visual Canvas Stage (Center) */}
+              <div 
+                style={{ 
+                  flex: 1, 
+                  background: '#0f172a', 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  padding: '24px', 
+                  overflow: 'auto',
+                  position: 'relative',
+                  userSelect: 'none'
+                }}
+                onMouseMove={handleCanvasMouseMove}
+                onMouseUp={handleCanvasMouseUp}
+              >
+                {/* Canvas Status & Helper Bar */}
+                <div style={{ marginBottom: '14px', color: '#94a3b8', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <span>Roll: <strong>{activeObj.widthMm}mm × {activeObj.heightMm}mm</strong></span>
+                  <span>Margins: Top <strong>{activeObj.marginMm?.top ?? 1.5}mm</strong>, Left <strong>{activeObj.marginMm?.left ?? 2}mm</strong></span>
+                  {isEditing && (
+                    <span style={{ color: '#38bdf8' }}>💡 Click any element to drag, reposition, and edit</span>
+                  )}
+                </div>
+
+                {/* THE PHYSICAL LABEL CANVAS */}
+                <div
+                  ref={canvasRef}
+                  style={{
+                    width: `${canvasWidthPx}px`,
+                    height: `${canvasHeightPx}px`,
+                    background: '#ffffff',
+                    position: 'relative',
+                    boxShadow: '0 15px 40px rgba(0,0,0,0.6)',
+                    borderRadius: '2px',
+                    overflow: 'hidden',
+                    // Raster Grid Dots
+                    backgroundImage: isEditing && snapToGrid 
+                      ? 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)' 
+                      : 'none',
+                    backgroundSize: `${PIXELS_PER_MM}px ${PIXELS_PER_MM}px`, // 1mm grid dots
+                    cursor: isEditing ? 'default' : 'auto'
+                  }}
+                  onClick={() => isEditing && setSelectedFieldIndex(null)}
+                >
+                  {/* SAFE PRINT MARGIN BOUNDARY (Dotted Blue Line) */}
+                  {isEditing && (
+                    <div 
+                      style={{
+                        position: 'absolute',
+                        top: `${(activeObj.marginMm?.top ?? 1.5) * PIXELS_PER_MM}px`,
+                        bottom: `${(activeObj.marginMm?.bottom ?? 1.5) * PIXELS_PER_MM}px`,
+                        left: `${(activeObj.marginMm?.left ?? 2.0) * PIXELS_PER_MM}px`,
+                        right: `${(activeObj.marginMm?.right ?? 2.0) * PIXELS_PER_MM}px`,
+                        border: '1px dashed rgba(59, 130, 246, 0.45)',
+                        pointerEvents: 'none',
+                        zIndex: 1
+                      }}
+                    />
+                  )}
+
+                  {/* ELEMENT RENDERING */}
+                  {(activeObj.fields || []).map((field, idx) => {
+                    const isSelected = isEditing && selectedFieldIndex === idx;
+                    const xPx = (field.xMm !== undefined ? field.xMm : (activeObj.marginMm?.left ?? 2)) * PIXELS_PER_MM;
+                    const yPx = (field.yMm !== undefined ? field.yMm : (idx * 4 + 2)) * PIXELS_PER_MM;
+                    const wPx = (field.wMm !== undefined ? field.wMm : (activeObj.widthMm - 4)) * PIXELS_PER_MM;
+                    const hPx = (field.hMm !== undefined ? field.hMm : 6) * PIXELS_PER_MM;
+
+                    return (
+                      <div
+                        key={field.id || idx}
+                        onMouseDown={(e) => handleCanvasMouseDown(e, idx)}
+                        style={{
+                          position: 'absolute',
+                          left: `${xPx}px`,
+                          top: `${yPx}px`,
+                          width: `${wPx}px`,
+                          minHeight: field.type === 'line' ? '2px' : `${hPx}px`,
+                          border: isSelected 
+                            ? '1.5px solid #3b82f6' 
+                            : isEditing ? '1px dashed rgba(0,0,0,0.15)' : 'none',
+                          background: isSelected ? 'rgba(59, 130, 246, 0.06)' : 'transparent',
+                          cursor: isEditing ? 'move' : 'default',
+                          zIndex: isSelected ? 10 : 2,
+                          padding: '1px 2px',
+                          boxSizing: 'border-box',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'center',
+                          overflow: 'hidden'
+                        }}
                       >
-                        <ArrowLeftRight size={13} />
-                      </button>
-                      <div>
-                        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Height (mm)</label>
-                        <input 
-                          type="number" 
-                          className="input input-sm" 
-                          value={editForm.heightMm} 
-                          onChange={e => setEditForm({ ...editForm, heightMm: Number(e.target.value) || 10 })}
-                          style={{ width: '100%', fontSize: '12px' }}
-                        />
+                        {/* TEXT FIELD */}
+                        {field.type === 'text' && (
+                          <div
+                            style={{
+                              fontSize: `${(field.fontSize || 8) * 1.3}px`,
+                              fontWeight: field.fontWeight || 600,
+                              textAlign: field.align || 'center',
+                              color: '#000',
+                              lineHeight: 1.15,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              fontFamily: 'Arial, Helvetica, sans-serif'
+                            }}
+                          >
+                            {field.content
+                              ?.replace('{{item.code}}', mockContext.item.code)
+                              ?.replace('{{project.name}}', mockContext.project.name)
+                              ?.replace('{{item.floor}}', mockContext.item.floor)
+                              ?.replace('{{item.area}}', mockContext.item.area)
+                              ?.replace('{{item.boxNumber}}', mockContext.item.boxNumber)
+                              ?.replace('{{item.description}}', mockContext.item.description) || 'Text'}
+                          </div>
+                        )}
+
+                        {/* VECTOR DIVIDER LINE */}
+                        {field.type === 'line' && (
+                          <div 
+                            style={{
+                              width: '100%',
+                              height: `${Math.max(1, (field.thicknessMm || 0.5) * 1.5)}px`,
+                              background: field.lineStyle === 'dashed' || field.lineStyle === 'dotted' ? 'transparent' : '#000',
+                              borderTop: field.lineStyle !== 'solid' ? `${(field.thicknessMm || 0.5) * 1.5}px ${field.lineStyle} #000` : 'none',
+                              margin: '2px 0'
+                            }}
+                          />
+                        )}
+
+                        {/* OUTLINE BOX / FRAME */}
+                        {field.type === 'box_frame' && (
+                          <div 
+                            style={{
+                              width: '100%',
+                              height: `${hPx}px`,
+                              border: `${field.borderThicknessMm || 1}px solid #000`,
+                              background: field.filled ? '#000' : 'transparent',
+                              borderRadius: '1px'
+                            }}
+                          />
+                        )}
+
+                        {/* CODE 128 BARCODE */}
+                        {field.type === 'barcode' && (
+                          <div style={{ textAlign: 'center' }}>
+                            <div 
+                              dangerouslySetInnerHTML={{ 
+                                __html: generateCode128Svg(mockContext.item.code, (field.barcodeHeight || 18) * 1.1, 1.2, field.showBarcodeText !== false) 
+                              }} 
+                            />
+                          </div>
+                        )}
+
+                        {/* BOX MANIFEST TABLE */}
+                        {field.type === 'box_manifest' && (
+                          <div style={{ fontSize: '8px', border: '1px solid #000', padding: '3px', background: '#fafafa', lineHeight: 1.2 }}>
+                            <div><strong>14x</strong> DL-2223/31 (Downlight)</div>
+                            <div><strong>10x</strong> LA.4205 (5W Lamp)</div>
+                          </div>
+                        )}
                       </div>
+                    );
+                  })}
+                </div>
+
+                <div style={{ marginTop: '16px', color: '#64748b', fontSize: '11px', textAlign: 'center' }}>
+                  Scale: 1mm = 6.5px • Argox O4-250 Continuous 203 DPI Thermal Feed
+                </div>
+              </div>
+
+              {/* Element Library & Properties Inspector (Right - 360px) */}
+              {isEditing && editForm && (
+                <div style={{ width: '360px', borderLeft: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+                  
+                  {/* Tool Palette: Add Elements */}
+                  <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                      Add Elements to Label
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                      <div>
-                        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Type</label>
-                        <select 
-                          className="select select-sm" 
-                          value={editForm.type} 
-                          onChange={e => setEditForm({ ...editForm, type: e.target.value })}
-                          style={{ width: '100%', fontSize: '12px' }}
-                        >
-                          <option value="item">Item / Fitting Label</option>
-                          <option value="box">Outer Box Manifest Label</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Orientation</label>
-                        <select 
-                          className="select select-sm" 
-                          value={editForm.orientation || 'landscape'} 
-                          onChange={e => {
-                            const newOri = e.target.value;
-                            setEditForm({ 
-                              ...editForm, 
-                              orientation: newOri,
-                              // If switching to portrait and rotation is 0, offer 90deg or update orientation
-                            });
-                          }}
-                          style={{ width: '100%', fontSize: '12px' }}
-                        >
-                          <option value="landscape">Landscape</option>
-                          <option value="portrait">Portrait</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <RotateCw size={11} /> Print Rotation
-                        </label>
-                        <select
-                          className="select select-sm"
-                          value={editForm.rotation ?? 0}
-                          onChange={e => setEditForm({ ...editForm, rotation: Number(e.target.value) })}
-                          style={{ width: '100%', fontSize: '12px' }}
-                        >
-                          <option value="0">0° (Standard)</option>
-                          <option value="90">90° (Clockwise)</option>
-                          <option value="180">180° (Inverted)</option>
-                          <option value="270">270° (Counter)</option>
-                        </select>
-                      </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                      <button className="btn btn-ghost btn-xs" onClick={() => addField('text')} style={{ border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
+                        <Plus size={11} /> Text Block
+                      </button>
+                      <button className="btn btn-ghost btn-xs" onClick={() => addField('line')} style={{ border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
+                        <Minus size={11} /> Divider Line
+                      </button>
+                      <button className="btn btn-ghost btn-xs" onClick={() => addField('box_frame')} style={{ border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
+                        <Square size={11} /> Outline Box
+                      </button>
+                      <button className="btn btn-ghost btn-xs" onClick={() => addField('barcode')} style={{ border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
+                        <Tag size={11} /> Barcode
+                      </button>
                     </div>
                   </div>
 
-                  {/* Layout Blocks Editor */}
-                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px', flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
-                        Label Content Blocks
+                  {/* Alignment Toolbar (When element selected) */}
+                  {selectedField && (
+                    <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', background: 'rgba(59, 130, 246, 0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-info)' }}>
+                        Align:
                       </span>
                       <div style={{ display: 'flex', gap: '4px' }}>
-                        <button className="btn btn-ghost btn-xs" onClick={() => addField('text')} style={{ border: '1px solid var(--border)', fontSize: '10.5px' }}>
-                          + Text
+                        <button className="btn btn-ghost btn-xs" onClick={() => handleAlignSelected('left')} title="Align Left">
+                          <AlignLeft size={13} />
                         </button>
-                        <button className="btn btn-ghost btn-xs" onClick={() => addField('barcode')} style={{ border: '1px solid var(--border)', fontSize: '10.5px' }}>
-                          + Barcode
+                        <button className="btn btn-ghost btn-xs" onClick={() => handleAlignSelected('center')} title="Align Center">
+                          <AlignCenter size={13} />
+                        </button>
+                        <button className="btn btn-ghost btn-xs" onClick={() => handleAlignSelected('right')} title="Align Right">
+                          <AlignRight size={13} />
+                        </button>
+                        <button className="btn btn-ghost btn-xs" onClick={() => handleAlignSelected('full_width')} title="Stretch Full Printable Width">
+                          <Maximize2 size={13} /> Full Width
                         </button>
                       </div>
                     </div>
+                  )}
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {(editForm.fields || []).map((f, idx) => (
-                        <div key={f.id || idx} style={{ border: '1px solid var(--border)', borderRadius: '6px', padding: '10px', background: 'var(--bg-secondary)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase' }}>
-                              #{idx + 1} {f.type} block
-                            </span>
-                            <button className="btn btn-ghost btn-xs" style={{ color: 'var(--text-danger)' }} onClick={() => removeField(idx)}>
-                              <Trash2 size={11} />
-                            </button>
+                  {/* Properties Inspector */}
+                  <div style={{ flex: 1, padding: '14px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
+                    {selectedField ? (
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase' }}>
+                            #{selectedFieldIndex + 1} {selectedField.type} Settings
+                          </span>
+                          <button className="btn btn-ghost btn-xs" style={{ color: 'var(--text-danger)' }} onClick={() => removeField(selectedFieldIndex)}>
+                            <Trash2 size={12} /> Remove
+                          </button>
+                        </div>
+
+                        {/* Coordinates (mm) */}
+                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px', marginBottom: '12px' }}>
+                          <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                            Position & Size (Millimeters)
                           </div>
-
-                          {f.type === 'text' && (
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                             <div>
+                              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>X Pos (mm)</label>
+                              <input 
+                                type="number" 
+                                step="0.5" 
+                                className="input input-xs" 
+                                value={selectedField.xMm ?? 2} 
+                                onChange={e => updateField(selectedFieldIndex, { xMm: Number(e.target.value) || 0 })}
+                                style={{ width: '100%', fontSize: '11px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Y Pos (mm)</label>
+                              <input 
+                                type="number" 
+                                step="0.5" 
+                                className="input input-xs" 
+                                value={selectedField.yMm ?? 2} 
+                                onChange={e => updateField(selectedFieldIndex, { yMm: Number(e.target.value) || 0 })}
+                                style={{ width: '100%', fontSize: '11px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Width (mm)</label>
+                              <input 
+                                type="number" 
+                                step="0.5" 
+                                className="input input-xs" 
+                                value={selectedField.wMm ?? 46} 
+                                onChange={e => updateField(selectedFieldIndex, { wMm: Number(e.target.value) || 10 })}
+                                style={{ width: '100%', fontSize: '11px' }}
+                              />
+                            </div>
+                            {selectedField.type !== 'line' && (
+                              <div>
+                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Height (mm)</label>
+                                <input 
+                                  type="number" 
+                                  step="0.5" 
+                                  className="input input-xs" 
+                                  value={selectedField.hMm ?? 6} 
+                                  onChange={e => updateField(selectedFieldIndex, { hMm: Number(e.target.value) || 4 })}
+                                  style={{ width: '100%', fontSize: '11px' }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* TEXT SPECIFIC PROPERTIES */}
+                        {selectedField.type === 'text' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <div>
+                              <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Text / Variable Token:</label>
                               <textarea
                                 className="input input-sm"
                                 rows={2}
-                                value={f.content}
-                                onChange={e => updateField(idx, { content: e.target.value })}
-                                style={{ width: '100%', fontSize: '11.5px', fontFamily: 'monospace' }}
-                                placeholder="Enter text or variables like {{item.code}}"
+                                value={selectedField.content || ''}
+                                onChange={e => updateField(selectedFieldIndex, { content: e.target.value })}
+                                style={{ width: '100%', fontSize: '11px', fontFamily: 'monospace', marginTop: '4px' }}
                               />
-                              <div style={{ display: 'flex', gap: '6px', marginTop: '6px', alignItems: 'center' }}>
-                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Font Size:</label>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                              <div>
+                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Font Size (pt):</label>
                                 <input 
                                   type="number" 
-                                  style={{ width: '50px', fontSize: '11px' }} 
+                                  step="0.5" 
                                   className="input input-xs" 
-                                  value={f.fontSize || 8} 
-                                  onChange={e => updateField(idx, { fontSize: Number(e.target.value) || 6 })} 
+                                  value={selectedField.fontSize || 8} 
+                                  onChange={e => updateField(selectedFieldIndex, { fontSize: Number(e.target.value) || 7 })}
+                                  style={{ width: '100%', fontSize: '11px' }}
                                 />
-                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)', marginLeft: '6px' }}>Align:</label>
+                              </div>
+                              <div>
+                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Alignment:</label>
                                 <select 
                                   className="select select-xs" 
-                                  value={f.align || 'left'} 
-                                  onChange={e => updateField(idx, { align: e.target.value })}
-                                  style={{ fontSize: '11px' }}
+                                  value={selectedField.align || 'center'} 
+                                  onChange={e => updateField(selectedFieldIndex, { align: e.target.value })}
+                                  style={{ width: '100%', fontSize: '11px' }}
                                 >
                                   <option value="left">Left</option>
                                   <option value="center">Center</option>
                                   <option value="right">Right</option>
                                 </select>
-                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)', marginLeft: '6px' }}>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* LINE SPECIFIC PROPERTIES */}
+                        {selectedField.type === 'line' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                              <div>
+                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Thickness (mm):</label>
+                                <input 
+                                  type="number" 
+                                  step="0.25" 
+                                  className="input input-xs" 
+                                  value={selectedField.thicknessMm || 0.5} 
+                                  onChange={e => updateField(selectedFieldIndex, { thicknessMm: Number(e.target.value) || 0.5 })}
+                                  style={{ width: '100%', fontSize: '11px' }}
+                                />
+                              </div>
+                              <div>
+                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Style:</label>
+                                <select 
+                                  className="select select-xs" 
+                                  value={selectedField.lineStyle || 'solid'} 
+                                  onChange={e => updateField(selectedFieldIndex, { lineStyle: e.target.value })}
+                                  style={{ width: '100%', fontSize: '11px' }}
+                                >
+                                  <option value="solid">Solid Line</option>
+                                  <option value="dashed">Dashed Line</option>
+                                  <option value="dotted">Dotted Line</option>
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* BOX SPECIFIC PROPERTIES */}
+                        {selectedField.type === 'box_frame' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                              <div>
+                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Border Thickness:</label>
+                                <input 
+                                  type="number" 
+                                  step="0.5" 
+                                  className="input input-xs" 
+                                  value={selectedField.borderThicknessMm || 1} 
+                                  onChange={e => updateField(selectedFieldIndex, { borderThicknessMm: Number(e.target.value) || 1 })}
+                                  style={{ width: '100%', fontSize: '11px' }}
+                                />
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', marginTop: '16px' }}>
+                                <label style={{ fontSize: '11px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                   <input 
                                     type="checkbox" 
-                                    checked={!!f.borderBottom} 
-                                    onChange={e => updateField(idx, { borderBottom: e.target.checked })} 
-                                  /> Line
+                                    checked={!!selectedField.filled} 
+                                    onChange={e => updateField(selectedFieldIndex, { filled: e.target.checked })}
+                                  /> Solid Black Fill
                                 </label>
                               </div>
                             </div>
-                          )}
+                          </div>
+                        )}
 
-                          {f.type === 'barcode' && (
+                        {/* BARCODE SPECIFIC PROPERTIES */}
+                        {selectedField.type === 'barcode' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             <div>
-                              <label style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>Barcode Value / Token:</label>
+                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Barcode Value / Token:</label>
                               <input 
                                 type="text"
                                 className="input input-sm"
-                                value={f.barcodeValue}
-                                onChange={e => updateField(idx, { barcodeValue: e.target.value })}
-                                style={{ width: '100%', fontSize: '11.5px', fontFamily: 'monospace' }}
-                                placeholder="e.g. {{item.code}}"
+                                value={selectedField.barcodeValue || ''}
+                                onChange={e => updateField(selectedFieldIndex, { barcodeValue: e.target.value })}
+                                style={{ width: '100%', fontSize: '11px', fontFamily: 'monospace', marginTop: '4px' }}
                               />
-                              <div style={{ display: 'flex', gap: '10px', marginTop: '6px', alignItems: 'center' }}>
-                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Bar Height:</label>
-                                <input 
-                                  type="number" 
-                                  style={{ width: '50px', fontSize: '11px' }} 
-                                  className="input input-xs" 
-                                  value={f.barcodeHeight || 20} 
-                                  onChange={e => updateField(idx, { barcodeHeight: Number(e.target.value) || 15 })} 
-                                />
-                                <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <input 
-                                    type="checkbox" 
-                                    checked={f.showBarcodeText !== false} 
-                                    onChange={e => updateField(idx, { showBarcodeText: e.target.checked })} 
-                                  /> Show Code Text
-                                </label>
-                              </div>
                             </div>
-                          )}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Show Code Text:</label>
+                              <input 
+                                type="checkbox" 
+                                checked={selectedField.showBarcodeText !== false} 
+                                onChange={e => updateField(selectedFieldIndex, { showBarcodeText: e.target.checked })}
+                              />
+                            </div>
+                          </div>
+                        )}
 
-                          {f.type === 'box_manifest' && (
-                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                              Automatically renders a multi-line bullet table of packed items in this box.
+                      </div>
+                    ) : (
+                      /* Global Label & Margin Configuration (When no element selected) */
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        <div>
+                          <div style={{ fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                            📐 Label Roll Geometry
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div>
+                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Width (mm)</label>
+                              <input 
+                                type="number" 
+                                className="input input-xs" 
+                                value={editForm.widthMm} 
+                                onChange={e => setEditForm({ ...editForm, widthMm: Number(e.target.value) || 10 })}
+                                style={{ width: '100%', fontSize: '11px' }}
+                              />
                             </div>
-                          )}
+                            <div>
+                              <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Pitch / Height (mm)</label>
+                              <input 
+                                type="number" 
+                                className="input input-xs" 
+                                value={editForm.heightMm} 
+                                onChange={e => setEditForm({ ...editForm, heightMm: Number(e.target.value) || 10 })}
+                                style={{ width: '100%', fontSize: '11px' }}
+                              />
+                            </div>
+                          </div>
                         </div>
-                      ))}
-                    </div>
+
+                        {/* Millimeter Margins & Spacers */}
+                        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '10px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                            Safe Margins (mm)
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <div>
+                              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Top (mm)</label>
+                              <input 
+                                type="number" 
+                                step="0.5" 
+                                className="input input-xs" 
+                                value={editForm.marginMm?.top ?? 1.5} 
+                                onChange={e => setEditForm({ 
+                                  ...editForm, 
+                                  marginMm: { ...editForm.marginMm, top: Number(e.target.value) || 0 } 
+                                })}
+                                style={{ width: '100%', fontSize: '11px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Bottom (mm)</label>
+                              <input 
+                                type="number" 
+                                step="0.5" 
+                                className="input input-xs" 
+                                value={editForm.marginMm?.bottom ?? 1.5} 
+                                onChange={e => setEditForm({ 
+                                  ...editForm, 
+                                  marginMm: { ...editForm.marginMm, bottom: Number(e.target.value) || 0 } 
+                                })}
+                                style={{ width: '100%', fontSize: '11px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Left (mm)</label>
+                              <input 
+                                type="number" 
+                                step="0.5" 
+                                className="input input-xs" 
+                                value={editForm.marginMm?.left ?? 2.0} 
+                                onChange={e => setEditForm({ 
+                                  ...editForm, 
+                                  marginMm: { ...editForm.marginMm, left: Number(e.target.value) || 0 } 
+                                })}
+                                style={{ width: '100%', fontSize: '11px' }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Right (mm)</label>
+                              <input 
+                                type="number" 
+                                step="0.5" 
+                                className="input input-xs" 
+                                value={editForm.marginMm?.right ?? 2.0} 
+                                onChange={e => setEditForm({ 
+                                  ...editForm, 
+                                  marginMm: { ...editForm.marginMm, right: Number(e.target.value) || 0 } 
+                                })}
+                                style={{ width: '100%', fontSize: '11px' }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ color: '#64748b', fontSize: '11px', lineHeight: 1.4 }}>
+                          Select any element on the canvas to inspect its millimeter coordinates, font size, or alignment.
+                        </div>
+                      </div>
+                    )}
 
                     {/* Variable Dictionary Helper */}
-                    <div style={{ marginTop: '14px', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
+                    <div style={{ marginTop: 'auto', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
                       <div style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '6px' }}>
                         Click to Copy Variables:
                       </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxHeight: '120px', overflowY: 'auto' }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxHeight: '110px', overflowY: 'auto' }}>
                         {VARIABLE_DICTIONARY.map(v => (
                           <span 
                             key={v.token}
                             onClick={() => {
                               navigator.clipboard.writeText(v.token);
-                              alert(`Copied ${v.token} to clipboard! Paste it into any text block.`);
+                              alert(`Copied ${v.token} to clipboard!`);
                             }}
                             title={`Click to copy: ${v.label} (e.g. ${v.example})`}
                             style={{ 
@@ -558,116 +1042,6 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
 
                 </div>
               )}
-
-              {/* Visual Thermal Label Preview */}
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#334155', borderRadius: '10px', padding: '24px', overflow: 'auto' }}>
-                <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 600, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Eye size={13} /> Live Scale Rendering on Argox O4-250 (203 DPI Continuous Roll)
-                </div>
-
-                {/* The Physical Thermal Label Container */}
-                <div 
-                  style={{
-                    width: `${activeObj.widthMm * 3.78}px`,
-                    minHeight: `${activeObj.heightMm * 3.78}px`,
-                    background: '#ffffff',
-                    color: '#000000',
-                    padding: '8px 10px',
-                    borderRadius: '2px',
-                    boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    fontFamily: 'Arial, Helvetica, sans-serif',
-                    boxSizing: 'border-box',
-                    transform: `rotate(${activeObj.rotation || 0}deg)`,
-                    transformOrigin: 'center center',
-                    transition: 'transform 0.2s ease'
-                  }}
-                >
-                  <div style={{ display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
-                    {(activeObj.fields || []).map((field, fIdx) => {
-                      if (field.type === 'text') {
-                        // Replace tokens with mockContext
-                        let text = field.content || '';
-                        Object.entries({
-                          '{{item.code}}': mockContext.item.code,
-                          '{{item.one_one_code}}': mockContext.item.oneOneCode,
-                          '{{item.description}}': mockContext.item.description,
-                          '{{item.brand}}': mockContext.item.brand,
-                          '{{item.floor}}': mockContext.item.floor,
-                          '{{item.area}}': mockContext.item.area,
-                          '{{item.type}}': mockContext.item.type,
-                          '{{item.boxNumber}}': mockContext.item.boxNumber,
-                          '{{project.name}}': mockContext.project.name,
-                          '{{project.client}}': mockContext.project.client,
-                          '{{project.deliveryAddress}}': mockContext.project.deliveryAddress,
-                          '{{project.pm}}': mockContext.project.pm,
-                          '{{order.id}}': mockContext.order.id,
-                          '{{packing_list.id}}': mockContext.packingList.id,
-                          '{{box.number}}': mockContext.box.number,
-                          '{{box.total}}': mockContext.box.total,
-                          '{{box.items_count}}': mockContext.box.itemsCount,
-                          '{{date.today}}': new Date().toLocaleDateString('en-GB')
-                        }).forEach(([tok, val]) => {
-                          text = text.split(tok).join(val);
-                        });
-
-                        return (
-                          <div 
-                            key={fIdx}
-                            style={{
-                              fontSize: `${field.fontSize || 8}pt`,
-                              fontWeight: field.fontWeight || 600,
-                              textAlign: field.align || 'left',
-                              marginTop: `${field.marginTop || 0}px`,
-                              borderBottom: field.borderBottom ? '1.5px solid #000' : 'none',
-                              borderTop: field.borderTop ? '1px solid #000' : 'none',
-                              paddingBottom: field.borderBottom ? '2px' : '0',
-                              lineHeight: 1.2,
-                              overflow: 'hidden',
-                              wordBreak: 'break-word'
-                            }}
-                          >
-                            {text}
-                          </div>
-                        );
-                      }
-
-                      if (field.type === 'barcode') {
-                        let barVal = field.barcodeValue || '{{item.code}}';
-                        barVal = barVal.replace('{{item.code}}', mockContext.item.code)
-                                       .replace('{{packing_list.id}}', mockContext.packingList.id)
-                                       .replace('{{box.index}}', mockContext.box.index);
-                        const svg = generateCode128Svg(barVal, field.barcodeHeight || 20, 1.5, field.showBarcodeText !== false);
-                        return (
-                          <div 
-                            key={fIdx} 
-                            style={{ marginTop: `${field.marginTop || 2}px` }}
-                            dangerouslySetInnerHTML={{ __html: svg }} 
-                          />
-                        );
-                      }
-
-                      if (field.type === 'box_manifest') {
-                        return (
-                          <div key={fIdx} style={{ fontSize: '7.5pt', lineHeight: 1.3, marginTop: '2px', border: '1px solid #000', padding: '4px', background: '#fafafa' }}>
-                            <div>• <strong>14x</strong> DL-2223/31 (Downlight - Kitchen)</div>
-                            <div>• <strong>10x</strong> LA.4205 (5W GU10 Lamp - Kitchen)</div>
-                            <div>• <strong>2x</strong> DRV-24V (Power Supply 100W)</div>
-                          </div>
-                        );
-                      }
-
-                      return null;
-                    })}
-                  </div>
-                </div>
-
-                <div style={{ marginTop: '10px', fontSize: '11px', color: '#cbd5e1' }}>
-                  Preview: Actual printer roll width is {activeObj.widthMm}mm by {activeObj.heightMm}mm
-                </div>
-              </div>
 
             </div>
 

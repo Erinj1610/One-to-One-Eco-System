@@ -227,14 +227,28 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, layoutW, layoutH);
 
-  // Printable area inside layout surface
-  const paddingX = Math.round(2.5 * DOTS_PER_MM);
-  let curY = Math.round(2 * DOTS_PER_MM);
-  const contentWidth = layoutW - paddingX * 2;
+  // Printable margins inside layout surface (default 2mm horizontal, 1.5mm vertical if not defined)
+  const marginMm = template.marginMm || { top: 1.5, bottom: 1.5, left: 2.0, right: 2.0 };
+  const padLeft = Math.round((Number(marginMm.left) || 2) * DOTS_PER_MM);
+  const padRight = Math.round((Number(marginMm.right) || 2) * DOTS_PER_MM);
+  const padTop = Math.round((Number(marginMm.top) || 1.5) * DOTS_PER_MM);
+  const padBottom = Math.round((Number(marginMm.bottom) || 1.5) * DOTS_PER_MM);
+
+  const contentWidth = Math.max(10, layoutW - padLeft - padRight);
+  let flowY = padTop;
 
   (template.fields || []).forEach(field => {
+    // If element has explicit millimeter coordinates (from visual drag-and-drop), use them directly!
+    const isExplicit = field.xMm !== undefined && field.yMm !== undefined;
+    const elemX = isExplicit 
+      ? Math.round(Number(field.xMm) * DOTS_PER_MM) 
+      : padLeft;
+    const elemW = (field.wMm !== undefined && Number(field.wMm) > 0)
+      ? Math.round(Number(field.wMm) * DOTS_PER_MM)
+      : contentWidth;
+
     const marginTop = Math.round((field.marginTop || 0) * DOTS_PER_MM * 0.35);
-    curY += marginTop;
+    const curY = isExplicit ? Math.round(Number(field.yMm) * DOTS_PER_MM) : (flowY + marginTop);
 
     if (field.type === 'text') {
       const text = evaluateTokens(field.content, context);
@@ -244,39 +258,86 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
       ctx.fillStyle = '#000000';
       ctx.textBaseline = 'top';
 
-      let drawX = paddingX;
+      let drawX = elemX;
       if (field.align === 'center') {
         ctx.textAlign = 'center';
-        drawX = paddingX + contentWidth / 2;
+        drawX = elemX + elemW / 2;
       } else if (field.align === 'right') {
         ctx.textAlign = 'right';
-        drawX = paddingX + contentWidth;
+        drawX = elemX + elemW;
       } else {
         ctx.textAlign = 'left';
-        drawX = paddingX;
+        drawX = elemX;
       }
 
       if (field.borderTop) {
         ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(paddingX, curY);
-        ctx.lineTo(paddingX + contentWidth, curY);
+        ctx.moveTo(elemX, curY);
+        ctx.lineTo(elemX + elemW, curY);
         ctx.stroke();
-        curY += 4;
       }
 
       ctx.fillText(text, drawX, curY);
-      curY += fontSizePx + 4;
 
       if (field.borderBottom) {
         ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(paddingX, curY);
-        ctx.lineTo(paddingX + contentWidth, curY);
+        ctx.moveTo(elemX, curY + fontSizePx + 3);
+        ctx.lineTo(elemX + elemW, curY + fontSizePx + 3);
         ctx.stroke();
-        curY += 4;
+      }
+
+      if (!isExplicit) {
+        flowY = curY + fontSizePx + 4 + (field.borderBottom ? 3 : 0);
+      }
+    } else if (field.type === 'line') {
+      // Vector Divider Line
+      const thickness = Math.max(1, Math.round((field.thicknessMm || 0.5) * DOTS_PER_MM));
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = thickness;
+
+      if (field.lineStyle === 'dashed') {
+        ctx.setLineDash([8, 6]);
+      } else if (field.lineStyle === 'dotted') {
+        ctx.setLineDash([3, 3]);
+      } else {
+        ctx.setLineDash([]);
+      }
+
+      ctx.beginPath();
+      if (field.orientation === 'vertical') {
+        const lineH = Math.round((field.hMm || 10) * DOTS_PER_MM);
+        ctx.moveTo(elemX, curY);
+        ctx.lineTo(elemX, curY + lineH);
+      } else {
+        ctx.moveTo(elemX, curY);
+        ctx.lineTo(elemX + elemW, curY);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]); // Reset dash
+
+      if (!isExplicit) {
+        flowY = curY + thickness + 3;
+      }
+    } else if (field.type === 'box_frame') {
+      // Outline Box or Inverted Badge
+      const boxH = Math.round((field.hMm || 10) * DOTS_PER_MM);
+      const borderWidth = Math.max(1, Math.round((field.borderThicknessMm || 1) * DOTS_PER_MM * 0.5));
+
+      if (field.filled) {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(elemX, curY, elemW, boxH);
+      } else {
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = borderWidth;
+        ctx.strokeRect(elemX, curY, elemW, boxH);
+      }
+
+      if (!isExplicit) {
+        flowY = curY + boxH + 4;
       }
     } else if (field.type === 'barcode') {
       const barVal = evaluateTokens(field.barcodeValue || '{{item.code}}', context);
@@ -284,20 +345,21 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
       const drawnH = drawCode128OnCanvas(
         ctx,
         barVal,
-        paddingX,
+        elemX,
         curY,
-        contentWidth,
+        elemW,
         barHeight,
         field.showBarcodeText !== false
       );
-      curY += drawnH + 4;
+      if (!isExplicit) {
+        flowY = curY + drawnH + 4;
+      }
     } else if (field.type === 'box_manifest') {
       const items = context.box?.manifestItems || [];
       const fontSizePx = Math.round((field.fontSize || 7.5) * 2.5);
       ctx.font = `600 ${fontSizePx}px Arial, Helvetica, sans-serif`;
       ctx.fillStyle = '#000000';
 
-      // Draw border box for manifest
       const boxStartY = curY;
       const rowH = fontSizePx + 6;
       const maxRows = field.maxLines || 6;
@@ -309,18 +371,20 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
         const rightTxt = `${it.area || it.floor || ''}`;
 
         ctx.textAlign = 'left';
-        ctx.fillText(leftTxt, paddingX + 6, itemY);
+        ctx.fillText(leftTxt, elemX + 6, itemY);
 
         ctx.textAlign = 'right';
-        ctx.fillText(rightTxt, paddingX + contentWidth - 6, itemY);
+        ctx.fillText(rightTxt, elemX + elemW - 6, itemY);
       });
 
       const totalBoxH = Math.max(displayItems.length * rowH + 8, 30);
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 1.5;
-      ctx.strokeRect(paddingX, boxStartY, contentWidth, totalBoxH);
+      ctx.strokeRect(elemX, boxStartY, elemW, totalBoxH);
 
-      curY += totalBoxH + 4;
+      if (!isExplicit) {
+        flowY = curY + totalBoxH + 4;
+      }
     }
   });
 
@@ -392,13 +456,16 @@ export const DEFAULT_LABEL_TEMPLATES = [
     heightMm: 32,
     orientation: 'landscape',
     rotation: 0,
+    marginMm: { top: 1.5, bottom: 1.5, left: 2.0, right: 2.0 },
     type: 'item',
     fields: [
-      { id: 'f_brand', type: 'text', content: 'ONE TO ONE • {{project.name}}', fontSize: 7.5, fontWeight: 800, align: 'center', borderBottom: true },
+      { id: 'f_brand', type: 'text', content: 'ONE TO ONE • {{project.name}}', fontSize: 7.5, fontWeight: 800, align: 'center' },
+      { id: 'f_div1', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal' },
       { id: 'f_code', type: 'text', content: '{{item.code}}', fontSize: 11, fontWeight: 900, align: 'center', marginTop: 1 },
       { id: 'f_desc', type: 'text', content: '{{item.description}}', fontSize: 7, fontWeight: 500, align: 'center', maxLines: 1, marginTop: 1 },
       { id: 'f_barcode', type: 'barcode', barcodeValue: '{{item.code}}', barcodeHeight: 22, showBarcodeText: true, marginTop: 2 },
-      { id: 'f_meta', type: 'text', content: '{{item.floor}} • {{item.area}} ({{item.boxNumber}})', fontSize: 7, fontWeight: 700, align: 'center', marginTop: 1, borderTop: true }
+      { id: 'f_div2', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', marginTop: 1 },
+      { id: 'f_meta', type: 'text', content: '{{item.floor}} • {{item.area}} ({{item.boxNumber}})', fontSize: 7, fontWeight: 700, align: 'center', marginTop: 1 }
     ]
   },
   {
