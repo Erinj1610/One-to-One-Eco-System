@@ -144,7 +144,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
       name: 'New Argox Custom Label',
       description: 'Custom dimensions with interactive drag-and-drop alignment.',
       widthMm: 50,
-      heightMm: 32,
+      heightMm: 30,
       orientation: 'landscape',
       rotation: 0,
       marginMm: { top: 1.5, bottom: 1.5, left: 2.0, right: 2.0 },
