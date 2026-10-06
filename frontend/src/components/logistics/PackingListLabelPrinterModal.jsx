@@ -525,7 +525,7 @@ export default function PackingListLabelPrinterModal({
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
               <a
-                href="https://github.com/qzind/tray/releases/download/v2.2.4/qz-tray-2.2.4.exe"
+                href="https://qz.io/download/"
                 target="_blank"
                 rel="noreferrer"
                 className="btn btn-sm"
