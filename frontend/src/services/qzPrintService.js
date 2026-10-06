@@ -74,12 +74,11 @@ export async function printDirectLabels(printerName, dataUrls, options = {}) {
   const { widthMm = 50, heightMm = 30 } = options;
 
   // Build QZ Tray print configuration for thermal label roll
-  // Using bilevel (monochrome 1-bit) and scaleContent: false ensures Argox printhead fires pure solid black without dotty dithering
   const config = qz.configs.create(printerName, {
     size: { width: widthMm, height: heightMm },
     units: 'mm',
-    colorType: 'bilevel',
-    interpolation: 'nearest-neighbor',
+    colorType: 'color',
+    interpolation: 'bicubic',
     margins: 0,
     scaleContent: false,
     rasterize: false

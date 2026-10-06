@@ -536,32 +536,6 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
   outCtx.drawImage(contentCanvas, -layoutW / 2, -layoutH / 2);
   outCtx.restore();
 
-  // Bilevel Monochrome Post-Processing Pass:
-  // Convert anti-aliased edges into solid black (#000000) or pure white (#ffffff)
-  // Pixels darker than 210 brightness become solid 100% black so delicate letter strokes remain thick and intact!
-  try {
-    const imgData = outCtx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
-    const data = imgData.data;
-    const threshold = 210; 
-    for (let i = 0; i < data.length; i += 4) {
-      // Perceived luminance: 0.299R + 0.587G + 0.114B
-      const brightness = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-      if (brightness < threshold) {
-        data[i] = 0;       // R
-        data[i + 1] = 0;   // G
-        data[i + 2] = 0;   // B
-      } else {
-        data[i] = 255;     // R
-        data[i + 1] = 255; // G
-        data[i + 2] = 255; // B
-      }
-      data[i + 3] = 255; // Full opacity
-    }
-    outCtx.putImageData(imgData, 0, 0);
-  } catch (err) {
-    console.warn("Monochrome threshold filter skipped:", err);
-  }
-
   return outputCanvas.toDataURL('image/png');
 }
 
