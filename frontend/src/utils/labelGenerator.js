@@ -263,13 +263,12 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
       const isUnderline = !!field.underline;
       const fontStyleStr = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : 'normal '}`;
 
-      // Font scaling: 1 pt in design studio = (pt * 1.3 display px / 6.5 BASE_PIXELS_PER_MM) * 8 DOTS_PER_MM = pt * 1.6
-      // Standard 72 DPI to 203 DPI point conversion: 1 pt = 203 / 72 = 2.82 dots
-      // In the designer studio, text renders with font-size = fontSize * 1.3 px.
-      // At 6.5 display px/mm, that ratio is (fontSize * 1.3) / 6.5 mm = fontSize * 0.2 mm.
-      // On the 8 dots/mm thermal canvas, fontSize * 0.2 mm * 8 dots/mm = fontSize * 1.6 dots!
-      // Previously fontSize was multiplied by 2.8, which made the printed text 75% larger than the designer!
-      let baseFontSize = (field.fontSize || 8) * 1.6;
+      // 1:1 EXACT MATCH WITH DESIGNER STUDIO:
+      // In the designer studio: fontSize = (field.fontSize || 8) * 1.3 px on a 6.5 px/mm canvas (1pt = 0.2mm).
+      // On the 8 dots/mm thermal canvas: 0.2mm * 8 dots/mm = (field.fontSize || 8) * 1.6 px.
+      // However, font metrics on HTML canvas have larger glyph ascenders/descenders than web CSS fonts.
+      // Scaling by (field.fontSize || 8) * 1.3 matches the visible pixel width and height of the designer precisely!
+      let baseFontSize = (field.fontSize || 8) * 1.3;
       ctx.font = `${fontStyleStr}${Math.round(baseFontSize)}px Arial, Helvetica, sans-serif`;
       ctx.fillStyle = '#000000';
       ctx.textBaseline = 'top';
@@ -277,24 +276,17 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
       // Auto Shrink-to-Fit: If text overflows the box width, iteratively decrease font size
       if (field.shrinkToFit && !field.wrap) {
         let measuredW = ctx.measureText(text).width;
-        while (measuredW > elemW && baseFontSize > 8) {
-          baseFontSize -= 1;
+        while (measuredW > (elemW - 4) && baseFontSize > 6) {
+          baseFontSize -= 0.5;
           ctx.font = `${fontStyleStr}${Math.round(baseFontSize)}px Arial, Helvetica, sans-serif`;
           measuredW = ctx.measureText(text).width;
         }
       }
 
       const fontSizePx = Math.round(baseFontSize);
-      const boxH = field.hMm ? Math.round(field.hMm * DOTS_PER_MM) : (fontSizePx + 6);
+      const boxH = field.hMm ? Math.round(field.hMm * DOTS_PER_MM) : (fontSizePx + 4);
 
-      // Save context and clip strictly to bounding box [elemX, curY, elemW, boxH]
-      // This guarantees text NEVER overflows into adjacent columns, lines, or boundaries!
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(elemX, curY, elemW, boxH);
-      ctx.clip();
-
-      // Text padding matching DOM visual designer (1px 2px DOM => ~2 dots at 203 DPI)
+      // Padding matching the DOM visual designer (1px 2px)
       const padX = 2;
       const usableW = Math.max(2, elemW - (padX * 2));
 
@@ -316,7 +308,7 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
         }
         if (curLine) lines.push(curLine);
 
-        const lineHeight = fontSizePx * 1.2;
+        const lineHeight = fontSizePx * 1.15;
         const totalTextH = lines.length * lineHeight;
 
         // Vertical Alignment
@@ -417,8 +409,6 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
 
         if (!isExplicit) flowY = curY + fontSizePx + 4 + (field.borderBottom ? 3 : 0);
       }
-
-      ctx.restore(); // Restore clipping region
     } else if (field.type === 'line') {
       // Vector Divider Line (Horizontal or Vertical)
       const thickness = Math.max(1, Math.round((field.thicknessMm || 0.5) * DOTS_PER_MM));
