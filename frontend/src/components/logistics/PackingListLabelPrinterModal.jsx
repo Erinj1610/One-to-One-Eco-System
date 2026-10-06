@@ -8,10 +8,11 @@ import {
   generateCode128Svg, 
   drawCode128OnCanvas, 
   renderLabelToDataUrl,
+  generatePplbCommands,
   evaluateTokens, 
   DEFAULT_LABEL_TEMPLATES 
 } from '../../utils/labelGenerator';
-import { listPrinters, printDirectLabels, connectQz } from '../../services/qzPrintService';
+import { listPrinters, printDirectLabels, printRawDirect, connectQz } from '../../services/qzPrintService';
 
 export default function PackingListLabelPrinterModal({
   isOpen,
@@ -47,6 +48,12 @@ export default function PackingListLabelPrinterModal({
   const [qzStatus, setQzStatus] = useState('checking'); // 'connected' | 'disconnected' | 'checking'
   const [isDirectPrinting, setIsDirectPrinting] = useState(false);
   const [showSetupBanner, setShowSetupBanner] = useState(true);
+  
+  // Printing mode: 'pplb' (Argox native EPL2 raw commands - recommended for perfect gap tracking) or 'raster' (PNG graphics)
+  const [usePplbRaw, setUsePplbRaw] = useState(() => {
+    const saved = localStorage.getItem('oto_label_print_mode');
+    return saved !== 'raster'; // Default to true (Native Argox PPLB)
+  });
 
   // Auto-discover Windows printers via QZ Tray on modal open or user click
   const fetchPrinters = async () => {
@@ -287,7 +294,19 @@ export default function PackingListLabelPrinterModal({
     if (qzStatus === 'connected' && selectedPrinter) {
       try {
         setIsDirectPrinting(true);
-        await printDirectLabels(selectedPrinter, dataUrls, { widthMm: printWidthMm, heightMm: printHeightMm });
+
+        if (usePplbRaw) {
+          // Native Argox PPLB / EPL2 command mode:
+          // Directly calibrates Q240,12 (gap 1.5mm) and prints via printer firmware with 0 driver offset
+          const rawCommands = generatedLabels.map(lbl => {
+            return generatePplbCommands(currentTemplate, lbl.context, 1);
+          });
+          await printRawDirect(selectedPrinter, rawCommands);
+        } else {
+          // Standard Raster PNG mode
+          await printDirectLabels(selectedPrinter, dataUrls, { widthMm: printWidthMm, heightMm: printHeightMm });
+        }
+
         setIsDirectPrinting(false);
         return;
       } catch (err) {
@@ -720,6 +739,39 @@ export default function PackingListLabelPrinterModal({
               </div>
             )}
           </div>
+
+          {/* Print Engine Selector: Native Argox PPLB vs Standard Raster */}
+          {qzStatus === 'connected' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-primary)', padding: '3px 8px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                Engine:
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !usePplbRaw;
+                  setUsePplbRaw(next);
+                  localStorage.setItem('oto_label_print_mode', next ? 'pplb' : 'raster');
+                }}
+                className="btn btn-ghost btn-xs"
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  padding: '3px 8px',
+                  borderRadius: '5px',
+                  background: usePplbRaw ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                  color: usePplbRaw ? '#10b981' : '#3b82f6',
+                  border: '1px solid currentColor'
+                }}
+                title={usePplbRaw 
+                  ? "Native Argox PPLB Mode: Sends raw EPL2/PPLB commands directly to printer hardware (exact 1.5mm gap detection, 0mm spooler offset, BarTender style)" 
+                  : "Raster Graphics Mode: Renders canvas PNG via Windows Spooler"
+                }
+              >
+                {usePplbRaw ? '⚡ Native Argox (PPLB)' : '🖼️ Raster Graphic'}
+              </button>
+            </div>
+          )}
 
           {/* Master Print Action */}
           <button

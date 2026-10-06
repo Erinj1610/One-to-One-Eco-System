@@ -103,3 +103,32 @@ export async function printDirectLabels(printerName, dataUrls, options = {}) {
   await qz.print(config, printData);
   return true;
 }
+
+/**
+ * Sends raw native printer commands (e.g. Argox PPLB / EPL2) directly to the thermal printer.
+ * Bypasses Windows graphics rasterization and lets the printer calibrate using native commands.
+ *
+ * @param {string} printerName - Exact name of the printer
+ * @param {Array<string>} rawCommands - Array of PPLB command strings
+ */
+export async function printRawDirect(printerName, rawCommands) {
+  const connected = await connectQz();
+  if (!connected) {
+    throw new Error("QZ Tray is not running on your computer. Please start QZ Tray to print directly.");
+  }
+
+  // Force raw pass-through to printer
+  const config = qz.configs.create(printerName, {
+    forceRaw: true
+  });
+
+  const printData = rawCommands.map(cmd => ({
+    type: 'raw',
+    format: 'command',
+    flavor: 'plain',
+    data: cmd
+  }));
+
+  await qz.print(config, printData);
+  return true;
+}

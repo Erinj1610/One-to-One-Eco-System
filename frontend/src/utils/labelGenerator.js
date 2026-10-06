@@ -539,6 +539,96 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
   return outputCanvas.toDataURL('image/png');
 }
 
+/**
+ * Generate native Argox PPLB (EPL2) command sequence for hardware-accurate printing.
+ * Tells the Argox printer its exact label length, gap length, and draws lines & fonts directly in firmware.
+ */
+export function generatePplbCommands(template, context, copies = 1) {
+  const DOTS_PER_MM = 8;
+  const stickerW = Number(template.widthMm ?? 50);
+  const stickerH = Number(template.heightMm ?? 30);
+
+  const widthDots = Math.round(stickerW * DOTS_PER_MM);  // 400 dots
+  const heightDots = Math.round(stickerH * DOTS_PER_MM); // 240 dots
+  const gapDots = 12; // 1.5mm gap * 8 dots/mm = 12 dots
+
+  const cmds = [];
+
+  // Reset and set label dimensions
+  cmds.push('N'); // Clear image buffer
+  cmds.push(`q${widthDots}`); // Set label width (400)
+  cmds.push(`Q${heightDots},${gapDots}`); // Set form length (240) and gap (12)
+  cmds.push('D11'); // Darkness / density (11 is sharp thermal transfer/direct)
+  cmds.push('S3');  // Speed (3 inches/sec)
+
+  (template.fields || []).forEach(field => {
+    const isExplicit = field.xMm !== undefined && field.yMm !== undefined;
+    const xDots = Math.round((isExplicit ? Number(field.xMm) : 0) * DOTS_PER_MM);
+    const yDots = Math.round((isExplicit ? Number(field.yMm) : 0) * DOTS_PER_MM);
+    const wDots = Math.round((field.wMm !== undefined ? Number(field.wMm) : (stickerW - 4)) * DOTS_PER_MM);
+
+    if (field.type === 'line') {
+      const thickness = Math.max(1, Math.round((field.thicknessMm || 0.5) * DOTS_PER_MM));
+      if (field.orientation === 'vertical') {
+        const hDots = Math.round((field.hMm || stickerH) * DOTS_PER_MM);
+        cmds.push(`LO${xDots},${yDots},${thickness},${hDots}`);
+      } else {
+        cmds.push(`LO${xDots},${yDots},${wDots},${thickness}`);
+      }
+    } else if (field.type === 'text') {
+      const text = evaluateTokens(field.content, context).replace(/"/g, "'");
+      if (!text) return;
+
+      // Select resident Argox/EPL2 font and multipliers based on template fontSize
+      // Font 1 = 8x12, Font 2 = 10x16, Font 3 = 12x20, Font 4 = 14x24, Font 5 = 32x48
+      const fs = field.fontSize || 8;
+      let fontNum = 2;
+      let hMul = 1;
+      let vMul = 1;
+
+      if (fs <= 7) {
+        fontNum = 2; // ~8-10pt
+        hMul = 1;
+        vMul = 1;
+      } else if (fs <= 10) {
+        fontNum = 3; // ~10-12pt
+        hMul = 1;
+        vMul = 1;
+      } else if (fs <= 12) {
+        fontNum = 4;
+        hMul = 1;
+        vMul = 1;
+      } else {
+        // Large headers like GS1a
+        fontNum = 4;
+        hMul = 2;
+        vMul = 2;
+      }
+
+      // Center alignment offset calculation if align is center
+      let drawX = xDots;
+      if (field.align === 'center') {
+        // Approximate character width in dots
+        const charW = (fontNum === 2 ? 10 : fontNum === 3 ? 12 : 14) * hMul;
+        const totalTextW = text.length * charW;
+        drawX = Math.max(xDots, Math.round(xDots + (wDots - totalTextW) / 2));
+      }
+
+      cmds.push(`A${drawX},${yDots},0,${fontNum},${hMul},${vMul},N,"${text}"`);
+    } else if (field.type === 'barcode') {
+      const barVal = evaluateTokens(field.barcodeValue || '{{item.code}}', context).replace(/"/g, '');
+      if (barVal) {
+        const barH = Math.round((field.barcodeHeight || 20) * DOTS_PER_MM * 0.35);
+        // B x, y, rot, type(1=code128), narrow, wide, height, readable(B or N), data
+        cmds.push(`B${xDots},${yDots},0,1,2,4,${barH},${field.showBarcodeText !== false ? 'B' : 'N'},"${barVal}"`);
+      }
+    }
+  });
+
+  cmds.push(`P${Math.max(1, copies)}`); // Print label command
+  return cmds.join('\n') + '\n';
+}
+
 function escapeXml(unsafe) {
   return String(unsafe).replace(/[<>&'"]/g, (c) => {
     switch (c) {
