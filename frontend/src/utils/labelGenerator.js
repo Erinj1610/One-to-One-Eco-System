@@ -537,12 +537,12 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
   outCtx.restore();
 
   // Bilevel Monochrome Post-Processing Pass:
-  // Convert any anti-aliased gray pixels into strictly pure black (#000000) or pure white (#ffffff)
-  // This eliminates the halftone dithering "dots" produced by thermal printheads when receiving gray pixels!
+  // Convert anti-aliased edges into solid black (#000000) or pure white (#ffffff)
+  // Pixels darker than 210 brightness become solid 100% black so delicate letter strokes remain thick and intact!
   try {
     const imgData = outCtx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
     const data = imgData.data;
-    const threshold = 180; // Pixels darker than 180 brightness become solid 100% black
+    const threshold = 210; 
     for (let i = 0; i < data.length; i += 4) {
       // Perceived luminance: 0.299R + 0.587G + 0.114B
       const brightness = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;

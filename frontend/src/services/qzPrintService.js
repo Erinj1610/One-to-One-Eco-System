@@ -71,7 +71,7 @@ export async function printDirectLabels(printerName, dataUrls, options = {}) {
     throw new Error("QZ Tray is not running on your computer. Please start QZ Tray to print directly.");
   }
 
-  const { widthMm = 50, heightMm = 32 } = options;
+  const { widthMm = 50, heightMm = 30 } = options;
 
   // Build QZ Tray print configuration for thermal label roll
   // Using bilevel (monochrome 1-bit) and scaleContent: false ensures Argox printhead fires pure solid black without dotty dithering
