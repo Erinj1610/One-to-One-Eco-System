@@ -3,7 +3,8 @@ import {
   X, Plus, Trash2, Edit3, Save, RotateCcw, Copy, 
   Tag, Box, Check, Eye, Sliders, ChevronDown,
   ArrowLeftRight, RotateCw, Move, Minus, Square, AlignCenter,
-  AlignLeft, AlignRight, Maximize2, Grid, MousePointer, Info
+  AlignLeft, AlignRight, Maximize2, Grid, MousePointer, Info,
+  ZoomIn, ZoomOut
 } from 'lucide-react';
 import { 
   VARIABLE_DICTIONARY, 
@@ -26,6 +27,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
   const [draggingFieldIdx, setDraggingFieldIdx] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [snapToGrid, setSnapToGrid] = useState(true);
+  const [zoomLevel, setZoomLevel] = useState(1.5); // Default 1.5x (150%) for clear precision editing
   const canvasRef = useRef(null);
 
   // Mock context for preview
@@ -241,8 +243,10 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
 
   const activeObj = isEditing ? editForm : currentTemplate;
 
-  // Scale multiplier: 1 mm = ~6 display pixels on screen for clear editing
-  const PIXELS_PER_MM = 6.5;
+  // Scale multiplier: 1 mm = ~6.5 display pixels at 1.0x scale
+  // Multiplied by zoomLevel (e.g. 1.0x to 2.5x) for crystal-clear interactive editing
+  const BASE_PIXELS_PER_MM = 6.5;
+  const PIXELS_PER_MM = BASE_PIXELS_PER_MM * zoomLevel;
   const canvasWidthPx = Math.round((activeObj.widthMm || 50) * PIXELS_PER_MM);
   const canvasHeightPx = Math.round((activeObj.heightMm || 32) * PIXELS_PER_MM);
 
@@ -467,6 +471,36 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                     <Grid size={12} /> Grid Snap {snapToGrid ? 'ON (0.5mm)' : 'OFF'}
                   </button>
                 )}
+
+                {/* ZOOM CONTROLS */}
+                <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '2px 4px', gap: '2px', marginLeft: '6px' }}>
+                  <button 
+                    className="btn btn-ghost btn-xs"
+                    style={{ padding: '2px 6px', height: '22px' }}
+                    onClick={() => setZoomLevel(prev => Math.max(0.75, Math.round((prev - 0.25) * 100) / 100))}
+                    title="Zoom Out (-25%)"
+                    disabled={zoomLevel <= 0.75}
+                  >
+                    <ZoomOut size={12} />
+                  </button>
+                  <button 
+                    className="btn btn-ghost btn-xs"
+                    style={{ padding: '2px 6px', height: '22px', fontSize: '11px', fontFamily: 'monospace', minWidth: '46px', textAlign: 'center' }}
+                    onClick={() => setZoomLevel(1.5)}
+                    title="Click to reset zoom to 150%"
+                  >
+                    {Math.round(zoomLevel * 100)}%
+                  </button>
+                  <button 
+                    className="btn btn-ghost btn-xs"
+                    style={{ padding: '2px 6px', height: '22px' }}
+                    onClick={() => setZoomLevel(prev => Math.min(3.0, Math.round((prev + 0.25) * 100) / 100))}
+                    title="Zoom In (+25%)"
+                    disabled={zoomLevel >= 3.0}
+                  >
+                    <ZoomIn size={12} />
+                  </button>
+                </div>
               </div>
 
               <div style={{ display: 'flex', gap: '8px' }}>
@@ -534,7 +568,12 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                     backgroundSize: `${PIXELS_PER_MM}px ${PIXELS_PER_MM}px`, // 1mm grid dots
                     cursor: isEditing ? 'default' : 'auto'
                   }}
-                  onClick={() => isEditing && setSelectedFieldIndex(null)}
+                  onClick={(e) => {
+                    // Only deselect if the user clicked directly on the canvas background, not on any element or boundary
+                    if (e.target === e.currentTarget && isEditing) {
+                      setSelectedFieldIndex(null);
+                    }
+                  }}
                 >
                   {/* SAFE PRINT MARGIN BOUNDARY (Dotted Blue Line) */}
                   {isEditing && (
@@ -564,6 +603,10 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                       <div
                         key={field.id || idx}
                         onMouseDown={(e) => handleCanvasMouseDown(e, idx)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isEditing) setSelectedFieldIndex(idx);
+                        }}
                         style={{
                           position: 'absolute',
                           left: `${xPx}px`,
