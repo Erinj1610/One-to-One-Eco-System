@@ -90,6 +90,19 @@ def generate_pdf_endpoint(payload: GeneratePdfRequest):
         logger.error(f"Failed to generate technical pack PDF: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
+@router.post("/preview-html")
+def preview_html_endpoint(payload: GeneratePdfRequest):
+    """
+    Renders the exact adaptive HTML layout for real-time split-screen visual preview.
+    """
+    try:
+        pack_dict = payload.model_dump()
+        html_content = build_technical_pack_html(pack_dict)
+        return {"success": True, "html": html_content}
+    except Exception as e:
+        logger.error(f"Failed to render technical pack preview HTML: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"HTML preview failed: {str(e)}")
+
 @router.post("/save-to-drive")
 def save_to_drive_endpoint(
     payload: SaveToDriveRequest,
