@@ -23,18 +23,21 @@ LOCATION = "us-central1"
 MODEL_NAME = "gemini-2.5-flash"
 
 def get_gcp_access_token() -> str:
-    """Acquires a valid GCP OAuth access token."""
+    """Acquires a valid GCP OAuth access token across Cloud Run and local environments."""
     creds, project = google.auth.default(scopes=['https://www.googleapis.com/auth/cloud-platform'])
     
-    # 1. On Cloud Run / GCP environments, creds.refresh(Request()) uses the metadata server
+    # 1. Standard or session-based refresh
     try:
         if not creds.valid:
-            auth_req = Request()
+            import requests
+            session = requests.Session()
+            session.verify = False
+            auth_req = Request(session=session)
             creds.refresh(auth_req)
         if creds.token:
             return creds.token
     except Exception as e:
-        logger.warning(f"Standard creds.refresh failed: {e}")
+        logger.warning(f"Standard session creds.refresh failed: {e}")
 
     # 2. Local Windows Python fallback if SSL issues prevent standard refresh
     token_url = 'https://oauth2.googleapis.com/token'
@@ -54,7 +57,8 @@ def get_gcp_access_token() -> str:
             req = urllib.request.Request(token_url, data=data)
             with urllib.request.urlopen(req, context=_SSL_CTX, timeout=10) as resp:
                 res = json.loads(resp.read().decode('utf-8'))
-                return res.get('access_token', '')
+                if res.get('access_token'):
+                    return res.get('access_token')
         except Exception as e:
             logger.warning(f"Direct token refresh via urllib failed: {e}")
 
