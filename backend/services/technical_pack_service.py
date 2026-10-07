@@ -26,25 +26,41 @@ def get_gcp_access_token() -> str:
     """Acquires a valid GCP OAuth access token."""
     creds, project = google.auth.default(scopes=['https://www.googleapis.com/auth/cloud-platform'])
     
-    # In Windows local dev, if credentials need refresh, do so with ssl bypass
-    token_url = 'https://oauth2.googleapis.com/token'
-    data = urllib.parse.urlencode({
-        'client_id': getattr(creds, 'client_id', ''),
-        'client_secret': getattr(creds, 'client_secret', ''),
-        'refresh_token': getattr(creds, 'refresh_token', ''),
-        'grant_type': 'refresh_token'
-    }).encode('utf-8')
-
+    # 1. On Cloud Run / GCP environments, creds.refresh(Request()) uses the metadata server
     try:
-        req = urllib.request.Request(token_url, data=data)
-        with urllib.request.urlopen(req, context=_SSL_CTX, timeout=10) as resp:
-            res = json.loads(resp.read().decode('utf-8'))
-            return res.get('access_token', '')
-    except Exception as e:
-        logger.warning(f"Direct token refresh via urllib failed, attempting creds.token: {e}")
-        if hasattr(creds, 'token') and creds.token:
+        if not creds.valid:
+            auth_req = Request()
+            creds.refresh(auth_req)
+        if creds.token:
             return creds.token
-        raise RuntimeError(f"Could not acquire GCP access token for Vertex AI: {e}")
+    except Exception as e:
+        logger.warning(f"Standard creds.refresh failed: {e}")
+
+    # 2. Local Windows Python fallback if SSL issues prevent standard refresh
+    token_url = 'https://oauth2.googleapis.com/token'
+    client_id = getattr(creds, 'client_id', None)
+    client_secret = getattr(creds, 'client_secret', None)
+    refresh_token = getattr(creds, 'refresh_token', None)
+
+    if refresh_token:
+        data = urllib.parse.urlencode({
+            'client_id': client_id or '',
+            'client_secret': client_secret or '',
+            'refresh_token': refresh_token,
+            'grant_type': 'refresh_token'
+        }).encode('utf-8')
+
+        try:
+            req = urllib.request.Request(token_url, data=data)
+            with urllib.request.urlopen(req, context=_SSL_CTX, timeout=10) as resp:
+                res = json.loads(resp.read().decode('utf-8'))
+                return res.get('access_token', '')
+        except Exception as e:
+            logger.warning(f"Direct token refresh via urllib failed: {e}")
+
+    if hasattr(creds, 'token') and creds.token:
+        return creds.token
+    raise RuntimeError("Could not acquire valid GCP access token for Vertex AI")
 
 def call_gemini_multimodal(prompt: str, pdf_bytes_list: Optional[List[bytes]] = None) -> Dict[str, Any]:
     """Calls Gemini 2.5 Flash on Vertex AI with text and optional PDF attachments."""

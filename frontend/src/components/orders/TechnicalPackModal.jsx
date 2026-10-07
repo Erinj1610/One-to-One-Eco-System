@@ -278,7 +278,14 @@ export default function TechnicalPackModal({
         body: JSON.stringify(payload)
       });
 
-      if (!res.ok) throw new Error('PDF generation failed on server');
+      if (!res.ok) {
+        let errDetail = 'PDF generation failed on server';
+        try {
+          const errJson = await res.json();
+          errDetail = errJson.detail || errDetail;
+        } catch (_) {}
+        throw new Error(errDetail);
+      }
 
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
