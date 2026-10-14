@@ -7,6 +7,7 @@ import CollapsibleAlertSidebar from '../components/common/CollapsibleAlertSideba
 import TakeoffSpecEngine from '../components/TakeoffSpecEngine';
 import MobileOrdersViewer from '../components/mobile/MobileOrdersViewer';
 import DriveFileExplorer from '../components/common/DriveFileExplorer';
+import TechnicalPackModal from '../components/orders/TechnicalPackModal';
 import { API_BASE } from '../api_config';
 import { 
   ArrowUpDown,
@@ -46,7 +47,8 @@ import {
   Square,
   Check,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  BookOpen
 } from 'lucide-react';
 
 const PHI_ADVISORIES = {
@@ -458,6 +460,9 @@ export default function OrdersPage() {
   const [cancelModalItem, setCancelModalItem] = useState(null); // { orderId, projectKey, clientName }
   const [lossReason, setLossReason] = useState('Price');
   const [lossNotes, setLossNotes] = useState('');
+
+  // Technical Pack Modal State
+  const [isTechPackModalOpen, setIsTechPackModalOpen] = useState(false);
 
   const { widths, onResizeStart } = useResizableTable('orders_boq_spreadsheet_v2', {
     qty: 60,
@@ -3368,6 +3373,24 @@ export default function OrdersPage() {
                     title="Select and generate order documents to Google Drive (Documents/Latest)"
                   >
                     <FileText size={14} /> {isVaultGenerating ? '⏳ Generating Docs...' : 'Save & Document'}
+                  </button>
+
+                  <button 
+                    className="btn btn-secondary btn-sm" 
+                    onClick={() => setIsTechPackModalOpen(true)}
+                    disabled={isSavingOrder || isVaultGenerating}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px', 
+                      background: 'rgba(24, 95, 165, 0.1)', 
+                      borderColor: '#185fa5', 
+                      color: 'var(--text-info)',
+                      fontWeight: 600
+                    }}
+                    title="Build and export standardized One to One Technical Pack and handover specifications"
+                  >
+                    <BookOpen size={14} /> 📘 Technical Pack
                   </button>
                 </div>
               </div>
@@ -7675,6 +7698,17 @@ export default function OrdersPage() {
           </div>
         </div>
       )}
+
+      {/* ONE TO ONE TECHNICAL PACK MODAL */}
+      <TechnicalPackModal
+        isOpen={isTechPackModalOpen}
+        onClose={() => setIsTechPackModalOpen(false)}
+        orderId={selectedOrderId}
+        projectFullName={projectFullName}
+        clientCompany={clientCompany}
+        supplierName={orderSupplier}
+        orderItems={activeOrderItems}
+      />
 
     </>
   );
