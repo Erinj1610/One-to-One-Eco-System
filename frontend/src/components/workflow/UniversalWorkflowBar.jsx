@@ -543,6 +543,8 @@ export default function UniversalWorkflowBar({ projectKey, currentUser, onRouted
             </form>
           </div>
         </div>
+      )}
+
       {/* RAISE BLOCKER / SNAG MODAL */}
       {showBlockerModal && (
         <div style={{
