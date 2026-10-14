@@ -6,7 +6,7 @@ import {
   Ticket, Plus, Search, CheckCircle2, Clock, AlertTriangle, 
   AlertCircle, Star, Send, Image as ImageIcon, MessageSquare, 
   Upload, X, ArrowLeft, Trash2, User, FolderKanban,
-  RefreshCw, ZoomIn, LayoutGrid, List, Layers, DollarSign,
+  RefreshCw, ZoomIn, LayoutGrid, List, Layers, DollarSign, Download
 } from 'lucide-react';
 import MobileTicketsViewer from '../components/mobile/MobileTicketsViewer';
 
