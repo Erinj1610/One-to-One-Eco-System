@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, asc
 from database.cloud_sql import get_db
-from models.orm_models import WorkflowStage, WorkflowTicket, Project, User, Employee
+from models.orm_models import WorkflowStage, WorkflowTicket, Project, User, Employee, ProjectTicket
 from pydantic import BaseModel
 from typing import Optional, List, Any
 from datetime import datetime, timezone
@@ -57,6 +57,20 @@ class WorkflowRouteRequest(BaseModel):
     target_tab: Optional[str] = None
     priority: Optional[str] = "Normal"
     routed_by: Optional[str] = "Staff"
+    # Unified Blocker & Snag Extensions
+    is_blocker: Optional[bool] = False
+    blocker_title: Optional[str] = None
+    blocker_type: Optional[str] = "Site Snag / Defect" # "Site Snag / Defect", "Design Revision", "RFI / Site Query", "Procurement Delay", "Electrical / Install Hold-up"
+    fitting_code: Optional[str] = None
+    location_area: Optional[str] = None
+    cost_impact: Optional[float] = 0.0
+    schedule_impact_days: Optional[int] = 0
+    attachments: Optional[List[str]] = None
+
+class WorkflowResolveRequest(BaseModel):
+    project_key: str
+    resolved_by: Optional[str] = "Staff"
+    resolution_notes: Optional[str] = "Issue resolved and signed off."
 
 @router.get("/stages")
 def get_stages(db: Session = Depends(get_db)):
@@ -202,6 +216,13 @@ def route_project(payload: WorkflowRouteRequest, db: Session = Depends(get_db)):
     if not stage_name:
         stage_name = "Design & Specification"
 
+    # Determine if this is raising an urgent blocker
+    is_blocker = bool(payload.is_blocker)
+    priority_val = "Urgent" if is_blocker else (payload.priority or "Normal")
+    note_val = payload.action_note
+    if is_blocker and payload.blocker_title:
+        note_val = f"[⚠️ BLOCKED: {payload.blocker_title}] {payload.action_note or ''}".strip()
+
     new_ticket = WorkflowTicket(
         project_id=proj.id if proj else None,
         project_key=payload.project_key,
@@ -210,14 +231,44 @@ def route_project(payload: WorkflowRouteRequest, db: Session = Depends(get_db)):
         assigned_to=payload.assigned_to,
         assigned_role=payload.assigned_role,
         routed_by=payload.routed_by,
-        action_note=payload.action_note,
+        action_note=note_val,
         target_module=payload.target_module or "sales-tracker",
         target_tab=payload.target_tab,
-        priority=payload.priority or "Normal",
+        priority=priority_val,
         status="pending",
         created_at=now
     )
     db.add(new_ticket)
+
+    # If it's a blocker, also create/sync an active ProjectTicket for full defect tracking & set project delay_reason
+    created_pt_id = None
+    if is_blocker and payload.blocker_title:
+        pt = ProjectTicket(
+            project_id=proj.id if proj else None,
+            project_name=proj.name if proj else payload.project_key,
+            client_name=getattr(proj, "client_name", None) or getattr(proj, "client", None) or "",
+            pm_name=getattr(proj, "pm_name", None) or getattr(proj, "pm", None) or "",
+            stage=stage_name,
+            title=payload.blocker_title,
+            description=payload.action_note or "",
+            ticket_type=payload.blocker_type or "Site Snag / Defect",
+            priority="Critical",
+            status="Open",
+            location_area=payload.location_area or "",
+            fitting_code=payload.fitting_code or "",
+            cost_impact=float(payload.cost_impact or 0.0),
+            schedule_impact_days=int(payload.schedule_impact_days or 0),
+            raised_by=payload.routed_by or "Staff",
+            assigned_to=payload.assigned_to or "",
+            attachments_json=payload.attachments or []
+        )
+        db.add(pt)
+        if proj:
+            proj.status = "Off track"
+            proj.delay_reason = f"Blocker: {payload.blocker_title}"
+        db.flush()
+        created_pt_id = pt.id
+
     db.commit()
     db.refresh(new_ticket)
 
@@ -225,8 +276,54 @@ def route_project(payload: WorkflowRouteRequest, db: Session = Depends(get_db)):
         "status": "ok",
         "ticket_id": new_ticket.id,
         "stage_name": new_ticket.stage_name,
-        "assigned_to": new_ticket.assigned_to
+        "assigned_to": new_ticket.assigned_to,
+        "is_blocker": is_blocker,
+        "project_ticket_id": created_pt_id
     }
+
+@router.post("/resolve")
+def resolve_blocker(payload: WorkflowResolveRequest, db: Session = Depends(get_db)):
+    """
+    Resolves any active blocker on a project, closes open ProjectTickets,
+    clears project delay_reason, and restores normal workflow status.
+    """
+    now = datetime.now(timezone.utc)
+    proj = db.query(Project).filter(
+        (Project.project_key == payload.project_key) | 
+        (Project.name == payload.project_key) |
+        (Project.id == int(payload.project_key) if payload.project_key.isdigit() else False)
+    ).first()
+
+    # Close open project tickets for this project
+    pts = db.query(ProjectTicket).filter(
+        (ProjectTicket.project_name == payload.project_key) |
+        (ProjectTicket.project_id == (proj.id if proj else -1)),
+        ProjectTicket.status.in_(["Open", "In progress", "Awaiting Sign-off"])
+    ).all()
+    for pt in pts:
+        pt.status = "Resolved"
+        pt.resolved_date = now.strftime("%Y-%m-%d")
+        pt.resolution_notes = payload.resolution_notes
+
+    # Clear delay reason if blocked
+    if proj:
+        proj.status = "On track"
+        if proj.delay_reason and "Blocker:" in proj.delay_reason:
+            proj.delay_reason = None
+
+    # Update active workflow ticket priority from Urgent to Normal if it had blocker prefix
+    active_ticket = db.query(WorkflowTicket).filter(
+        WorkflowTicket.project_key == payload.project_key,
+        WorkflowTicket.status.in_(["pending", "in_progress"])
+    ).order_by(WorkflowTicket.created_at.desc()).first()
+
+    if active_ticket:
+        active_ticket.priority = "Normal"
+        if active_ticket.action_note and "[⚠️ BLOCKED:" in active_ticket.action_note:
+            active_ticket.action_note = f"[Resolved by {payload.resolved_by}] {active_ticket.action_note.split(']')[-1].strip()}"
+
+    db.commit()
+    return {"status": "ok", "message": "Blocker resolved and flow restored"}
 
 @router.get("/my-queue")
 def get_my_queue(
