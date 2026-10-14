@@ -1208,10 +1208,9 @@ export function StoreProvider({ children }) {
     { id: 'logistics', label: 'Logistics', icon: 'Truck', path: '/logistics', sectionId: 'projects_sec', visible: true, order: 6 },
     { id: 'invoices', label: 'Invoices', icon: 'FileText', path: '/invoices', sectionId: 'projects_sec', visible: true, order: 7 },
     { id: 'payments', label: 'Payments', icon: 'CreditCard', path: '/payments', sectionId: 'projects_sec', visible: true, order: 8 },
-    { id: 'ticket_logger', label: 'Ticket Logger', icon: 'Ticket', path: '/ticket-logger', sectionId: 'projects_sec', visible: true, order: 9 },
-    { id: 'sales_tracker', label: 'Sales tracker', icon: 'TrendingUp', path: '/sales-tracker', sectionId: 'projects_sec', visible: true, order: 10 },
-    { id: 'tracker', label: 'Design fee tracker', icon: 'Compass', path: '/tracker', sectionId: 'projects_sec', visible: true, order: 11 },
-    { id: 'pipeline', label: 'Sales pipeline', icon: 'TrendingUp', path: '/pipeline', sectionId: 'other_modules', visible: true, order: 12 },
+    { id: 'sales_tracker', label: 'Sales tracker', icon: 'TrendingUp', path: '/sales-tracker', sectionId: 'projects_sec', visible: true, order: 9 },
+    { id: 'tracker', label: 'Design fee tracker', icon: 'Compass', path: '/tracker', sectionId: 'projects_sec', visible: true, order: 10 },
+    { id: 'pipeline', label: 'Sales pipeline', icon: 'TrendingUp', path: '/pipeline', sectionId: 'other_modules', visible: true, order: 11 },
     { id: 'products', label: 'Products', icon: 'Package', path: '/products', sectionId: 'other_modules', visible: true, order: 13 },
     { id: 'docs', label: 'Documents', icon: 'Folder', path: '/docs', sectionId: 'other_modules', visible: true, order: 14 },
     { id: 'hr', label: 'HR & people', icon: 'BadgeCheck', path: '/hr', sectionId: 'other_modules', visible: true, order: 15 },
@@ -1319,7 +1318,7 @@ export function StoreProvider({ children }) {
             rawModules.forEach(m => {
               let mod = { ...m };
               if (mod.id === 'support' || mod.id === 'ticket_logger' || mod.path === '/support' || mod.path === '/ticket-logger') {
-                mod = { ...mod, id: 'ticket_logger', label: 'Ticket Logger', icon: 'Ticket', path: '/ticket-logger', sectionId: 'projects_sec', visible: true };
+                return; // Deprecated: fully combined into Workflow Bar & Workspace
               }
               if (!seenIds.has(mod.id) && !seenPaths.has(mod.path)) {
                 seenIds.add(mod.id);
