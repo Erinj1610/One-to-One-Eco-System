@@ -5859,13 +5859,13 @@ export default function OrdersPage() {
                             <div style={{ marginBottom: '30px' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#475569', marginBottom: '6px' }}>
                                 <span>Quotation Payment Cleared:</span>
-                                <strong>{discountedRetail > 0 ? Math.round((Number(orderPaidAmount) / discountedRetail) * 100) : 0}%</strong>
+                                <strong>{finalTotalInclVat > 0 ? Math.min(100, Math.round((Number(orderPaidAmount) / finalTotalInclVat) * 100)) : 0}%</strong>
                               </div>
                               <div style={{ background: '#f1f5f9', height: '10px', borderRadius: '5px', overflow: 'hidden' }}>
                                 <div style={{ 
                                   background: '#10b981', 
                                   height: '100%', 
-                                  width: `${discountedRetail > 0 ? Math.min(100, Math.round((Number(orderPaidAmount) / discountedRetail) * 100)) : 0}%` 
+                                  width: `${finalTotalInclVat > 0 ? Math.min(100, Math.round((Number(orderPaidAmount) / finalTotalInclVat) * 100)) : 0}%` 
                                 }}></div>
                               </div>
                             </div>
@@ -6012,7 +6012,7 @@ export default function OrdersPage() {
                         type="button"
                         className="btn btn-sm btn-outline"
                         style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: 600 }}
-                        onClick={() => navigate('/payments')}
+                        onClick={() => navigate('/payments', { state: { filterOrderId: selectedOrderId } })}
                       >
                         <CreditCard size={13} /> Open Payments & Allocations Hub
                       </button>
@@ -6041,7 +6041,7 @@ export default function OrdersPage() {
                                   type="button"
                                   className="btn btn-sm btn-primary"
                                   style={{ marginTop: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11.5px' }}
-                                  onClick={() => navigate('/payments')}
+                                  onClick={() => navigate('/payments', { state: { filterOrderId: selectedOrderId } })}
                                 >
                                   <CreditCard size={13} /> Go to Payments & Allocations
                                 </button>
@@ -6084,12 +6084,15 @@ export default function OrdersPage() {
                 {/* Right Side: Payment Status Vitals Card */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                   {(() => {
-                    const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
-                    const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
+                    const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
+                    const totalRetailGross = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
+                    const totalCreditedRetail = (erpCreditedItems || []).reduce((s, item) => s + Math.abs(Number(item.totalRetail || 0)), 0);
+                    const totalRetail = Math.max(0, totalRetailGross - totalCreditedRetail);
                     const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
-                    const vatAmount = discountedRetail * 0.15;
-                    const finalTotalInclVat = discountedRetail * 1.15;
-                    const balanceOutstanding = Math.max(0, finalTotalInclVat - orderPaidAmount);
+                    const effectiveVatPercent = orderVatPercent !== null && orderVatPercent !== undefined ? Number(orderVatPercent) : 15;
+                    const vatAmount = discountedRetail * (effectiveVatPercent / 100);
+                    const finalTotalInclVat = discountedRetail + vatAmount;
+                    const balanceOutstanding = Math.max(0, finalTotalInclVat - Number(orderPaidAmount));
                     const defaultDepositRate = (finalTotalInclVat < 10000 && finalTotalInclVat > 0) ? 100 : 70;
                     const effectiveDepositPercent = orderDepositPercent !== null && orderDepositPercent !== undefined 
                       ? Number(orderDepositPercent) 
@@ -6111,7 +6114,7 @@ export default function OrdersPage() {
                         </div>
 
                         <div style={{ borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Gross Value (Incl VAT):</span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Gross Value ({effectiveVatPercent === 0 ? '0% VAT' : `Incl ${effectiveVatPercent}% VAT`}):</span>
                           <strong style={{ display: 'block', fontSize: '18px', color: 'var(--text-primary)', marginTop: '2px' }}>
                             R {Math.round(finalTotalInclVat).toLocaleString()}
                           </strong>
@@ -6150,7 +6153,7 @@ export default function OrdersPage() {
                           type="button"
                           className="btn btn-sm btn-outline"
                           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', width: '100%', fontSize: '11.5px', fontWeight: 600 }}
-                          onClick={() => navigate('/payments')}
+                          onClick={() => navigate('/payments', { state: { filterOrderId: selectedOrderId } })}
                         >
                           <CreditCard size={13} /> Open Payments & Allocations
                         </button>
@@ -6256,7 +6259,7 @@ export default function OrdersPage() {
                       type="button" 
                       className="btn btn-sm btn-outline" 
                       style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                      onClick={() => navigate('/invoices')}
+                      onClick={() => navigate('/invoices', { state: { filterOrderId: selectedOrderId } })}
                     >
                       <FileText size={14} /> Open Invoices Dashboard
                     </button>
@@ -6275,7 +6278,7 @@ export default function OrdersPage() {
                       <tbody>
                         {!activeOrderObject?.clientInvoices?.length ? (
                           <tr>
-                            <td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                            <td colSpan={4} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                               No product invoices have been issued for this order yet. Go to Invoices ledger to create one.
                             </td>
                           </tr>
@@ -6284,7 +6287,7 @@ export default function OrdersPage() {
                             <tr key={`inv-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
                               <td 
                                 style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-info)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
-                                onClick={() => navigate('/invoices')}
+                                onClick={() => navigate('/invoices', { state: { openDocId: inv.id, filterOrderId: selectedOrderId } })}
                               >
                                 {inv.id}
                               </td>
