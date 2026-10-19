@@ -419,10 +419,11 @@ export default function ManagementAiPage() {
       }
 
       const data = await res.json();
+      const replyText = data.content || data.reply || '';
       const assistantMessage = {
         role: 'assistant',
-        content: data.reply,
-        tools_called: data.tools_called,
+        content: replyText,
+        tools_called: data.tools_called || [],
         timestamp: new Date().toISOString()
       };
 

@@ -553,6 +553,7 @@ def executive_chat_endpoint(
             return {
                 "role": "assistant",
                 "content": full_reply,
+                "reply": full_reply,
                 "model": GEMINI_MODEL,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
