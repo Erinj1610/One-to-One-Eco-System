@@ -21,8 +21,8 @@ from services.technical_pack_service import get_gcp_access_token, _SSL_CTX, PROJ
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/management-ai", tags=["management-ai"])
-public_router = APIRouter(prefix="/api/management-ai", tags=["management-ai-public"])
+router = APIRouter(prefix="/management-ai", tags=["management-ai"])
+public_router = APIRouter(prefix="/management-ai", tags=["management-ai-public"])
 
 # Use Google Gemini on Vertex AI
 GEMINI_MODEL = "gemini-2.5-pro"
