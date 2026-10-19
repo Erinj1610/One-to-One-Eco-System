@@ -20,7 +20,8 @@ import {
   Search, 
   Check,
   AlertCircle,
-  Clock
+  Clock,
+  CornerLeftUp
 } from 'lucide-react';
 import { API_BASE } from '../../api_config';
 
@@ -43,6 +44,7 @@ export default function DriveFileExplorer({
   const [files, setFiles] = useState([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState({});
+  const fetchedSubfoldersRef = useRef(new Set());
 
   // Search & Filter
   const [fileSearch, setFileSearch] = useState('');
@@ -50,6 +52,7 @@ export default function DriveFileExplorer({
   // Upload state
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatusText, setUploadStatusText] = useState('');
   const [uploadError, setUploadError] = useState(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
@@ -64,6 +67,10 @@ export default function DriveFileExplorer({
   // Folder renaming state
   const [renamingFolderId, setRenamingFolderId] = useState(null);
   const [renameInputVal, setRenameInputVal] = useState('');
+
+  // File renaming state
+  const [renamingFileId, setRenamingFileId] = useState(null);
+  const [renameFileVal, setRenameFileVal] = useState('');
 
   // Fetch folders based on current scope
   const loadFolders = async () => {
@@ -86,6 +93,7 @@ export default function DriveFileExplorer({
     }
 
     setFoldersLoading(true);
+    fetchedSubfoldersRef.current.clear();
     try {
       const res = await fetch(url);
       if (res.ok) {
@@ -119,7 +127,7 @@ export default function DriveFileExplorer({
               : scope === 'design'
               ? safeData.find(f => f.type === 'design_sub')
               : safeData[0]) || safeData[0];
-            handleSelectFolder(preferred);
+            handleSelectFolder(preferred, safeData);
           }
         }
       } else {
@@ -137,21 +145,51 @@ export default function DriveFileExplorer({
     loadFolders();
   }, [scope, projectId, orderId, clientId, designId]);
 
-  // Fetch files when selected folder changes
-  const handleSelectFolder = async (folder) => {
+  // Fetch files (and dynamically discover any un-loaded subfolders) when selected folder changes
+  const handleSelectFolder = async (folder, currentFoldersList = folders) => {
     setSelectedFolder(folder);
     if (!folder || !folder.gdrive_folder_id) {
       setFiles([]);
       return;
     }
+
+    // Auto-expand selected folder in the left tree
+    setExpandedFolders(prev => ({ ...prev, [folder.id]: true }));
+
     setFilesLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/documents/folders/${folder.gdrive_folder_id}/files`);
-      if (res.ok) {
-        const data = await res.json();
+      const folderGdriveId = folder.gdrive_folder_id;
+      const hasKnownChildren = (Array.isArray(currentFoldersList) ? currentFoldersList : []).some(f => f.parent_id === folder.id);
+      const shouldCheckSubfolders = !hasKnownChildren && !fetchedSubfoldersRef.current.has(folderGdriveId);
+
+      const requests = [
+        fetch(`${API_BASE}/api/documents/folders/${folderGdriveId}/files`)
+      ];
+      if (shouldCheckSubfolders) {
+        fetchedSubfoldersRef.current.add(folderGdriveId);
+        requests.push(fetch(`${API_BASE}/api/documents/folders/${folderGdriveId}/subfolders`));
+      }
+
+      const [filesRes, subsRes] = await Promise.all(requests);
+
+      if (filesRes && filesRes.ok) {
+        const data = await filesRes.json();
         setFiles(Array.isArray(data) ? data : []);
       } else {
         setFiles([]);
+      }
+
+      if (subsRes && subsRes.ok) {
+        const subsData = await subsRes.json();
+        if (Array.isArray(subsData) && subsData.length > 0) {
+          setFolders(prev => {
+            const existingIds = new Set(prev.map(item => item.id));
+            const newNodes = subsData
+              .filter(sf => !existingIds.has(sf.id))
+              .map(sf => ({ ...sf, parent_id: folder.id }));
+            return newNodes.length > 0 ? [...prev, ...newNodes] : prev;
+          });
+        }
       }
     } catch (err) {
       console.error("Failed to load files:", err);
@@ -184,10 +222,33 @@ export default function DriveFileExplorer({
       }
     });
 
-    // Sort by sort_order then name
-    roots.sort((a, b) => (a.sort_order || 99) - (b.sort_order || 99) || (a.name || '').localeCompare(b.name || ''));
+    const sortNodes = (list) => {
+      list.sort((a, b) => (a.sort_order || 99) - (b.sort_order || 99) || (a.name || '').localeCompare(b.name || ''));
+      list.forEach(item => {
+        if (item.children && item.children.length > 0) sortNodes(item.children);
+      });
+    };
+    sortNodes(roots);
     return roots;
   }, [folders]);
+
+  // Compute full breadcrumb path from root down to selectedFolder
+  const breadcrumbPath = useMemo(() => {
+    if (!selectedFolder) return [];
+    const safeFolders = Array.isArray(folders) ? folders : [];
+    const byId = {};
+    safeFolders.forEach(f => { byId[f.id] = f; });
+
+    const chain = [];
+    let curr = selectedFolder;
+    const visited = new Set();
+    while (curr && !visited.has(curr.id)) {
+      visited.add(curr.id);
+      chain.unshift(curr);
+      curr = curr.parent_id ? byId[curr.parent_id] : null;
+    }
+    return chain;
+  }, [folders, selectedFolder]);
 
   // Create Subfolder
   const handleConfirmCreateFolder = async (parentFolderId) => {
@@ -235,14 +296,46 @@ export default function DriveFileExplorer({
       });
 
       if (res.ok) {
+        const newName = renameInputVal.trim();
         setRenamingFolderId(null);
         setRenameInputVal('');
-        await loadFolders();
+        setFolders(prev => prev.map(f => f.id === folderId ? { ...f, name: newName } : f));
+        if (selectedFolder?.id === folderId) {
+          setSelectedFolder(prev => prev ? { ...prev, name: newName } : prev);
+        }
       } else {
         alert("Failed to rename folder.");
       }
     } catch (err) {
       console.error("Error renaming folder:", err);
+    }
+  };
+
+  // Rename File
+  const handleConfirmRenameFile = async (fileId) => {
+    if (!renameFileVal.trim()) {
+      setRenamingFileId(null);
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/documents/files/${fileId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: renameFileVal.trim() })
+      });
+      if (res.ok) {
+        const newName = renameFileVal.trim();
+        setFiles(prev => prev.map(f => f.id === fileId ? { ...f, name: newName } : f));
+        if (previewFile?.id === fileId) {
+          setPreviewFile(prev => prev ? { ...prev, name: newName } : prev);
+        }
+        setRenamingFileId(null);
+        setRenameFileVal('');
+      } else {
+        alert("Failed to rename file.");
+      }
+    } catch (err) {
+      console.error("Error renaming file:", err);
     }
   };
 
@@ -272,45 +365,62 @@ export default function DriveFileExplorer({
     }
   };
 
-  // Upload Files to selected folder
+  // Upload Single or Multiple Files to selected folder
   const handleProcessUpload = async (fileList) => {
     if (!fileList || fileList.length === 0 || !selectedFolder) return;
+    const filesArray = Array.from(fileList);
     setIsUploading(true);
-    setUploadProgress(15);
+    setUploadProgress(10);
     setUploadError(null);
 
-    const formData = new FormData();
-    formData.append('file', fileList[0]);
+    let failedCount = 0;
+    let lastErr = '';
 
-    const timer = setInterval(() => {
-      setUploadProgress(p => (p >= 85 ? p : p + 15));
-    }, 120);
+    for (let i = 0; i < filesArray.length; i++) {
+      const currentFile = filesArray[i];
+      setUploadStatusText(
+        filesArray.length > 1
+          ? `Uploading file ${i + 1} of ${filesArray.length}: "${currentFile.name}"...`
+          : `Streaming "${currentFile.name}" directly to Google Drive...`
+      );
+      setUploadProgress(Math.max(15, Math.round(((i) / filesArray.length) * 100)));
 
-    try {
-      const res = await fetch(`${API_BASE}/api/documents/folders/${selectedFolder.gdrive_folder_id}/upload`, {
-        method: 'POST',
-        body: formData
-      });
+      const formData = new FormData();
+      formData.append('file', currentFile);
 
-      clearInterval(timer);
-
-      if (res.ok) {
-        setUploadProgress(100);
-        setTimeout(() => {
-          setIsUploading(false);
-          setUploadProgress(0);
-          handleSelectFolder(selectedFolder);
-        }, 400);
-      } else {
-        const err = await res.json();
-        setUploadError(err.detail || "Upload failed.");
-        setIsUploading(false);
+      try {
+        const res = await fetch(`${API_BASE}/api/documents/folders/${selectedFolder.gdrive_folder_id}/upload`, {
+          method: 'POST',
+          body: formData
+        });
+        if (!res.ok) {
+          failedCount++;
+          const err = await res.json().catch(() => ({}));
+          lastErr = err.detail || `Failed to upload ${currentFile.name}`;
+        }
+      } catch (err) {
+        failedCount++;
+        lastErr = err.message || `Network error uploading ${currentFile.name}`;
       }
-    } catch (err) {
-      clearInterval(timer);
-      console.error("Upload failed:", err);
-      setUploadError(err.message || "Network error uploading file.");
+      setUploadProgress(Math.round(((i + 1) / filesArray.length) * 100));
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+
+    if (failedCount > 0) {
+      setUploadError(lastErr || `${failedCount} file(s) failed to upload.`);
       setIsUploading(false);
+      handleSelectFolder(selectedFolder);
+    } else {
+      setUploadProgress(100);
+      setTimeout(() => {
+        setIsUploading(false);
+        setUploadProgress(0);
+        setUploadStatusText('');
+        handleSelectFolder(selectedFolder);
+      }, 350);
     }
   };
 
@@ -342,14 +452,18 @@ export default function DriveFileExplorer({
     return files.filter(f => (f.name || '').toLowerCase().includes(q));
   }, [files, fileSearch]);
 
-  // Immediate subfolders of the currently selected folder
+  // Subfolders of the currently selected folder (or deep search across all folders when searching)
   const currentSubfolders = useMemo(() => {
     if (!selectedFolder) return [];
     const safeFolders = Array.isArray(folders) ? folders : [];
     const q = fileSearch.trim().toLowerCase();
+    if (q) {
+      return safeFolders
+        .filter(f => f.id !== selectedFolder.id && (f.name || '').toLowerCase().includes(q))
+        .sort((a, b) => (a.sort_order || 99) - (b.sort_order || 99) || (a.name || '').localeCompare(b.name || ''));
+    }
     return safeFolders
       .filter(f => f.parent_id === selectedFolder.id)
-      .filter(f => !q || (f.name || '').toLowerCase().includes(q))
       .sort((a, b) => (a.sort_order || 99) - (b.sort_order || 99) || (a.name || '').localeCompare(b.name || ''));
   }, [folders, selectedFolder, fileSearch]);
 
@@ -387,15 +501,15 @@ export default function DriveFileExplorer({
     const name = (file.name || '').toLowerCase();
 
     if (mime.includes('pdf') || name.endsWith('.pdf')) {
-      return <FileText size={18} style={{ color: '#ef4444' }} />;
+      return <FileText size={18} style={{ color: '#ef4444', flexShrink: 0 }} />;
     }
     if (mime.includes('image') || name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg')) {
-      return <Image size={18} style={{ color: '#3b82f6' }} />;
+      return <Image size={18} style={{ color: '#3b82f6', flexShrink: 0 }} />;
     }
     if (mime.includes('spreadsheet') || name.endsWith('.xlsx') || name.endsWith('.csv') || name.endsWith('.sheet')) {
-      return <FileSpreadsheet size={18} style={{ color: '#10b981' }} />;
+      return <FileSpreadsheet size={18} style={{ color: '#10b981', flexShrink: 0 }} />;
     }
-    return <File size={18} style={{ color: 'var(--text-secondary)' }} />;
+    return <File size={18} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />;
   };
 
   const isPreviewable = (file) => {
@@ -418,6 +532,7 @@ export default function DriveFileExplorer({
           return (
             <div key={node.id} style={{ display: 'flex', flexDirection: 'column' }}>
               <div 
+                title={node.name}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -434,7 +549,7 @@ export default function DriveFileExplorer({
                 }}
                 onClick={() => handleSelectFolder(node)}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', flex: 1, minWidth: 0 }}>
                   {hasChildren ? (
                     <span 
                       onClick={(e) => toggleFolderExpand(node.id, e)}
@@ -443,7 +558,7 @@ export default function DriveFileExplorer({
                       {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                     </span>
                   ) : (
-                    <span style={{ width: '17px' }} />
+                    <span style={{ width: '17px', flexShrink: 0 }} />
                   )}
 
                   <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
@@ -454,7 +569,7 @@ export default function DriveFileExplorer({
                   </div>
 
                   {isRenaming ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }} onClick={e => e.stopPropagation()}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }} onClick={e => e.stopPropagation()}>
                       <input 
                         type="text"
                         className="form-control"
@@ -475,14 +590,14 @@ export default function DriveFileExplorer({
                       </button>
                     </div>
                   ) : (
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span title={node.name} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {node.name}
                     </span>
                   )}
                 </div>
 
                 {!readOnly && !isRenaming && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '2px', opacity: isSelected ? 0.9 : 0.4 }} onClick={e => e.stopPropagation()}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '2px', opacity: isSelected ? 0.95 : 0.35, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                     <button 
                       className="btn btn-ghost btn-xs" 
                       style={{ padding: '2px 4px', height: 'auto' }}
@@ -497,15 +612,15 @@ export default function DriveFileExplorer({
                     <button 
                       className="btn btn-ghost btn-xs" 
                       style={{ padding: '2px 4px', height: 'auto' }}
-                      title="Rename"
+                      title="Rename Folder"
                       onClick={() => {
                         setRenamingFolderId(node.id);
-                        setRenameInputVal(node.name);
+                        setRenameInputVal(node.name.replace(/^📁\s*/, ''));
                       }}
                     >
                       <Edit2 size={11} />
                     </button>
-                    {node.sort_order === 99 && (
+                    {(node.sort_order >= 50 || node.type === 'custom') && (
                       <button 
                         className="btn btn-ghost btn-xs" 
                         style={{ padding: '2px 4px', height: 'auto', color: 'var(--text-danger)' }}
@@ -595,16 +710,25 @@ export default function DriveFileExplorer({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{ position: 'relative', width: '200px' }}>
+          <div style={{ position: 'relative', width: '220px' }}>
             <Search size={12} style={{ position: 'absolute', left: '8px', top: '7px', color: 'var(--text-tertiary)' }} />
             <input 
               type="text" 
-              placeholder="Search files..."
+              placeholder="Search folders & files..."
               className="form-control"
-              style={{ height: '26px', fontSize: '11.5px', paddingLeft: '26px', background: 'var(--bg-primary)' }}
+              style={{ height: '26px', fontSize: '11.5px', paddingLeft: '26px', paddingRight: fileSearch ? '22px' : '8px', background: 'var(--bg-primary)' }}
               value={fileSearch}
               onChange={e => setFileSearch(e.target.value)}
             />
+            {fileSearch && (
+              <button
+                onClick={() => setFileSearch('')}
+                style={{ position: 'absolute', right: '6px', top: '5px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: 0 }}
+                title="Clear search"
+              >
+                <X size={12} />
+              </button>
+            )}
           </div>
 
           <button 
@@ -623,16 +747,17 @@ export default function DriveFileExplorer({
             <button 
               className="btn btn-primary btn-sm" 
               style={{ padding: '4px 10px', fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '6px' }}
-              disabled={!selectedFolder}
+              disabled={!selectedFolder || isUploading}
               onClick={() => fileInputRef.current?.click()}
             >
-              <Upload size={12} /> Upload to Folder
+              <Upload size={12} /> Upload Files
             </button>
           )}
 
-          {/* Hidden file input */}
+          {/* Hidden multi-file input */}
           <input 
             type="file" 
+            multiple
             ref={fileInputRef}
             style={{ display: 'none' }}
             onChange={(e) => handleProcessUpload(e.target.files)}
@@ -646,7 +771,7 @@ export default function DriveFileExplorer({
           <RefreshCw size={13} className="spin" style={{ color: 'var(--text-info)' }} />
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '3px' }}>
-              <span>Streaming file directly to Google Drive...</span>
+              <span>{uploadStatusText || 'Streaming files directly to Google Drive...'}</span>
               <span>{uploadProgress}%</span>
             </div>
             <div style={{ height: '4px', background: 'var(--border)', borderRadius: '2px', overflow: 'hidden' }}>
@@ -669,7 +794,7 @@ export default function DriveFileExplorer({
       <div style={{ display: 'flex', flex: 1, minHeight: 0, position: 'relative' }}>
         
         {/* LEFT PANE: FOLDERS TREE */}
-        <div style={{ width: '280px', flexShrink: 0, borderRight: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ width: '310px', flexShrink: 0, borderRight: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column' }}>
           
           <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>
@@ -679,7 +804,7 @@ export default function DriveFileExplorer({
               <button 
                 className="btn btn-ghost btn-xs" 
                 style={{ padding: '2px 6px', fontSize: '10.5px', display: 'flex', alignItems: 'center', gap: '3px', color: 'var(--text-info)' }}
-                title="Create custom folder"
+                title="Create custom subfolder inside selected folder"
                 onClick={() => {
                   const rootTarget = selectedFolder?.id || folders[0]?.project_gdrive_id || folders[0]?.id;
                   if (rootTarget) {
@@ -716,7 +841,8 @@ export default function DriveFileExplorer({
             display: 'flex', 
             flexDirection: 'column', 
             background: isDragOver ? 'rgba(59, 130, 246, 0.04)' : 'var(--bg-primary)',
-            position: 'relative'
+            position: 'relative',
+            minWidth: 0
           }}
           onDragOver={(e) => {
             e.preventDefault();
@@ -731,16 +857,48 @@ export default function DriveFileExplorer({
             }
           }}
         >
-          {/* Breadcrumbs & Selected Folder Header */}
-          <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-              <span>Drive</span>
-              <ChevronRight size={11} />
-              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                {selectedFolder ? selectedFolder.name : 'Select a folder'}
+          {/* Hierarchical Clickable Breadcrumbs & Selected Folder Header */}
+          <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)', gap: '8px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
+              {breadcrumbPath.length > 1 && (
+                <button
+                  className="btn btn-ghost btn-xs"
+                  title="Up one folder level"
+                  onClick={() => handleSelectFolder(breadcrumbPath[breadcrumbPath.length - 2])}
+                  style={{ padding: '2px 6px', marginRight: '4px', display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', color: 'var(--text-info)', border: '1px solid var(--border)' }}
+                >
+                  <CornerLeftUp size={11} /> Up
+                </button>
+              )}
+              <span 
+                style={{ cursor: breadcrumbPath.length > 0 ? 'pointer' : 'default' }}
+                onClick={() => breadcrumbPath[0] && handleSelectFolder(breadcrumbPath[0])}
+              >
+                Drive
               </span>
+              {breadcrumbPath.map((crumb, idx) => {
+                const isLast = idx === breadcrumbPath.length - 1;
+                return (
+                  <React.Fragment key={crumb.id}>
+                    <ChevronRight size={11} style={{ opacity: 0.6 }} />
+                    <span
+                      onClick={() => !isLast && handleSelectFolder(crumb)}
+                      style={{
+                        fontWeight: isLast ? 600 : 500,
+                        color: isLast ? 'var(--text-primary)' : 'var(--text-info)',
+                        cursor: isLast ? 'default' : 'pointer',
+                        padding: '1px 4px',
+                        borderRadius: '4px'
+                      }}
+                      title={crumb.name}
+                    >
+                      {crumb.name}
+                    </span>
+                  </React.Fragment>
+                );
+              })}
               {selectedFolder && (
-                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', background: 'var(--bg-secondary)', padding: '1px 6px', borderRadius: '4px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', background: 'var(--bg-secondary)', padding: '1px 6px', borderRadius: '4px', marginLeft: '4px' }}>
                   {headerItemCount}
                 </span>
               )}
@@ -774,19 +932,21 @@ export default function DriveFileExplorer({
               <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                 <Folder size={36} style={{ opacity: 0.25, margin: '0 auto 12px', color: 'var(--text-secondary)' }} />
                 <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                  This folder is currently empty
+                  {fileSearch ? `No matches for "${fileSearch}"` : 'This folder is currently empty'}
                 </div>
                 <div style={{ fontSize: '11.5px', maxWidth: '340px', margin: '0 auto 16px', lineHeight: '1.4' }}>
-                  No subfolders or files have been added yet. Drag and drop documents here or create a new subfolder.
+                  {fileSearch
+                    ? 'Try clearing the search filter or selecting another project folder.'
+                    : 'No subfolders or files have been added yet. Drag and drop one or more documents here or create a new subfolder.'}
                 </div>
-                {!readOnly && (
+                {!readOnly && !fileSearch && (
                   <div style={{ display: 'flex', justifyContent: 'center', gap: '8px' }}>
                     <button 
                       className="btn btn-primary btn-sm"
                       onClick={() => fileInputRef.current?.click()}
                       style={{ fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '6px' }}
                     >
-                      <Upload size={12} /> Upload File
+                      <Upload size={12} /> Upload Files
                     </button>
                     <button 
                       className="btn btn-secondary btn-sm"
@@ -808,13 +968,13 @@ export default function DriveFileExplorer({
                   <div style={{ padding: '14px 16px 10px 16px', borderBottom: filteredFiles.length > 0 ? '1px solid var(--border)' : 'none' }}>
                     <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Folder size={12} style={{ color: '#3b82f6' }} />
-                      <span>Folders ({currentSubfolders.length})</span>
+                      <span>{fileSearch ? `Matching Folders (${currentSubfolders.length})` : `Folders (${currentSubfolders.length})`}</span>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
                       {currentSubfolders.map(sub => {
-                        const isOrders = sub.type === 'orders_root' || sub.type === 'order_folder' || sub.type === 'order_sub';
-                        const isDesigns = sub.type === 'design_root' || sub.type === 'design_package' || sub.type === 'design_sub';
+                        const isOrders = sub.type === 'orders_root' || sub.type === 'order_folder' || sub.type === 'order_sub' || sub.type === 'order_subfolder';
+                        const isDesigns = sub.type === 'design_root' || sub.type === 'design_package' || sub.type === 'design_sub' || sub.type === 'design_subfolder';
                         const isProject = sub.type === 'project_folder';
                         const iconColor = isOrders ? '#10b981' : isDesigns ? '#ec4899' : isProject ? '#8b5cf6' : '#3b82f6';
                         
@@ -822,8 +982,8 @@ export default function DriveFileExplorer({
                           <div
                             key={sub.id}
                             onClick={() => {
+                              if (fileSearch) setFileSearch('');
                               handleSelectFolder(sub);
-                              setExpandedFolders(prev => ({ ...prev, [sub.id]: true }));
                             }}
                             style={{
                               display: 'flex',
@@ -862,7 +1022,7 @@ export default function DriveFileExplorer({
                                 {sub.name}
                               </div>
                               <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>
-                                {sub.is_shortcut ? 'Project Shortcut' : sub.type === 'project_folder' ? 'Project Folder' : sub.type === 'orders_root' ? 'Orders Container' : sub.type === 'design_root' ? 'Designs Container' : sub.type === 'order_folder' ? 'Order' : sub.type === 'design_package' ? 'Design Package' : 'Folder'}
+                                {sub.is_shortcut ? 'Project Shortcut' : sub.type === 'project_folder' ? 'Project Folder' : sub.type === 'orders_root' ? 'Orders Container' : sub.type === 'design_root' ? 'Designs Container' : sub.type === 'order_folder' ? 'Order Package' : sub.type === 'design_package' ? 'Design Package' : 'Subfolder'}
                               </div>
                             </div>
                             <ChevronRight size={13} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
@@ -883,129 +1043,169 @@ export default function DriveFileExplorer({
                       </div>
                     )}
                     <table className="table" style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
-                    <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600 }}>File Name</th>
-                    <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '110px' }}>Size</th>
-                    <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Uploaded</th>
-                    <th style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 600, width: '180px' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredFiles.map(file => (
-                    <tr 
-                      key={file.id} 
-                      style={{ 
-                        borderBottom: '1px solid var(--border)',
-                        background: previewFile?.id === file.id ? 'rgba(59, 130, 246, 0.06)' : 'transparent',
-                        transition: 'background 0.1s'
-                      }}
-                    >
-                      <td style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {getFileIcon(file)}
-                        <span 
-                          style={{ fontWeight: 500, color: 'var(--text-primary)', cursor: isPreviewable(file) ? 'pointer' : 'default' }}
-                          onClick={() => {
-                            if (isPreviewable(file)) setPreviewFile(file);
-                          }}
-                          title={file.name}
-                        >
-                          {file.name}
-                        </span>
-                      </td>
-
-                      <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', fontSize: '11.5px' }}>
-                        {formatBytes(file.sizeBytes)}
-                      </td>
-
-                      <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', fontSize: '11.5px' }}>
-                        {formatDate(file.createdTime || file.modifiedTime)}
-                      </td>
-
-                      <td style={{ padding: '8px 12px', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                          {isPreviewable(file) && (
-                            <button 
-                              className="btn btn-ghost btn-xs"
-                              title="Preview in Portal"
-                              onClick={() => setPreviewFile(file)}
-                              style={{ padding: '3px 6px', fontSize: '11px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '3px' }}
+                      <thead>
+                        <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                          <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600 }}>File Name</th>
+                          <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '110px' }}>Size</th>
+                          <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 600, width: '130px' }}>Uploaded</th>
+                          <th style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 600, width: '210px' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredFiles.map(file => {
+                          const isRenamingThisFile = renamingFileId === file.id;
+                          return (
+                            <tr 
+                              key={file.id} 
+                              style={{ 
+                                borderBottom: '1px solid var(--border)',
+                                background: previewFile?.id === file.id ? 'rgba(59, 130, 246, 0.06)' : 'transparent',
+                                transition: 'background 0.1s'
+                              }}
                             >
-                              <Eye size={12} /> Preview
-                            </button>
-                          )}
+                              <td style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                {getFileIcon(file)}
+                                {isRenamingThisFile ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
+                                    <input
+                                      type="text"
+                                      className="form-control"
+                                      style={{ height: '24px', fontSize: '12px', padding: '2px 6px' }}
+                                      value={renameFileVal}
+                                      onChange={e => setRenameFileVal(e.target.value)}
+                                      autoFocus
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') handleConfirmRenameFile(file.id);
+                                        if (e.key === 'Escape') setRenamingFileId(null);
+                                      }}
+                                    />
+                                    <button className="btn btn-primary btn-xs" onClick={() => handleConfirmRenameFile(file.id)}>
+                                      <Check size={11} />
+                                    </button>
+                                    <button className="btn btn-ghost btn-xs" onClick={() => setRenamingFileId(null)}>
+                                      <X size={11} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span 
+                                    style={{ fontWeight: 500, color: 'var(--text-primary)', cursor: isPreviewable(file) ? 'pointer' : 'default' }}
+                                    onClick={() => {
+                                      if (isPreviewable(file)) setPreviewFile(file);
+                                    }}
+                                    title={file.name}
+                                  >
+                                    {file.name}
+                                  </span>
+                                )}
+                              </td>
 
-                          {file.webContentLink && (
-                            <a 
-                              href={file.webContentLink}
-                              download
-                              className="btn btn-ghost btn-xs"
-                              title="Download file"
-                              style={{ padding: '3px 6px', fontSize: '11px' }}
-                            >
-                              <Download size={12} />
-                            </a>
-                          )}
+                              <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', fontSize: '11.5px' }}>
+                                {formatBytes(file.sizeBytes)}
+                              </td>
 
-                          {file.webViewLink && (
-                            <a 
-                              href={file.webViewLink}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="btn btn-ghost btn-xs"
-                              title="Open in Google Drive"
-                              style={{ padding: '3px 6px', fontSize: '11px' }}
-                            >
-                              <ExternalLink size={11} />
-                            </a>
-                          )}
+                              <td style={{ padding: '8px 12px', color: 'var(--text-secondary)', fontSize: '11.5px' }}>
+                                {formatDate(file.createdTime || file.modifiedTime)}
+                              </td>
 
-                          {!readOnly && (
-                            <button 
-                              className="btn btn-ghost btn-xs"
-                              title="Move to Trash"
-                              onClick={() => handleTrashFile(file)}
-                              style={{ padding: '3px 6px', color: 'var(--text-danger)' }}
-                            >
-                              <Trash2 size={11} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div style={{ margin: '16px', padding: '24px 16px', border: '1px dashed var(--border)', borderRadius: '8px', textAlign: 'center', background: 'var(--bg-secondary)' }}>
-              <Upload size={20} style={{ opacity: 0.35, margin: '0 auto 8px', color: 'var(--text-secondary)' }} />
-              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '3px' }}>
-                No loose files in "{selectedFolder.name}"
+                              <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                                  {isPreviewable(file) && (
+                                    <button 
+                                      className="btn btn-ghost btn-xs"
+                                      title="Preview in Portal"
+                                      onClick={() => setPreviewFile(file)}
+                                      style={{ padding: '3px 6px', fontSize: '11px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '3px' }}
+                                    >
+                                      <Eye size={12} /> Preview
+                                    </button>
+                                  )}
+
+                                  {!readOnly && (
+                                    <button
+                                      className="btn btn-ghost btn-xs"
+                                      title="Rename File"
+                                      onClick={() => {
+                                        setRenamingFileId(file.id);
+                                        setRenameFileVal(file.name);
+                                      }}
+                                      style={{ padding: '3px 6px', fontSize: '11px' }}
+                                    >
+                                      <Edit2 size={11} />
+                                    </button>
+                                  )}
+
+                                  {file.webContentLink && (
+                                    <a 
+                                      href={file.webContentLink}
+                                      download
+                                      className="btn btn-ghost btn-xs"
+                                      title="Download file"
+                                      style={{ padding: '3px 6px', fontSize: '11px' }}
+                                    >
+                                      <Download size={12} />
+                                    </a>
+                                  )}
+
+                                  {file.webViewLink && (
+                                    <a 
+                                      href={file.webViewLink}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="btn btn-ghost btn-xs"
+                                      title="Open in Google Drive"
+                                      style={{ padding: '3px 6px', fontSize: '11px' }}
+                                    >
+                                      <ExternalLink size={11} />
+                                    </a>
+                                  )}
+
+                                  {!readOnly && (
+                                    <button 
+                                      className="btn btn-ghost btn-xs"
+                                      title="Move to Trash"
+                                      onClick={() => handleTrashFile(file)}
+                                      style={{ padding: '3px 6px', color: 'var(--text-danger)' }}
+                                    >
+                                      <Trash2 size={11} />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div style={{ margin: '16px', padding: '24px 16px', border: '1px dashed var(--border)', borderRadius: '8px', textAlign: 'center', background: 'var(--bg-secondary)' }}>
+                    <Upload size={20} style={{ opacity: 0.35, margin: '0 auto 8px', color: 'var(--text-secondary)' }} />
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '3px' }}>
+                      No loose files in "{selectedFolder.name}"
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', maxWidth: '360px', margin: '0 auto 12px', lineHeight: '1.4' }}>
+                      Drag & drop one or multiple files here to upload to this folder, or select a subfolder above.
+                    </div>
+                    {!readOnly && (
+                      <button 
+                        className="btn btn-secondary btn-xs"
+                        onClick={() => fileInputRef.current?.click()}
+                        style={{ fontSize: '11px', padding: '4px 10px' }}
+                      >
+                        <Upload size={11} style={{ marginRight: '4px' }} /> Upload Files to Folder
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', maxWidth: '360px', margin: '0 auto 12px', lineHeight: '1.4' }}>
-                Drop files here to upload to this folder, or select a subfolder above to view its contents.
-              </div>
-              {!readOnly && (
-                <button 
-                  className="btn btn-secondary btn-xs"
-                  onClick={() => fileInputRef.current?.click()}
-                  style={{ fontSize: '11px', padding: '4px 10px' }}
-                >
-                  <Upload size={11} style={{ marginRight: '4px' }} /> Upload to this folder
-                </button>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      )}
-    </div>
-  </div>
 
         {/* IN-PORTAL PREVIEW DRAWER */}
         {previewFile && (
           <div style={{
-            width: '450px',
+            width: '460px',
             flexShrink: 0,
             borderLeft: '1px solid var(--border)',
             background: 'var(--bg-secondary)',

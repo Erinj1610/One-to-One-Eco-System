@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
+import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import PipelinePage from './PipelinePage';
 import { 
@@ -8,7 +9,7 @@ import {
   MoreVertical, Calendar, DollarSign, MessageSquare, Send, ChevronRight,
   TrendingDown, Star, Filter, Plus, AlertTriangle, ShieldAlert, Heart, Target,
   X, HelpCircle, Activity, Award, Edit3, Users, ClipboardList,
-  ArrowUpDown, ArrowUp, ArrowDown, FolderGit, ShoppingBag
+  ArrowUpDown, ArrowUp, ArrowDown, FolderGit, ShoppingBag, Trash2, Check, MapPin
 } from 'lucide-react';
 import CollapsibleAlertSidebar from '../components/common/CollapsibleAlertSidebar';
 import MobileCrmViewer from '../components/mobile/MobileCrmViewer';
@@ -39,6 +40,17 @@ export default function CrmPage() {
     addProject,
     getModuleName
   } = useStore();
+  const { user, userProfile } = useAuth();
+  const currentStaffName = useMemo(() => {
+    if (userProfile?.name) return userProfile.name;
+    if (user?.displayName) return user.displayName;
+    if (user?.name) return user.name;
+    if (user?.email) {
+      const localPart = user.email.split('@')[0];
+      return localPart.replace(/[._-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+    return 'Staff';
+  }, [user, userProfile]);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -159,6 +171,11 @@ export default function CrmPage() {
 
   // Activity Log States
   const [newActivityText, setNewActivityText] = useState('');
+  const [newActivityType, setNewActivityType] = useState('Call');
+  const [activityFilterType, setActivityFilterType] = useState('All');
+  const [editingActivityId, setEditingActivityId] = useState(null);
+  const [editingActivityText, setEditingActivityText] = useState('');
+  const [editingActivityType, setEditingActivityType] = useState('Note');
   const [clientActivities, setClientActivities] = useState([]);
 
   useEffect(() => {
@@ -177,8 +194,9 @@ export default function CrmPage() {
       // Load activities from contact record
       setClientActivities(selectedClient.activities || []);
       setNewActivityText('');
+      setEditingActivityId(null);
     }
-  }, [selectedClient]);
+  }, [selectedClient?.id]);
 
   const handleSaveClient = async () => {
     if (!editClientData.name.trim()) {
@@ -1809,107 +1827,363 @@ export default function CrmPage() {
         )}
 
         {/* TAB 4: ACTIVITY LOG */}
-        {activeTab === 'activity' && (
-          <div className="animation-fade-in">
-            {/* Log a new activity */}
-            <div className="card" style={{ marginBottom: '20px', border: '1px solid var(--border-info)' }}>
-              <div className="card-head">
-                <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <ClipboardList size={16} color="var(--text-info)" /> Log Interaction
-                </div>
-              </div>
-              <div className="card-body" style={{ padding: '16px' }}>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  <textarea
-                    className="form-control"
-                    rows={2}
-                    placeholder="Describe the interaction (e.g. 'Call with Sarah — confirmed Phase 2 brief')..."
-                    value={newActivityText}
-                    onChange={e => setNewActivityText(e.target.value)}
-                    style={{ flex: 1, resize: 'vertical', fontSize: '13px', fontFamily: 'inherit' }}
-                  />
-                  <button
-                    className="btn btn-primary"
-                    style={{ height: '52px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
-                    onClick={async () => {
-                      if (!newActivityText.trim()) return;
-                      const now = new Date();
-                      const todayIso = now.toISOString().split('T')[0];
-                      const timestamp = now.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) +
-                        ' ' + now.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
-                      const newEntry = {
-                        id: Date.now(),
-                        text: newActivityText.trim(),
-                        date: timestamp,
-                        staff: 'You',
-                        type: 'Note'
-                      };
-                      const updated = [...clientActivities, newEntry];
-                      setClientActivities(updated);
-                      setNewActivityText('');
-                      if (updateClient && selectedClient?.id) {
-                        await updateClient(selectedClient.id, {
-                          activities: updated,
-                          lastContactDate: todayIso,
-                          lastContactSummary: newActivityText.trim()
-                        });
-                      }
-                    }}
-                  >
-                    <Send size={14} /> Log Activity
-                  </button>
-                </div>
-              </div>
-            </div>
+        {activeTab === 'activity' && (() => {
+          const activityTypeOptions = [
+            { value: 'Call', label: 'Call', icon: Phone, color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.12)' },
+            { value: 'Meeting', label: 'Meeting', icon: Users, color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.12)' },
+            { value: 'Email', label: 'Email', icon: Mail, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' },
+            { value: 'Site Visit', label: 'Site Visit', icon: MapPin, color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)' },
+            { value: 'WhatsApp', label: 'WhatsApp', icon: MessageSquare, color: '#22c55e', bg: 'rgba(34, 197, 94, 0.12)' },
+            { value: 'Note', label: 'Note', icon: FileText, color: 'var(--text-secondary)', bg: 'var(--bg-secondary)' }
+          ];
 
-            {/* Timeline */}
-            <div className="card">
-              <div className="card-head">
-                <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Activity size={16} color="var(--text-secondary)" /> Interaction History for {selectedClient.name}
+          const getTypeMeta = (typeVal) => {
+            return activityTypeOptions.find(t => t.value === typeVal) || activityTypeOptions[activityTypeOptions.length - 1];
+          };
+
+          const persistActivities = async (updatedList, latestSummaryText = null) => {
+            setClientActivities(updatedList);
+            const nowIso = new Date().toISOString().split('T')[0];
+            const summaryToSave = latestSummaryText !== null
+              ? latestSummaryText
+              : (updatedList.length > 0 ? updatedList[updatedList.length - 1].text : '');
+            setSelectedClient(prev => prev ? {
+              ...prev,
+              activities: updatedList,
+              lastContactDate: updatedList.length > 0 ? nowIso : prev.lastContactDate,
+              lastContactSummary: summaryToSave
+            } : prev);
+            if (updateClient && selectedClient?.id) {
+              await updateClient(selectedClient.id, {
+                activities: updatedList,
+                lastContactDate: updatedList.length > 0 ? nowIso : selectedClient.lastContactDate,
+                lastContactSummary: summaryToSave
+              });
+            }
+          };
+
+          const handleLogNewActivity = async () => {
+            if (!newActivityText.trim()) return;
+            const now = new Date();
+            const timestamp = now.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) +
+              ' ' + now.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+            const newEntry = {
+              id: Date.now(),
+              text: newActivityText.trim(),
+              date: timestamp,
+              staff: currentStaffName,
+              type: newActivityType || 'Note'
+            };
+            const updated = [...clientActivities, newEntry];
+            setNewActivityText('');
+            await persistActivities(updated, newEntry.text);
+            showToast(`${newEntry.type} logged for ${selectedClient.name}`);
+          };
+
+          const handleSaveEditedActivity = async (entryId) => {
+            if (!editingActivityText.trim()) return;
+            const updated = clientActivities.map(item =>
+              item.id === entryId
+                ? { ...item, text: editingActivityText.trim(), type: editingActivityType }
+                : item
+            );
+            setEditingActivityId(null);
+            setEditingActivityText('');
+            await persistActivities(updated);
+            showToast('Interaction updated');
+          };
+
+          const handleDeleteActivity = async (entry) => {
+            if (!window.confirm('Delete this interaction entry?')) return;
+            const updated = clientActivities.filter(item => item.id !== entry.id);
+            await persistActivities(updated);
+            showToast('Interaction removed');
+          };
+
+          // Build optional system milestones from linked Projects & Orders
+          const systemEvents = [];
+          (clientProjects || []).forEach(p => {
+            if (p.start && p.start !== '—') {
+              systemEvents.push({
+                id: `sys-proj-${p.id || p.name}`,
+                text: `Project "${p.name}" initiated (${p.stage || 'Stage 1'})`,
+                date: p.start,
+                staff: p.pm || p.projectManager || 'System',
+                type: 'System',
+                isSystem: true
+              });
+            }
+            (p.scopedOrders || []).forEach(o => {
+              const oDate = o.orderDate || o.pfDate;
+              if (oDate && oDate !== '—') {
+                systemEvents.push({
+                  id: `sys-ord-${o.id || o.poNumber}`,
+                  text: `Order ${o.poNumber || o.name || ''} (${p.name}) — R ${Number(o.value || 0).toLocaleString()}`,
+                  date: oDate,
+                  staff: 'Procurement',
+                  type: 'System',
+                  isSystem: true
+                });
+              }
+            });
+          });
+
+          const reversedManual = [...clientActivities].reverse();
+          const allTimelineEntries = activityFilterType === 'System'
+            ? systemEvents
+            : activityFilterType === 'All'
+            ? [...reversedManual, ...systemEvents]
+            : reversedManual.filter(e => (e.type || 'Note') === activityFilterType);
+
+          return (
+            <div className="animation-fade-in">
+              {/* Log a new activity */}
+              <div className="card" style={{ marginBottom: '20px', border: '1px solid var(--border-info)' }}>
+                <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                  <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <ClipboardList size={16} color="var(--text-info)" /> Log Interaction
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                    Logging as <strong style={{ color: 'var(--text-secondary)' }}>{currentStaffName}</strong> · Press <kbd style={{ padding: '1px 5px', borderRadius: '3px', border: '1px solid var(--border)', background: 'var(--bg-secondary)', fontSize: '10px' }}>Ctrl + Enter</kbd> to save
+                  </div>
+                </div>
+                <div className="card-body" style={{ padding: '16px' }}>
+                  {/* Interaction Type Pills */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginRight: '4px' }}>Type:</span>
+                    {activityTypeOptions.map(opt => {
+                      const IconComp = opt.icon;
+                      const isSelected = newActivityType === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setNewActivityType(opt.value)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '4px 10px',
+                            borderRadius: '16px',
+                            fontSize: '11.5px',
+                            fontWeight: isSelected ? 600 : 500,
+                            cursor: 'pointer',
+                            border: isSelected ? `1px solid ${opt.color}` : '1px solid var(--border)',
+                            background: isSelected ? opt.bg : 'var(--bg-secondary)',
+                            color: isSelected ? opt.color : 'var(--text-secondary)',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <IconComp size={12} />
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                    <textarea
+                      className="form-control"
+                      rows={2}
+                      placeholder={`Describe the ${newActivityType.toLowerCase()} (e.g. 'Confirmed Phase 2 lighting schedule and delivery dates')...`}
+                      value={newActivityText}
+                      onChange={e => setNewActivityText(e.target.value)}
+                      onKeyDown={e => {
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                          e.preventDefault();
+                          handleLogNewActivity();
+                        }
+                      }}
+                      style={{ flex: 1, resize: 'vertical', fontSize: '13px', fontFamily: 'inherit' }}
+                    />
+                    <button
+                      className="btn btn-primary"
+                      disabled={!newActivityText.trim()}
+                      style={{ height: '52px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
+                      onClick={handleLogNewActivity}
+                    >
+                      <Send size={14} /> Log {newActivityType}
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div className="card-body" style={{ padding: '16px' }}>
-                {clientActivities.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-tertiary)', fontSize: '13px' }}>
-                    <Activity size={28} style={{ marginBottom: '10px', opacity: 0.4 }} />
-                    <div>No interactions logged yet.</div>
-                    <div style={{ fontSize: '11px', marginTop: '4px' }}>Use the form above to record calls, meetings, emails, and follow-ups.</div>
+
+              {/* Timeline */}
+              <div className="card">
+                <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                  <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Activity size={16} color="var(--text-secondary)" /> Interaction History for {selectedClient.name}
+                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500 }}>
+                      ({allTimelineEntries.length})
+                    </span>
                   </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                    {[...clientActivities].reverse().map((entry, idx, arr) => (
-                      <div key={entry.id} style={{ display: 'flex', gap: '14px', paddingBottom: idx < arr.length - 1 ? '16px' : 0 }}>
-                        {/* Timeline dot + line */}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-                          <div style={{
-                            width: '10px', height: '10px', borderRadius: '50%',
-                            background: idx === 0 ? 'var(--text-info)' : 'var(--border)',
-                            border: idx === 0 ? '2px solid var(--text-info)' : '2px solid var(--text-tertiary)',
-                            marginTop: '3px', flexShrink: 0
-                          }} />
-                          {idx < arr.length - 1 && (
-                            <div style={{ width: '2px', flex: 1, background: 'var(--border)', marginTop: '4px' }} />
-                          )}
-                        </div>
-                        {/* Entry content */}
-                        <div style={{ flex: 1, paddingBottom: idx < arr.length - 1 ? '4px' : 0 }}>
-                          <div style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--text-primary)', lineHeight: '1.4' }}>
-                            {entry.text}
-                          </div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '3px', display: 'flex', gap: '10px' }}>
-                            <span>{entry.date}</span>
-                            {entry.staff && <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>— {entry.staff}</span>}
-                          </div>
-                        </div>
-                      </div>
+
+                  {/* Filter pills */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                    {['All', ...activityTypeOptions.map(o => o.value), ...(systemEvents.length > 0 ? ['System'] : [])].map(fType => (
+                      <button
+                        key={fType}
+                        type="button"
+                        onClick={() => setActivityFilterType(fType)}
+                        style={{
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          border: activityFilterType === fType ? '1px solid var(--text-info)' : '1px solid var(--border)',
+                          background: activityFilterType === fType ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
+                          color: activityFilterType === fType ? 'var(--text-info)' : 'var(--text-secondary)',
+                          fontWeight: activityFilterType === fType ? 600 : 400
+                        }}
+                      >
+                        {fType}
+                      </button>
                     ))}
                   </div>
-                )}
+                </div>
+
+                <div className="card-body" style={{ padding: '16px' }}>
+                  {allTimelineEntries.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-tertiary)', fontSize: '13px' }}>
+                      <Activity size={28} style={{ marginBottom: '10px', opacity: 0.4 }} />
+                      <div>{activityFilterType === 'All' ? 'No interactions logged yet.' : `No ${activityFilterType} interactions found.`}</div>
+                      <div style={{ fontSize: '11px', marginTop: '4px' }}>Use the form above to record calls, meetings, emails, site visits, and follow-ups.</div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                      {allTimelineEntries.map((entry, idx, arr) => {
+                        const typeMeta = entry.isSystem
+                          ? { label: 'Milestone', icon: Briefcase, color: '#64748b', bg: 'var(--bg-secondary)' }
+                          : getTypeMeta(entry.type || 'Note');
+                        const EntryIcon = typeMeta.icon;
+                        const isEditingThis = editingActivityId === entry.id;
+                        const staffLabel = entry.staff === 'You' ? currentStaffName : (entry.staff || currentStaffName);
+
+                        return (
+                          <div key={entry.id} style={{ display: 'flex', gap: '14px', paddingBottom: idx < arr.length - 1 ? '16px' : 0 }}>
+                            {/* Timeline icon + vertical connector */}
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+                              <div style={{
+                                width: '26px', height: '26px', borderRadius: '50%',
+                                background: typeMeta.bg,
+                                border: `1px solid ${typeMeta.color}`,
+                                color: typeMeta.color,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                flexShrink: 0
+                              }}>
+                                <EntryIcon size={12} />
+                              </div>
+                              {idx < arr.length - 1 && (
+                                <div style={{ width: '2px', flex: 1, background: 'var(--border)', marginTop: '4px' }} />
+                              )}
+                            </div>
+
+                            {/* Entry content */}
+                            <div style={{ flex: 1, paddingBottom: idx < arr.length - 1 ? '4px' : 0 }}>
+                              {isEditingThis ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--bg-secondary)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                    {activityTypeOptions.map(opt => (
+                                      <button
+                                        key={opt.value}
+                                        type="button"
+                                        onClick={() => setEditingActivityType(opt.value)}
+                                        style={{
+                                          padding: '2px 8px',
+                                          fontSize: '10.5px',
+                                          borderRadius: '12px',
+                                          border: editingActivityType === opt.value ? `1px solid ${opt.color}` : '1px solid var(--border)',
+                                          background: editingActivityType === opt.value ? opt.bg : 'transparent',
+                                          color: editingActivityType === opt.value ? opt.color : 'var(--text-secondary)',
+                                          cursor: 'pointer'
+                                        }}
+                                      >
+                                        {opt.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <textarea
+                                    className="form-control"
+                                    rows={2}
+                                    value={editingActivityText}
+                                    onChange={e => setEditingActivityText(e.target.value)}
+                                    style={{ fontSize: '12.5px', fontFamily: 'inherit' }}
+                                    autoFocus
+                                  />
+                                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                    <button className="btn btn-ghost btn-xs" onClick={() => setEditingActivityId(null)}>
+                                      Cancel
+                                    </button>
+                                    <button className="btn btn-primary btn-xs" onClick={() => handleSaveEditedActivity(entry.id)}>
+                                      <Check size={11} style={{ marginRight: '4px' }} /> Save
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                      <span style={{
+                                        fontSize: '10.5px',
+                                        fontWeight: 600,
+                                        padding: '1px 7px',
+                                        borderRadius: '10px',
+                                        background: typeMeta.bg,
+                                        color: typeMeta.color,
+                                        border: `1px solid ${typeMeta.color}33`
+                                      }}>
+                                        {typeMeta.label}
+                                      </span>
+                                      <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{entry.date}</span>
+                                      {staffLabel && (
+                                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                          · {staffLabel}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {!entry.isSystem && (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                        <button
+                                          className="btn btn-ghost btn-xs"
+                                          title="Edit interaction"
+                                          onClick={() => {
+                                            setEditingActivityId(entry.id);
+                                            setEditingActivityText(entry.text);
+                                            setEditingActivityType(entry.type || 'Note');
+                                          }}
+                                          style={{ padding: '2px 5px', opacity: 0.65 }}
+                                        >
+                                          <Edit3 size={11} />
+                                        </button>
+                                        <button
+                                          className="btn btn-ghost btn-xs"
+                                          title="Delete interaction"
+                                          onClick={() => handleDeleteActivity(entry)}
+                                          style={{ padding: '2px 5px', color: 'var(--text-danger)', opacity: 0.65 }}
+                                        >
+                                          <Trash2 size={11} />
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--text-primary)', lineHeight: '1.45', marginTop: '4px', whiteSpace: 'pre-wrap' }}>
+                                    {entry.text}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* TAB 4: FINANCIALS */}
         {activeTab === 'financials' && (() => {
