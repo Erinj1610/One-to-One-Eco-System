@@ -204,6 +204,14 @@ def get_procurement_summary(db: Session = Depends(get_db)):
                 if not is_special:
                     partially_allocated_docs += 1
 
+        po_suppliers = db.query(PalladiumPOLine.vendor_name).filter(PalladiumPOLine.vendor_name.isnot(None)).distinct().all()
+        grn_suppliers = db.query(PalladiumGRNLine.vendor_name).filter(PalladiumGRNLine.vendor_name.isnot(None)).distinct().all()
+        all_suppliers = sorted({
+            str(s[0]).strip()
+            for s in (po_suppliers + grn_suppliers)
+            if s and s[0] and str(s[0]).strip()
+        })
+
         return {
             "unallocated_count": unallocated_docs,
             "partially_allocated_count": partially_allocated_docs,
@@ -215,7 +223,8 @@ def get_procurement_summary(db: Session = Depends(get_db)):
             "archived_count": len(archived_doc_keys),
             "total_documents": len(doc_stats),
             "total_lines": len(po_lines) + len(grn_lines),
-            "total_unallocated_units": round(total_unallocated_units, 2)
+            "total_unallocated_units": round(total_unallocated_units, 2),
+            "all_suppliers": all_suppliers
         }
     except Exception as e:
         logger.error(f"Error computing procurement summary: {e}", exc_info=True)
@@ -802,6 +811,9 @@ def get_document_details(
 
         allocated_lines = sum(1 for l in lines if l["allocation_status"] == "FULLY_ALLOCATED")
         unallocated_lines = sum(1 for l in lines if l["allocation_status"] == "NEEDS_ALLOCATION")
+        total_qty = round(sum(float(l.get("total_qty") or 0.0) for l in lines), 2)
+        allocated_qty = round(sum(float(l.get("allocated_qty") or 0.0) for l in lines), 2)
+        unallocated_qty = round(sum(float(l.get("unallocated_qty") or 0.0) for l in lines), 2)
 
         if allocated_lines == len(lines) and len(lines) > 0:
             doc_status = "FULLY_ALLOCATED"
@@ -825,6 +837,7 @@ def get_document_details(
         is_flagged_issue = bool(doc_issue and not is_internal and not is_archived)
 
         return {
+            "id": f"{clean_doc_type}_{clean_doc_no}",
             "doc_type": clean_doc_type,
             "document_no": clean_doc_no,
             "vendor_name": vendor_name,
@@ -834,6 +847,9 @@ def get_document_details(
             "customer_name": customer_name,
             "erp_status": erp_status,
             "total_lines": len(lines),
+            "total_qty": total_qty,
+            "allocated_qty": allocated_qty,
+            "unallocated_qty": unallocated_qty,
             "allocated_lines_count": allocated_lines,
             "unallocated_lines_count": unallocated_lines,
             "total_value": round(total_value, 2),
@@ -872,6 +888,7 @@ def get_candidate_orders(
         all_projects = {p.id: p for p in db.query(Project).all()}
         proj_by_key = {p.project_key: p for p in all_projects.values() if p.project_key}
         all_orders = db.query(Order).all()
+        order_by_id = {o.id: o for o in all_orders}
         order_by_po_number = {str(o.po_number).strip(): o for o in all_orders if o.po_number}
         order_by_quote_slug = {}
         for o in all_orders:
@@ -880,14 +897,20 @@ def get_candidate_orders(
                 if slug_key:
                     order_by_quote_slug[slug_key] = o
 
-        # 2. Find matching order items by code or one_one_code or description
-        order_items = db.query(OrderItem).filter(
-            or_(
-                OrderItem.code.ilike(f"%{clean_sku}%"),
-                OrderItem.one_one_code.ilike(f"%{clean_sku}%"),
-                OrderItem.description.ilike(f"%{clean_sku}%")
-            )
-        ).all()
+        # 2. Find matching order items by code or one_one_code or description (including stripped supplier prefix)
+        stripped_sku = strip_sku_prefix(clean_sku)
+        sku_filters = [
+            OrderItem.code.ilike(f"%{clean_sku}%"),
+            OrderItem.one_one_code.ilike(f"%{clean_sku}%"),
+            OrderItem.description.ilike(f"%{clean_sku}%")
+        ]
+        if stripped_sku and stripped_sku.upper() != clean_sku.upper():
+            sku_filters.extend([
+                OrderItem.code.ilike(f"%{stripped_sku}%"),
+                OrderItem.one_one_code.ilike(f"%{stripped_sku}%"),
+                OrderItem.description.ilike(f"%{stripped_sku}%")
+            ])
+        order_items = db.query(OrderItem).filter(or_(*sku_filters)).all()
 
         norm_doc_type = (doc_type or "PO").upper().strip()
 
@@ -1124,6 +1147,7 @@ def allocate_procurement_item(
             notes=notes
         )
         db.add(alloc)
+        db.flush()
 
         # 4. Update OrderItem if matched
         if matched_item:
@@ -1142,6 +1166,7 @@ def allocate_procurement_item(
                     matched_item.eta = str(eta)
                 p_hist = list(matched_item.purchase_history or [])
                 p_hist.append({
+                    "allocation_id": alloc.id,
                     "id": source_doc_no,
                     "ref": source_doc_no,
                     "qty": allocated_qty,
@@ -1160,6 +1185,7 @@ def allocate_procurement_item(
                     matched_item.received_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
                 r_hist = list(matched_item.receiving_history or [])
                 r_hist.append({
+                    "allocation_id": alloc.id,
                     "id": source_doc_no,
                     "ref": source_doc_no,
                     "qty": allocated_qty,
@@ -1316,6 +1342,7 @@ def batch_allocate_procurement_items(
                 notes=notes
             )
             db.add(alloc)
+            db.flush()
 
             if matched_item:
                 if allocation_type == "PO":
@@ -1333,6 +1360,7 @@ def batch_allocate_procurement_items(
                         matched_item.eta = str(eta)
                     p_hist = list(matched_item.purchase_history or [])
                     p_hist.append({
+                        "allocation_id": alloc.id,
                         "id": source_doc_no,
                         "ref": source_doc_no,
                         "qty": allocated_qty,
@@ -1351,6 +1379,7 @@ def batch_allocate_procurement_items(
                         matched_item.received_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
                     r_hist = list(matched_item.receiving_history or [])
                     r_hist.append({
+                        "allocation_id": alloc.id,
                         "id": source_doc_no,
                         "ref": source_doc_no,
                         "qty": allocated_qty,
@@ -1405,7 +1434,7 @@ def revert_order_item_for_cancelled_allocations(db: Session, item: OrderItem, ca
     new_p = [
         h for h in cur_p
         if int(h.get("allocation_id") or 0) not in cancelled_alloc_ids
-        and str(h.get("id") or h.get("ref") or "").strip() not in cancelled_docs
+        and (bool(h.get("allocation_id")) or str(h.get("id") or h.get("ref") or "").strip() not in cancelled_docs)
     ]
     item.purchase_history = new_p
     item.po_qty_ordered = int(sum(float(h.get("qty") or 0) for h in new_p))
@@ -1428,7 +1457,7 @@ def revert_order_item_for_cancelled_allocations(db: Session, item: OrderItem, ca
     new_r = [
         h for h in cur_r
         if int(h.get("allocation_id") or 0) not in cancelled_alloc_ids
-        and str(h.get("id") or h.get("ref") or "").strip() not in cancelled_docs
+        and (bool(h.get("allocation_id")) or str(h.get("id") or h.get("ref") or "").strip() not in cancelled_docs)
     ]
     item.receiving_history = new_r
     item.received_qty = int(sum(float(h.get("qty") or 0) for h in new_r))
@@ -1870,6 +1899,7 @@ def bulk_allocate_approved(
                     notes=notes
                 )
                 db.add(alloc)
+                db.flush()
 
                 if matched_item:
                     matched_item.po_ref = doc_no
@@ -1890,6 +1920,7 @@ def bulk_allocate_approved(
 
                     p_hist = list(matched_item.purchase_history or [])
                     p_hist.append({
+                        "allocation_id": alloc.id,
                         "id": doc_no,
                         "ref": doc_no,
                         "qty": rem_qty,
@@ -2369,6 +2400,7 @@ def manual_batch_record_procurement(payload: Dict[str, Any] = Body(...), db: Ses
                     notes=f"Recorded via Manual/Paper Batch Entry ({doc_type}) on {now_dt.strftime('%Y-%m-%d')}"
                 )
                 db.add(alloc)
+                db.flush()
 
                 # 4. Update OrderItem fields directly
                 if target_item:
@@ -2380,14 +2412,14 @@ def manual_batch_record_procurement(payload: Dict[str, Any] = Body(...), db: Ses
                         target_item.po_qty_ordered = (target_item.po_qty_ordered or 0) + int(round(qty_val))
                         # Note: We preserve the user's explicit Stock Status (All Stock on Hand / Partial / To Be Ordered)
                         p_hist = list(target_item.purchase_history or [])
-                        p_hist.append({"id": d_no, "ref": d_no, "qty": qty_val, "cost": unit_cst, "supplier": supplier, "date": date_str, "type": "PO"})
+                        p_hist.append({"allocation_id": alloc.id, "id": d_no, "ref": d_no, "qty": qty_val, "cost": unit_cst, "supplier": supplier, "date": date_str, "type": "PO"})
                         target_item.purchase_history = p_hist
                     else: # GRN
                         target_item.grn_ref = d_no
                         target_item.received_date = date_str
                         target_item.received_qty = (target_item.received_qty or 0) + int(round(qty_val))
                         r_hist = list(target_item.receiving_history or [])
-                        r_hist.append({"id": d_no, "ref": d_no, "qty": qty_val, "date": date_str, "type": "GRN"})
+                        r_hist.append({"allocation_id": alloc.id, "id": d_no, "ref": d_no, "qty": qty_val, "date": date_str, "type": "GRN"})
                         target_item.receiving_history = r_hist
 
                     if target_item not in affected_order_items:
