@@ -539,8 +539,8 @@ def executive_chat_endpoint(
             "parts": [{"text": m.content}]
         })
 
-    # Execute multi-turn tool calling loop (up to 4 tool iterations)
-    max_turns = 4
+    # Execute multi-turn tool calling loop (up to 6 tool iterations)
+    max_turns = 6
     for _ in range(max_turns):
         gemini_response = call_vertex_gemini_with_tools(contents)
         candidate = gemini_response.get("candidates", [{}])[0]
@@ -569,8 +569,9 @@ def executive_chat_endpoint(
         for call in function_calls:
             fn_name = call.get("name")
             fn_args = call.get("args") or {}
+            fn_call_id = call.get("id")
             
-            logger.info(f"Management AI Function Call: {fn_name}({fn_args})")
+            logger.info(f"Management AI Function Call: {fn_name}({fn_args}) [id={fn_call_id}]")
             fn_result = {}
 
             try:
@@ -592,11 +593,15 @@ def executive_chat_endpoint(
                 logger.error(f"Error executing tool {fn_name}: {e}")
                 fn_result = {"error": str(e)}
 
+            fn_resp_dict = {
+                "name": fn_name,
+                "response": {"result": fn_result}
+            }
+            if fn_call_id:
+                fn_resp_dict["id"] = fn_call_id
+
             tool_response_parts.append({
-                "functionResponse": {
-                    "name": fn_name,
-                    "response": {"result": fn_result}
-                }
+                "functionResponse": fn_resp_dict
             })
 
         contents.append({
