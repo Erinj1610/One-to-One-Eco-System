@@ -1353,8 +1353,19 @@ export function StoreProvider({ children }) {
             setter(merged);
           } else if (key === 'projects') {
             const parsedProjects = parseProjectsPayload(val);
-            setter(parsedProjects);
-            projectsRef.current = parsedProjects;
+            setter(prev => {
+              const merged = { ...parsedProjects };
+              if (prev && typeof prev === 'object') {
+                Object.entries(prev).forEach(([k, proj]) => {
+                  if (proj && (proj.isDraft || k.startsWith('new-project'))) {
+                    // Preserve active local draft state so typing/saving isn't wiped by background polling
+                    merged[k] = proj;
+                  }
+                });
+              }
+              projectsRef.current = merged;
+              return merged;
+            });
           } else if (key === 'contacts') {
             const raw = Array.isArray(val) ? val : [];
             const seenIds = new Set();
@@ -1767,10 +1778,12 @@ export function StoreProvider({ children }) {
   };
 
   const addProject = async (project) => {
-    const baseKey = (project.name || 'new-project').toLowerCase().trim().replace(/\s+/g, '-');
-    let key = baseKey || 'new-project';
+    const rawBase = (project.name || 'new-project').toLowerCase().trim().replace(/[^a-z0-9\-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    const baseKey = rawBase || 'new-project';
+    const currentMap = projectsRef.current || projects || {};
+    let key = baseKey;
     let counter = 1;
-    while (projects[key]) {
+    while (currentMap[key]) {
       key = `${baseKey}-${counter}`;
       counter++;
     }
@@ -1826,7 +1839,24 @@ export function StoreProvider({ children }) {
           }
         })
       });
-      if (!res.ok) {
+      if (res.ok) {
+        const resData = await res.json().catch(() => ({}));
+        const confirmedKey = resData.project_key || key;
+        const withId = {
+          ...newProj,
+          id: resData.id || newProj.id,
+          key: confirmedKey
+        };
+        setProjects(prev => {
+          const nextMap = { ...prev, [confirmedKey]: withId };
+          if (confirmedKey !== key) {
+            nextMap[key] = withId;
+          }
+          projectsRef.current = nextMap;
+          return nextMap;
+        });
+        return confirmedKey;
+      } else {
         console.error(`Failed to create project ${key}:`, res.status);
       }
     } catch (err) {
@@ -1838,15 +1868,16 @@ export function StoreProvider({ children }) {
   const saveDraftProject = async (oldKey, projectData) => {
     const rawName = (projectData.name || '').trim() || 'unnamed-project';
     const baseKey = rawName.toLowerCase().replace(/[^a-z0-9\-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'project';
+    const currentMap = projectsRef.current || projects || {};
     let finalKey = baseKey;
     
     let counter = 1;
-    while (projects[finalKey] && finalKey !== oldKey) {
+    while (currentMap[finalKey] && finalKey !== oldKey) {
       finalKey = `${baseKey}-${counter}`;
       counter++;
     }
 
-    const existingDraft = projects[oldKey] || projectsRef.current[oldKey] || {};
+    const existingDraft = currentMap[oldKey] || projects[oldKey] || {};
     const updatedProj = {
       ...existingDraft,
       ...projectData,
@@ -1919,6 +1950,7 @@ export function StoreProvider({ children }) {
 
       if (res.ok) {
         const resData = await res.json().catch(() => ({}));
+        if (resData.id) updatedProj.id = resData.id;
         if (resData.project_key) {
           finalKey = resData.project_key;
           updatedProj.key = finalKey;
@@ -1932,6 +1964,7 @@ export function StoreProvider({ children }) {
         });
         if (postRes.ok) {
           const postData = await postRes.json().catch(() => ({}));
+          if (postData.id) updatedProj.id = postData.id;
           if (postData.project_key) {
             finalKey = postData.project_key;
             updatedProj.key = finalKey;
@@ -1942,14 +1975,27 @@ export function StoreProvider({ children }) {
       console.error("Error saving project to database:", err);
     }
 
-    // Optimistically update React state and ref after confirming final key
+    // Update React state with finalKey AND temporarily keep oldKey alias so ProjectManagement doesn't hit undefined before navigate() completes
     setProjects(prev => {
-      const next = { ...prev };
-      delete next[oldKey];
-      next[finalKey] = updatedProj;
+      const next = { ...prev, [finalKey]: updatedProj };
+      if (oldKey && oldKey !== finalKey) {
+        next[oldKey] = updatedProj;
+      }
       projectsRef.current = next;
       return next;
     });
+
+    if (oldKey && oldKey !== finalKey) {
+      setTimeout(() => {
+        setProjects(prev => {
+          if (!prev[oldKey]) return prev;
+          const next = { ...prev };
+          delete next[oldKey];
+          projectsRef.current = next;
+          return next;
+        });
+      }, 2000);
+    }
 
     return finalKey;
   };

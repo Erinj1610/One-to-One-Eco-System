@@ -132,7 +132,9 @@ export default function ProjectManagement() {
     }
   }, [location.state]);
 
-  const p = projects[id];
+  const p = projects[id] || Object.values(projects || {}).find(
+    proj => proj && ((proj.id && String(proj.id) === String(id)) || (proj.key && proj.key.toLowerCase() === String(id).toLowerCase()))
+  );
   const initializedProjectIdRef = useRef(null);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [saveStatus, setSaveStatus] = useState(''); // '', 'saving', 'saved', 'error'
@@ -161,7 +163,8 @@ export default function ProjectManagement() {
     billingEmail: '',
     billingPhone: '',
     billingDetails: '',
-    deliveryAddress: ''
+    deliveryAddress: '',
+    contactsList: null
   });
 
   useEffect(() => {
@@ -201,7 +204,8 @@ export default function ProjectManagement() {
           billingEmail: p.billingEmail || '',
           billingPhone: p.billingPhone || '',
           billingDetails: p.billingDetails || firstOrder.billingDetails || '',
-          deliveryAddress: p.deliveryAddress || firstOrder.deliveryAddress || ''
+          deliveryAddress: p.deliveryAddress || firstOrder.deliveryAddress || '',
+          contactsList: Array.isArray(p.contactsList) ? p.contactsList : null
         });
       }
     }
@@ -245,11 +249,11 @@ export default function ProjectManagement() {
         });
 
         setSaveStatus('saved');
-        setIsSavingDraft(false);
-        if (finalKey) {
+        if (finalKey && finalKey !== id) {
           initializedProjectIdRef.current = finalKey;
           navigate(`/projects/${finalKey}`, { replace: true });
         }
+        setIsSavingDraft(false);
         setTimeout(() => setSaveStatus(''), 3000);
       } catch (err) {
         console.error("Error saving draft project:", err);
@@ -746,7 +750,7 @@ export default function ProjectManagement() {
   };
 
   // Create new Product Order
-  const handleCreateProductOrder = () => {
+  const handleCreateProductOrder = async () => {
     const newOrderId = `PO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
     const contact = (contacts || []).find(c => c.name === p.client || c.company === p.client) || {};
     const newOrder = {
@@ -772,8 +776,8 @@ export default function ProjectManagement() {
     };
 
     const updatedOrders = [...orders, newOrder];
-    updateProject(id, 'orders', updatedOrders);
-    navigate('/orders', { state: { projectKey: p.key, openOrderId: newOrderId } });
+    await updateProject(id, 'orders', updatedOrders);
+    navigate('/orders', { state: { projectKey: p.key || id, openOrderId: newOrderId } });
   };
 
   // Update a single cell in the active order spreadsheet state
@@ -1541,7 +1545,9 @@ export default function ProjectManagement() {
                         phone: matchedPm?.phone || ''
                       }
                     ];
-                    const directory = Array.isArray(p.contactsList) && p.contactsList.length > 0 ? p.contactsList : defaultDirectory;
+                    const directory = Array.isArray(overviewForm.contactsList)
+                      ? overviewForm.contactsList
+                      : (Array.isArray(p.contactsList) && p.contactsList.length > 0 ? p.contactsList : defaultDirectory);
 
                     return (
                       <>
@@ -1574,7 +1580,7 @@ export default function ProjectManagement() {
                                       value={c.name} 
                                       onChange={(e) => {
                                         const updated = directory.map((item, i) => i === idx ? { ...item, name: e.target.value } : item);
-                                        updateProject(id, 'contactsList', updated);
+                                        setOverviewForm(prev => ({ ...prev, contactsList: updated }));
                                       }}
                                     />
                                   </td>
@@ -1586,7 +1592,7 @@ export default function ProjectManagement() {
                                       value={c.company} 
                                       onChange={(e) => {
                                         const updated = directory.map((item, i) => i === idx ? { ...item, company: e.target.value } : item);
-                                        updateProject(id, 'contactsList', updated);
+                                        setOverviewForm(prev => ({ ...prev, contactsList: updated }));
                                       }}
                                     />
                                   </td>
@@ -1598,7 +1604,7 @@ export default function ProjectManagement() {
                                       value={c.role} 
                                       onChange={(e) => {
                                         const updated = directory.map((item, i) => i === idx ? { ...item, role: e.target.value } : item);
-                                        updateProject(id, 'contactsList', updated);
+                                        setOverviewForm(prev => ({ ...prev, contactsList: updated }));
                                       }}
                                     />
                                   </td>
@@ -1610,7 +1616,7 @@ export default function ProjectManagement() {
                                       value={c.email} 
                                       onChange={(e) => {
                                         const updated = directory.map((item, i) => i === idx ? { ...item, email: e.target.value } : item);
-                                        updateProject(id, 'contactsList', updated);
+                                        setOverviewForm(prev => ({ ...prev, contactsList: updated }));
                                       }}
                                     />
                                   </td>
@@ -1622,17 +1628,18 @@ export default function ProjectManagement() {
                                       value={c.phone} 
                                       onChange={(e) => {
                                         const updated = directory.map((item, i) => i === idx ? { ...item, phone: e.target.value } : item);
-                                        updateProject(id, 'contactsList', updated);
+                                        setOverviewForm(prev => ({ ...prev, contactsList: updated }));
                                       }}
                                     />
                                   </td>
                                   <td>
                                     <button 
+                                      type="button"
                                       className="btn btn-ghost btn-sm"
                                       style={{ color: 'var(--text-danger)', padding: '2px 6px', fontSize: '12px' }}
                                       onClick={() => {
                                         const updated = directory.filter((_, cIdx) => cIdx !== idx);
-                                        updateProject(id, 'contactsList', updated);
+                                        setOverviewForm(prev => ({ ...prev, contactsList: updated }));
                                       }}
                                     >
                                       Remove
@@ -1646,6 +1653,7 @@ export default function ProjectManagement() {
 
                         <div style={{ display: 'flex', gap: '12px' }}>
                           <button
+                            type="button"
                             className="btn btn-sm btn-ghost"
                             style={{ border: '1.5px dashed var(--border)', justifyContent: 'center', flex: 1, padding: '8px', fontSize: '12.5px' }}
                             onClick={() => {
@@ -1653,13 +1661,14 @@ export default function ProjectManagement() {
                                 ...directory,
                                 { category: 'Project Contact', name: '', company: '', role: '', email: '', phone: '' }
                               ];
-                              updateProject(id, 'contactsList', updated);
+                              setOverviewForm(prev => ({ ...prev, contactsList: updated }));
                             }}
                           >
                             + Add Project Contact
                           </button>
 
                           <button
+                            type="button"
                             className="btn btn-sm btn-ghost"
                             style={{ border: '1.5px dashed var(--border)', justifyContent: 'center', flex: 1, padding: '8px', fontSize: '12.5px' }}
                             onClick={() => {
@@ -1667,7 +1676,7 @@ export default function ProjectManagement() {
                                 ...directory,
                                 { category: 'Payment/Finance', name: '', company: '', role: '', email: '', phone: '' }
                               ];
-                              updateProject(id, 'contactsList', updated);
+                              setOverviewForm(prev => ({ ...prev, contactsList: updated }));
                             }}
                           >
                             + Add Payment / Finance Contact
@@ -2341,7 +2350,7 @@ export default function ProjectManagement() {
             {activeTab === 'documents' && (
               <div className="animation-fade-in" style={{ padding: '8px 4px' }}>
                 <DriveFileExplorer 
-                  projectId={id}
+                  projectId={p?.id || id}
                   projectName={p?.name || ''}
                   clientName={p?.client_name || p?.client || ''}
                 />
@@ -2351,7 +2360,11 @@ export default function ProjectManagement() {
             {/* SECTION 6: TICKETS & SNAG LIST */}
             {activeTab === 'tickets' && (
               <div className="animation-fade-in" style={{ padding: '16px 10px' }}>
-                <TicketLoggerPage initialProjectId={p.id} embedded={true} />
+                <TicketLoggerPage
+                  initialProjectId={p?.id || id}
+                  initialProjectName={p?.name || ''}
+                  embedded={true}
+                />
               </div>
             )}
 
