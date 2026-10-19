@@ -6,7 +6,8 @@ import {
   Ticket, Plus, Search, CheckCircle2, Clock, AlertTriangle, 
   AlertCircle, Star, Send, Image as ImageIcon, MessageSquare, 
   Upload, X, ArrowLeft, Trash2, User, FolderKanban,
-  RefreshCw, ZoomIn, LayoutGrid, List, Layers, DollarSign, Download
+  RefreshCw, ZoomIn, LayoutGrid, List, Layers, DollarSign, Download,
+  ShieldAlert
 } from 'lucide-react';
 import MobileTicketsViewer from '../components/mobile/MobileTicketsViewer';
 
@@ -47,7 +48,7 @@ const formatCurrency = (val) => {
   return new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 }).format(num);
 };
 
-export default function TicketLoggerPage({ initialProjectId = null, embedded = false }) {
+export default function TicketLoggerPage({ initialProjectId = null, initialProjectName = '', embedded = false }) {
   const { user } = useAuth();
   const { projects = {}, projectManagers = [] } = useStore();
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
@@ -68,7 +69,16 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
-  const [projectFilter, setProjectFilter] = useState(initialProjectId ? String(initialProjectId) : 'All');
+  const [projectFilter, setProjectFilter] = useState(
+    initialProjectId ? String(initialProjectId) : (initialProjectName ? String(initialProjectName) : 'All')
+  );
+
+  useEffect(() => {
+    if (embedded) {
+      if (initialProjectId) setProjectFilter(String(initialProjectId));
+      else if (initialProjectName) setProjectFilter(String(initialProjectName));
+    }
+  }, [initialProjectId, initialProjectName, embedded]);
   const [pmFilter, setPmFilter] = useState('All');
   const [assignedFilter, setAssignedFilter] = useState('All');
   const [stageFilter, setStageFilter] = useState('All');
@@ -84,7 +94,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
   // Create Form State
   const [form, setForm] = useState({
     project_id: initialProjectId || '',
-    project_name: '',
+    project_name: initialProjectName || '',
     client_name: '',
     pm_name: '',
     stage: 'Stage 5: Installation & Snagging',
@@ -204,16 +214,27 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
   }, [staffList, projectManagers]);
 
   // Prepopulate Project Info in form when project selector changes
-  const handleProjectSelect = (projId) => {
-    const selected = Object.values(projects || {}).find(p => String(p.id) === String(projId));
+  const handleProjectSelect = (projIdOrKey) => {
+    const selected = Object.entries(projects || {}).map(([k, val]) => ({ ...val, _key: val.key || k })).find(p =>
+      (p.id != null && String(p.id) === String(projIdOrKey)) ||
+      String(p._key) === String(projIdOrKey) ||
+      (initialProjectName && String(projIdOrKey) === String(initialProjectName) && (p.name || p.projectName || '').toLowerCase() === initialProjectName.toLowerCase()) ||
+      (p.name || p.projectName || '').toLowerCase() === String(projIdOrKey).toLowerCase()
+    );
     if (selected) {
       setForm(prev => ({
         ...prev,
-        project_id: selected.id,
-        project_name: selected.name || selected.projectName || '',
+        project_id: selected.id || selected._key || projIdOrKey,
+        project_name: selected.name || selected.projectName || initialProjectName || '',
         client_name: selected.client || selected.clientName || '',
         pm_name: selected.pm || selected.pmName || '',
         stage: selected.stage || 'Stage 5: Installation & Snagging'
+      }));
+    } else if (initialProjectName) {
+      setForm(prev => ({
+        ...prev,
+        project_id: initialProjectId || '',
+        project_name: initialProjectName,
       }));
     } else {
       setForm(prev => ({
@@ -283,9 +304,11 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
     if (!form.title.trim()) return;
 
     setIsSubmitting(true);
+    const parsedPid = parseInt(form.project_id, 10);
     const body = {
       ...form,
-      project_id: form.project_id ? parseInt(form.project_id) : null,
+      project_id: !isNaN(parsedPid) ? parsedPid : null,
+      project_name: form.project_name || initialProjectName || '',
       cost_impact: parseFloat(form.cost_impact) || 0.0,
       schedule_impact_days: parseInt(form.schedule_impact_days) || 0,
       raised_by: form.raised_by.trim() || user?.displayName || user?.email?.split('@')[0] || 'Staff',
@@ -306,7 +329,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
         setFormImages([]);
         setForm({
           project_id: initialProjectId || '',
-          project_name: '',
+          project_name: initialProjectName || '',
           client_name: '',
           pm_name: '',
           stage: 'Stage 5: Installation & Snagging',
@@ -483,7 +506,10 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
       }
       // Project filter
       if (projectFilter !== 'All') {
-        if (String(t.project_id) !== String(projectFilter) && (t.project_name || '').toLowerCase() !== projectFilter.toLowerCase()) {
+        const matchId = t.project_id != null && String(t.project_id) === String(projectFilter);
+        const matchFilterName = (t.project_name || '').toLowerCase() === projectFilter.toLowerCase();
+        const matchInitName = embedded && initialProjectName && (t.project_name || '').toLowerCase() === initialProjectName.toLowerCase();
+        if (!matchId && !matchFilterName && !matchInitName) {
           return false;
         }
       }
@@ -520,12 +546,14 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
       }
       return true;
     });
-  }, [tickets, searchQuery, projectFilter, pmFilter, assignedFilter, stageFilter, typeFilter, priorityFilter, statusFilter]);
+  }, [tickets, searchQuery, projectFilter, pmFilter, assignedFilter, stageFilter, typeFilter, priorityFilter, statusFilter, embedded, initialProjectName]);
 
   // Project List Options
   const projectList = useMemo(() => {
     if (!projects || typeof projects !== 'object') return [];
-    return Object.values(projects).filter(p => p && (p.name || p.projectName));
+    return Object.entries(projects)
+      .map(([k, p]) => p ? { ...p, _optKey: p.id || p.key || k } : null)
+      .filter(p => p && (p.name || p.projectName));
   }, [projects]);
 
   // PM List Options
@@ -702,7 +730,9 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
             <button 
               className="btn btn-sm btn-primary" 
               onClick={() => {
-                if (initialProjectId) handleProjectSelect(initialProjectId);
+                if (initialProjectId || initialProjectName) {
+                  handleProjectSelect(initialProjectId || initialProjectName);
+                }
                 setShowCreateModal(true);
               }}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
@@ -846,7 +876,7 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
               >
                 <option value="All">All Projects</option>
                 {projectList.map(p => (
-                  <option key={p.id} value={p.id}>{p.name || p.projectName}</option>
+                  <option key={p._optKey} value={p.id || p.name || p.projectName}>{p.name || p.projectName}</option>
                 ))}
               </select>
             )}
@@ -1366,13 +1396,15 @@ export default function TicketLoggerPage({ initialProjectId = null, embedded = f
                       <select
                         className="form-control"
                         required
-                        value={form.project_id}
+                        value={form.project_id || form.project_name}
                         onChange={e => handleProjectSelect(e.target.value)}
                         style={{ borderRadius: '8px', padding: '9px 12px', fontSize: '13px' }}
                       >
                         <option value="">Select Target Project...</option>
                         {projectList.map(p => (
-                          <option key={p.id} value={p.id}>{p.name || p.projectName} ({p.client || 'Client'})</option>
+                          <option key={p._optKey} value={p.id || p._optKey || p.name || p.projectName}>
+                            {p.name || p.projectName} ({p.client || 'Client'})
+                          </option>
                         ))}
                       </select>
                     </div>

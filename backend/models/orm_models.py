@@ -93,6 +93,7 @@ class Project(Base):
     # Design Fee Rate Snapshots
     design_fee_rates_snapshot = Column(JSON, nullable=True)
     design_fee_rates_original = Column(JSON, nullable=True)
+    project_metadata = Column(JSON, nullable=True, default=dict)
 
     # 1-to-Many Relationships
     quotes = relationship("Quote", back_populates="project")

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
+import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import PipelinePage from './PipelinePage';
 import { 
@@ -8,7 +9,7 @@ import {
   MoreVertical, Calendar, DollarSign, MessageSquare, Send, ChevronRight,
   TrendingDown, Star, Filter, Plus, AlertTriangle, ShieldAlert, Heart, Target,
   X, HelpCircle, Activity, Award, Edit3, Users, ClipboardList,
-  ArrowUpDown, ArrowUp, ArrowDown, FolderGit, ShoppingBag
+  ArrowUpDown, ArrowUp, ArrowDown, FolderGit, ShoppingBag, Trash2, Check, MapPin
 } from 'lucide-react';
 import CollapsibleAlertSidebar from '../components/common/CollapsibleAlertSidebar';
 import MobileCrmViewer from '../components/mobile/MobileCrmViewer';
@@ -16,12 +17,13 @@ import DriveFileExplorer from '../components/common/DriveFileExplorer';
 import { API_BASE } from '../api_config';
 
 // Date anchor and comparison helpers
-const today = new Date('2026-05-19');
+const getToday = () => new Date();
 
 const getDaysDiff = (dateStr) => {
-  if (!dateStr) return 9999;
+  if (!dateStr) return null;
   const d = new Date(dateStr);
-  return (today - d) / (1000 * 60 * 60 * 24);
+  if (isNaN(d.getTime())) return null;
+  return (getToday() - d) / (1000 * 60 * 60 * 24);
 };
 
 export default function CrmPage() {
@@ -38,6 +40,17 @@ export default function CrmPage() {
     addProject,
     getModuleName
   } = useStore();
+  const { user, userProfile } = useAuth();
+  const currentStaffName = useMemo(() => {
+    if (userProfile?.name) return userProfile.name;
+    if (user?.displayName) return user.displayName;
+    if (user?.name) return user.name;
+    if (user?.email) {
+      const localPart = user.email.split('@')[0];
+      return localPart.replace(/[._-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+    return 'Staff';
+  }, [user, userProfile]);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -125,8 +138,6 @@ export default function CrmPage() {
     return localStorage.getItem('sidebar_collapsed_crm') === 'true';
   });
   const [activeTab, setActiveTab] = useState('overview');
-  const [showAi, setShowAi] = useState(false);
-  const [aiMsg, setAiMsg] = useState('');
   const [form, setForm] = useState({ name: '', company: '', type: 'Architect', email: '', phone: '' });
 
   // Edit Client Profile States
@@ -160,6 +171,11 @@ export default function CrmPage() {
 
   // Activity Log States
   const [newActivityText, setNewActivityText] = useState('');
+  const [newActivityType, setNewActivityType] = useState('Call');
+  const [activityFilterType, setActivityFilterType] = useState('All');
+  const [editingActivityId, setEditingActivityId] = useState(null);
+  const [editingActivityText, setEditingActivityText] = useState('');
+  const [editingActivityType, setEditingActivityType] = useState('Note');
   const [clientActivities, setClientActivities] = useState([]);
 
   useEffect(() => {
@@ -178,8 +194,9 @@ export default function CrmPage() {
       // Load activities from contact record
       setClientActivities(selectedClient.activities || []);
       setNewActivityText('');
+      setEditingActivityId(null);
     }
-  }, [selectedClient]);
+  }, [selectedClient?.id]);
 
   const handleSaveClient = async () => {
     if (!editClientData.name.trim()) {
@@ -244,72 +261,148 @@ export default function CrmPage() {
 
   // Date filter range calculation
   const dateFilterRange = useMemo(() => {
+    const now = getToday();
     let start = null;
     let end = null;
     if (datePreset === 'Last Week') {
-      start = new Date(today);
-      start.setDate(today.getDate() - 7);
-      end = today;
+      start = new Date(now);
+      start.setDate(now.getDate() - 7);
+      end = now;
     } else if (datePreset === 'Last 30 Days') {
-      start = new Date(today);
-      start.setDate(today.getDate() - 30);
-      end = today;
+      start = new Date(now);
+      start.setDate(now.getDate() - 30);
+      end = now;
     } else if (datePreset === 'Financial Year') {
-      start = new Date('2026-03-01');
-      end = new Date('2027-02-28');
+      const yr = now.getMonth() >= 2 ? now.getFullYear() : now.getFullYear() - 1;
+      start = new Date(yr, 2, 1);
+      end = new Date(yr + 1, 1, 28, 23, 59, 59);
     } else if (datePreset === 'Custom') {
       start = customStart ? new Date(customStart) : null;
-      end = customEnd ? new Date(customEnd) : null;
+      end = customEnd ? new Date(customEnd + 'T23:59:59') : null;
     }
     return { start, end };
   }, [datePreset, customStart, customEnd]);
 
   // Dynamic Contact Enrichment & YoY Spend calculations
   const clientData = useMemo(() => {
+    const now = getToday();
+    const fyStartYear = now.getMonth() >= 2 ? now.getFullYear() : now.getFullYear() - 1;
+    const fyStart = new Date(fyStartYear, 2, 1);
+
+    const allProjectsList = Object.values(projects || {});
+
     return combinedContacts.map(c => {
-      // Find all projects from the store
-      const clientProjectsList = Object.values(projects).filter(p => p.client === c.name);
+      const cNameLower = (c.name || '').trim().toLowerCase();
+      const cCompanyLower = (c.company || '').trim().toLowerCase();
+
+      const matchesThisClient = (val) => {
+        if (!val) return false;
+        const vLower = String(val).trim().toLowerCase();
+        return (cNameLower && vLower === cNameLower) || (cCompanyLower && vLower === cCompanyLower);
+      };
+
+      // Find all projects linked to this client via project.client, designFees, or orders
+      const clientProjectsList = allProjectsList.filter(p => {
+        if (matchesThisClient(p.client)) return true;
+        const hasFee = (p.designFees || []).some(df => matchesThisClient(df.companyName) || matchesThisClient(df.contactPerson) || matchesThisClient(df.client) || matchesThisClient(df.company));
+        const hasOrd = (p.orders || []).some(o => matchesThisClient(o.client) || matchesThisClient(o.clientCompany) || matchesThisClient(o.clientContact) || matchesThisClient(o.companyName));
+        return hasFee || hasOrd;
+      });
       
       // Calculate active projects and details
-      const activeProjectObj = clientProjectsList.find(p => p.complete !== 'Complete');
+      const activeProjectObj = clientProjectsList.find(p => p.complete !== 'Complete' && p.status !== 'Complete');
       const activeProjectName = activeProjectObj ? activeProjectObj.name : '—';
       
       // Find completed projects
       const completedProjectsList = clientProjectsList
-        .filter(p => p.complete === 'Complete')
-        .sort((a, b) => new Date(b.completedDate || b.start) - new Date(a.completedDate || a.start));
+        .filter(p => p.complete === 'Complete' || p.status === 'Complete')
+        .sort((a, b) => new Date(b.completedDate || b.start || 0) - new Date(a.completedDate || a.start || 0));
       
       const lastCompletedProjectObj = completedProjectsList[0];
       const lastCompletedProjectName = lastCompletedProjectObj ? lastCompletedProjectObj.name : '—';
-      const lastCompletedProjectDate = lastCompletedProjectObj ? lastCompletedProjectObj.completedDate || lastCompletedProjectObj.deadline : '—';
+      const lastCompletedProjectDate = lastCompletedProjectObj ? (lastCompletedProjectObj.completedDate || lastCompletedProjectObj.deadline || '—') : '—';
 
-      // Spend Calculations
-      const calculatedLtv = clientProjectsList.reduce((sum, p) => sum + (p.feeValue || 0), 0) || c.lifetimeRevenue || 0;
-      const calculatedYtd = c.annualRevenue || 0;
+      // True Spend Calculations across Orders + Design Fees
+      let dynamicLtv = 0;
+      let dynamicYtd = 0;
+      let latestActivityDateStr = c.lastProjectDate || c.lastContactDate || '';
+
+      clientProjectsList.forEach(p => {
+        const pStart = p.start && p.start !== '—' ? new Date(p.start) : null;
+        if (pStart && !isNaN(pStart.getTime())) {
+          if (!latestActivityDateStr || pStart > new Date(latestActivityDateStr)) {
+            latestActivityDateStr = p.start;
+          }
+        }
+
+        // Sum scoped design fees
+        (p.designFees || []).forEach(df => {
+          if (matchesThisClient(p.client) || matchesThisClient(df.companyName) || matchesThisClient(df.contactPerson) || matchesThisClient(df.client) || matchesThisClient(df.company)) {
+            const feeVal = Number(df.feeValue || 0);
+            dynamicLtv += feeVal;
+            const dfDate = df.date ? new Date(df.date) : pStart;
+            if (dfDate && !isNaN(dfDate.getTime()) && dfDate >= fyStart) {
+              dynamicYtd += feeVal;
+            }
+          }
+        });
+
+        // Sum scoped product orders
+        (p.orders || []).forEach(o => {
+          if (matchesThisClient(p.client) || matchesThisClient(o.client) || matchesThisClient(o.clientCompany) || matchesThisClient(o.clientContact) || matchesThisClient(o.companyName)) {
+            const ordVal = Number(o.value || 0);
+            dynamicLtv += ordVal;
+            const oDateStr = o.orderDate || o.pfDate || o.quotationSentDate || (o.payments && o.payments[0]?.date) || p.start;
+            const oDate = oDateStr && oDateStr !== '—' ? new Date(oDateStr) : pStart;
+            if (oDate && !isNaN(oDate.getTime())) {
+              if (!latestActivityDateStr || oDate > new Date(latestActivityDateStr)) {
+                latestActivityDateStr = oDateStr;
+              }
+              if (oDate >= fyStart) {
+                dynamicYtd += ordVal;
+              }
+            } else if (!oDate && activeProjectObj) {
+              // If active project order has no explicit date, count in current YTD
+              dynamicYtd += ordVal;
+            }
+          }
+        });
+      });
+
+      const calculatedLtv = dynamicLtv > 0 ? Math.round(dynamicLtv) : Number(c.lifetimeRevenue || c.totalValue || 0);
+      const calculatedYtd = dynamicYtd > 0 ? Math.round(dynamicYtd) : Number(c.annualRevenue || 0);
 
       // Filter by Date Range if active
       let passDateFilter = true;
       const { start, end } = dateFilterRange;
       if (start || end) {
-        const contactActiveDate = new Date(c.lastContactDate || c.lastProjectDate);
-        if (start && contactActiveDate < start) passDateFilter = false;
-        if (end && contactActiveDate > end) passDateFilter = false;
+        const refDateStr = latestActivityDateStr || c.lastContactDate || c.lastProjectDate || c.dateStarted;
+        const contactActiveDate = refDateStr ? new Date(refDateStr) : null;
+        if (!contactActiveDate || isNaN(contactActiveDate.getTime())) {
+          passDateFilter = false;
+        } else {
+          if (start && contactActiveDate < start) passDateFilter = false;
+          if (end && contactActiveDate > end) passDateFilter = false;
+        }
       }
 
       // HEALTH SCORE TRAFFIC LIGHT LOGIC
-      // Green: VIP Core or Growth (Projects active/buying recently < 6 months ago)
-      // Yellow: Loyal, But Dormant (projects > 3 and last project was > 6 months ago)
-      // Red: Churned / At-Risk (status is Inactive OR > 12 months since last project/contact)
-      let health = 'Green';
-      const lastProjDiff = getDaysDiff(c.lastProjectDate);
+      // Green (Active): Explicitly has an active project OR active status with recent activity
+      // Yellow (Dormant): Has completed projects, none currently active
+      // Red (Inactive / Churned): Explicitly marked 'Inactive' or 0 projects and dormant > 12 months
+      const hasActiveProject = Boolean(activeProjectObj);
+      const lastProjDiff = getDaysDiff(latestActivityDateStr || c.lastProjectDate);
       const lastContactDiff = getDaysDiff(c.lastContactDate);
 
-      if (c.status === 'Inactive' || lastProjDiff > 365 || lastContactDiff > 365) {
+      let health = 'Green';
+      if (c.status === 'Inactive') {
         health = 'Red';
-      } else if (c.projects > 3 && lastProjDiff >= 180) {
-        health = 'Yellow';
-      } else {
+      } else if (hasActiveProject) {
         health = 'Green';
+      } else if (clientProjectsList.length > 0) {
+        health = (lastProjDiff !== null && lastProjDiff <= 180) ? 'Green' : 'Yellow';
+      } else {
+        health = (lastContactDiff !== null && lastContactDiff <= 180) ? 'Green' : 'Yellow';
       }
 
       return {
@@ -319,22 +412,23 @@ export default function CrmPage() {
         totalValue: calculatedLtv,
         annualRevenue: calculatedYtd,
         health,
+        hasActiveProject,
         activeProjectName,
         lastCompletedProjectName,
         lastCompletedProjectDate,
-        lastProjDiff,
-        lastContactDiff,
+        lastProjDiff: lastProjDiff ?? 999,
+        lastContactDiff: lastContactDiff ?? 999,
         passDateFilter,
         projectsList: clientProjectsList
       };
-    }).sort((a, b) => b.totalValue - a.totalValue);
+    }).sort((a, b) => (b.totalValue - a.totalValue) || (b.projects - a.projects) || a.name.localeCompare(b.name));
   }, [combinedContacts, projects, dateFilterRange]);
 
   // Apply filters for Search, Category, and Dates
   const filteredClients = useMemo(() => {
     const q = debouncedSearch.toLowerCase().trim();
     return clientData.filter(c => {
-      const matchSearch = !q || c.name.toLowerCase().includes(q) || c.company.toLowerCase().includes(q);
+      const matchSearch = !q || (c.name || '').toLowerCase().includes(q) || (c.company || '').toLowerCase().includes(q) || (c.activeProjectName || '').toLowerCase().includes(q);
       const matchType = filterType === 'All' || c.type === filterType;
       return matchSearch && matchType && c.passDateFilter;
     });
@@ -343,11 +437,11 @@ export default function CrmPage() {
   // Segmented calculations for Top KPI Cards (Clickable)
   const funnels = useMemo(() => {
     const totalCount = filteredClients.length;
-    const activeClients = filteredClients.filter(c => c.status !== 'Inactive' && c.projectsList.some(p => p.complete !== 'Complete'));
-    const vipClients = filteredClients.filter(c => c.projects > 3 && c.health === 'Green');
-    const inactiveClients = filteredClients.filter(c => c.status !== 'Inactive' && !c.projectsList.some(p => p.complete !== 'Complete'));
+    const activeClients = filteredClients.filter(c => c.status !== 'Inactive' && c.hasActiveProject);
+    const vipClients = filteredClients.filter(c => c.status !== 'Inactive' && (c.projects >= 3 || c.totalValue >= 500000));
+    const inactiveClients = filteredClients.filter(c => c.status !== 'Inactive' && !c.hasActiveProject);
     const lostClients = filteredClients.filter(c => c.status === 'Inactive');
-    const topRevenueClients = [...filteredClients].sort((a, b) => b.totalValue - a.totalValue).slice(0, 3);
+    const topRevenueClients = [...filteredClients].sort((a, b) => b.totalValue - a.totalValue).slice(0, 5);
 
     return {
       totalCount,
@@ -361,7 +455,7 @@ export default function CrmPage() {
 
   // ATTRITION ANALYTICS COMPUTATION
   const attritionStats = useMemo(() => {
-    const total = attritionLogs.length;
+    const total = (attritionLogs || []).length;
     if (total === 0) return { total: 0, price: 0, friction: 0, competitor: 0, other: 0 };
     
     const price = attritionLogs.filter(l => l.reason === 'Price').length;
@@ -382,13 +476,13 @@ export default function CrmPage() {
   const kpiFilteredClients = useMemo(() => {
     if (!activeKpiFilter || activeKpiFilter === 'total') return filteredClients;
     if (activeKpiFilter === 'active') {
-      return filteredClients.filter(c => c.status !== 'Inactive' && c.projectsList.some(p => p.complete !== 'Complete'));
+      return filteredClients.filter(c => c.status !== 'Inactive' && c.hasActiveProject);
     }
     if (activeKpiFilter === 'vip') {
-      return filteredClients.filter(c => c.projects > 3 && c.health === 'Green');
+      return filteredClients.filter(c => c.status !== 'Inactive' && (c.projects >= 3 || c.totalValue >= 500000));
     }
     if (activeKpiFilter === 'inactive') {
-      return filteredClients.filter(c => c.status !== 'Inactive' && !c.projectsList.some(p => p.complete !== 'Complete'));
+      return filteredClients.filter(c => c.status !== 'Inactive' && !c.hasActiveProject);
     }
     if (activeKpiFilter === 'lost') {
       return filteredClients.filter(c => c.status === 'Inactive');
@@ -397,7 +491,7 @@ export default function CrmPage() {
   }, [filteredClients, activeKpiFilter]);
 
   // Directory Pagination
-  const pageSize = 4;
+  const pageSize = 25;
   const directoryDisplayList = useMemo(() => {
     if (showAllClients) return kpiFilteredClients;
     return kpiFilteredClients.slice(0, pageSize);
@@ -405,10 +499,11 @@ export default function CrmPage() {
 
   // Interactive Action Nudge and Churn Resolvers
   const handleResolveAlert = async (clientId, touchpointText) => {
+    const todayIso = getToday().toISOString().split('T')[0];
     setResolvedAlerts(prev => [...prev, clientId]);
     if (updateClient && clientId) {
       await updateClient(clientId, {
-        lastContactDate: '2026-05-19',
+        lastContactDate: todayIso,
         lastContactSummary: touchpointText,
         status: 'Active'
       });
@@ -416,14 +511,14 @@ export default function CrmPage() {
   };
 
   const openReciprocityNudge = (client) => {
-    setNudgeSubject(`Exclusive 2026 Eco-Build Design Research Packet for ${client.name}`);
-    setNudgeBody(`Hi ${client.name.split(' ')[0]},\n\nI hope you are doing well!\n\nAs one of our most valued architectural partners, we wanted to share our brand-new 2026 Eco-Build Design Research Packet with you for free.\n\nInside, you will find research on new sustainable lighting technologies, thermal insulation standards, and energy efficient retail specifications. Let me know if you would like to schedule a 10-minute briefing call to discuss how this applies to your upcoming works!\n\nBest regards,\nAlex\nOne to One Lighting Design`);
+    setNudgeSubject(`Follow-up & Lighting Portfolio Update for ${client.company || client.name}`);
+    setNudgeBody(`Hi ${client.name.split(' ')[0]},\n\nI hope you are doing well!\n\nWe wanted to check in and share our latest architectural lighting specifications and project portfolio updates with you.\n\nLet us know if you have any upcoming projects where we can assist with lighting design or BOQ schedules.\n\nBest regards,\n1-to-1 Lighting Design`);
     setActiveNudge({ type: 'reciprocity', client });
   };
 
   const openConsistencyNudge = (client) => {
-    setNudgeSubject(`Check-in: ${client.company} 2027 Expansion Plans`);
-    setNudgeBody(`Hi ${client.name.split(' ')[0]},\n\nI hope everything is going well on your end.\n\nDuring our strategy alignment, you mentioned that your stated milestone is to open 3 new retail stores by 2027. We noticed there are currently no active pipeline drafts or specification files loaded for these projects.\n\nWe want to ensure we secure planning resources for you ahead of time. Is the 2027 store timeline still accurate so we can align our design capacity?\n\nBest regards,\nAlex\nOne to One Lighting Design`);
+    setNudgeSubject(`Check-in: ${client.company || client.name} Upcoming Projects`);
+    setNudgeBody(`Hi ${client.name.split(' ')[0]},\n\nI hope everything is going well on your end.\n\nFollowing up on your goal (${client.statedGoal}), we wanted to check in on your upcoming project timeline so we can align our design and specification capacity ahead of time.\n\nBest regards,\n1-to-1 Lighting Design`);
     setActiveNudge({ type: 'consistency', client });
   };
 
@@ -431,20 +526,21 @@ export default function CrmPage() {
     if (!activeNudge) return;
     const { client, type } = activeNudge;
     const logText = type === 'reciprocity' 
-      ? 'Emailed 2026 Eco-Build Design Research Packet (Reciprocity Nudge)'
-      : `Consistency check-in regarding stated goal: "${client.statedGoal}"`;
+      ? 'Sent portfolio & specification update (Retention Follow-up)'
+      : `Check-in regarding stated goal: "${client.statedGoal}"`;
 
     handleResolveAlert(client.id, logText);
     setActiveNudge(null);
-    showToast(`Retention email successfully sent to ${client.name}!`);
+    showToast(`Follow-up logged for ${client.name}!`);
   };
 
   const handleConfirmLoss = async () => {
     if (!postMortemClient) return;
+    const todayIso = getToday().toISOString().split('T')[0];
     logAttrition(postMortemClient.id, postMortemClient.name, lossReason, lossNotes);
     const updatePayload = {
       status: 'Inactive',
-      lastContactDate: '2026-05-19',
+      lastContactDate: todayIso,
       lastContactSummary: `Post-Mortem: Marked inactive due to ${lossReason}`
     };
     if (updateClient && postMortemClient.id) {
@@ -457,20 +553,21 @@ export default function CrmPage() {
 
   const addContact = async () => {
     if (!form.name || !form.name.trim()) return;
+    const todayIso = getToday().toISOString().split('T')[0];
     const newClientPayload = {
       ...form,
       name: form.name.trim(),
       company: form.company || form.name.trim(),
       status: 'Active',
       lastProjectDate: null,
-      lastContactDate: '2026-05-19',
+      lastContactDate: todayIso,
       lastContactSummary: 'Added new account profile to CRM',
       statedGoal: '',
       annualRevenue: 0,
       lifetimeRevenue: 0,
       orderGapMonths: null,
       nps: null,
-      dateStarted: '2026-05-19',
+      dateStarted: todayIso,
       avgPaymentDelayDays: null,
       activities: []
     };
@@ -913,9 +1010,9 @@ export default function CrmPage() {
           {/* Main List */}
           <div>
             <div className="card">
-              <div className="card-head" style={{ background: 'none', borderBottom: 'none' }}>
+              <div className="card-head" style={{ background: 'none', borderBottom: 'none', flexWrap: 'wrap', gap: '10px' }}>
                 <div className="card-title">Client directory database</div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                   {activeKpiFilter && (
                     <button 
                       className="btn btn-sm btn-ghost" 
@@ -925,9 +1022,20 @@ export default function CrmPage() {
                       Clear Metric Filter ({activeKpiFilter})
                     </button>
                   )}
+                  <select
+                    className="form-control"
+                    style={{ width: '145px', fontSize: '12px', padding: '5px 8px' }}
+                    value={filterType}
+                    onChange={e => setFilterType(e.target.value)}
+                  >
+                    <option value="All">All Categories</option>
+                    {clientTypes.map(t => (
+                      <option key={t.id || t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
                   <div style={{ position: 'relative' }}>
                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-                    <input className="form-control" style={{ width: '200px', paddingLeft: '32px' }} placeholder="Search clients..." value={search} onChange={e => setSearch(e.target.value)} />
+                    <input className="form-control" style={{ width: '220px', paddingLeft: '32px' }} placeholder="Search clients or projects..." value={search} onChange={e => setSearch(e.target.value)} />
                   </div>
                   <button className="btn btn-primary" onClick={() => setShowModal(true)}><Plus size={14} /> New Contact</button>
                 </div>
@@ -959,7 +1067,7 @@ export default function CrmPage() {
                         </div>
                       </td>
                       <td style={{ fontWeight: 600, textAlign: 'center' }}>{c.projects}</td>
-                      <td style={{ fontWeight: 600 }}>R {c.lifetimeRevenue?.toLocaleString()}</td>
+                      <td style={{ fontWeight: 600 }}>R {(c.lifetimeRevenue || 0).toLocaleString()}</td>
                       <td>{renderHealthBadge(c.health)}</td>
                       <td 
                         style={{ 
@@ -996,6 +1104,13 @@ export default function CrmPage() {
                       <td>{c.lastCompletedProjectDate !== '—' ? new Date(c.lastCompletedProjectDate).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
                     </tr>
                   ))}
+                  {directoryDisplayList.length === 0 && (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                        No clients match the selected filters.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
 
@@ -1004,157 +1119,15 @@ export default function CrmPage() {
                 <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
                   Showing {directoryDisplayList.length} of {kpiFilteredClients.length} clients
                 </span>
-                <button 
-                  className="btn" 
-                  style={{ padding: '4px 12px', fontSize: '11px' }}
-                  onClick={() => setShowAllClients(!showAllClients)}
-                >
-                  {showAllClients ? 'View Less (Paginated)' : 'View All / Full List'}
-                </button>
-              </div>
-            </div>
-
-            {/* Upgraded CRM Coach Insights feed */}
-            <div className="card" style={{ marginTop: '20px' }}>
-              <div className="card-head" style={{ background: 'none', borderBottom: 'none' }}>
-                <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Award size={16} color="var(--text-info)" />
-                  <span>CRM Coach & Predictive Insights Engine</span>
-                </div>
-                <span className="badge b-info" style={{ fontSize: '10px' }}>Active Coaching Prompts</span>
-              </div>
-              <div className="card-body" style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                
-                {/* A. Dynamic Lost Clients / Projects Feed */}
-                <div className="kanban-card alert-decay-box" style={{ borderLeft: '4px solid var(--text-tertiary)', background: 'var(--bg-secondary)', padding: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '6px' }}>
-                    <span>Attrition & Loss Feed</span>
-                    <span>Recent Loss</span>
-                  </div>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    Lost Opportunity: Sandton office (James Motloung)
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: 600, marginTop: '4px' }}>
-                    Reason: Price too high (Deal value R 320,000 lost to cheaper competitor)
-                  </div>
-                </div>
-
-                {/* B. Dynamic Churn Velocity Alerts */}
-                {clientData.map(c => {
-                  if (c.projects > 3 && c.lastProjDiff > (c.orderGapMonths * 30.5) && !resolvedAlerts.includes(c.id)) {
-                    const monthsSince = Math.round(c.lastProjDiff / 30.5);
-                    return (
-                      <div key={c.id} className="kanban-card alert-decay-box animate-pulse" style={{ borderLeft: '4px solid #ef4444', background: 'rgba(239,68,68,0.02)', padding: '16px', marginBottom: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                          <span style={{ fontSize: '10px', color: '#ef4444', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <ShieldAlert size={12} /> Churn Velocity Warning (Olo data frequency)
-                          </span>
-                          <span className="badge b-danger" style={{ fontSize: '9px' }}>Dormant Churn</span>
-                        </div>
-                        <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.4, fontWeight: 500 }}>
-                          <strong>{c.name}</strong> usually commissions a project every {c.orderGapMonths} months. It has been {monthsSince} months since last project. Suggest reaching out immediately.
-                        </div>
-                        <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
-                          <button 
-                            className="btn btn-primary" 
-                            style={{ padding: '4px 12px', fontSize: '11px', background: '#ef4444', borderColor: '#ef4444' }}
-                            onClick={() => {
-                              handleResolveAlert(c.id, `Scheduled churn winback meeting with ${c.name.split(' ')[0]}.`);
-                              showToast(`Review call scheduled with ${c.name}!`);
-                            }}
-                          >
-                            Schedule Review Call
-                          </button>
-                          <button className="btn" style={{ padding: '4px 12px', fontSize: '11px' }} onClick={() => setResolvedAlerts(prev => [...prev, c.id])}>Dismiss</button>
-                        </div>
-                      </div>
-                    );
-                  }
-                  return null;
-                })}
-
-                {/* C. Reciprocity Nudge (Nina Stroebel) */}
-                {!resolvedAlerts.includes(6) && (
-                  <div className="kanban-card alert-decay-box" style={{ borderLeft: '4px solid #eab308', background: 'rgba(234,179,8,0.02)', padding: '16px', marginBottom: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '10px', color: '#eab308', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Heart size={12} /> Reciprocity Nudge (Cialdini's Principle #1)
-                      </span>
-                      <span className="badge b-warning" style={{ fontSize: '9px' }}>Dormant VIP</span>
-                    </div>
-                    <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.4, fontWeight: 500 }}>
-                      Nina Stroebel is dormant. Trigger Reciprocity: Send her the new 2026 Eco-Build Design Research Packet for free to obligate value return.
-                    </div>
-                    <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
-                      <button 
-                        className="btn btn-primary" 
-                        style={{ padding: '4px 12px', fontSize: '11px', background: '#eab308', borderColor: '#eab308', color: '#000' }}
-                        onClick={() => {
-                          const client = contacts.find(c => c.id === 6);
-                          if (client) openReciprocityNudge(client);
-                        }}
-                      >
-                        Draft Email with Attachment
-                      </button>
-                      <button className="btn" style={{ padding: '4px 12px', fontSize: '11px' }} onClick={() => setResolvedAlerts(prev => [...prev, 6])}>Dismiss</button>
-                    </div>
-                  </div>
+                {kpiFilteredClients.length > pageSize && (
+                  <button 
+                    className="btn" 
+                    style={{ padding: '4px 12px', fontSize: '11px' }}
+                    onClick={() => setShowAllClients(!showAllClients)}
+                  >
+                    {showAllClients ? `Show Top ${pageSize}` : `View All (${kpiFilteredClients.length})`}
+                  </button>
                 )}
-
-                {/* D. Consistency Checker (Thabo Khumalo) */}
-                {!resolvedAlerts.includes(5) && (
-                  <div className="kanban-card alert-decay-box" style={{ borderLeft: '4px solid var(--text-info)', background: 'rgba(24,95,165,0.02)', padding: '16px', marginBottom: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '10px', color: 'var(--text-info)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Target size={12} /> Commitment & Consistency (Munger's Misjudgment #5)
-                      </span>
-                      <span className="badge b-info" style={{ fontSize: '9px' }}>Goal Checker</span>
-                    </div>
-                    <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: 1.4, fontWeight: 500 }}>
-                      Thabo Khumalo stated a goal of: "Client wants to open 3 new retail stores by 2027", but has no active pipeline leads. Push for Consistency: Ask Thabo if the 2027 expansion timeline is still accurate.
-                    </div>
-                    <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
-                      <button 
-                        className="btn btn-primary" 
-                        style={{ padding: '4px 12px', fontSize: '11px' }}
-                        onClick={() => {
-                          const client = contacts.find(c => c.id === 5);
-                          if (client) openConsistencyNudge(client);
-                        }}
-                      >
-                        Push for Consistency
-                      </button>
-                      <button className="btn" style={{ padding: '4px 12px', fontSize: '11px' }} onClick={() => setResolvedAlerts(prev => [...prev, 5])}>Dismiss</button>
-                    </div>
-                  </div>
-                )}
-
-                {/* E. Trend Flags (YoY shift) */}
-                <div className="kanban-card alert-decay-box" style={{ borderLeft: '4px solid #a855f7', background: 'rgba(168,85,247,0.02)', padding: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#a855f7', fontWeight: 700, textTransform: 'uppercase', marginBottom: '6px' }}>
-                    <span>Financial Trend Flags</span>
-                    <span>YoY Revenue Alerts</span>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
-                    <div>• <strong>Marco Esteves</strong>: YTD spend is down 100% (R 0 vs R 436,727 last year).</div>
-                    <div>• <strong>James Motloung</strong>: YTD spend is down 100% (R 0 vs R 1,002,268 last year).</div>
-                  </div>
-                </div>
-
-                {/* F. Sentiment / happiness checker (NPS) */}
-                <div className="kanban-card alert-decay-box" style={{ borderLeft: '4px solid #f97316', background: 'rgba(249,115,22,0.02)', padding: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#f97316', fontWeight: 700, textTransform: 'uppercase', marginBottom: '6px' }}>
-                    <span>Customer Happiness NPS Flags</span>
-                    <span>Satisfaction Alerts</span>
-                  </div>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    Marco Esteves registered a CSAT rating of 4/10.
-                  </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                    Flagged: High attrition risk. Low rating was attributed to PM Friction on Villa Z revisions.
-                  </div>
-                </div>
-
               </div>
             </div>
           </div>
@@ -1162,91 +1135,71 @@ export default function CrmPage() {
           {/* Sidebar */}
           <div>
             <div className="crm-sidebar-section">
-              <div className="section-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>Attrition Analytics Center</span>
-                <span className="badge b-danger" style={{ fontSize: '9px', fontWeight: 600 }}>Leadership IQ</span>
-              </div>
-              <div className="card">
-                <div className="card-body" style={{ padding: '16px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '12px' }}>LOSS REASON DISTRIBUTION ({attritionStats.total} TOTAL)</div>
-                  
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px', fontWeight: 600 }}>
-                        <span>Price Resistance</span>
-                        <span>{attritionStats.price}%</span>
-                      </div>
-                      <div style={{ height: '8px', background: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${attritionStats.price}%`, background: '#ef4444', borderRadius: '4px', transition: 'width 0.5s ease' }}></div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px', fontWeight: 600 }}>
-                        <span>PM Hand-off Friction</span>
-                        <span>{attritionStats.friction}%</span>
-                      </div>
-                      <div style={{ height: '8px', background: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${attritionStats.friction}%`, background: '#eab308', borderRadius: '4px', transition: 'width 0.5s ease' }}></div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px', fontWeight: 600 }}>
-                        <span>Competitor Offers</span>
-                        <span>{attritionStats.competitor}%</span>
-                      </div>
-                      <div style={{ height: '8px', background: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${attritionStats.competitor}%`, background: 'var(--text-info)', borderRadius: '4px', transition: 'width 0.5s ease' }}></div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px', fontWeight: 600 }}>
-                        <span>Other Reasons</span>
-                        <span>{attritionStats.other}%</span>
-                      </div>
-                      <div style={{ height: '8px', background: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${attritionStats.other}%`, background: 'var(--text-secondary)', borderRadius: '4px', transition: 'width 0.5s ease' }}></div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '16px', paddingTop: '12px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-tertiary)', marginBottom: '8px' }}>RECENT LOSS POST-MORTEMS</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {attritionLogs.slice(0, 3).map(l => (
-                        <div key={l.id} style={{ fontSize: '11px', background: 'var(--bg-secondary)', padding: '8px', borderRadius: '6px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, marginBottom: '2px' }}>
-                            <span style={{ color: 'var(--text-primary)' }}>{l.clientName}</span>
-                            <span className="badge b-danger" style={{ fontSize: '8px', padding: '0px 4px' }}>{l.reason}</span>
-                          </div>
-                          <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '10px' }}>"{l.notes}"</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="crm-sidebar-section">
               <div className="section-label">Top Clients by Revenue</div>
               <div className="card">
                 <div className="card-body" style={{ padding: '8px 0' }}>
-                  {clientData.slice(0, 3).map((c, i) => (
+                  {clientData.filter(c => c.totalValue > 0).slice(0, 6).map((c, i) => (
                     <div key={c.id} className="hr-row clickable" style={{ padding: '12px 16px' }} onClick={() => setSelectedClient(c)}>
                       <div className="av" style={{ background: i === 0 ? 'var(--bg-warning)' : 'var(--bg-secondary)', color: i === 0 ? 'var(--text-warning)' : 'var(--text-primary)' }}>{i + 1}</div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 500, fontSize: '13px' }}>{c.name}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{c.projects} projects ever</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 500, fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{c.projects} {c.projects === 1 ? 'project' : 'projects'}</div>
                       </div>
-                      <div style={{ textAlign: 'right', fontWeight: 600, fontSize: '13px' }}>R {(c.totalValue / 1000).toFixed(0)}k</div>
+                      <div style={{ textAlign: 'right', fontWeight: 600, fontSize: '13px', flexShrink: 0 }}>R {(c.totalValue / 1000).toFixed(0)}k</div>
                     </div>
                   ))}
+                  {clientData.filter(c => c.totalValue > 0).length === 0 && (
+                    <div style={{ padding: '16px', fontSize: '12px', color: 'var(--text-tertiary)', textAlign: 'center' }}>
+                      No client revenue recorded yet.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
+
+            {attritionStats.total > 0 && (
+              <div className="crm-sidebar-section" style={{ marginTop: '20px' }}>
+                <div className="section-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Attrition Analytics</span>
+                  <span className="badge b-danger" style={{ fontSize: '9px', fontWeight: 600 }}>{attritionStats.total} Logged</span>
+                </div>
+                <div className="card">
+                  <div className="card-body" style={{ padding: '16px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px', fontWeight: 600 }}>
+                          <span>Price Resistance</span>
+                          <span>{attritionStats.price}%</span>
+                        </div>
+                        <div style={{ height: '8px', background: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${attritionStats.price}%`, background: '#ef4444', borderRadius: '4px', transition: 'width 0.5s ease' }}></div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px', fontWeight: 600 }}>
+                          <span>PM Hand-off Friction</span>
+                          <span>{attritionStats.friction}%</span>
+                        </div>
+                        <div style={{ height: '8px', background: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${attritionStats.friction}%`, background: '#eab308', borderRadius: '4px', transition: 'width 0.5s ease' }}></div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px', fontWeight: 600 }}>
+                          <span>Competitor Offers</span>
+                          <span>{attritionStats.competitor}%</span>
+                        </div>
+                        <div style={{ height: '8px', background: 'var(--bg-secondary)', borderRadius: '4px', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${attritionStats.competitor}%`, background: 'var(--text-info)', borderRadius: '4px', transition: 'width 0.5s ease' }}></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1259,7 +1212,7 @@ export default function CrmPage() {
               <div className="modal-head">
                 <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Mail size={16} />
-                  <span>Drafting Nudge: {activeNudge.type === 'reciprocity' ? 'Reciprocity Packet' : 'Consistency Push'}</span>
+                  <span>Drafting Follow-up</span>
                 </div>
                 <button className="modal-close" onClick={() => setActiveNudge(null)}>✕</button>
               </div>
@@ -1282,26 +1235,15 @@ export default function CrmPage() {
                     onChange={e => setNudgeBody(e.target.value)}
                   />
                 </div>
-                
-                {activeNudge.type === 'reciprocity' && (
-                  <div style={{ background: 'var(--bg-secondary)', padding: '10px', borderRadius: '6px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid var(--border)' }}>
-                    <FileText size={16} color="#eab308" />
-                    <div>
-                      <div style={{ fontWeight: 600 }}>Attachment Included</div>
-                      <div style={{ color: 'var(--text-secondary)' }}>2026_Eco_Build_Design_Research_Packet.pdf (2.4 MB)</div>
-                    </div>
-                  </div>
-                )}
               </div>
               <div className="modal-footer">
                 <button className="btn" onClick={() => setActiveNudge(null)}>Cancel</button>
                 <button 
                   className="btn btn-primary" 
-                  style={{ background: activeNudge.type === 'reciprocity' ? '#eab308' : 'var(--text-info)', borderColor: activeNudge.type === 'reciprocity' ? '#eab308' : 'var(--text-info)', color: activeNudge.type === 'reciprocity' ? '#000' : '#fff' }}
                   onClick={handleSendNudge}
                 >
                   <Send size={12} style={{ marginRight: '6px' }} />
-                  {activeNudge.type === 'reciprocity' ? 'Send Research Attachment' : 'Send Goal Check-in'}
+                  Log Follow-up
                 </button>
               </div>
             </div>
@@ -1321,7 +1263,7 @@ export default function CrmPage() {
               </div>
               <div className="modal-body" style={{ padding: '16px' }}>
                 <div style={{ background: 'rgba(239,68,68,0.03)', border: '1px solid rgba(239,68,68,0.1)', padding: '12px', borderRadius: '6px', fontSize: '12px', marginBottom: '16px', lineHeight: 1.4 }}>
-                  <strong>Post-Mortem Policy:</strong> Before marking a client profile as Inactive/Churned, you must log the exact friction reason. This data feeds directly into our Attrition Analytics to help leadership retain key partnerships.
+                  <strong>Post-Mortem Policy:</strong> Before marking a client profile as Inactive/Churned, you must log the exact friction reason.
                 </div>
                 
                 <div className="form-row">
@@ -1366,35 +1308,6 @@ export default function CrmPage() {
           </div>
         )}
 
-        {/* AI Assistant Overlay */}
-        <div className="ai-assistant">
-          <button className="ai-toggle" onClick={() => setShowAi(!showAi)}>
-            {showAi ? '✕' : <MessageSquare size={24} />}
-          </button>
-          {showAi && (
-            <div className="ai-panel">
-              <div className="ai-panel-head">
-                <div style={{ fontSize: '14px', fontWeight: 600 }}>CRM Assistant</div>
-                <div style={{ fontSize: '10px', opacity: 0.8 }}>Powered by Gemini 1.5</div>
-              </div>
-              <div className="ai-panel-body">
-                <div className="ai-msg ai-msg-bot">Hello! I'm your AI assistant. I can help you analyze your client data, draft emails, or forecast your sales pipeline. What's on your mind today?</div>
-                <div className="ai-msg ai-msg-user">Can you summarize my top 3 clients?</div>
-                <div className="ai-msg ai-msg-bot">Certainly! Your top 3 clients by revenue are:
-                  1. **Sarah Venter** (R 2M) - 2 active projects
-                  2. **James Motloung** (R 1M) - 1 active project
-                  3. **Liezel du Toit** (R 618k) - 1 active project
-                  Would you like a detailed breakdown for any of them?</div>
-              </div>
-              <div className="ai-panel-footer">
-                <div className="ai-input-wrap">
-                  <input className="ai-input" placeholder="Type a message..." value={aiMsg} onChange={e => setAiMsg(e.target.value)} />
-                  <button className="ai-send" onClick={() => setAiMsg('')}><Send size={14} /></button>
-                </div>
-              </div>
-            </div>
-          )}
-
         {/* New Client Modal */}
         {showModal && (
           <div className="modal-bg active" onClick={() => setShowModal(false)}>
@@ -1424,7 +1337,6 @@ export default function CrmPage() {
             </div>
           </div>
         )}
-      </div>
       <CollapsibleAlertSidebar 
         module="crm" 
         onNavigate={(path, state) => {
@@ -1491,10 +1403,28 @@ export default function CrmPage() {
               <Edit3 size={11} /> Edit Profile
             </button>
           </div>
-          <div style={{ display: 'flex', gap: '24px', marginTop: '12px', color: 'var(--text-secondary)', fontSize: '14px' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Building2 size={16} color="var(--text-tertiary)" /> {currentContact.company}</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Mail size={16} color="var(--text-tertiary)" /> {currentContact.email}</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Phone size={16} color="var(--text-tertiary)" /> {currentContact.phone}</span>
+          <div style={{ display: 'flex', gap: '24px', marginTop: '12px', color: 'var(--text-secondary)', fontSize: '14px', flexWrap: 'wrap' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Building2 size={16} color="var(--text-tertiary)" /> {currentContact.company || currentContact.name}
+            </span>
+            {currentContact.email ? (
+              <a href={`mailto:${currentContact.email}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-info)', textDecoration: 'none', fontWeight: 500 }}>
+                <Mail size={16} color="var(--text-info)" /> {currentContact.email}
+              </a>
+            ) : (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-tertiary)' }}>
+                <Mail size={16} color="var(--text-tertiary)" /> No email set
+              </span>
+            )}
+            {currentContact.phone ? (
+              <a href={`tel:${currentContact.phone}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-info)', textDecoration: 'none', fontWeight: 500 }}>
+                <Phone size={16} color="var(--text-info)" /> {currentContact.phone}
+              </a>
+            ) : (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-tertiary)' }}>
+                <Phone size={16} color="var(--text-tertiary)" /> No phone set
+              </span>
+            )}
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -1560,12 +1490,12 @@ export default function CrmPage() {
                   </button>
                 </div>
                 <div className="card-body">
-                  <div className="kv"><span className="kv-key">Full Name</span><span className="kv-val">{selectedClient.name}</span></div>
-                  <div className="kv"><span className="kv-key">Company</span><span className="kv-val">{selectedClient.company || '—'}</span></div>
-                  <div className="kv"><span className="kv-key">Client Category</span><span className="kv-val">{selectedClient.type || '—'}</span></div>
-                  <div className="kv"><span className="kv-key">Key Business Areas</span><span className="kv-val">{selectedClient.keyBusinessAreas || '—'}</span></div>
+                  <div className="kv"><span className="kv-key">Full Name</span><span className="kv-val">{currentContact.name}</span></div>
+                  <div className="kv"><span className="kv-key">Company</span><span className="kv-val">{currentContact.company || '—'}</span></div>
+                  <div className="kv"><span className="kv-key">Client Category</span><span className="kv-val">{currentContact.type || '—'}</span></div>
+                  <div className="kv"><span className="kv-key">Key Business Areas</span><span className="kv-val">{currentContact.keyBusinessAreas || '—'}</span></div>
                   <div className="kv"><span className="kv-key">Date Started as Client</span><span className="kv-val">{dateStartedDisplay}</span></div>
-                  <div className="kv"><span className="kv-key">Client Satisfaction (NPS)</span><span className="kv-val" style={{ fontWeight: 700, color: selectedClient.nps ? (selectedClient.nps >= 8 ? '#22c55e' : selectedClient.nps >= 6 ? '#eab308' : '#ef4444') : 'var(--text-secondary)' }}>{selectedClient.nps ? `${selectedClient.nps}/10 CSAT` : 'No rating yet'}</span></div>
+                  <div className="kv"><span className="kv-key">Client Satisfaction (NPS)</span><span className="kv-val" style={{ fontWeight: 700, color: currentContact.nps ? (currentContact.nps >= 8 ? '#22c55e' : currentContact.nps >= 6 ? '#eab308' : '#ef4444') : 'var(--text-secondary)' }}>{currentContact.nps ? `${currentContact.nps}/10 CSAT` : 'No rating yet'}</span></div>
                 </div>
               </div>
             </div>
@@ -1584,21 +1514,21 @@ export default function CrmPage() {
                       <span 
                         className="kv-val" 
                         onClick={() => {
-                          if (selectedClient.lastCompletedProjectName) {
-                            const proj = Object.values(projects).find(pr => pr.name === selectedClient.lastCompletedProjectName);
+                          if (currentContact.lastCompletedProjectName && currentContact.lastCompletedProjectName !== '—') {
+                            const proj = Object.values(projects).find(pr => pr.name === currentContact.lastCompletedProjectName);
                             if (proj) navigate(`/projects/${proj.key || proj.id || proj.name.toLowerCase().replace(/\s+/g, '-')}`);
                           }
                         }}
                         style={{ 
                           fontWeight: 600, 
-                          color: selectedClient.lastCompletedProjectName && Object.values(projects).some(pr => pr.name === selectedClient.lastCompletedProjectName) ? 'var(--text-info)' : 'inherit',
-                          cursor: selectedClient.lastCompletedProjectName && Object.values(projects).some(pr => pr.name === selectedClient.lastCompletedProjectName) ? 'pointer' : 'default'
+                          color: currentContact.lastCompletedProjectName && currentContact.lastCompletedProjectName !== '—' && Object.values(projects).some(pr => pr.name === currentContact.lastCompletedProjectName) ? 'var(--text-info)' : 'inherit',
+                          cursor: currentContact.lastCompletedProjectName && currentContact.lastCompletedProjectName !== '—' && Object.values(projects).some(pr => pr.name === currentContact.lastCompletedProjectName) ? 'pointer' : 'default'
                         }}
                       >
-                        {selectedClient.lastCompletedProjectName || '—'}
+                        {currentContact.lastCompletedProjectName || '—'}
                       </span>
                     </div>
-                    <div className="kv"><span className="kv-key">Relationship Status</span><span>{renderHealthBadge(selectedClient.health)}</span></div>
+                    <div className="kv"><span className="kv-key">Relationship Status</span><span>{renderHealthBadge(currentContact.health)}</span></div>
                   </div>
                 </div>
               </div>
@@ -1613,14 +1543,14 @@ export default function CrmPage() {
                         <Clock size={16} color="var(--text-info)" style={{ flexShrink: 0 }} />
                         <div>
                           <div style={{ fontWeight: 600, fontSize: '12px' }}>Stated Long-Term Objective</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>"{selectedClient.statedGoal || 'No goal registered'}"</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>"{currentContact.statedGoal || 'No goal registered'}"</div>
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: '8px', borderTop: '0.5px solid var(--border)', paddingTop: '8px' }}>
                         <Target size={16} color="#eab308" style={{ flexShrink: 0 }} />
                         <div>
-                          <div style={{ fontWeight: 600, fontSize: '12px' }}>Expected Milestone Approval</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{clientProjects.length > 0 ? 'Design Phase 2 alignment sign-off' : '—'}</div>
+                          <div style={{ fontWeight: 600, fontSize: '12px' }}>Active Project Status</div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{currentContact.activeProjectName !== '—' ? currentContact.activeProjectName : 'No active project'}</div>
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: '8px', borderTop: '0.5px solid var(--border)', paddingTop: '8px' }}>
@@ -1915,110 +1845,367 @@ export default function CrmPage() {
         )}
 
         {/* TAB 4: ACTIVITY LOG */}
-        {activeTab === 'activity' && (
-          <div className="animation-fade-in">
-            {/* Log a new activity */}
-            <div className="card" style={{ marginBottom: '20px', border: '1px solid var(--border-info)' }}>
-              <div className="card-head">
-                <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <ClipboardList size={16} color="var(--text-info)" /> Log Interaction
-                </div>
-              </div>
-              <div className="card-body" style={{ padding: '16px' }}>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  <textarea
-                    className="form-control"
-                    rows={2}
-                    placeholder="Describe the interaction (e.g. 'Call with Sarah — confirmed Phase 2 brief')..."
-                    value={newActivityText}
-                    onChange={e => setNewActivityText(e.target.value)}
-                    style={{ flex: 1, resize: 'vertical', fontSize: '13px', fontFamily: 'inherit' }}
-                  />
-                  <button
-                    className="btn btn-primary"
-                    style={{ height: '52px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
-                    onClick={async () => {
-                      if (!newActivityText.trim()) return;
-                      const now = new Date();
-                      const timestamp = now.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) +
-                        ' ' + now.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
-                      const newEntry = {
-                        id: Date.now(),
-                        text: newActivityText.trim(),
-                        date: timestamp,
-                        staff: 'You',
-                        type: 'Note'
-                      };
-                      const updated = [...clientActivities, newEntry];
-                      setClientActivities(updated);
-                      setNewActivityText('');
-                      if (updateClient && selectedClient?.id) {
-                        await updateClient(selectedClient.id, {
-                          activities: updated,
-                          lastContactDate: timestamp.split(' ')[0] || '2026-05-19',
-                          lastContactSummary: newActivityText.trim()
-                        });
-                      }
-                    }}
-                  >
-                    <Send size={14} /> Log Activity
-                  </button>
-                </div>
-              </div>
-            </div>
+        {activeTab === 'activity' && (() => {
+          const activityTypeOptions = [
+            { value: 'Call', label: 'Call', icon: Phone, color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.12)' },
+            { value: 'Meeting', label: 'Meeting', icon: Users, color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.12)' },
+            { value: 'Email', label: 'Email', icon: Mail, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' },
+            { value: 'Site Visit', label: 'Site Visit', icon: MapPin, color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)' },
+            { value: 'WhatsApp', label: 'WhatsApp', icon: MessageSquare, color: '#22c55e', bg: 'rgba(34, 197, 94, 0.12)' },
+            { value: 'Note', label: 'Note', icon: FileText, color: 'var(--text-secondary)', bg: 'var(--bg-secondary)' }
+          ];
 
-            {/* Timeline */}
-            <div className="card">
-              <div className="card-head">
-                <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Activity size={16} color="var(--text-secondary)" /> Interaction History for {selectedClient.name}
+          const getTypeMeta = (typeVal) => {
+            return activityTypeOptions.find(t => t.value === typeVal) || activityTypeOptions[activityTypeOptions.length - 1];
+          };
+
+          const persistActivities = async (updatedList, latestSummaryText = null) => {
+            setClientActivities(updatedList);
+            const nowIso = new Date().toISOString().split('T')[0];
+            const summaryToSave = latestSummaryText !== null
+              ? latestSummaryText
+              : (updatedList.length > 0 ? updatedList[updatedList.length - 1].text : '');
+            setSelectedClient(prev => prev ? {
+              ...prev,
+              activities: updatedList,
+              lastContactDate: updatedList.length > 0 ? nowIso : prev.lastContactDate,
+              lastContactSummary: summaryToSave
+            } : prev);
+            if (updateClient && selectedClient?.id) {
+              await updateClient(selectedClient.id, {
+                activities: updatedList,
+                lastContactDate: updatedList.length > 0 ? nowIso : selectedClient.lastContactDate,
+                lastContactSummary: summaryToSave
+              });
+            }
+          };
+
+          const handleLogNewActivity = async () => {
+            if (!newActivityText.trim()) return;
+            const now = new Date();
+            const timestamp = now.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) +
+              ' ' + now.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+            const newEntry = {
+              id: Date.now(),
+              text: newActivityText.trim(),
+              date: timestamp,
+              staff: currentStaffName,
+              type: newActivityType || 'Note'
+            };
+            const updated = [...clientActivities, newEntry];
+            setNewActivityText('');
+            await persistActivities(updated, newEntry.text);
+            showToast(`${newEntry.type} logged for ${selectedClient.name}`);
+          };
+
+          const handleSaveEditedActivity = async (entryId) => {
+            if (!editingActivityText.trim()) return;
+            const updated = clientActivities.map(item =>
+              item.id === entryId
+                ? { ...item, text: editingActivityText.trim(), type: editingActivityType }
+                : item
+            );
+            setEditingActivityId(null);
+            setEditingActivityText('');
+            await persistActivities(updated);
+            showToast('Interaction updated');
+          };
+
+          const handleDeleteActivity = async (entry) => {
+            if (!window.confirm('Delete this interaction entry?')) return;
+            const updated = clientActivities.filter(item => item.id !== entry.id);
+            await persistActivities(updated);
+            showToast('Interaction removed');
+          };
+
+          // Build optional system milestones from linked Projects & Orders
+          const systemEvents = [];
+          (clientProjects || []).forEach(p => {
+            if (p.start && p.start !== '—') {
+              systemEvents.push({
+                id: `sys-proj-${p.id || p.name}`,
+                text: `Project "${p.name}" initiated (${p.stage || 'Stage 1'})`,
+                date: p.start,
+                staff: p.pm || p.projectManager || 'System',
+                type: 'System',
+                isSystem: true
+              });
+            }
+            (p.scopedOrders || []).forEach(o => {
+              const oDate = o.orderDate || o.pfDate;
+              if (oDate && oDate !== '—') {
+                systemEvents.push({
+                  id: `sys-ord-${o.id || o.poNumber}`,
+                  text: `Order ${o.poNumber || o.name || ''} (${p.name}) — R ${Number(o.value || 0).toLocaleString()}`,
+                  date: oDate,
+                  staff: 'Procurement',
+                  type: 'System',
+                  isSystem: true
+                });
+              }
+            });
+          });
+
+          const reversedManual = [...clientActivities].reverse();
+          const allTimelineEntries = activityFilterType === 'System'
+            ? systemEvents
+            : activityFilterType === 'All'
+            ? [...reversedManual, ...systemEvents]
+            : reversedManual.filter(e => (e.type || 'Note') === activityFilterType);
+
+          return (
+            <div className="animation-fade-in">
+              {/* Log a new activity */}
+              <div className="card" style={{ marginBottom: '20px', border: '1px solid var(--border-info)' }}>
+                <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                  <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <ClipboardList size={16} color="var(--text-info)" /> Log Interaction
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                    Logging as <strong style={{ color: 'var(--text-secondary)' }}>{currentStaffName}</strong> · Press <kbd style={{ padding: '1px 5px', borderRadius: '3px', border: '1px solid var(--border)', background: 'var(--bg-secondary)', fontSize: '10px' }}>Ctrl + Enter</kbd> to save
+                  </div>
+                </div>
+                <div className="card-body" style={{ padding: '16px' }}>
+                  {/* Interaction Type Pills */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginRight: '4px' }}>Type:</span>
+                    {activityTypeOptions.map(opt => {
+                      const IconComp = opt.icon;
+                      const isSelected = newActivityType === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setNewActivityType(opt.value)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '4px 10px',
+                            borderRadius: '16px',
+                            fontSize: '11.5px',
+                            fontWeight: isSelected ? 600 : 500,
+                            cursor: 'pointer',
+                            border: isSelected ? `1px solid ${opt.color}` : '1px solid var(--border)',
+                            background: isSelected ? opt.bg : 'var(--bg-secondary)',
+                            color: isSelected ? opt.color : 'var(--text-secondary)',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <IconComp size={12} />
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                    <textarea
+                      className="form-control"
+                      rows={2}
+                      placeholder={`Describe the ${newActivityType.toLowerCase()} (e.g. 'Confirmed Phase 2 lighting schedule and delivery dates')...`}
+                      value={newActivityText}
+                      onChange={e => setNewActivityText(e.target.value)}
+                      onKeyDown={e => {
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                          e.preventDefault();
+                          handleLogNewActivity();
+                        }
+                      }}
+                      style={{ flex: 1, resize: 'vertical', fontSize: '13px', fontFamily: 'inherit' }}
+                    />
+                    <button
+                      className="btn btn-primary"
+                      disabled={!newActivityText.trim()}
+                      style={{ height: '52px', display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
+                      onClick={handleLogNewActivity}
+                    >
+                      <Send size={14} /> Log {newActivityType}
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div className="card-body" style={{ padding: '16px' }}>
-                {clientActivities.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-tertiary)', fontSize: '13px' }}>
-                    <Activity size={28} style={{ marginBottom: '10px', opacity: 0.4 }} />
-                    <div>No interactions logged yet.</div>
-                    <div style={{ fontSize: '11px', marginTop: '4px' }}>Use the form above to record calls, meetings, emails, and follow-ups.</div>
+
+              {/* Timeline */}
+              <div className="card">
+                <div className="card-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                  <div className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Activity size={16} color="var(--text-secondary)" /> Interaction History for {selectedClient.name}
+                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500 }}>
+                      ({allTimelineEntries.length})
+                    </span>
                   </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-                    {[...clientActivities].reverse().map((entry, idx, arr) => (
-                      <div key={entry.id} style={{ display: 'flex', gap: '14px', paddingBottom: idx < arr.length - 1 ? '16px' : 0 }}>
-                        {/* Timeline dot + line */}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-                          <div style={{
-                            width: '10px', height: '10px', borderRadius: '50%',
-                            background: idx === 0 ? 'var(--text-info)' : 'var(--border)',
-                            border: idx === 0 ? '2px solid var(--text-info)' : '2px solid var(--text-tertiary)',
-                            marginTop: '3px', flexShrink: 0
-                          }} />
-                          {idx < arr.length - 1 && (
-                            <div style={{ width: '2px', flex: 1, background: 'var(--border)', marginTop: '4px' }} />
-                          )}
-                        </div>
-                        {/* Entry content */}
-                        <div style={{ flex: 1, paddingBottom: idx < arr.length - 1 ? '4px' : 0 }}>
-                          <div style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--text-primary)', lineHeight: '1.4' }}>
-                            {entry.text}
-                          </div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '3px', display: 'flex', gap: '10px' }}>
-                            <span>{entry.date}</span>
-                            {entry.staff && <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>— {entry.staff}</span>}
-                          </div>
-                        </div>
-                      </div>
+
+                  {/* Filter pills */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                    {['All', ...activityTypeOptions.map(o => o.value), ...(systemEvents.length > 0 ? ['System'] : [])].map(fType => (
+                      <button
+                        key={fType}
+                        type="button"
+                        onClick={() => setActivityFilterType(fType)}
+                        style={{
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          border: activityFilterType === fType ? '1px solid var(--text-info)' : '1px solid var(--border)',
+                          background: activityFilterType === fType ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
+                          color: activityFilterType === fType ? 'var(--text-info)' : 'var(--text-secondary)',
+                          fontWeight: activityFilterType === fType ? 600 : 400
+                        }}
+                      >
+                        {fType}
+                      </button>
                     ))}
                   </div>
-                )}
+                </div>
+
+                <div className="card-body" style={{ padding: '16px' }}>
+                  {allTimelineEntries.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-tertiary)', fontSize: '13px' }}>
+                      <Activity size={28} style={{ marginBottom: '10px', opacity: 0.4 }} />
+                      <div>{activityFilterType === 'All' ? 'No interactions logged yet.' : `No ${activityFilterType} interactions found.`}</div>
+                      <div style={{ fontSize: '11px', marginTop: '4px' }}>Use the form above to record calls, meetings, emails, site visits, and follow-ups.</div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                      {allTimelineEntries.map((entry, idx, arr) => {
+                        const typeMeta = entry.isSystem
+                          ? { label: 'Milestone', icon: Briefcase, color: '#64748b', bg: 'var(--bg-secondary)' }
+                          : getTypeMeta(entry.type || 'Note');
+                        const EntryIcon = typeMeta.icon;
+                        const isEditingThis = editingActivityId === entry.id;
+                        const staffLabel = entry.staff === 'You' ? currentStaffName : (entry.staff || currentStaffName);
+
+                        return (
+                          <div key={entry.id} style={{ display: 'flex', gap: '14px', paddingBottom: idx < arr.length - 1 ? '16px' : 0 }}>
+                            {/* Timeline icon + vertical connector */}
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+                              <div style={{
+                                width: '26px', height: '26px', borderRadius: '50%',
+                                background: typeMeta.bg,
+                                border: `1px solid ${typeMeta.color}`,
+                                color: typeMeta.color,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                flexShrink: 0
+                              }}>
+                                <EntryIcon size={12} />
+                              </div>
+                              {idx < arr.length - 1 && (
+                                <div style={{ width: '2px', flex: 1, background: 'var(--border)', marginTop: '4px' }} />
+                              )}
+                            </div>
+
+                            {/* Entry content */}
+                            <div style={{ flex: 1, paddingBottom: idx < arr.length - 1 ? '4px' : 0 }}>
+                              {isEditingThis ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'var(--bg-secondary)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                    {activityTypeOptions.map(opt => (
+                                      <button
+                                        key={opt.value}
+                                        type="button"
+                                        onClick={() => setEditingActivityType(opt.value)}
+                                        style={{
+                                          padding: '2px 8px',
+                                          fontSize: '10.5px',
+                                          borderRadius: '12px',
+                                          border: editingActivityType === opt.value ? `1px solid ${opt.color}` : '1px solid var(--border)',
+                                          background: editingActivityType === opt.value ? opt.bg : 'transparent',
+                                          color: editingActivityType === opt.value ? opt.color : 'var(--text-secondary)',
+                                          cursor: 'pointer'
+                                        }}
+                                      >
+                                        {opt.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <textarea
+                                    className="form-control"
+                                    rows={2}
+                                    value={editingActivityText}
+                                    onChange={e => setEditingActivityText(e.target.value)}
+                                    style={{ fontSize: '12.5px', fontFamily: 'inherit' }}
+                                    autoFocus
+                                  />
+                                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                    <button className="btn btn-ghost btn-xs" onClick={() => setEditingActivityId(null)}>
+                                      Cancel
+                                    </button>
+                                    <button className="btn btn-primary btn-xs" onClick={() => handleSaveEditedActivity(entry.id)}>
+                                      <Check size={11} style={{ marginRight: '4px' }} /> Save
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                      <span style={{
+                                        fontSize: '10.5px',
+                                        fontWeight: 600,
+                                        padding: '1px 7px',
+                                        borderRadius: '10px',
+                                        background: typeMeta.bg,
+                                        color: typeMeta.color,
+                                        border: `1px solid ${typeMeta.color}33`
+                                      }}>
+                                        {typeMeta.label}
+                                      </span>
+                                      <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{entry.date}</span>
+                                      {staffLabel && (
+                                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                          · {staffLabel}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {!entry.isSystem && (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                        <button
+                                          className="btn btn-ghost btn-xs"
+                                          title="Edit interaction"
+                                          onClick={() => {
+                                            setEditingActivityId(entry.id);
+                                            setEditingActivityText(entry.text);
+                                            setEditingActivityType(entry.type || 'Note');
+                                          }}
+                                          style={{ padding: '2px 5px', opacity: 0.65 }}
+                                        >
+                                          <Edit3 size={11} />
+                                        </button>
+                                        <button
+                                          className="btn btn-ghost btn-xs"
+                                          title="Delete interaction"
+                                          onClick={() => handleDeleteActivity(entry)}
+                                          style={{ padding: '2px 5px', color: 'var(--text-danger)', opacity: 0.65 }}
+                                        >
+                                          <Trash2 size={11} />
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div style={{ fontSize: '12.5px', fontWeight: 500, color: 'var(--text-primary)', lineHeight: '1.45', marginTop: '4px', whiteSpace: 'pre-wrap' }}>
+                                    {entry.text}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* TAB 4: FINANCIALS */}
         {activeTab === 'financials' && (() => {
-          // Helper to sum up financials
+          // Helper to sum up financials using scopedDesignFees and scopedOrders
           const getFinSummary = (projectsList) => {
             let designVal = 0;
             let designPaid = 0;
@@ -2028,46 +2215,63 @@ export default function CrmPage() {
             let orderOut = 0;
 
             projectsList.forEach(p => {
-              if (p.designFees) {
-                p.designFees.forEach(df => {
-                  designVal += df.feeValue || 0;
-                  designPaid += df.paid || 0;
-                  designOut += df.outstanding || 0;
-                });
-              }
-              if (p.orders) {
-                p.orders.forEach(ord => {
-                  orderVal += ord.value || 0;
-                  orderPaid += ord.paid || 0;
-                  orderOut += ord.outstanding || 0;
-                });
-              }
+              const fees = p.scopedDesignFees || p.designFees || [];
+              fees.forEach(df => {
+                const fv = Number(df.feeValue || 0);
+                const fp = Number(df.paid || 0);
+                const fo = df.outstanding !== undefined && df.outstanding !== null && Number(df.outstanding) > 0
+                  ? Number(df.outstanding)
+                  : Math.max(0, fv - fp);
+                designVal += fv;
+                designPaid += fp;
+                designOut += fo;
+              });
+              const ords = p.scopedOrders || p.orders || [];
+              ords.forEach(ord => {
+                const ov = Number(ord.value || 0);
+                const op = Number(ord.paid || 0);
+                const oo = ord.outstanding !== undefined && ord.outstanding !== null && Number(ord.outstanding) > 0
+                  ? Number(ord.outstanding)
+                  : Math.max(0, ov - op);
+                orderVal += ov;
+                orderPaid += op;
+                orderOut += oo;
+              });
             });
 
             return {
-              designVal,
-              designPaid,
-              designOut,
-              orderVal,
-              orderPaid,
-              orderOut,
-              totalVal: designVal + orderVal,
-              totalPaid: designPaid + orderPaid,
-              totalOut: designOut + orderOut
+              designVal: Math.round(designVal),
+              designPaid: Math.round(designPaid),
+              designOut: Math.round(designOut),
+              orderVal: Math.round(orderVal),
+              orderPaid: Math.round(orderPaid),
+              orderOut: Math.round(orderOut),
+              totalVal: Math.round(designVal + orderVal),
+              totalPaid: Math.round(designPaid + orderPaid),
+              totalOut: Math.round(designOut + orderOut)
             };
           };
 
+          const nowDate = getToday();
+          const fyStartYr = nowDate.getMonth() >= 2 ? nowDate.getFullYear() : nowDate.getFullYear() - 1;
+          const fyStart = new Date(fyStartYr, 2, 1);
+          const fyEnd = new Date(fyStartYr + 1, 1, 28, 23, 59, 59);
+
           const allTimeSummary = getFinSummary(clientProjects);
           const ytdSummary = getFinSummary(clientProjects.filter(p => {
-            const d = new Date(p.start);
-            return d >= new Date('2026-03-01') && d <= new Date('2027-02-28');
+            const dStr = p.start && p.start !== '—' ? p.start : (p.scopedOrders?.[0]?.orderDate || p.scopedOrders?.[0]?.pfDate);
+            if (!dStr || dStr === '—') return p.complete !== 'Complete';
+            const d = new Date(dStr);
+            if (isNaN(d.getTime())) return p.complete !== 'Complete';
+            return d >= fyStart && d <= fyEnd;
           }));
 
           const finFilteredProjects = clientProjects.filter(p => {
             if (finDatePreset === 'All') return true;
-            const pDate = new Date(p.start);
-            if (isNaN(pDate.getTime())) return true;
-            const todayDate = new Date('2026-05-19'); // anchor date
+            const dStr = p.start && p.start !== '—' ? p.start : (p.scopedOrders?.[0]?.orderDate || p.scopedOrders?.[0]?.pfDate);
+            const pDate = dStr ? new Date(dStr) : null;
+            if (!pDate || isNaN(pDate.getTime())) return true;
+            const todayDate = getToday();
             if (finDatePreset === '30') {
               const diffTime = Math.abs(todayDate - pDate);
               const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -2085,7 +2289,7 @@ export default function CrmPage() {
             }
             if (finDatePreset === 'custom') {
               if (finStartDate && pDate < new Date(finStartDate)) return false;
-              if (finEndDate && pDate > new Date(finEndDate)) return false;
+              if (finEndDate && pDate > new Date(finEndDate + 'T23:59:59')) return false;
               return true;
             }
             return true;
@@ -2168,8 +2372,8 @@ export default function CrmPage() {
                       <span>R {allTimeSummary.totalVal.toLocaleString()}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                      <span>Total Paid: <strong>R {allTimeSummary.totalPaid.toLocaleString()}</strong></span>
-                      <span>Outstanding: <strong style={{color:'var(--text-danger)'}}>R {allTimeSummary.totalOut.toLocaleString()}</strong></span>
+                      <span>Total Paid: <strong style={{ color: 'var(--text-success)' }}>R {allTimeSummary.totalPaid.toLocaleString()}</strong></span>
+                      <span>Outstanding: <strong style={{color: allTimeSummary.totalOut > 0 ? 'var(--text-danger)' : 'var(--text-success)'}}>R {allTimeSummary.totalOut.toLocaleString()}</strong></span>
                     </div>
                   </div>
                 </div>
@@ -2191,8 +2395,8 @@ export default function CrmPage() {
                       <span>R {ytdSummary.totalVal.toLocaleString()}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                      <span>Total Paid: <strong>R {ytdSummary.totalPaid.toLocaleString()}</strong></span>
-                      <span>Outstanding: <strong style={{color:'var(--text-danger)'}}>R {ytdSummary.totalOut.toLocaleString()}</strong></span>
+                      <span>Total Paid: <strong style={{ color: 'var(--text-success)' }}>R {ytdSummary.totalPaid.toLocaleString()}</strong></span>
+                      <span>Outstanding: <strong style={{color: ytdSummary.totalOut > 0 ? 'var(--text-danger)' : 'var(--text-success)'}}>R {ytdSummary.totalOut.toLocaleString()}</strong></span>
                     </div>
                   </div>
                 </div>
@@ -2215,8 +2419,8 @@ export default function CrmPage() {
                         <span>R {filteredSummary.totalVal.toLocaleString()}</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                        <span>Total Paid: <strong>R {filteredSummary.totalPaid.toLocaleString()}</strong></span>
-                        <span>Outstanding: <strong style={{color:'var(--text-danger)'}}>R {filteredSummary.totalOut.toLocaleString()}</strong></span>
+                        <span>Total Paid: <strong style={{ color: 'var(--text-success)' }}>R {filteredSummary.totalPaid.toLocaleString()}</strong></span>
+                        <span>Outstanding: <strong style={{color: filteredSummary.totalOut > 0 ? 'var(--text-danger)' : 'var(--text-success)'}}>R {filteredSummary.totalOut.toLocaleString()}</strong></span>
                       </div>
                     </div>
                   </div>
@@ -2246,10 +2450,16 @@ export default function CrmPage() {
                     <tbody>
                       {finFilteredProjects.map(p => {
                         const sums = getFinSummary([p]);
+                        const pDateDisplay = p.start && p.start !== '—' ? p.start : (p.scopedOrders?.[0]?.orderDate || p.scopedOrders?.[0]?.pfDate || '—');
                         return (
-                          <tr key={p.key} className="hover-row">
-                            <td style={{ fontWeight: 600 }}>{p.name}</td>
-                            <td>{p.start || '—'}</td>
+                          <tr
+                            key={p.key || p.id || p.name}
+                            className="clickable hover-row"
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => navigate(`/projects/${p.key || p.id || p.name.toLowerCase().replace(/\s+/g, '-')}`)}
+                          >
+                            <td style={{ fontWeight: 600, color: 'var(--text-info)' }}>{p.name}</td>
+                            <td>{pDateDisplay}</td>
                             <td style={{ textAlign: 'right' }}>R {sums.designVal.toLocaleString()}</td>
                             <td style={{ textAlign: 'right', color: 'var(--text-success)' }}>R {sums.designPaid.toLocaleString()}</td>
                             <td style={{ textAlign: 'right', color: sums.designOut > 0 ? 'var(--text-danger)' : 'var(--text-secondary)' }}>R {sums.designOut.toLocaleString()}</td>
@@ -2260,6 +2470,19 @@ export default function CrmPage() {
                           </tr>
                         );
                       })}
+                      {finFilteredProjects.length > 1 && (
+                        <tr style={{ background: 'var(--bg-secondary)', fontWeight: 700, borderTop: '2px solid var(--border)' }}>
+                          <td>TOTAL ({finFilteredProjects.length} Projects)</td>
+                          <td>—</td>
+                          <td style={{ textAlign: 'right' }}>R {filteredSummary.designVal.toLocaleString()}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--text-success)' }}>R {filteredSummary.designPaid.toLocaleString()}</td>
+                          <td style={{ textAlign: 'right', color: filteredSummary.designOut > 0 ? 'var(--text-danger)' : 'var(--text-secondary)' }}>R {filteredSummary.designOut.toLocaleString()}</td>
+                          <td style={{ textAlign: 'right' }}>R {filteredSummary.orderVal.toLocaleString()}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--text-success)' }}>R {filteredSummary.orderPaid.toLocaleString()}</td>
+                          <td style={{ textAlign: 'right', color: filteredSummary.orderOut > 0 ? 'var(--text-danger)' : 'var(--text-secondary)' }}>R {filteredSummary.orderOut.toLocaleString()}</td>
+                          <td style={{ textAlign: 'right', color: filteredSummary.totalOut > 0 ? 'var(--text-danger)' : 'var(--text-success)' }}>R {filteredSummary.totalOut.toLocaleString()}</td>
+                        </tr>
+                      )}
                       {finFilteredProjects.length === 0 && (
                         <tr>
                           <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '24px' }}>
@@ -2304,17 +2527,31 @@ export default function CrmPage() {
                 onChange={e => setEditClientData(d => ({ ...d, company: e.target.value }))} 
               />
             </div>
-            <div className="form-row">
-              <label className="form-label" style={{ fontWeight: 600 }}>Category / Type</label>
-              <select 
-                className="form-control" 
-                value={editClientData.type} 
-                onChange={e => setEditClientData(d => ({ ...d, type: e.target.value }))}
-              >
-                {clientTypes.map(t => (
-                  <option key={t.id || t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
+            <div className="row-2">
+              <div className="form-row">
+                <label className="form-label" style={{ fontWeight: 600 }}>Category / Type</label>
+                <select 
+                  className="form-control" 
+                  value={editClientData.type} 
+                  onChange={e => setEditClientData(d => ({ ...d, type: e.target.value }))}
+                >
+                  {clientTypes.map(t => (
+                    <option key={t.id || t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-row">
+                <label className="form-label" style={{ fontWeight: 600 }}>Client Satisfaction (NPS 1–10)</label>
+                <input 
+                  type="number" 
+                  min="1" 
+                  max="10" 
+                  placeholder="e.g. 9"
+                  className="form-control" 
+                  value={editClientData.nps} 
+                  onChange={e => setEditClientData(d => ({ ...d, nps: e.target.value }))} 
+                />
+              </div>
             </div>
             <div className="row-2">
               <div className="form-row">
@@ -2338,45 +2575,39 @@ export default function CrmPage() {
               <label className="form-label" style={{ fontWeight: 600 }}>Stated Long-Term Objective / Goal</label>
               <input 
                 className="form-control" 
+                placeholder="e.g. Expand hospitality lighting portfolio across Western Cape"
                 value={editClientData.statedGoal} 
                 onChange={e => setEditClientData(d => ({ ...d, statedGoal: e.target.value }))} 
               />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '15px' }}>
-              <div className="form-row" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontWeight: 600 }}>NPS (1-10)</label>
-                <input 
-                  type="number" 
-                  min="1" 
-                  max="10" 
-                  className="form-control" 
-                  value={editClientData.nps} 
-                  onChange={e => setEditClientData(d => ({ ...d, nps: Number(e.target.value) }))} 
-                />
-              </div>
-              <div className="form-row" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontWeight: 600 }}>Lifetime Spend (R)</label>
-                <input 
-                  type="number" 
-                  className="form-control" 
-                  value={editClientData.totalValue} 
-                  onChange={e => setEditClientData(d => ({ ...d, totalValue: Number(e.target.value) }))} 
-                />
-              </div>
-              <div className="form-row" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontWeight: 600 }}>YTD Spend (R)</label>
-                <input 
-                  type="number" 
-                  className="form-control" 
-                  value={editClientData.annualRevenue} 
-                  onChange={e => setEditClientData(d => ({ ...d, annualRevenue: Number(e.target.value) }))} 
-                />
+            <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', marginTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>Live Calculated Revenue (Orders + Design Fees)</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  Lifetime Spend: <strong style={{ color: 'var(--text-primary)' }}>R {clientLtv.toLocaleString()}</strong> · YTD Spend: <strong style={{ color: 'var(--text-success)' }}>R {clientYtd.toLocaleString()}</strong>
+                </div>
               </div>
             </div>
           </div>
-          <div className="modal-footer">
-            <button className="btn" onClick={() => setIsEditingClient(false)}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleSaveClient}>Save Changes</button>
+          <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <button
+              className="btn btn-ghost"
+              style={{ color: 'var(--text-danger)', display: 'flex', alignItems: 'center', gap: '6px' }}
+              onClick={async () => {
+                if (!window.confirm(`Are you sure you want to delete "${currentContact.name}"?`)) return;
+                if (deleteClient) {
+                  await deleteClient(selectedClient.id);
+                }
+                setIsEditingClient(false);
+                setSelectedClient(null);
+              }}
+            >
+              <Trash2 size={14} /> Delete Client
+            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="btn" onClick={() => setIsEditingClient(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleSaveClient}>Save Changes</button>
+            </div>
           </div>
         </div>
       </div>

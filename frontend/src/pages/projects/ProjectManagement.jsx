@@ -132,7 +132,9 @@ export default function ProjectManagement() {
     }
   }, [location.state]);
 
-  const p = projects[id];
+  const p = projects[id] || Object.values(projects || {}).find(
+    proj => proj && ((proj.id && String(proj.id) === String(id)) || (proj.key && proj.key.toLowerCase() === String(id).toLowerCase()))
+  );
   const initializedProjectIdRef = useRef(null);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [saveStatus, setSaveStatus] = useState(''); // '', 'saving', 'saved', 'error'
@@ -161,7 +163,8 @@ export default function ProjectManagement() {
     billingEmail: '',
     billingPhone: '',
     billingDetails: '',
-    deliveryAddress: ''
+    deliveryAddress: '',
+    contactsList: null
   });
 
   useEffect(() => {
@@ -170,12 +173,18 @@ export default function ProjectManagement() {
       if (initializedProjectIdRef.current !== id) {
         initializedProjectIdRef.current = id;
         const isDraftName = p.name && (p.name.startsWith('new-project') || p.name === id);
+        const clientName = p.client || p.client_name || '';
+        const matchedContact = (contacts || []).find(
+          c => c && ((c.name || '').toLowerCase() === clientName.toLowerCase() || (c.company || '').toLowerCase() === clientName.toLowerCase())
+        );
+        const firstOrder = (p.orders && p.orders[0]) || {};
+
         setOverviewForm({
           name: isDraftName ? '' : (p.name || ''),
-          client: p.client || p.client_name || '',
-          clientCompany: p.clientCompany || '',
-          clientEmail: p.clientEmail || '',
-          clientPhone: p.clientPhone || '',
+          client: clientName,
+          clientCompany: p.clientCompany || matchedContact?.company || firstOrder.clientCompany || '',
+          clientEmail: p.clientEmail || matchedContact?.email || firstOrder.clientEmail || '',
+          clientPhone: p.clientPhone || matchedContact?.phone || firstOrder.clientPhone || '',
           projectType: p.projectType || 'Design & Orders',
           pm: p.pm || 'Dani',
           start: formatDateForInput(p.start) || new Date().toISOString().split('T')[0],
@@ -187,19 +196,20 @@ export default function ProjectManagement() {
           architectCompany: p.architectCompany || '',
           architectEmail: p.architectEmail || '',
           architectPhone: p.architectPhone || '',
-          contractorName: p.contractorName || '',
+          contractorName: p.contractorName || firstOrder.contractor || '',
           contractorCompany: p.contractorCompany || '',
           contractorEmail: p.contractorEmail || '',
-          contractorPhone: p.contractorPhone || '',
+          contractorPhone: p.contractorPhone || firstOrder.contractorPhone || '',
           billingName: p.billingName || '',
           billingEmail: p.billingEmail || '',
           billingPhone: p.billingPhone || '',
-          billingDetails: p.billingDetails || '',
-          deliveryAddress: p.deliveryAddress || ''
+          billingDetails: p.billingDetails || firstOrder.billingDetails || '',
+          deliveryAddress: p.deliveryAddress || firstOrder.deliveryAddress || '',
+          contactsList: Array.isArray(p.contactsList) ? p.contactsList : null
         });
       }
     }
-  }, [id, p]);
+  }, [id, p, contacts, alertSettings]);
 
   const handleSaveOverview = async () => {
     if (!p) return;
@@ -239,11 +249,11 @@ export default function ProjectManagement() {
         });
 
         setSaveStatus('saved');
-        setIsSavingDraft(false);
-        if (finalKey) {
+        if (finalKey && finalKey !== id) {
           initializedProjectIdRef.current = finalKey;
           navigate(`/projects/${finalKey}`, { replace: true });
         }
+        setIsSavingDraft(false);
         setTimeout(() => setSaveStatus(''), 3000);
       } catch (err) {
         console.error("Error saving draft project:", err);
@@ -517,11 +527,19 @@ export default function ProjectManagement() {
   // 1. LIVE CONSOLIDATED STATEMENTS (Calculated on-the-fly)
   const totalDesignVal = designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
   const totalDesignPaid = designFees.reduce((sum, d) => sum + (d.paid || 0), 0);
-  const totalDesignOutstanding = designFees.reduce((sum, d) => sum + (d.outstanding || 0), 0);
+  const totalDesignOutstanding = designFees.reduce((sum, d) => {
+    const val = Number(d.feeValue) || 0;
+    const paid = Number(d.paid) || 0;
+    return sum + (Number(d.outstanding) > 0 ? Number(d.outstanding) : Math.max(0, val - paid));
+  }, 0);
 
   const totalOrderVal = orders.reduce((sum, o) => sum + (o.value || 0), 0);
   const totalOrderPaid = orders.reduce((sum, o) => sum + (o.paid || 0), 0);
-  const totalOrderOutstanding = orders.reduce((sum, o) => sum + (o.outstanding || 0), 0);
+  const totalOrderOutstanding = orders.reduce((sum, o) => {
+    const val = Number(o.value) || 0;
+    const paid = Number(o.paid) || 0;
+    return sum + (Number(o.outstanding) > 0 ? Number(o.outstanding) : Math.max(0, val - paid));
+  }, 0);
 
   // Combined totals
   const grandContractValue = totalDesignVal + totalOrderVal;
@@ -566,16 +584,16 @@ export default function ProjectManagement() {
     return Math.round(((totalOrderVal - orderCost) / totalOrderVal) * 100);
   }, [orders, p?.targetMargin]);
 
-  // Sync blended margin back to database store when calculated
+  // Sync blended margin back to database store when calculated (skip on drafts or during active saves)
   useEffect(() => {
-    if (p && blendedMargin !== p?.actualMargin) {
+    if (p && !p.isDraft && !id.startsWith('new-project') && saveStatus !== 'saving' && !isSavingDraft && blendedMargin !== p?.actualMargin) {
       updateProject(id, 'actualMargin', blendedMargin);
     }
-  }, [blendedMargin, p?.actualMargin, id, updateProject]);
+  }, [blendedMargin, p?.actualMargin, p?.isDraft, id, saveStatus, isSavingDraft]);
 
-  // Sync dynamic summarized project status based on orders
+  // Sync dynamic summarized project status based on orders (skip on drafts or during active saves)
   useEffect(() => {
-    if (!p) return;
+    if (!p || p.isDraft || id.startsWith('new-project') || saveStatus === 'saving' || isSavingDraft) return;
 
     let computedStatus = 'Pending';
     if (orders.length > 0) {
@@ -601,7 +619,7 @@ export default function ProjectManagement() {
     if (p?.status !== computedStatus) {
       updateProject(id, 'status', computedStatus);
     }
-  }, [id, p?.status, orders]);
+  }, [id, p?.status, p?.isDraft, orders, saveStatus, isSavingDraft]);
 
   if (!p) {
     if (isSavingDraft) {
@@ -732,7 +750,7 @@ export default function ProjectManagement() {
   };
 
   // Create new Product Order
-  const handleCreateProductOrder = () => {
+  const handleCreateProductOrder = async () => {
     const newOrderId = `PO-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`;
     const contact = (contacts || []).find(c => c.name === p.client || c.company === p.client) || {};
     const newOrder = {
@@ -758,8 +776,8 @@ export default function ProjectManagement() {
     };
 
     const updatedOrders = [...orders, newOrder];
-    updateProject(id, 'orders', updatedOrders);
-    navigate('/orders', { state: { projectKey: p.key, openOrderId: newOrderId } });
+    await updateProject(id, 'orders', updatedOrders);
+    navigate('/orders', { state: { projectKey: p.key || id, openOrderId: newOrderId } });
   };
 
   // Update a single cell in the active order spreadsheet state
@@ -909,9 +927,17 @@ export default function ProjectManagement() {
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-              <User size={14} style={{ color: 'var(--text-tertiary)' }} />
-              <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{p.client || '—'}</span>
+            <div 
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: 'var(--text-secondary)', cursor: p.client && p.client !== '—' ? 'pointer' : 'default' }}
+              onClick={() => {
+                if (p.client && p.client !== '—') {
+                  navigate('/crm', { state: { selectedClientName: p.client } });
+                }
+              }}
+              title={p.client && p.client !== '—' ? `Open ${p.client} in CRM` : ''}
+            >
+              <User size={14} style={{ color: 'var(--text-info)' }} />
+              <span style={{ fontWeight: 600, color: 'var(--text-info)', textDecoration: p.client && p.client !== '—' ? 'underline' : 'none' }}>{p.client || '—'}</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
               <Users size={14} style={{ color: 'var(--text-tertiary)' }} />
@@ -1495,154 +1521,170 @@ export default function ProjectManagement() {
                   </div>
                 </div>
                 <div className="card-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <div style={{ overflowX: 'auto' }}>
-                    <table className="table" style={{ margin: 0, fontSize: '12px', width: '100%' }}>
-                      <thead>
-                        <tr style={{ textAlign: 'left' }}>
-                          <th>Category</th>
-                          <th>Name</th>
-                          <th>Company</th>
-                          <th>Role</th>
-                          <th>Email</th>
-                          <th>Mobile</th>
-                          <th>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(() => {
-                          const directory = p.contactsList || [
-                            { category: 'Project Contact', name: p.client || 'Sarah Venter', company: p.clientCompany || 'Venter Architects', role: 'Client Attn', email: p.clientEmail || 'sarah@venterarch.co.za', phone: p.clientPhone || '082 456 7890' },
-                            { category: 'Project Contact', name: 'Dani', company: '1-to-1 Lighting', role: 'Project Manager', email: 'dani@1-to-1.world', phone: '083 570 7795' }
-                          ];
+                  {(() => {
+                    const matchedClient = (contacts || []).find(
+                      c => c && ((c.name || '').toLowerCase() === (overviewForm.client || p.client || '').toLowerCase() || (c.company || '').toLowerCase() === (overviewForm.client || p.client || '').toLowerCase())
+                    );
+                    const pmName = overviewForm.pm || p.pm || 'Dani';
+                    const matchedPm = (projectManagers || []).find(pm => (pm.name || '').toLowerCase() === pmName.toLowerCase());
+                    const defaultDirectory = [
+                      ...(overviewForm.client || p.client ? [{
+                        category: 'Project Contact',
+                        name: overviewForm.client || p.client || '',
+                        company: overviewForm.clientCompany || p.clientCompany || matchedClient?.company || '',
+                        role: 'Client Contact',
+                        email: overviewForm.clientEmail || p.clientEmail || matchedClient?.email || '',
+                        phone: overviewForm.clientPhone || p.clientPhone || matchedClient?.phone || ''
+                      }] : []),
+                      {
+                        category: 'Project Contact',
+                        name: pmName,
+                        company: '1-to-1 Lighting',
+                        role: 'Project Manager',
+                        email: matchedPm?.email || `${pmName.toLowerCase().split(' ')[0]}@1-to-1.world`,
+                        phone: matchedPm?.phone || ''
+                      }
+                    ];
+                    const directory = Array.isArray(overviewForm.contactsList)
+                      ? overviewForm.contactsList
+                      : (Array.isArray(p.contactsList) && p.contactsList.length > 0 ? p.contactsList : defaultDirectory);
 
-                          return directory.map((c, idx) => (
-                            <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                              <td>
-                                <span className={`badge ${c.category === 'Payment/Finance' ? 'b-success' : 'b-info'}`} style={{ fontSize: '9.5px', padding: '2px 6px' }}>
-                                  {c.category}
-                                </span>
-                              </td>
-                              <td>
-                                <input 
-                                  type="text" 
-                                  className="form-control form-control-sm" 
-                                  style={{ padding: '4px 8px', fontSize: '12px' }}
-                                  value={c.name} 
-                                  onChange={(e) => {
-                                    const updated = [...directory];
-                                    updated[idx].name = e.target.value;
-                                    updateProject(id, 'contactsList', updated);
-                                  }}
-                                />
-                              </td>
-                              <td>
-                                <input 
-                                  type="text" 
-                                  className="form-control form-control-sm" 
-                                  style={{ padding: '4px 8px', fontSize: '12px' }}
-                                  value={c.company} 
-                                  onChange={(e) => {
-                                    const updated = [...directory];
-                                    updated[idx].company = e.target.value;
-                                    updateProject(id, 'contactsList', updated);
-                                  }}
-                                />
-                              </td>
-                              <td>
-                                <input 
-                                  type="text" 
-                                  className="form-control form-control-sm" 
-                                  style={{ padding: '4px 8px', fontSize: '12px' }}
-                                  value={c.role} 
-                                  onChange={(e) => {
-                                    const updated = [...directory];
-                                    updated[idx].role = e.target.value;
-                                    updateProject(id, 'contactsList', updated);
-                                  }}
-                                />
-                              </td>
-                              <td>
-                                <input 
-                                  type="text" 
-                                  className="form-control form-control-sm" 
-                                  style={{ padding: '4px 8px', fontSize: '12px' }}
-                                  value={c.email} 
-                                  onChange={(e) => {
-                                    const updated = [...directory];
-                                    updated[idx].email = e.target.value;
-                                    updateProject(id, 'contactsList', updated);
-                                  }}
-                                />
-                              </td>
-                              <td>
-                                <input 
-                                  type="text" 
-                                  className="form-control form-control-sm" 
-                                  style={{ padding: '4px 8px', fontSize: '12px' }}
-                                  value={c.phone} 
-                                  onChange={(e) => {
-                                    const updated = [...directory];
-                                    updated[idx].phone = e.target.value;
-                                    updateProject(id, 'contactsList', updated);
-                                  }}
-                                />
-                              </td>
-                              <td>
-                                <button 
-                                  className="btn btn-ghost btn-sm"
-                                  style={{ color: 'var(--text-danger)', padding: '2px 6px', fontSize: '12px' }}
-                                  onClick={() => {
-                                    const updated = directory.filter((_, cIdx) => cIdx !== idx);
-                                    updateProject(id, 'contactsList', updated);
-                                  }}
-                                >
-                                  Remove
-                                </button>
-                              </td>
-                            </tr>
-                          ));
-                        })()}
-                      </tbody>
-                    </table>
-                  </div>
+                    return (
+                      <>
+                        <div style={{ overflowX: 'auto' }}>
+                          <table className="table" style={{ margin: 0, fontSize: '12px', width: '100%' }}>
+                            <thead>
+                              <tr style={{ textAlign: 'left' }}>
+                                <th>Category</th>
+                                <th>Name</th>
+                                <th>Company</th>
+                                <th>Role</th>
+                                <th>Email</th>
+                                <th>Mobile</th>
+                                <th>Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {directory.map((c, idx) => (
+                                <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                                  <td>
+                                    <span className={`badge ${c.category === 'Payment/Finance' ? 'b-success' : 'b-info'}`} style={{ fontSize: '9.5px', padding: '2px 6px' }}>
+                                      {c.category}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <input 
+                                      type="text" 
+                                      className="form-control form-control-sm" 
+                                      style={{ padding: '4px 8px', fontSize: '12px' }}
+                                      value={c.name} 
+                                      onChange={(e) => {
+                                        const updated = directory.map((item, i) => i === idx ? { ...item, name: e.target.value } : item);
+                                        setOverviewForm(prev => ({ ...prev, contactsList: updated }));
+                                      }}
+                                    />
+                                  </td>
+                                  <td>
+                                    <input 
+                                      type="text" 
+                                      className="form-control form-control-sm" 
+                                      style={{ padding: '4px 8px', fontSize: '12px' }}
+                                      value={c.company} 
+                                      onChange={(e) => {
+                                        const updated = directory.map((item, i) => i === idx ? { ...item, company: e.target.value } : item);
+                                        setOverviewForm(prev => ({ ...prev, contactsList: updated }));
+                                      }}
+                                    />
+                                  </td>
+                                  <td>
+                                    <input 
+                                      type="text" 
+                                      className="form-control form-control-sm" 
+                                      style={{ padding: '4px 8px', fontSize: '12px' }}
+                                      value={c.role} 
+                                      onChange={(e) => {
+                                        const updated = directory.map((item, i) => i === idx ? { ...item, role: e.target.value } : item);
+                                        setOverviewForm(prev => ({ ...prev, contactsList: updated }));
+                                      }}
+                                    />
+                                  </td>
+                                  <td>
+                                    <input 
+                                      type="text" 
+                                      className="form-control form-control-sm" 
+                                      style={{ padding: '4px 8px', fontSize: '12px' }}
+                                      value={c.email} 
+                                      onChange={(e) => {
+                                        const updated = directory.map((item, i) => i === idx ? { ...item, email: e.target.value } : item);
+                                        setOverviewForm(prev => ({ ...prev, contactsList: updated }));
+                                      }}
+                                    />
+                                  </td>
+                                  <td>
+                                    <input 
+                                      type="text" 
+                                      className="form-control form-control-sm" 
+                                      style={{ padding: '4px 8px', fontSize: '12px' }}
+                                      value={c.phone} 
+                                      onChange={(e) => {
+                                        const updated = directory.map((item, i) => i === idx ? { ...item, phone: e.target.value } : item);
+                                        setOverviewForm(prev => ({ ...prev, contactsList: updated }));
+                                      }}
+                                    />
+                                  </td>
+                                  <td>
+                                    <button 
+                                      type="button"
+                                      className="btn btn-ghost btn-sm"
+                                      style={{ color: 'var(--text-danger)', padding: '2px 6px', fontSize: '12px' }}
+                                      onClick={() => {
+                                        const updated = directory.filter((_, cIdx) => cIdx !== idx);
+                                        setOverviewForm(prev => ({ ...prev, contactsList: updated }));
+                                      }}
+                                    >
+                                      Remove
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
 
-                  <div style={{ display: 'flex', gap: '12px' }}>
-                    <button
-                      className="btn btn-sm btn-ghost"
-                      style={{ border: '1.5px dashed var(--border)', justifyContent: 'center', flex: 1, padding: '8px', fontSize: '12.5px' }}
-                      onClick={() => {
-                        const directory = p.contactsList || [
-                          { category: 'Project Contact', name: p.client || 'Sarah Venter', company: p.clientCompany || 'Venter Architects', role: 'Client Attn', email: p.clientEmail || 'sarah@venterarch.co.za', phone: p.clientPhone || '082 456 7890' },
-                          { category: 'Project Contact', name: 'Dani', company: '1-to-1 Lighting', role: 'Project Manager', email: 'dani@1-to-1.world', phone: '083 570 7795' }
-                        ];
-                        const updated = [
-                          ...directory,
-                          { category: 'Project Contact', name: '', company: '', role: '', email: '', phone: '' }
-                        ];
-                        updateProject(id, 'contactsList', updated);
-                      }}
-                    >
-                      + Add Project Contact
-                    </button>
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-ghost"
+                            style={{ border: '1.5px dashed var(--border)', justifyContent: 'center', flex: 1, padding: '8px', fontSize: '12.5px' }}
+                            onClick={() => {
+                              const updated = [
+                                ...directory,
+                                { category: 'Project Contact', name: '', company: '', role: '', email: '', phone: '' }
+                              ];
+                              setOverviewForm(prev => ({ ...prev, contactsList: updated }));
+                            }}
+                          >
+                            + Add Project Contact
+                          </button>
 
-                    <button
-                      className="btn btn-sm btn-ghost"
-                      style={{ border: '1.5px dashed var(--border)', justifyContent: 'center', flex: 1, padding: '8px', fontSize: '12.5px' }}
-                      onClick={() => {
-                        const directory = p.contactsList || [
-                          { category: 'Project Contact', name: p.client || 'Sarah Venter', company: p.clientCompany || 'Venter Architects', role: 'Client Attn', email: p.clientEmail || 'sarah@venterarch.co.za', phone: p.clientPhone || '082 456 7890' },
-                          { category: 'Project Contact', name: 'Dani', company: '1-to-1 Lighting', role: 'Project Manager', email: 'dani@1-to-1.world', phone: '083 570 7795' }
-                        ];
-                        const updated = [
-                          ...directory,
-                          { category: 'Payment/Finance', name: '', company: '', role: '', email: '', phone: '' }
-                        ];
-                        updateProject(id, 'contactsList', updated);
-                      }}
-                    >
-                      + Add Payment / Finance Contact
-                    </button>
-                  </div>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-ghost"
+                            style={{ border: '1.5px dashed var(--border)', justifyContent: 'center', flex: 1, padding: '8px', fontSize: '12.5px' }}
+                            onClick={() => {
+                              const updated = [
+                                ...directory,
+                                { category: 'Payment/Finance', name: '', company: '', role: '', email: '', phone: '' }
+                              ];
+                              setOverviewForm(prev => ({ ...prev, contactsList: updated }));
+                            }}
+                          >
+                            + Add Payment / Finance Contact
+                          </button>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -1846,24 +1888,6 @@ export default function ProjectManagement() {
                      )}
                    </div>
                  </div>
- 
-                 {/* Stoic Planning Advisory Banner */}
-                 <div style={{ 
-                   background: 'linear-gradient(135deg, rgba(24,95,165,0.05) 0%, rgba(139,92,246,0.02) 100%)', 
-                   border: '1.5px dashed var(--border-info)', 
-                   borderRadius: 'var(--radius-lg)', 
-                   padding: '14px 18px', 
-                   display: 'flex', 
-                   gap: '12px', 
-                   alignItems: 'center' 
-                 }}>
-                   <HelpCircle size={18} color="var(--text-info)" style={{ flexShrink: 0 }} />
-                   <div style={{ fontSize: '12px' }}>
-                     <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-info)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '2px' }}>Stoic Planning Advisory ({PHI_ADVISORIES.design.author})</span>
-                     <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>"{PHI_ADVISORIES.design.quote}"</span>
-                     <span style={{ color: 'var(--text-info)', display: 'block', marginTop: '4px' }}><strong>Strategic Practice:</strong> {PHI_ADVISORIES.design.advice}</span>
-                   </div>
-                 </div>
                </div>
              )}
  
@@ -1939,8 +1963,10 @@ export default function ProjectManagement() {
                              {orders.map(o => {
                                const cost = o.costValue || 0;
                                const retail = o.value || 0;
+                               const paidVal = o.paid || 0;
+                               const outVal = Number(o.outstanding) > 0 ? Number(o.outstanding) : Math.max(0, retail - paidVal);
                                const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
-                               const isLowMargin = margin < 39;
+                               const isLowMargin = margin < (p.targetMargin || 39);
  
                                return (
                                  <tr key={o.id}>
@@ -1978,16 +2004,16 @@ export default function ProjectManagement() {
                                      )}
                                    </td>
                                    <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
-                                   <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectName || p.name}</td>
+                                   <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey || p.key}`); }}>{o.projectName || p.name}</td>
                                    <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: (o.projectClient || p.client) } }); }}>{(o.projectClient || p.client) || '—'}</td>
                                    <td style={{ color: 'var(--text-secondary)' }}>{o.projectPm || p.pm || '—'}</td>
                                    <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
                                      {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
                                    </td>
                                    <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>
-                                   <td>R {(o.paid || 0).toLocaleString()}</td>
-                                   <td style={{ color: (o.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
-                                     R {(o.outstanding || 0).toLocaleString()}
+                                   <td>R {paidVal.toLocaleString()}</td>
+                                   <td style={{ color: outVal > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
+                                     R {outVal.toLocaleString()}
                                    </td>
                                    <td>
                                      <span className={`badge ${o.status === 'Complete' ? 'b-success' : o.status === 'Ongoing' || o.status === 'Processing' ? 'b-info' : o.status === 'Pending' ? 'b-warning' : 'b-default'}`}>
@@ -2003,33 +2029,26 @@ export default function ProjectManagement() {
                                );
                              })}
                            </tbody>
+                           <tfoot>
+                             <tr style={{ background: 'var(--bg-secondary)', borderTop: '2px solid var(--border)', fontWeight: 700, fontSize: '12px' }}>
+                               <td colSpan={6} style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '11px' }}>
+                                 TOTAL ({orders.length} {orders.length === 1 ? 'Order' : 'Orders'})
+                               </td>
+                               <td style={{ color: 'var(--text-primary)' }}>R {totalOrderVal.toLocaleString()}</td>
+                               <td style={{ color: 'var(--text-success)' }}>R {totalOrderPaid.toLocaleString()}</td>
+                               <td style={{ color: totalOrderOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>R {totalOrderOutstanding.toLocaleString()}</td>
+                               <td colSpan={2} />
+                             </tr>
+                           </tfoot>
                          </table>
                        </div>
                      )}
                    </div>
                  </div>
+               </div>
+             )}
 
-                {/* Stoic Logistical Advisory plaque inline */}
-                <div style={{ 
-                  background: 'linear-gradient(135deg, rgba(24,95,165,0.05) 0%, rgba(139,92,246,0.02) 100%)', 
-                  border: '1.5px dashed var(--border-info)', 
-                  borderRadius: 'var(--radius-lg)', 
-                  padding: '14px 18px', 
-                  display: 'flex', 
-                  gap: '12px', 
-                  alignItems: 'center' 
-                }}>
-                  <HelpCircle size={18} color="var(--text-info)" style={{ flexShrink: 0 }} />
-                  <div style={{ fontSize: '12px' }}>
-                    <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-info)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '2px' }}>Stoic Logistical Advisory ({PHI_ADVISORIES.orders.author})</span>
-                    <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>"{PHI_ADVISORIES.orders.quote}"</span>
-                    <span style={{ color: 'var(--text-info)', display: 'block', marginTop: '4px' }}><strong>Strategic Practice:</strong> {PHI_ADVISORIES.orders.advice}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-                        {/* SECTION: PAYMENTS LEDGER (Project-wide payments consolidation) */}
+            {/* SECTION: PAYMENTS LEDGER (Project-wide payments consolidation) */}
             {activeTab === 'payments' && (
               <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div style={{ background: 'var(--bg-info)', borderRadius: 'var(--radius-md)', padding: '12px 16px', fontSize: '12.5px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2049,7 +2068,7 @@ export default function ProjectManagement() {
                             <th style={{ padding: '8px' }}>Date</th>
                             <th style={{ padding: '8px' }}>Order/Quote Ref</th>
                             <th style={{ padding: '8px' }}>Order Name</th>
-                            <th style={{ padding: '8px' }}>Reference / Notes</th>
+                            <th style={{ padding: '8px' }}>Receipt / Notes</th>
                             <th style={{ padding: '8px', textAlign: 'right' }}>Amount</th>
                           </tr>
                         </thead>
@@ -2058,13 +2077,13 @@ export default function ProjectManagement() {
                             const allPayments = [];
                             orders.forEach(o => {
                               if (o.payments && Array.isArray(o.payments)) {
-                                o.payments.forEach(p => {
+                                o.payments.forEach(pay => {
                                   allPayments.push({
                                     orderId: o.id,
                                     quote_name: o.quote_name,
-                                    date: p.date,
-                                    reference: p.reference,
-                                    amount: p.amount
+                                    date: pay.date || '—',
+                                    reference: pay.receipt_no ? `${pay.receipt_no}${pay.notes ? ` — ${pay.notes}` : ''}` : (pay.reference || pay.notes || pay.type || '—'),
+                                    amount: pay.amount
                                   });
                                 });
                               }
@@ -2083,22 +2102,22 @@ export default function ProjectManagement() {
                             // Sort payments by date descending
                             allPayments.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-                            return allPayments.map((p, idx) => (
+                            return allPayments.map((pay, idx) => (
                               <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                                <td style={{ padding: '8px' }}>{p.date}</td>
+                                <td style={{ padding: '8px' }}>{pay.date}</td>
                                 <td style={{ padding: '8px', fontFamily: 'monospace', fontWeight: 600 }}>
                                   <button 
                                     className="btn-link"
                                     style={{ background: 'none', border: 'none', padding: 0, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline', fontSize: '12px' }}
-                                    onClick={() => navigate('/orders', { state: { projectKey: p.key || key, openOrderId: p.orderId } })}
+                                    onClick={() => navigate('/orders', { state: { projectKey: p.key || id, openOrderId: pay.orderId } })}
                                   >
-                                    {p.orderId}
+                                    {pay.orderId}
                                   </button>
                                 </td>
-                                <td style={{ padding: '8px', fontWeight: 500 }}>{p.quote_name || 'General Spec'}</td>
-                                <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{p.reference || '—'}</td>
+                                <td style={{ padding: '8px', fontWeight: 500 }}>{pay.quote_name || 'General Spec'}</td>
+                                <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{pay.reference}</td>
                                 <td style={{ padding: '8px', textAlign: 'right', fontWeight: 600, color: 'var(--text-success)' }}>
-                                  R {Number(p.amount || 0).toLocaleString()}
+                                  R {Number(pay.amount || 0).toLocaleString()}
                                 </td>
                               </tr>
                             ));
@@ -2232,8 +2251,8 @@ export default function ProjectManagement() {
                              const retail = o.value || 0;
                              const orderMargin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
                              return (
-                               <tr key={o.id}>
-                                 <td style={{ fontFamily: 'monospace', color: 'var(--text-info)' }}>{o.id}</td>
+                               <tr key={o.id} className="clickable hover-row" onClick={() => navigate('/orders', { state: { projectKey: p.key || id, openOrderId: o.id } })}>
+                                 <td style={{ fontFamily: 'monospace', color: 'var(--text-info)', textDecoration: 'underline', fontWeight: 600 }}>{o.id}</td>
                                  <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
                                  <td style={{ fontWeight: 500 }}>{o.supplier}</td>
                                  <td style={{ fontWeight: 600 }}>R {(o.value || 0).toLocaleString()}</td>
@@ -2331,7 +2350,7 @@ export default function ProjectManagement() {
             {activeTab === 'documents' && (
               <div className="animation-fade-in" style={{ padding: '8px 4px' }}>
                 <DriveFileExplorer 
-                  projectId={id}
+                  projectId={p?.id || id}
                   projectName={p?.name || ''}
                   clientName={p?.client_name || p?.client || ''}
                 />
@@ -2341,7 +2360,11 @@ export default function ProjectManagement() {
             {/* SECTION 6: TICKETS & SNAG LIST */}
             {activeTab === 'tickets' && (
               <div className="animation-fade-in" style={{ padding: '16px 10px' }}>
-                <TicketLoggerPage initialProjectId={p.id} embedded={true} />
+                <TicketLoggerPage
+                  initialProjectId={p?.id || id}
+                  initialProjectName={p?.name || ''}
+                  embedded={true}
+                />
               </div>
             )}
 

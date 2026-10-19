@@ -1353,8 +1353,19 @@ export function StoreProvider({ children }) {
             setter(merged);
           } else if (key === 'projects') {
             const parsedProjects = parseProjectsPayload(val);
-            setter(parsedProjects);
-            projectsRef.current = parsedProjects;
+            setter(prev => {
+              const merged = { ...parsedProjects };
+              if (prev && typeof prev === 'object') {
+                Object.entries(prev).forEach(([k, proj]) => {
+                  if (proj && (proj.isDraft || k.startsWith('new-project'))) {
+                    // Preserve active local draft state so typing/saving isn't wiped by background polling
+                    merged[k] = proj;
+                  }
+                });
+              }
+              projectsRef.current = merged;
+              return merged;
+            });
           } else if (key === 'contacts') {
             const raw = Array.isArray(val) ? val : [];
             const seenIds = new Set();
@@ -1706,6 +1717,28 @@ export function StoreProvider({ children }) {
       const s4Val = feesToSave[3] ? JSON.stringify(feesToSave[3]) : "";
       const s5Val = feesToSave[4] ? JSON.stringify(feesToSave[4]) : "";
 
+      const projectMeta = {
+        projectType: targetProj.projectType || 'Design & Orders',
+        delay: targetProj.delay || 'None',
+        clientCompany: targetProj.clientCompany || '',
+        clientEmail: targetProj.clientEmail || '',
+        clientPhone: targetProj.clientPhone || '',
+        architectName: targetProj.architectName || '',
+        architectCompany: targetProj.architectCompany || '',
+        architectEmail: targetProj.architectEmail || '',
+        architectPhone: targetProj.architectPhone || '',
+        contractorName: targetProj.contractorName || '',
+        contractorCompany: targetProj.contractorCompany || '',
+        contractorEmail: targetProj.contractorEmail || '',
+        contractorPhone: targetProj.contractorPhone || '',
+        billingName: targetProj.billingName || '',
+        billingEmail: targetProj.billingEmail || '',
+        billingPhone: targetProj.billingPhone || '',
+        billingDetails: targetProj.billingDetails || '',
+        deliveryAddress: targetProj.deliveryAddress || '',
+        contactsList: targetProj.contactsList
+      };
+
       try {
         const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(key)}`, {
           method: 'PUT',
@@ -1720,6 +1753,7 @@ export function StoreProvider({ children }) {
             status: targetProj.status || 'On track',
             start_date: targetProj.start || null,
             deadline: targetProj.deadline || 'TBD',
+            delay_reason: targetProj.delay || 'None',
             complete_status: targetProj.complete || 'Ongoing',
             target_margin: Number(targetProj.targetMargin) || 0.0,
             actual_margin: Number(targetProj.actualMargin) || 0.0,
@@ -1727,7 +1761,8 @@ export function StoreProvider({ children }) {
             s2: s2Val,
             s3: s3Val,
             s4: s4Val,
-            s5: s5Val
+            s5: s5Val,
+            project_metadata: projectMeta
           })
         });
         if (!res.ok) {
@@ -1743,10 +1778,12 @@ export function StoreProvider({ children }) {
   };
 
   const addProject = async (project) => {
-    const baseKey = (project.name || 'new-project').toLowerCase().trim().replace(/\s+/g, '-');
-    let key = baseKey || 'new-project';
+    const rawBase = (project.name || 'new-project').toLowerCase().trim().replace(/[^a-z0-9\-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+    const baseKey = rawBase || 'new-project';
+    const currentMap = projectsRef.current || projects || {};
+    let key = baseKey;
     let counter = 1;
-    while (projects[key]) {
+    while (currentMap[key]) {
       key = `${baseKey}-${counter}`;
       counter++;
     }
@@ -1791,13 +1828,35 @@ export function StoreProvider({ children }) {
           status: newProj.status || 'Draft',
           start_date: newProj.start,
           deadline: newProj.deadline || 'TBD',
+          delay_reason: newProj.delay || 'None',
           complete_status: newProj.complete || 'Ongoing',
           target_margin: Number(newProj.targetMargin) || 39.0,
           actual_margin: Number(newProj.actualMargin) || 39.0,
-          s1: '', s2: '', s3: '', s4: '', s5: ''
+          s1: '', s2: '', s3: '', s4: '', s5: '',
+          project_metadata: {
+            projectType: newProj.projectType || 'Design & Orders',
+            delay: newProj.delay || 'None'
+          }
         })
       });
-      if (!res.ok) {
+      if (res.ok) {
+        const resData = await res.json().catch(() => ({}));
+        const confirmedKey = resData.project_key || key;
+        const withId = {
+          ...newProj,
+          id: resData.id || newProj.id,
+          key: confirmedKey
+        };
+        setProjects(prev => {
+          const nextMap = { ...prev, [confirmedKey]: withId };
+          if (confirmedKey !== key) {
+            nextMap[key] = withId;
+          }
+          projectsRef.current = nextMap;
+          return nextMap;
+        });
+        return confirmedKey;
+      } else {
         console.error(`Failed to create project ${key}:`, res.status);
       }
     } catch (err) {
@@ -1809,15 +1868,16 @@ export function StoreProvider({ children }) {
   const saveDraftProject = async (oldKey, projectData) => {
     const rawName = (projectData.name || '').trim() || 'unnamed-project';
     const baseKey = rawName.toLowerCase().replace(/[^a-z0-9\-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'project';
+    const currentMap = projectsRef.current || projects || {};
     let finalKey = baseKey;
     
     let counter = 1;
-    while (projects[finalKey] && finalKey !== oldKey) {
+    while (currentMap[finalKey] && finalKey !== oldKey) {
       finalKey = `${baseKey}-${counter}`;
       counter++;
     }
 
-    const existingDraft = projects[oldKey] || projectsRef.current[oldKey] || {};
+    const existingDraft = currentMap[oldKey] || projects[oldKey] || {};
     const updatedProj = {
       ...existingDraft,
       ...projectData,
@@ -1838,6 +1898,28 @@ export function StoreProvider({ children }) {
       const s4Val = feesToSave[3] ? JSON.stringify(feesToSave[3]) : "";
       const s5Val = feesToSave[4] ? JSON.stringify(feesToSave[4]) : "";
 
+      const projectMeta = {
+        projectType: updatedProj.projectType || 'Design & Orders',
+        delay: updatedProj.delay || 'None',
+        clientCompany: updatedProj.clientCompany || '',
+        clientEmail: updatedProj.clientEmail || '',
+        clientPhone: updatedProj.clientPhone || '',
+        architectName: updatedProj.architectName || '',
+        architectCompany: updatedProj.architectCompany || '',
+        architectEmail: updatedProj.architectEmail || '',
+        architectPhone: updatedProj.architectPhone || '',
+        contractorName: updatedProj.contractorName || '',
+        contractorCompany: updatedProj.contractorCompany || '',
+        contractorEmail: updatedProj.contractorEmail || '',
+        contractorPhone: updatedProj.contractorPhone || '',
+        billingName: updatedProj.billingName || '',
+        billingEmail: updatedProj.billingEmail || '',
+        billingPhone: updatedProj.billingPhone || '',
+        billingDetails: updatedProj.billingDetails || '',
+        deliveryAddress: updatedProj.deliveryAddress || '',
+        contactsList: updatedProj.contactsList
+      };
+
       const payload = {
         name: updatedProj.name,
         project_key: finalKey,
@@ -1848,6 +1930,7 @@ export function StoreProvider({ children }) {
         status: updatedProj.status || 'On track',
         start_date: updatedProj.start || new Date().toISOString().split('T')[0],
         deadline: updatedProj.deadline && updatedProj.deadline !== '—' ? updatedProj.deadline : 'TBD',
+        delay_reason: updatedProj.delay || 'None',
         complete_status: 'Ongoing',
         target_margin: Number(updatedProj.targetMargin) || 39.0,
         actual_margin: Number(updatedProj.actualMargin) || 39.0,
@@ -1855,7 +1938,8 @@ export function StoreProvider({ children }) {
         s2: s2Val,
         s3: s3Val,
         s4: s4Val,
-        s5: s5Val
+        s5: s5Val,
+        project_metadata: projectMeta
       };
 
       const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(oldKey)}`, {
@@ -1866,6 +1950,7 @@ export function StoreProvider({ children }) {
 
       if (res.ok) {
         const resData = await res.json().catch(() => ({}));
+        if (resData.id) updatedProj.id = resData.id;
         if (resData.project_key) {
           finalKey = resData.project_key;
           updatedProj.key = finalKey;
@@ -1879,6 +1964,7 @@ export function StoreProvider({ children }) {
         });
         if (postRes.ok) {
           const postData = await postRes.json().catch(() => ({}));
+          if (postData.id) updatedProj.id = postData.id;
           if (postData.project_key) {
             finalKey = postData.project_key;
             updatedProj.key = finalKey;
@@ -1889,14 +1975,27 @@ export function StoreProvider({ children }) {
       console.error("Error saving project to database:", err);
     }
 
-    // Optimistically update React state and ref after confirming final key
+    // Update React state with finalKey AND temporarily keep oldKey alias so ProjectManagement doesn't hit undefined before navigate() completes
     setProjects(prev => {
-      const next = { ...prev };
-      delete next[oldKey];
-      next[finalKey] = updatedProj;
+      const next = { ...prev, [finalKey]: updatedProj };
+      if (oldKey && oldKey !== finalKey) {
+        next[oldKey] = updatedProj;
+      }
       projectsRef.current = next;
       return next;
     });
+
+    if (oldKey && oldKey !== finalKey) {
+      setTimeout(() => {
+        setProjects(prev => {
+          if (!prev[oldKey]) return prev;
+          const next = { ...prev };
+          delete next[oldKey];
+          projectsRef.current = next;
+          return next;
+        });
+      }, 2000);
+    }
 
     return finalKey;
   };

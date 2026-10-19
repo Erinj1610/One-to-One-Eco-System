@@ -186,6 +186,11 @@ def get_invoicing_summary(db: Session = Depends(get_db)):
             AllocationIssue.status == "Open"
         ).count()
 
+        all_customers = sorted(list(set(
+            l.customer_name.strip() for l in all_lines
+            if l.customer_name and l.customer_name.strip()
+        )))
+
         return {
             "total_documents": len(doc_stats),
             "total_lines": len(all_lines),
@@ -194,6 +199,7 @@ def get_invoicing_summary(db: Session = Depends(get_db)):
             "fully_allocated_count": fully_allocated_cnt,
             "issues_count": issues_count,
             "total_invoiced_value": round(total_invoiced_value, 2),
+            "all_customers": all_customers,
             "last_synced_at": latest_sync.isoformat() if latest_sync else None
         }
     except Exception as e:
@@ -206,7 +212,7 @@ def get_invoicing_summary(db: Session = Depends(get_db)):
 def list_invoicing_documents(
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=5, le=100),
-    tab: str = Query("all"), # "all", "needs_allocation", "partially_allocated", "fully_allocated", "issues"
+    tab: str = Query("all"), # "all", "needs_allocation", "partially_allocated", "fully_allocated", "issues", "in", "cn"
     customer_filter: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     db: Session = Depends(get_db)
@@ -274,9 +280,10 @@ def list_invoicing_documents(
         for line in all_lines:
             d_no = line.document_no
             if d_no not in docs_grouped:
+                is_cn = str(d_no).upper().startswith(("CN-", "CR-")) or (float(line.qty or 0.0) < 0) or (float(line.document_total or 0.0) < 0)
                 docs_grouped[d_no] = {
                     "document_no": d_no,
-                    "doc_type": "INVOICE" if not d_no.startswith("CN-") else "CREDIT_NOTE",
+                    "doc_type": "CREDIT_NOTE" if is_cn else "INVOICE",
                     "customer_code": line.customer_code,
                     "customer_name": line.customer_name or "General Client",
                     "reference": line.reference,
@@ -330,6 +337,7 @@ def list_invoicing_documents(
 
         # Compute status and filter by tab
         filtered_docs = []
+        tab_lower = str(tab or "all").strip().lower()
         for d in doc_list:
             tot = d["total_qty"]
             alc = d["allocated_qty"]
@@ -355,13 +363,17 @@ def list_invoicing_documents(
             d["issue_flagged_by"] = iss_d.flagged_by if iss_d else None
             d["issue_flagged_at"] = iss_d.flagged_at.isoformat() if iss_d and iss_d.flagged_at else None
 
-            if tab in ["issues", "not_found"] and not is_d_issue:
+            if tab_lower in ["issues", "not_found"] and not is_d_issue:
                 continue
-            if tab == "needs_allocation" and (status != "Needs Allocation" or is_d_issue):
+            if tab_lower == "needs_allocation" and (status != "Needs Allocation" or is_d_issue):
                 continue
-            if tab == "partially_allocated" and status != "Partially Allocated":
+            if tab_lower == "partially_allocated" and status != "Partially Allocated":
                 continue
-            if tab == "fully_allocated" and status != "Fully Allocated":
+            if tab_lower == "fully_allocated" and status != "Fully Allocated":
+                continue
+            if tab_lower in ["in", "invoice", "invoices"] and d["doc_type"] != "INVOICE":
+                continue
+            if tab_lower in ["cn", "credit_note", "credit_notes"] and d["doc_type"] != "CREDIT_NOTE":
                 continue
 
             filtered_docs.append(d)
@@ -430,7 +442,8 @@ def get_invoicing_document_details(
                 "unit_cost": float(a.unit_cost or 0.0),
                 "allocated_by": a.allocated_by_name,
                 "allocated_at": a.allocated_at.isoformat() if a.allocated_at else None,
-                "notes": a.notes
+                "notes": a.notes,
+                "re_invoice_intent": a.re_invoice_intent
             }
             if a.source_line_id is not None and a.source_line_id in current_line_ids:
                 alloc_by_line_id.setdefault(a.source_line_id, []).append(alloc_dict)
@@ -505,6 +518,7 @@ def get_invoicing_document_details(
                 "item_description": line.item_description,
                 "item_unit": line.item_unit or "EA",
                 "invoiced_qty": line_qty,
+                "total_qty": line_qty,
                 "unit_price_excl": base_unit_price,
                 "effective_unit_price_excl": effective_unit_price,
                 "unit_price_incl": float(line.unit_price_incl or 0.0),
@@ -516,14 +530,16 @@ def get_invoicing_document_details(
                 "allocated_qty": total_alloc_qty,
                 "unallocated_qty": unalloc_qty,
                 "status": l_status,
+                "allocation_status": l_status,
                 "allocations": line_allocs
             })
 
         final_doc_val = round(doc_subtotal, 2) if doc_subtotal != 0 else round(doc_total_val, 2)
+        is_cn_doc = str(document_no).upper().startswith(("CN-", "CR-")) or (float(first_line.qty or 0.0) < 0) or (float(first_line.document_total or 0.0) < 0)
 
         return {
             "document_no": document_no,
-            "doc_type": "INVOICE" if not document_no.startswith("CN-") else "CREDIT_NOTE",
+            "doc_type": "CREDIT_NOTE" if is_cn_doc else "INVOICE",
             "customer_code": first_line.customer_code,
             "customer_name": first_line.customer_name or "General Client",
             "reference": first_line.reference,
@@ -565,18 +581,27 @@ def get_invoicing_candidate_orders(
         if not clean_sku:
             return {"sku": "", "candidate_count": 0, "candidates": []}
 
+        stripped_sku = strip_sku_prefix(clean_sku)
+
         all_projects = {p.id: p for p in db.query(Project).all()}
         proj_by_key = {p.project_key: p for p in all_projects.values() if p.project_key}
         all_orders = db.query(Order).all()
         order_by_id = {o.id: o for o in all_orders}
+        order_by_po = {str(o.po_number).strip().upper(): o for o in all_orders if o.po_number}
 
-        order_items = db.query(OrderItem).filter(
-            or_(
-                OrderItem.code.ilike(f"%{clean_sku}%"),
-                OrderItem.one_one_code.ilike(f"%{clean_sku}%"),
-                OrderItem.description.ilike(f"%{clean_sku}%")
-            )
-        ).all()
+        sku_filters = [
+            OrderItem.code.ilike(f"%{clean_sku}%"),
+            OrderItem.one_one_code.ilike(f"%{clean_sku}%"),
+            OrderItem.description.ilike(f"%{clean_sku}%")
+        ]
+        if stripped_sku and stripped_sku.lower() != clean_sku.lower():
+            sku_filters.extend([
+                OrderItem.code.ilike(f"%{stripped_sku}%"),
+                OrderItem.one_one_code.ilike(f"%{stripped_sku}%"),
+                OrderItem.description.ilike(f"%{stripped_sku}%")
+            ])
+
+        order_items = db.query(OrderItem).filter(or_(*sku_filters)).all()
 
         candidates = []
         for it in order_items:
@@ -586,20 +611,24 @@ def get_invoicing_candidate_orders(
 
             matched_order = None
             matched_proj = None
+            raw_oid = str(it.order_id or "").strip()
 
-            if str(it.order_id).isdigit() and int(it.order_id) in order_by_id:
-                matched_order = order_by_id[int(it.order_id)]
+            if raw_oid.isdigit() and int(raw_oid) in order_by_id:
+                matched_order = order_by_id[int(raw_oid)]
+                matched_proj = all_projects.get(matched_order.project_id)
+            elif raw_oid.upper() in order_by_po:
+                matched_order = order_by_po[raw_oid.upper()]
                 matched_proj = all_projects.get(matched_order.project_id)
 
-            if not matched_order and it.order_id:
-                parts = str(it.order_id).split('--')
+            if not matched_order and raw_oid:
+                parts = raw_oid.split('--')
                 proj_prefix = parts[0] if parts else ''
                 
                 if proj_prefix in proj_by_key:
                     matched_proj = proj_by_key[proj_prefix]
                 else:
                     for p in all_projects.values():
-                        if p.project_key and (p.project_key == proj_prefix or p.project_key in str(it.order_id)):
+                        if p.project_key and (p.project_key == proj_prefix or p.project_key in raw_oid):
                             matched_proj = p
                             break
 
@@ -622,6 +651,11 @@ def get_invoicing_candidate_orders(
             if not include_fulfilled and rem <= 0:
                 continue
 
+            is_exact = bool(
+                (it.code and (it.code.strip().upper() == clean_sku.upper() or strip_sku_prefix(it.code).upper() == stripped_sku.upper())) or
+                (it.one_one_code and (it.one_one_code.strip().upper() == clean_sku.upper() or strip_sku_prefix(it.one_one_code).upper() == stripped_sku.upper()))
+            )
+
             candidates.append({
                 "order_item_id": it.id,
                 "order_id": matched_order.id if matched_order else None,
@@ -630,16 +664,17 @@ def get_invoicing_candidate_orders(
                 "project_id": matched_proj.id if matched_proj else None,
                 "project_key": matched_proj.project_key if matched_proj else None,
                 "project_name": matched_proj.name if matched_proj else (it.order_id or 'General Project'),
+                "client": (matched_proj.client_name if matched_proj else None) or "Client",
                 "fitting_code": it.code or it.one_one_code or sku,
                 "description": it.description or it.code or sku,
                 "required_qty": req_qty,
                 "invoiced_qty": invoiced_qty,
                 "remaining_needed": rem,
-                "is_direct_sku_match": bool(it.code and it.code.strip().upper() == clean_sku.upper())
+                "is_direct_sku_match": is_exact
             })
 
-        # Sort candidates: items still needing invoicing first, then by project name
-        candidates.sort(key=lambda x: (0 if x["remaining_needed"] > 0 else 1, x["project_name"]))
+        # Sort candidates: items still needing invoicing first, then exact match, then by project name
+        candidates.sort(key=lambda x: (0 if x["remaining_needed"] > 0 else 1, 0 if x["is_direct_sku_match"] else 1, x["project_name"]))
 
         return {
             "sku": clean_sku,
@@ -747,6 +782,7 @@ def resolve_target_project_and_order(db: Session, project_id_input, project_key_
 def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_db)):
     """
     Allocates a quantity from a Palladium Invoice line to a Project Order Item.
+    Supports split allocations across multiple orders/projects on the same invoice line.
     Updates OrderItem invoice_qty, invoice_ref, invoice_date, and invoice_history in real time.
     """
     try:
@@ -807,19 +843,51 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
         except (ValueError, TypeError):
             source_line_id = None
 
-        # Deactivate any existing active allocation for this document & line to prevent duplicate inflation
+        target_item_id_str = str(matched_item.id) if matched_item else (str(order_item_id) if order_item_id else None)
+
+        # Only deactivate an existing active allocation if it targets the EXACT same destination
+        # (so split allocations across different projects/orders on the same invoice line are preserved!)
         existing_q = db.query(ProcurementAllocation).filter(
             ProcurementAllocation.allocation_type == "INVOICE",
             ProcurementAllocation.source_doc_no == source_doc_no,
-            ProcurementAllocation.status == "Active"
+            ProcurementAllocation.status == "Active",
+            ProcurementAllocation.project_id == real_proj_id
         )
         if source_line_id is not None:
             existing_q = existing_q.filter(ProcurementAllocation.source_line_id == source_line_id)
         else:
             existing_q = existing_q.filter(ProcurementAllocation.sku == sku)
-        existing_allocs = existing_q.all()
-        for ea in existing_allocs:
-            ea.status = "Cancelled"
+
+        if target_item_id_str:
+            existing_q = existing_q.filter(ProcurementAllocation.order_item_id == target_item_id_str)
+        elif resolved_order_id:
+            existing_q = existing_q.filter(ProcurementAllocation.order_id == resolved_order_id)
+
+        # Check remaining unallocated qty on the line so we only replace if it would exceed line capacity
+        inv_line = None
+        if source_line_id is not None:
+            inv_line = db.query(PalladiumInvoiceLine).filter(PalladiumInvoiceLine.id == source_line_id).first()
+        if not inv_line:
+            inv_line = db.query(PalladiumInvoiceLine).filter(
+                PalladiumInvoiceLine.document_no == source_doc_no,
+                PalladiumInvoiceLine.item_code == sku
+            ).first()
+
+        line_capacity = abs(float(inv_line.qty or 0.0)) if inv_line else 999999.0
+        other_active_q = db.query(ProcurementAllocation).filter(
+            ProcurementAllocation.allocation_type == "INVOICE",
+            ProcurementAllocation.source_doc_no == source_doc_no,
+            ProcurementAllocation.status == "Active"
+        )
+        if source_line_id is not None:
+            other_active_q = other_active_q.filter(ProcurementAllocation.source_line_id == source_line_id)
+        else:
+            other_active_q = other_active_q.filter(ProcurementAllocation.sku == sku)
+        current_active_sum = sum(float(a.allocated_qty or 0.0) for a in other_active_q.all())
+
+        if current_active_sum + allocated_qty > line_capacity + 0.001:
+            for ea in existing_q.all():
+                ea.status = "Cancelled"
 
         alloc = ProcurementAllocation(
             allocation_type="INVOICE",
@@ -829,7 +897,7 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
             project_id=real_proj_id,
             project_name=real_proj_name,
             order_id=resolved_order_id,
-            order_item_id=str(matched_item.id) if matched_item else (str(order_item_id) if order_item_id else None),
+            order_item_id=target_item_id_str,
             fitting_code=fitting_code or (matched_item.code if matched_item else sku),
             allocated_qty=allocated_qty,
             unit_cost=unit_cost,

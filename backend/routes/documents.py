@@ -387,6 +387,11 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
         valid_projects = []
         proj_folder_ids = []
 
+        # Filter out redundant 'General Project' records if the client already has real named projects
+        named_projects = [p for p in projects if normalize_name(p.name) not in ("generalproject", "generalprojects", "unassignedproject")]
+        if named_projects:
+            projects = named_projects
+
         for proj in projects:
             if proj.id in seen_project_ids:
                 continue
@@ -531,6 +536,8 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
 
         all_known_clients = db.query(Client).all() if client else []
         client_norm = normalize_name(client_name)
+        package_and_order_folder_ids = []
+        package_proj_map = {}
 
         for proj, proj_folder_id in valid_projects:
             containers = proj_containers_map.get(proj_folder_id, {})
@@ -553,6 +560,8 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
                             "sort_order": 10,
                             "webViewLink": df_sub.get('webViewLink', '')
                         })
+                        package_and_order_folder_ids.append(df_sub['id'])
+                        package_proj_map[df_sub['id']] = (proj_folder_id, "design_subfolder")
 
             # Orders children (scoped to client if relevant)
             if o_root_id:
@@ -579,10 +588,34 @@ def get_client_folders(client_id: str, db: Session = Depends(get_db)):
                             "sort_order": 15,
                             "webViewLink": ord_sub.get('webViewLink', '')
                         })
+                        package_and_order_folder_ids.append(ord_sub['id'])
+                        package_proj_map[ord_sub['id']] = (proj_folder_id, "order_subfolder")
 
-        # Also include any custom folders directly in Drive under Client folder
+        # Batch 3: Query standard subfolders inside each Design Package and Order Folder in a single batched Drive call
+        if package_and_order_folder_ids:
+            batch_leaf_subs = get_subfolders_batch(drive_service, package_and_order_folder_ids, include_shortcuts=False)
+            for parent_pkg_id, leaf_list in batch_leaf_subs.items():
+                proj_f_id, leaf_type = package_proj_map.get(parent_pkg_id, (None, "order_subfolder"))
+                for idx, lf in enumerate(sorted(leaf_list, key=lambda x: x.get('name', '').lower())):
+                    if lf['id'] not in seen_gdrive_ids:
+                        seen_gdrive_ids.add(lf['id'])
+                        all_nodes.append({
+                            "id": lf['id'],
+                            "gdrive_folder_id": lf['id'],
+                            "name": lf['name'],
+                            "parent_id": parent_pkg_id,
+                            "project_gdrive_id": proj_f_id,
+                            "type": leaf_type,
+                            "sort_order": 20 + idx,
+                            "webViewLink": lf.get('webViewLink', '')
+                        })
+
+        # Also include any custom folders directly in Drive under Client folder (excluding ghost 'General Project' folders if named projects exist)
         for dc in client_children:
             if dc.get('mimeType') == 'application/vnd.google-apps.folder' and dc['id'] not in seen_gdrive_ids:
+                dc_norm = normalize_name(dc.get('name', ''))
+                if named_projects and dc_norm in ("generalproject", "generalprojects", "unassignedproject"):
+                    continue
                 seen_gdrive_ids.add(dc['id'])
                 all_nodes.append({
                     "id": dc['id'],
@@ -864,6 +897,47 @@ def trash_file(gdrive_file_id: str):
     except Exception as e:
         logger.error(f"Failed to trash file: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to trash file: {str(e)}")
+
+
+# --- 10b. Rename File ---
+@router.patch("/files/{gdrive_file_id}")
+def rename_file(gdrive_file_id: str, req: RenameFolderRequest):
+    """Renames an existing file in Google Drive."""
+    if not req.name.strip():
+        raise HTTPException(status_code=400, detail="New name cannot be empty")
+    try:
+        updated = rename_drive_item(gdrive_file_id, req.name.strip())
+        return {"message": "File renamed successfully", "file": updated}
+    except Exception as e:
+        logger.error(f"Failed to rename file: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to rename file: {str(e)}")
+
+
+# --- 10c. Dynamically List Subfolders of Any Drive Folder ---
+@router.get("/folders/{gdrive_folder_id}/subfolders")
+def get_folder_subfolders_endpoint(gdrive_folder_id: str):
+    """Lists immediate child folders inside any Google Drive folder for lazy tree expansion."""
+    clean_folder_id = (gdrive_folder_id or "").strip()
+    if not clean_folder_id:
+        return []
+    try:
+        drive_service = get_drive_service()
+        subs = get_subfolders(drive_service, clean_folder_id, include_shortcuts=False)
+        out = []
+        for idx, sf in enumerate(sorted(subs, key=lambda x: x.get("name", "").lower())):
+            out.append({
+                "id": sf["id"],
+                "gdrive_folder_id": sf["id"],
+                "name": sf["name"],
+                "parent_id": clean_folder_id,
+                "type": "custom",
+                "sort_order": 20 + idx,
+                "webViewLink": sf.get("webViewLink", "")
+            })
+        return out
+    except Exception as e:
+        logger.error(f"Error listing subfolders for {clean_folder_id}: {e}", exc_info=True)
+        return []
 
 
 # --- 11. Stream File for In-Portal PDF & Image Preview ---

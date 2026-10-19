@@ -112,8 +112,9 @@ export default function MobileInvoicesViewer({ docs = [], summary = {}, onRefres
           filteredDocs.map((doc, idx) => {
             const docNo = doc.document_no || doc.doc_no || `INV-${idx + 1}`;
             const customer = doc.customer_name || doc.client || 'Client';
-            const amount = Number(doc.total_amount || doc.amount || doc.total || 0);
-            const date = doc.document_date || doc.date || '—';
+            const amount = Number(doc.total_value_excl || doc.document_total || doc.total_amount || doc.amount || doc.total || 0);
+            const rawDate = doc.transaction_date || doc.document_date || doc.date;
+            const date = rawDate ? new Date(rawDate).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
             const status = doc.allocation_status || 'Unallocated';
             const isAllocated = status.toLowerCase().includes('fully') || status.toLowerCase().includes('allocated');
 

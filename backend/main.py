@@ -226,8 +226,14 @@ def init_db():
                                 conn.execute(text("ALTER TABLE clients ADD COLUMN activities JSON DEFAULT '[]';"))
                                 conn.commit()
                                 print("Database migration: created 'activities' column on 'clients' table.")
+                        if 'projects' in inspector.get_table_names():
+                            proj_cols = [c['name'] for c in inspector.get_columns('projects')]
+                            if 'project_metadata' not in proj_cols:
+                                conn.execute(text("ALTER TABLE projects ADD COLUMN project_metadata JSON DEFAULT '{}';"))
+                                conn.commit()
+                                print("Database migration: created 'project_metadata' column on 'projects' table.")
                     except Exception as cl_err:
-                        print(f"Clients table migration notice: {cl_err}")
+                        print(f"Clients/Projects table migration notice: {cl_err}")
                     
                     # Drop order_metadata column if it exists
                     order_cols_refresh = [c['name'] for c in inspector.get_columns('orders')]

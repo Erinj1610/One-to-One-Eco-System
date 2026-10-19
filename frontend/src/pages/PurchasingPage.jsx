@@ -332,6 +332,25 @@ export default function PurchasingPage() {
       const docNo = rawId.replace(/^(PO_|GRN_)/, '');
       const docType = rawId.startsWith('GRN') || docNo.startsWith('PI-') ? 'GRN' : 'PO';
       fetchSingleDocumentDetails(docType, docNo);
+      window.history.replaceState({}, document.title);
+    } else if (location.state?.filterOrderId) {
+      const rawOrdId = String(location.state.filterOrderId).trim();
+      let filterTerm = rawOrdId;
+      for (const p of Object.values(projects || {})) {
+        const foundOrd = (p.orders || []).find(
+          o => String(o.id) === rawOrdId || String(o.dbId) === rawOrdId || String(o.poNumber) === rawOrdId
+        );
+        if (foundOrd) {
+          filterTerm = foundOrd.poNumber || foundOrd.quoteName || foundOrd.quote_name || p.name || rawOrdId;
+          break;
+        }
+      }
+      if (filterTerm.includes('--')) {
+        filterTerm = filterTerm.split('--')[0];
+      }
+      setActiveFilterTab('ALL');
+      setSearchQuery(filterTerm);
+      window.history.replaceState({}, document.title);
     }
   }, [location.state]);
 
@@ -343,14 +362,14 @@ export default function PurchasingPage() {
     return () => clearTimeout(timer);
   }, [activeFilterTab, supplierFilter, searchQuery]);
 
-  // Extract unique suppliers for filter
+  // Extract unique suppliers for filter (combine summary all_suppliers + current page docs)
   const uniqueSuppliers = useMemo(() => {
-    const set = new Set();
+    const set = new Set(procurementSummary.all_suppliers || []);
     procurementDocs.forEach(item => {
       if (item.vendor_name && item.vendor_name.trim()) set.add(item.vendor_name.trim());
     });
     return Array.from(set).sort();
-  }, [procurementDocs]);
+  }, [procurementDocs, procurementSummary.all_suppliers]);
 
   // -------------------------------------------------------------
   // MULTI-SELECTION HANDLERS
@@ -422,6 +441,8 @@ export default function PurchasingPage() {
     const defaultEta = (item?.order_required_date || selectedDocument?.order_required_date || '').split('T')[0];
     setAllocEta(defaultEta);
     setAllocNotes('');
+    setAllocFile(null);
+    setShowNoDocPrompt(false);
     setSelectedCandidateKey(null);
     setShowFulfilledCandidates(false);
     setManualProjectId('');
@@ -513,15 +534,17 @@ export default function PurchasingPage() {
       const data = await res.json();
       if (res.ok) {
         const targetOrderId = payload.order_id || manualOrderId;
+        const uploadCat = (allocTargetItem.doc_type || '').toUpperCase() === 'GRN' ? 'GRN' : 'PO';
+        const uploadFolderLabel = uploadCat === 'GRN' ? '03 - Goods Received Notes (GRNs)' : '02 - Supplier POs';
         if (allocFile && targetOrderId) {
           try {
             const formData = new FormData();
             formData.append('file', allocFile);
-            await fetch(`${API_BASE}/api/documents/order/${targetOrderId}/upload-category?category=PO`, {
+            await fetch(`${API_BASE}/api/documents/order/${targetOrderId}/upload-category?category=${uploadCat}`, {
               method: 'POST',
               body: formData
             });
-            triggerToast(`🎉 Allocated & file uploaded to 02 - Supplier POs in Drive!`);
+            triggerToast(`🎉 Allocated & file uploaded to ${uploadFolderLabel} in Drive!`);
           } catch (uploadErr) {
             console.warn("Could not upload attached file to Drive:", uploadErr);
             triggerToast(`🎉 Allocated! (Drive upload note: check file format)`);
@@ -536,6 +559,7 @@ export default function PurchasingPage() {
         if (selectedDocument) {
           fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
         }
+        if (refreshProjects) refreshProjects();
       } else {
         alert(`Allocation notice: ${data.detail || 'Could not complete allocation.'}`);
       }
@@ -630,6 +654,9 @@ export default function PurchasingPage() {
     const defaultEta = (selectedDocument?.order_required_date || '').split('T')[0];
     setBatchEta(defaultEta);
     setBatchNotes('');
+    setBatchFile(null);
+    setShowBatchNoDocPrompt(false);
+    setBatchLineMappings({});
     setBatchModalOpen(true);
   };
 
@@ -715,15 +742,17 @@ export default function PurchasingPage() {
       });
       const data = await res.json();
       if (res.ok) {
+        const uploadCat = (selectedDocument.doc_type || '').toUpperCase() === 'GRN' ? 'GRN' : 'PO';
+        const uploadFolderLabel = uploadCat === 'GRN' ? '03 - Goods Received Notes (GRNs)' : '02 - Supplier POs';
         if (batchFile && batchOrderId) {
           try {
             const formData = new FormData();
             formData.append('file', batchFile);
-            await fetch(`${API_BASE}/api/documents/order/${batchOrderId}/upload-category?category=PO`, {
+            await fetch(`${API_BASE}/api/documents/order/${batchOrderId}/upload-category?category=${uploadCat}`, {
               method: 'POST',
               body: formData
             });
-            triggerToast(`🎉 Batch allocated & file uploaded to 02 - Supplier POs in Drive!`);
+            triggerToast(`🎉 Batch allocated & file uploaded to ${uploadFolderLabel} in Drive!`);
           } catch (uploadErr) {
             console.warn("Could not upload attached batch file to Drive:", uploadErr);
             triggerToast(`🎉 Batch allocated! (Drive upload note: check file format)`);
@@ -737,6 +766,7 @@ export default function PurchasingPage() {
         fetchSummary();
         fetchProcurementDocuments(page, activeFilterTab, supplierFilter, searchQuery);
         fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
+        if (refreshProjects) refreshProjects();
       } else {
         alert(`Batch allocation notice: ${data.detail || 'Could not complete batch allocation.'}`);
       }
@@ -765,6 +795,7 @@ export default function PurchasingPage() {
         if (selectedDocument) {
           fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
         }
+        if (refreshProjects) refreshProjects();
       } else {
         alert(`Notice: ${data.detail || 'Failed to unallocate.'}`);
       }
@@ -797,6 +828,7 @@ export default function PurchasingPage() {
         if (selectedDocument) {
           fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
         }
+        if (refreshProjects) refreshProjects();
       } else {
         alert(`Unallocate notice: ${data.detail || 'Could not unallocate line.'}`);
       }
@@ -849,6 +881,7 @@ export default function PurchasingPage() {
         fetchSummary();
         fetchProcurementDocuments(page, activeFilterTab, supplierFilter, searchQuery);
         fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
+        if (refreshProjects) refreshProjects();
       } else {
         alert(`Unallocate notice: ${data.detail || 'Could not unallocate items.'}`);
       }
@@ -878,6 +911,7 @@ export default function PurchasingPage() {
         if (selectedDocument) {
           fetchSingleDocumentDetails(selectedDocument.doc_type, docNo);
         }
+        if (refreshProjects) refreshProjects();
       } else {
         alert(`Unallocate notice: ${data.detail || 'Could not unallocate document.'}`);
       }
@@ -1220,6 +1254,7 @@ export default function PurchasingPage() {
         if (selectedDocument) {
           fetchSingleDocumentDetails(selectedDocument.doc_type, selectedDocument.document_no);
         }
+        if (refreshProjects) refreshProjects();
       } else {
         alert(`Bulk allocation notice: ${data.detail || 'Failed to complete allocations.'}`);
       }
@@ -2347,463 +2382,453 @@ export default function PurchasingPage() {
                             </td>
                           </tr>
                         )}
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                  {sortedDocumentLines.length > 0 && (
+                    <tfoot>
+                      <tr style={{
+                        background: 'var(--bg-secondary)',
+                        borderTop: '2px solid var(--border-strong, var(--border))',
+                        fontWeight: 800,
+                        position: 'sticky',
+                        bottom: 0,
+                        zIndex: 4
+                      }}>
+                        <td colSpan={3} style={{ padding: '10px 14px', color: 'var(--text-primary)', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          Document Total ({sortedDocumentLines.length} {sortedDocumentLines.length === 1 ? 'line' : 'lines'})
+                        </td>
+                        <td style={{ padding: '10px 10px', textAlign: 'right', color: 'var(--text-primary)', fontFamily: 'monospace' }}>
+                          R {sortedDocumentLines.reduce((s, l) => s + (Number(l.total_value) || (Number(l.unit_cost || 0) * Number(l.total_qty || 0))), 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td style={{ padding: '10px 10px', textAlign: 'center', color: 'var(--text-primary)' }}>
+                          {sortedDocumentLines.reduce((s, l) => s + Number(l.total_qty || 0), 0)}
+                        </td>
+                        <td style={{ padding: '10px 10px', textAlign: 'center', color: '#10b981' }}>
+                          {sortedDocumentLines.reduce((s, l) => s + Number(l.allocated_qty || 0), 0)}
+                        </td>
+                        <td style={{ padding: '10px 10px', textAlign: 'center', color: sortedDocumentLines.reduce((s, l) => s + Number(l.unallocated_qty || 0), 0) > 0 ? '#f59e0b' : '#10b981' }}>
+                          {sortedDocumentLines.reduce((s, l) => s + Number(l.unallocated_qty || 0), 0)}
+                        </td>
+                        <td colSpan={2}></td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
             </div>
           </div>
-        </div>
-      ) : (
-        /* ============================================================ */
-        /* VIEW B: PRIMARY DOCUMENT LIST (One row per PO / GRN Document)*/
-        /* ============================================================ */
-        <>
-          {/* FILTER TABS & SEARCH BAR */}
-          <div className="card" style={{ padding: '12px 16px', marginBottom: '14px', borderRadius: '10px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-              
-              {/* Tab Filters */}
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                <button
-                  onClick={() => setActiveFilterTab('NEEDS_ALLOCATION')}
-                  className={`btn btn-xs ${activeFilterTab === 'NEEDS_ALLOCATION' ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{
-                    fontSize: '11.5px',
-                    fontWeight: 600,
-                    background: activeFilterTab === 'NEEDS_ALLOCATION' ? '#f59e0b' : 'transparent',
-                    color: activeFilterTab === 'NEEDS_ALLOCATION' ? '#000' : 'var(--text-primary)',
-                    border: '1px solid rgba(245, 158, 11, 0.4)'
-                  }}
-                >
-                  🚨 Needs Allocation ({procurementSummary.unallocated_count})
-                </button>
-                <button
-                  onClick={() => setActiveFilterTab('PARTIAL')}
-                  className={`btn btn-xs ${activeFilterTab === 'PARTIAL' ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{ fontSize: '11.5px', fontWeight: 600 }}
-                >
-                  ⏳ Partially Allocated ({procurementSummary.partially_allocated_count})
-                </button>
-                <button
-                  onClick={() => setActiveFilterTab('FULLY_ALLOCATED')}
-                  className={`btn btn-xs ${activeFilterTab === 'FULLY_ALLOCATED' ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{ fontSize: '11.5px', fontWeight: 600 }}
-                >
-                  ✅ Fully Allocated ({procurementSummary.fully_allocated_count})
-                </button>
-                <button
-                  onClick={() => setActiveFilterTab('ISSUES')}
-                  className={`btn btn-xs ${activeFilterTab === 'ISSUES' ? 'btn-error' : 'btn-ghost'}`}
-                  style={{
-                    fontSize: '11.5px',
-                    fontWeight: 600,
-                    background: activeFilterTab === 'ISSUES' ? '#ef4444' : 'transparent',
-                    color: activeFilterTab === 'ISSUES' ? '#fff' : '#ef4444',
-                    border: '1px solid rgba(239, 68, 68, 0.4)'
-                  }}
-                >
-                  ⚠️ Issues / Not Found ({procurementSummary.issues_count || 0})
-                </button>
-                <button
-                  onClick={() => setActiveFilterTab('INTERNAL')}
-                  className={`btn btn-xs ${activeFilterTab === 'INTERNAL' ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{
-                    fontSize: '11.5px',
-                    fontWeight: 600,
-                    background: activeFilterTab === 'INTERNAL' ? '#8b5cf6' : 'transparent',
-                    color: activeFilterTab === 'INTERNAL' ? '#fff' : '#8b5cf6',
-                    border: '1px solid rgba(139, 92, 246, 0.4)'
-                  }}
-                >
-                  🏢 Internal / Office ({procurementSummary.internal_count || 0})
-                </button>
-                <button
-                  onClick={() => setActiveFilterTab('ARCHIVED')}
-                  className={`btn btn-xs ${activeFilterTab === 'ARCHIVED' ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{
-                    fontSize: '11.5px',
-                    fontWeight: 600,
-                    background: activeFilterTab === 'ARCHIVED' ? '#6b7280' : 'transparent',
-                    color: activeFilterTab === 'ARCHIVED' ? '#fff' : 'var(--text-secondary)',
-                    border: '1px solid rgba(107, 114, 128, 0.4)'
-                  }}
-                >
-                  📦 Archived / Old Orders ({procurementSummary.archived_count || 0})
-                </button>
-                <button
-                  onClick={() => setActiveFilterTab('PO')}
-                  className={`btn btn-xs ${activeFilterTab === 'PO' ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{ fontSize: '11.5px', fontWeight: 600 }}
-                >
-                  📄 Purchase Orders (POs)
-                </button>
-                <button
-                  onClick={() => setActiveFilterTab('GRN')}
-                  className={`btn btn-xs ${activeFilterTab === 'GRN' ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{ fontSize: '11.5px', fontWeight: 600 }}
-                >
-                  📥 Goods Received (GRNs)
-                </button>
-                <button
-                  onClick={() => setActiveFilterTab('ALL')}
-                  className={`btn btn-xs ${activeFilterTab === 'ALL' ? 'btn-primary' : 'btn-ghost'}`}
-                  style={{ fontSize: '11.5px', fontWeight: 600 }}
-                >
-                  All Documents
-                </button>
-              </div>
-
-              {/* Search & Supplier Filter */}
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <div style={{ position: 'relative', width: '240px' }}>
-                  <Search size={13} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-tertiary)' }} />
-                  <input
-                    type="text"
-                    placeholder="Search Doc #, Supplier, Ref, SKU..."
-                    className="form-control"
-                    style={{ paddingLeft: '28px', height: '30px', fontSize: '11.5px' }}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery('')}
-                      style={{ position: 'absolute', right: '6px', top: '6px', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer' }}
-                    >
-                      ✕
-                    </button>
-                  )}
+        ) : (
+          /* ============================================================ */
+          /* VIEW B: PRIMARY DOCUMENT LIST (One row per PO / GRN Document)*/
+          /* ============================================================ */
+          <>
+            {/* FILTER TABS & SEARCH BAR */}
+            <div className="card" style={{ padding: '12px 16px', marginBottom: '14px', borderRadius: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                
+                {/* Tab Filters */}
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => setActiveFilterTab('NEEDS_ALLOCATION')}
+                    className={`btn btn-xs ${activeFilterTab === 'NEEDS_ALLOCATION' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      background: activeFilterTab === 'NEEDS_ALLOCATION' ? '#f59e0b' : 'transparent',
+                      color: activeFilterTab === 'NEEDS_ALLOCATION' ? '#000' : 'var(--text-primary)',
+                      border: '1px solid rgba(245, 158, 11, 0.4)'
+                    }}
+                  >
+                    🚨 Needs Allocation ({procurementSummary.unallocated_count})
+                  </button>
+                  <button
+                    onClick={() => setActiveFilterTab('PARTIAL')}
+                    className={`btn btn-xs ${activeFilterTab === 'PARTIAL' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ fontSize: '11.5px', fontWeight: 600 }}
+                  >
+                    ⏳ Partially Allocated ({procurementSummary.partially_allocated_count})
+                  </button>
+                  <button
+                    onClick={() => setActiveFilterTab('FULLY_ALLOCATED')}
+                    className={`btn btn-xs ${activeFilterTab === 'FULLY_ALLOCATED' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ fontSize: '11.5px', fontWeight: 600 }}
+                  >
+                    ✅ Fully Allocated ({procurementSummary.fully_allocated_count})
+                  </button>
+                  <button
+                    onClick={() => setActiveFilterTab('ISSUES')}
+                    className={`btn btn-xs ${activeFilterTab === 'ISSUES' ? 'btn-error' : 'btn-ghost'}`}
+                    style={{
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      background: activeFilterTab === 'ISSUES' ? '#ef4444' : 'transparent',
+                      color: activeFilterTab === 'ISSUES' ? '#fff' : '#ef4444',
+                      border: '1px solid rgba(239, 68, 68, 0.4)'
+                    }}
+                  >
+                    ⚠️ Issues / Not Found ({procurementSummary.issues_count || 0})
+                  </button>
+                  <button
+                    onClick={() => setActiveFilterTab('INTERNAL')}
+                    className={`btn btn-xs ${activeFilterTab === 'INTERNAL' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      background: activeFilterTab === 'INTERNAL' ? '#8b5cf6' : 'transparent',
+                      color: activeFilterTab === 'INTERNAL' ? '#fff' : '#8b5cf6',
+                      border: '1px solid rgba(139, 92, 246, 0.4)'
+                    }}
+                  >
+                    🏢 Internal / Office ({procurementSummary.internal_count || 0})
+                  </button>
+                  <button
+                    onClick={() => setActiveFilterTab('ARCHIVED')}
+                    className={`btn btn-xs ${activeFilterTab === 'ARCHIVED' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{
+                      fontSize: '11.5px',
+                      fontWeight: 600,
+                      background: activeFilterTab === 'ARCHIVED' ? '#6b7280' : 'transparent',
+                      color: activeFilterTab === 'ARCHIVED' ? '#fff' : 'var(--text-secondary)',
+                      border: '1px solid rgba(107, 114, 128, 0.4)'
+                    }}
+                  >
+                    📦 Archived / Old Orders ({procurementSummary.archived_count || 0})
+                  </button>
+                  <button
+                    onClick={() => setActiveFilterTab('PO')}
+                    className={`btn btn-xs ${activeFilterTab === 'PO' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ fontSize: '11.5px', fontWeight: 600 }}
+                  >
+                    📄 Purchase Orders (POs)
+                  </button>
+                  <button
+                    onClick={() => setActiveFilterTab('GRN')}
+                    className={`btn btn-xs ${activeFilterTab === 'GRN' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ fontSize: '11.5px', fontWeight: 600 }}
+                  >
+                    📥 Goods Received (GRNs)
+                  </button>
+                  <button
+                    onClick={() => setActiveFilterTab('ALL')}
+                    className={`btn btn-xs ${activeFilterTab === 'ALL' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ fontSize: '11.5px', fontWeight: 600 }}
+                  >
+                    All Documents
+                  </button>
                 </div>
 
-                <select
-                  className="form-control"
-                  style={{ height: '30px', fontSize: '11.5px', padding: '2px 8px', maxWidth: '160px' }}
-                  value={supplierFilter}
-                  onChange={(e) => setSupplierFilter(e.target.value)}
-                >
-                  <option value="All Suppliers">All Suppliers</option>
-                  {uniqueSuppliers.map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+                {/* Search & Supplier Filter */}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div style={{ position: 'relative', width: '240px' }}>
+                    <Search size={13} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-tertiary)' }} />
+                    <input
+                      type="text"
+                      placeholder="Search Doc #, Supplier, Ref, SKU..."
+                      className="form-control"
+                      style={{ paddingLeft: '28px', height: '30px', fontSize: '11.5px' }}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery('')}
+                        style={{ position: 'absolute', right: '6px', top: '6px', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer' }}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  <select
+                    className="form-control"
+                    style={{ height: '30px', fontSize: '11.5px', padding: '2px 8px', maxWidth: '160px' }}
+                    value={supplierFilter}
+                    onChange={(e) => setSupplierFilter(e.target.value)}
+                  >
+                    <option value="All Suppliers">All Suppliers</option>
+                    {uniqueSuppliers.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+
               </div>
-
             </div>
-          </div>
 
-          {/* DOCUMENTS LIST TABLE */}
-          <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: '10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ overflowX: 'auto', flex: 1 }}>
-              <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
-                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('document_no')}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
-                        Document #{renderDocSortIcon('document_no')}
-                      </div>
-                    </th>
-                    <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('doc_type')}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
-                        Type{renderDocSortIcon('doc_type')}
-                      </div>
-                    </th>
-                    <th style={{ padding: '10px 10px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('date')}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
-                        Date{renderDocSortIcon('date')}
-                      </div>
-                    </th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('supplier')}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
-                        Supplier{renderDocSortIcon('supplier')}
-                      </div>
-                    </th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('reference')}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
-                        Project Reference{renderDocSortIcon('reference')}
-                      </div>
-                    </th>
-                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('items_qty')}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                        Items / Qty{renderDocSortIcon('items_qty')}
-                      </div>
-                    </th>
-                    <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('total_value')}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                        Total Value{renderDocSortIcon('total_value')}
-                      </div>
-                    </th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('status')}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                        Allocation Status{renderDocSortIcon('status')}
-                      </div>
-                    </th>
-                    <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600 }}>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isLoadingProcurement ? (
-                    <tr>
-                      <td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
-                        <RefreshCw size={20} className="animate-spin" style={{ margin: '0 auto 8px auto', display: 'block', color: '#3b82f6' }} />
-                        Loading live ERP documents...
-                      </td>
+            {/* DOCUMENTS LIST TABLE */}
+            <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: '10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <div style={{ overflowX: 'auto', flex: 1 }}>
+                <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                      <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('document_no')}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          Document #{renderDocSortIcon('document_no')}
+                        </div>
+                      </th>
+                      <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('doc_type')}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          Type{renderDocSortIcon('doc_type')}
+                        </div>
+                      </th>
+                      <th style={{ padding: '10px 10px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('date')}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          Date{renderDocSortIcon('date')}
+                        </div>
+                      </th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('supplier')}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          Supplier{renderDocSortIcon('supplier')}
+                        </div>
+                      </th>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('reference')}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          Project Reference{renderDocSortIcon('reference')}
+                        </div>
+                      </th>
+                      <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('items_qty')}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                          Items / Qty{renderDocSortIcon('items_qty')}
+                        </div>
+                      </th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('total_value')}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                          Total Value{renderDocSortIcon('total_value')}
+                        </div>
+                      </th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('status')}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                          Allocation Status{renderDocSortIcon('status')}
+                        </div>
+                      </th>
+                      <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600 }}>Action</th>
                     </tr>
-                  ) : procurementDocs.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
-                        <div style={{ fontSize: '24px', marginBottom: '8px' }}>✨</div>
-                        <div style={{ fontWeight: 600, fontSize: '13px' }}>No documents found</div>
-                        <div style={{ fontSize: '11px', marginTop: '4px' }}>All documents in this view may already be fully allocated or match no search query.</div>
-                      </td>
-                    </tr>
-                  ) : (
-                    sortedProcurementDocs.map((doc) => {
-                      return (
-                        <tr 
-                          key={doc.id}
-                          onClick={() => setSelectedDocument(doc)}
-                          style={{ 
-                            borderBottom: '1px solid var(--border)',
-                            cursor: 'pointer',
-                            transition: 'background 0.15s ease'
-                          }}
-                          className="hover-row"
-                        >
-                          {/* Document # */}
-                          <td style={{ padding: '10px 14px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <FileText size={14} color="#3b82f6" />
-                              <span style={{ fontSize: '12.5px' }}>{doc.document_no}</span>
-                            </div>
-                          </td>
-
-                          {/* Type Badge */}
-                          <td style={{ padding: '10px 8px' }}>
-                            <span style={{ 
-                              padding: '2px 6px', 
-                              borderRadius: '4px', 
-                              fontSize: '10px', 
-                              fontWeight: 700,
-                              background: doc.doc_type === 'PO' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-                              color: doc.doc_type === 'PO' ? '#3b82f6' : '#10b981',
-                              border: `1px solid ${doc.doc_type === 'PO' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`
-                            }}>
-                              {doc.doc_type}
-                            </span>
-                          </td>
-
-                          {/* Date */}
-                          <td style={{ padding: '10px 10px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                            {doc.transaction_date ? new Date(doc.transaction_date).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
-                          </td>
-
-                          {/* Supplier */}
-                          <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {doc.vendor_name}
-                          </td>
-
-                          {/* Project Reference */}
-                          <td style={{ padding: '10px 12px', color: 'var(--text-primary)', maxWidth: '240px' }}>
-                            {doc.reference ? (
-                              <div>
-                                <span style={{ fontWeight: 600, fontSize: '11.5px', color: 'var(--text-primary)' }}>
-                                  {doc.reference}
-                                </span>
-                                {doc.customer_name && doc.customer_name !== doc.reference && (
-                                  <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                    Client: {doc.customer_name}
-                                  </div>
-                                )}
+                  </thead>
+                  <tbody>
+                    {isLoadingProcurement ? (
+                      <tr>
+                        <td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                          <RefreshCw size={20} className="animate-spin" style={{ margin: '0 auto 8px auto', display: 'block', color: '#3b82f6' }} />
+                          Loading live ERP documents...
+                        </td>
+                      </tr>
+                    ) : procurementDocs.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                          <div style={{ fontSize: '24px', marginBottom: '8px' }}>✨</div>
+                          <div style={{ fontWeight: 600, fontSize: '13px' }}>No documents found</div>
+                          <div style={{ fontSize: '11px', marginTop: '4px' }}>All documents in this view may already be fully allocated or match no search query.</div>
+                        </td>
+                      </tr>
+                    ) : (
+                      sortedProcurementDocs.map((doc) => {
+                        return (
+                          <tr 
+                            key={doc.id}
+                            onClick={() => setSelectedDocument(doc)}
+                            style={{ 
+                              borderBottom: '1px solid var(--border)',
+                              cursor: 'pointer',
+                              transition: 'background 0.15s ease'
+                            }}
+                            className="hover-row"
+                          >
+                            {/* Document # */}
+                            <td style={{ padding: '10px 14px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <FileText size={14} color="#3b82f6" />
+                                <span style={{ fontSize: '12.5px' }}>{doc.document_no}</span>
                               </div>
-                            ) : doc.customer_name ? (
-                              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                Client: {doc.customer_name}
+                            </td>
+
+                            {/* Type Badge */}
+                            <td style={{ padding: '10px 8px' }}>
+                              <span style={{ 
+                                padding: '2px 6px', 
+                                borderRadius: '4px', 
+                                fontSize: '10px', 
+                                fontWeight: 700,
+                                background: doc.doc_type === 'PO' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                                color: doc.doc_type === 'PO' ? '#3b82f6' : '#10b981',
+                                border: `1px solid ${doc.doc_type === 'PO' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`
+                              }}>
+                                {doc.doc_type}
+                              </span>
+                            </td>
+
+                            {/* Date */}
+                            <td style={{ padding: '10px 10px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                              {doc.transaction_date ? new Date(doc.transaction_date).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
+                            </td>
+
+                            {/* Supplier */}
+                            <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                              {doc.vendor_name}
+                            </td>
+
+                            {/* Project Reference */}
+                            <td style={{ padding: '10px 12px', color: 'var(--text-primary)', maxWidth: '240px' }}>
+                              {doc.reference ? (
+                                <div>
+                                  <span style={{ fontWeight: 600, fontSize: '11.5px', color: 'var(--text-primary)' }}>
+                                    {doc.reference}
+                                  </span>
+                                  {doc.customer_name && doc.customer_name !== doc.reference && (
+                                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                      Client: {doc.customer_name}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : doc.customer_name ? (
+                                <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                  Client: {doc.customer_name}
+                                </div>
+                              ) : (
+                                <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+                              )}
+                            </td>
+
+                            {/* Total Lines & Qty */}
+                            <td style={{ padding: '10px 10px', textAlign: 'center' }}>
+                              <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                                {doc.total_lines} {doc.total_lines === 1 ? 'item' : 'items'}
                               </div>
-                            ) : (
-                              <span style={{ color: 'var(--text-tertiary)' }}>—</span>
-                            )}
-                          </td>
+                              <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
+                                {doc.total_qty} total units
+                              </div>
+                            </td>
 
-                          {/* Total Lines & Qty */}
-                          <td style={{ padding: '10px 10px', textAlign: 'center' }}>
-                            <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-                              {doc.total_lines} {doc.total_lines === 1 ? 'item' : 'items'}
-                            </div>
-                            <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                              {doc.total_qty} total units
-                            </div>
-                          </td>
+                            {/* Total Value */}
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: 'var(--text-primary)' }}>
+                              R {doc.total_value ? doc.total_value.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+                            </td>
 
-                          {/* Total Value */}
-                          <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: 'var(--text-primary)' }}>
-                            R {doc.total_value ? doc.total_value.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
-                          </td>
-
-                          {/* Allocation Status Badge */}
-                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                            {doc.is_internal ? (
-                              <span style={{ 
-                                background: 'rgba(139, 92, 246, 0.12)', 
-                                color: '#8b5cf6', 
-                                border: '1px solid rgba(139, 92, 246, 0.3)',
-                                padding: '3px 8px', 
-                                borderRadius: '12px', 
-                                fontSize: '10px', 
-                                fontWeight: 700,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}>
-                                🏢 Internal / Office
-                              </span>
-                            ) : doc.is_archived ? (
-                              <span style={{ 
-                                background: 'rgba(107, 114, 128, 0.15)', 
-                                color: 'var(--text-secondary)', 
-                                border: '1px solid rgba(107, 114, 128, 0.3)',
-                                padding: '3px 8px', 
-                                borderRadius: '12px', 
-                                fontSize: '10px', 
-                                fontWeight: 700,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}>
-                                📦 Archived (Old Order)
-                              </span>
-                            ) : doc.is_open_issue || (doc.is_flagged_issue && !doc.is_internal && !doc.is_archived) ? (
-                              <span style={{ 
-                                background: 'rgba(239, 68, 68, 0.12)', 
-                                color: '#ef4444', 
-                                border: '1px solid rgba(239, 68, 68, 0.3)',
-                                padding: '3px 8px', 
-                                borderRadius: '12px', 
-                                fontSize: '10px', 
-                                fontWeight: 700,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }} title={doc.issue_notes ? `${doc.issue_reason}: ${doc.issue_notes}` : doc.issue_reason}>
-                                ⚠️ {doc.issue_reason || 'Issue / Not Found'}
-                              </span>
-                            ) : doc.allocation_status === 'NEEDS_ALLOCATION' ? (
-                              <span style={{ 
-                                background: 'rgba(245, 158, 11, 0.12)', 
-                                color: '#f59e0b', 
-                                border: '1px solid rgba(245, 158, 11, 0.3)',
-                                padding: '3px 8px', 
-                                borderRadius: '12px', 
-                                fontSize: '10px', 
-                                fontWeight: 700,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}>
-                                <AlertTriangle size={10} /> Needs Allocation ({doc.unallocated_lines_count} items)
-                              </span>
-                            ) : doc.allocation_status === 'PARTIAL' ? (
-                              <span style={{ 
-                                background: 'rgba(59, 130, 246, 0.12)', 
-                                color: '#3b82f6', 
-                                border: '1px solid rgba(59, 130, 246, 0.3)',
-                                padding: '3px 8px', 
-                                borderRadius: '12px', 
-                                fontSize: '10px', 
-                                fontWeight: 700 
-                              }}>
-                                ⏳ Partial ({doc.allocated_lines_count}/{doc.total_lines} allocated)
-                              </span>
-                            ) : (
-                              <span style={{ 
-                                background: 'rgba(16, 185, 129, 0.12)', 
-                                color: '#10b981', 
-                                border: '1px solid rgba(16, 185, 129, 0.3)',
-                                padding: '3px 8px', 
-                                borderRadius: '12px', 
-                                fontSize: '10px', 
-                                fontWeight: 700,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}>
-                                <Check size={10} /> 100% Allocated
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Action Button */}
-                          <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedDocument(doc);
-                                }}
-                                className="btn btn-xs"
-                                style={{
-                                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                                  color: '#fff',
-                                  border: 'none',
+                            {/* Allocation Status Badge */}
+                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                              {doc.is_internal ? (
+                                <span style={{ 
+                                  background: 'rgba(139, 92, 246, 0.12)', 
+                                  color: '#8b5cf6', 
+                                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                                  padding: '3px 8px', 
+                                  borderRadius: '12px', 
+                                  fontSize: '10px', 
                                   fontWeight: 700,
-                                  fontSize: '11px',
-                                  padding: '4px 10px',
-                                  borderRadius: '6px',
                                   display: 'inline-flex',
                                   alignItems: 'center',
-                                  gap: '4px',
-                                  boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
-                                }}
-                              >
-                                <Sparkles size={11} /> Open
-                              </button>
+                                  gap: '4px'
+                                }}>
+                                  🏢 Internal / Office
+                                </span>
+                              ) : doc.is_archived ? (
+                                <span style={{ 
+                                  background: 'rgba(107, 114, 128, 0.15)', 
+                                  color: 'var(--text-secondary)', 
+                                  border: '1px solid rgba(107, 114, 128, 0.3)',
+                                  padding: '3px 8px', 
+                                  borderRadius: '12px', 
+                                  fontSize: '10px', 
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}>
+                                  📦 Archived (Old Order)
+                                </span>
+                              ) : doc.is_open_issue || (doc.is_flagged_issue && !doc.is_internal && !doc.is_archived) ? (
+                                <span style={{ 
+                                  background: 'rgba(239, 68, 68, 0.12)', 
+                                  color: '#ef4444', 
+                                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                                  padding: '3px 8px', 
+                                  borderRadius: '12px', 
+                                  fontSize: '10px', 
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }} title={doc.issue_notes ? `${doc.issue_reason}: ${doc.issue_notes}` : doc.issue_reason}>
+                                  ⚠️ {doc.issue_reason || 'Issue / Not Found'}
+                                </span>
+                              ) : doc.allocation_status === 'NEEDS_ALLOCATION' ? (
+                                <span style={{ 
+                                  background: 'rgba(245, 158, 11, 0.12)', 
+                                  color: '#f59e0b', 
+                                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                                  padding: '3px 8px', 
+                                  borderRadius: '12px', 
+                                  fontSize: '10px', 
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}>
+                                  <AlertTriangle size={10} /> Needs Allocation ({doc.unallocated_lines_count} items)
+                                </span>
+                              ) : doc.allocation_status === 'PARTIAL' ? (
+                                <span style={{ 
+                                  background: 'rgba(59, 130, 246, 0.12)', 
+                                  color: '#3b82f6', 
+                                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                                  padding: '3px 8px', 
+                                  borderRadius: '12px', 
+                                  fontSize: '10px', 
+                                  fontWeight: 700 
+                                }}>
+                                  ⏳ Partial ({doc.allocated_lines_count}/{doc.total_lines} allocated)
+                                </span>
+                              ) : (
+                                <span style={{ 
+                                  background: 'rgba(16, 185, 129, 0.12)', 
+                                  color: '#10b981', 
+                                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                                  padding: '3px 8px', 
+                                  borderRadius: '12px', 
+                                  fontSize: '10px', 
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}>
+                                  <Check size={10} /> 100% Allocated
+                                </span>
+                              )}
+                            </td>
 
-                              {/* If document is marked as Internal or Archived, allow restoring it */}
-                              {(doc.is_internal || doc.is_archived) ? (
+                            {/* Action Button */}
+                            <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleUnmarkSpecial(doc);
+                                    setSelectedDocument(doc);
                                   }}
-                                  className="btn btn-xs btn-ghost"
+                                  className="btn btn-xs"
                                   style={{
-                                    color: 'var(--text-secondary)',
-                                    border: '1px solid var(--border)',
-                                    fontSize: '10.5px',
-                                    padding: '3px 8px',
-                                    borderRadius: '6px'
+                                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                                    color: '#fff',
+                                    border: 'none',
+                                    fontWeight: 700,
+                                    fontSize: '11px',
+                                    padding: '4px 10px',
+                                    borderRadius: '6px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
                                   }}
-                                  title="Restore back to unallocated list"
                                 >
-                                  Restore
+                                  <Sparkles size={11} /> Open
                                 </button>
-                              ) : (
-                                <>
-                                  {/* Mark Internal quick button */}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleMarkInternal(doc);
-                                    }}
-                                    className="btn btn-xs btn-ghost"
-                                    style={{
-                                      color: '#8b5cf6',
-                                      border: '1px solid rgba(139, 92, 246, 0.3)',
-                                      fontSize: '10.5px',
-                                      padding: '3px 8px',
-                                      borderRadius: '6px'
-                                    }}
-                                    title="Mark as Internal Office / Company Purchase"
-                                  >
-                                    🏢 Internal
-                                  </button>
 
-                                  {/* Archive quick button */}
+                                {/* If document is marked as Internal or Archived, allow restoring it */}
+                                {(doc.is_internal || doc.is_archived) ? (
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      handleArchiveDocument(doc);
+                                      handleUnmarkSpecial(doc);
                                     }}
                                     className="btn btn-xs btn-ghost"
                                     style={{
@@ -2813,81 +2838,146 @@ export default function PurchasingPage() {
                                       padding: '3px 8px',
                                       borderRadius: '6px'
                                     }}
-                                    title="Archive (Order no longer on portal)"
+                                    title="Restore back to unallocated list"
                                   >
-                                    📦 Archive
+                                    Restore
                                   </button>
-
-                                  {doc.is_open_issue || (doc.is_flagged_issue && !doc.is_internal && !doc.is_archived) ? (
+                                ) : (
+                                  <>
+                                    {/* Mark Internal quick button */}
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleResolveIssue(doc);
+                                        handleMarkInternal(doc);
                                       }}
                                       className="btn btn-xs btn-ghost"
                                       style={{
-                                        color: '#10b981',
-                                        border: '1px solid rgba(16, 185, 129, 0.4)',
+                                        color: '#8b5cf6',
+                                        border: '1px solid rgba(139, 92, 246, 0.3)',
                                         fontSize: '10.5px',
                                         padding: '3px 8px',
-                                        borderRadius: '6px',
-                                        fontWeight: 600
+                                        borderRadius: '6px'
                                       }}
-                                      title="Click to resolve issue and restore to active list"
+                                      title="Mark as Internal Office / Company Purchase"
                                     >
-                                      ✓ Resolve
+                                      🏢 Internal
                                     </button>
-                                  ) : (
+
+                                    {/* Archive quick button */}
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleOpenIssueModal(doc);
+                                        handleArchiveDocument(doc);
                                       }}
                                       className="btn btn-xs btn-ghost"
                                       style={{
-                                        color: '#f59e0b',
+                                        color: 'var(--text-secondary)',
                                         border: '1px solid var(--border)',
                                         fontSize: '10.5px',
                                         padding: '3px 8px',
                                         borderRadius: '6px'
                                       }}
-                                      title="Flag as Issue / Not Found"
+                                      title="Archive (Order no longer on portal)"
                                     >
-                                      Flag
+                                      📦 Archive
                                     </button>
-                                  )}
-                                </>
-                              )}
 
-                              {/* Delete button STRICTLY for manually recorded legacy documents */}
-                              {doc.reference && doc.reference.includes('[LEGACY]') && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteManualDocument(doc);
-                                  }}
-                                  className="btn btn-xs btn-ghost"
-                                  style={{
-                                    color: '#ef4444',
-                                    borderColor: 'rgba(239, 68, 68, 0.4)',
-                                    fontSize: '10.5px',
-                                    padding: '3px 8px',
-                                    borderRadius: '6px'
-                                  }}
-                                  title={`Delete manual ${doc.doc_type} '${doc.document_no}'`}
-                                >
-                                  <Trash2 size={11} /> Delete
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
+                                    {doc.is_open_issue || (doc.is_flagged_issue && !doc.is_internal && !doc.is_archived) ? (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleResolveIssue(doc);
+                                        }}
+                                        className="btn btn-xs btn-ghost"
+                                        style={{
+                                          color: '#10b981',
+                                          border: '1px solid rgba(16, 185, 129, 0.4)',
+                                          fontSize: '10.5px',
+                                          padding: '3px 8px',
+                                          borderRadius: '6px',
+                                          fontWeight: 600
+                                        }}
+                                        title="Click to resolve issue and restore to active list"
+                                      >
+                                        ✓ Resolve
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenIssueModal(doc);
+                                        }}
+                                        className="btn btn-xs btn-ghost"
+                                        style={{
+                                          color: '#f59e0b',
+                                          border: '1px solid var(--border)',
+                                          fontSize: '10.5px',
+                                          padding: '3px 8px',
+                                          borderRadius: '6px'
+                                        }}
+                                        title="Flag as Issue / Not Found"
+                                      >
+                                        Flag
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+
+                                {/* Delete button STRICTLY for manually recorded legacy documents */}
+                                {doc.reference && doc.reference.includes('[LEGACY]') && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteManualDocument(doc);
+                                    }}
+                                    className="btn btn-xs btn-ghost"
+                                    style={{
+                                      color: '#ef4444',
+                                      borderColor: 'rgba(239, 68, 68, 0.4)',
+                                      fontSize: '10.5px',
+                                      padding: '3px 8px',
+                                      borderRadius: '6px'
+                                    }}
+                                    title={`Delete manual ${doc.doc_type} '${doc.document_no}'`}
+                                  >
+                                    <Trash2 size={11} /> Delete
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                  {!isLoadingProcurement && sortedProcurementDocs.length > 0 && (
+                    <tfoot>
+                      <tr style={{
+                        background: 'var(--bg-secondary)',
+                        borderTop: '2px solid var(--border-strong, var(--border))',
+                        fontWeight: 800,
+                        position: 'sticky',
+                        bottom: 0,
+                        zIndex: 4
+                      }}>
+                        <td colSpan={5} style={{ padding: '10px 14px', color: 'var(--text-primary)', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          Page Total ({sortedProcurementDocs.length} {sortedProcurementDocs.length === 1 ? 'document' : 'documents'})
+                        </td>
+                        <td style={{ padding: '10px 10px', textAlign: 'center', color: 'var(--text-primary)' }}>
+                          <div>{sortedProcurementDocs.reduce((s, d) => s + Number(d.total_lines || 0), 0)} items</div>
+                          <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                            {sortedProcurementDocs.reduce((s, d) => s + Number(d.total_qty || 0), 0)} units
+                          </div>
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#10b981', fontFamily: 'monospace' }}>
+                          R {sortedProcurementDocs.reduce((s, d) => s + Number(d.total_value || 0), 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td colSpan={2}></td>
+                      </tr>
+                    </tfoot>
                   )}
-                </tbody>
-              </table>
-            </div>
+                </table>
+              </div>
 
             {/* PAGINATION FOOTER */}
             <div style={{ 
@@ -3398,7 +3488,7 @@ export default function PurchasingPage() {
                 {/* Optional Document Upload directly into Drive */}
                 <div style={{ background: 'rgba(59, 130, 246, 0.05)', border: '1px dashed #3b82f6', borderRadius: '8px', padding: '12px 16px' }}>
                   <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>
-                    📎 Attach Supplier PO / Confirmation Document (Optional)
+                    📎 Attach {selectedDocument.doc_type === 'GRN' ? 'Goods Received Note (GRN) / Delivery Slip' : 'Supplier PO / Confirmation Document'} (Optional)
                   </label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <input
@@ -3418,7 +3508,7 @@ export default function PurchasingPage() {
                     )}
                   </div>
                   <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                    Auto-files directly into Google Drive under <strong>02 - Supplier POs & Confirmations</strong> for this order.
+                    Auto-files directly into Google Drive under <strong>{selectedDocument.doc_type === 'GRN' ? '03 - Goods Received Notes (GRNs)' : '02 - Supplier POs & Confirmations'}</strong> for this order.
                   </div>
                 </div>
 
@@ -3786,7 +3876,7 @@ export default function PurchasingPage() {
                 {/* Optional Document Upload directly into Drive */}
                 <div style={{ background: 'rgba(59, 130, 246, 0.05)', border: '1px dashed #3b82f6', borderRadius: '8px', padding: '12px 16px' }}>
                   <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>
-                    📎 Attach Supplier PO / Confirmation Document (Optional)
+                    📎 Attach {allocTargetItem.doc_type === 'GRN' ? 'Goods Received Note (GRN) / Delivery Slip' : 'Supplier PO / Confirmation Document'} (Optional)
                   </label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <input
@@ -3806,7 +3896,7 @@ export default function PurchasingPage() {
                     )}
                   </div>
                   <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                    Auto-files directly into Google Drive under <strong>02 - Supplier POs & Confirmations</strong> for this order.
+                    Auto-files directly into Google Drive under <strong>{allocTargetItem.doc_type === 'GRN' ? '03 - Goods Received Notes (GRNs)' : '02 - Supplier POs & Confirmations'}</strong> for this order.
                   </div>
                 </div>
 
@@ -3906,27 +3996,34 @@ export default function PurchasingPage() {
             flexDirection: 'column',
             gap: '16px'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{
-                width: '42px', height: '42px', borderRadius: '10px',
-                background: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-              }}>
-                <FileText size={22} />
-              </div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Attach Supplier PO Document?
-                </h3>
-                <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  No file was attached to this allocation.
-                </p>
-              </div>
-            </div>
+            {(() => {
+              const isGrnPrompt = ((showNoDocPrompt ? allocTargetItem?.doc_type : selectedDocument?.doc_type) || '').toUpperCase() === 'GRN';
+              return (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{
+                      width: '42px', height: '42px', borderRadius: '10px',
+                      background: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                    }}>
+                      <FileText size={22} />
+                    </div>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        Attach {isGrnPrompt ? 'GRN / Delivery Note' : 'Supplier PO'} Document?
+                      </h3>
+                      <p style={{ margin: '2px 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        No file was attached to this allocation.
+                      </p>
+                    </div>
+                  </div>
 
-            <p style={{ fontSize: '12.5px', color: 'var(--text-primary)', lineHeight: 1.5, margin: 0 }}>
-              Would you like to attach the <strong>Supplier PO / Confirmation</strong> file now? It will automatically be filed in Google Drive under <strong>02 - Supplier POs & Confirmations</strong> for this order.
-            </p>
+                  <p style={{ fontSize: '12.5px', color: 'var(--text-primary)', lineHeight: 1.5, margin: 0 }}>
+                    Would you like to attach the <strong>{isGrnPrompt ? 'Goods Received Note (GRN) / Delivery Slip' : 'Supplier PO / Confirmation'}</strong> file now? It will automatically be filed in Google Drive under <strong>{isGrnPrompt ? '03 - Goods Received Notes (GRNs)' : '02 - Supplier POs & Confirmations'}</strong> for this order.
+                  </p>
+                </>
+              );
+            })()}
 
             {/* Quick Upload Box */}
             <div style={{

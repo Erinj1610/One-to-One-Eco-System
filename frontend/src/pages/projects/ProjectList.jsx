@@ -211,18 +211,29 @@ export default function ProjectList() {
   // Preset Date Applier
   const applyPreset = (preset) => {
     setDatePreset(preset);
+    const today = new Date();
+    const toIso = (d) => d.toISOString().split('T')[0];
+
     if (preset === 'All Time') {
       setStartDate('');
       setEndDate('');
     } else if (preset === 'Last Week') {
-      setStartDate('2026-05-11');
-      setEndDate('2026-05-18');
+      const start = new Date(today);
+      start.setDate(today.getDate() - 7);
+      setStartDate(toIso(start));
+      setEndDate(toIso(today));
     } else if (preset === 'Last 30 Days') {
-      setStartDate('2026-04-18');
-      setEndDate('2026-05-18');
+      const start = new Date(today);
+      start.setDate(today.getDate() - 30);
+      setStartDate(toIso(start));
+      setEndDate(toIso(today));
     } else if (preset === 'Financial Year') {
-      setStartDate('2026-03-01');
-      setEndDate('2027-02-28');
+      // SA Financial Year: 1 March to 28/29 February
+      const fyStartYear = today.getMonth() >= 2 ? today.getFullYear() : today.getFullYear() - 1;
+      const fyEndYear = fyStartYear + 1;
+      const isLeap = (fyEndYear % 4 === 0 && fyEndYear % 100 !== 0) || (fyEndYear % 400 === 0);
+      setStartDate(`${fyStartYear}-03-01`);
+      setEndDate(`${fyEndYear}-02-${isLeap ? '29' : '28'}`);
     }
   };
 
@@ -235,8 +246,12 @@ export default function ProjectList() {
   const dateFilteredProjects = useMemo(() => {
     let list = Object.values(projects).filter(p => {
       if (p.isDraft) return false;
-      const projectDateMatch = isDateInRange(p.start);
-      const orderDateMatch = (p.orders || []).some(o => isDateInRange(o.orderDate));
+      if (!startDate && !endDate) return true;
+      const projectDateMatch = p.start && p.start !== '—' && isDateInRange(p.start);
+      const orderDateMatch = (p.orders || []).some(o => {
+        const effDate = o.orderDate || o.pfDate || o.quotationSentDate;
+        return effDate && isDateInRange(effDate);
+      });
       return projectDateMatch || orderDateMatch;
     });
     if (!isAdmin) {
@@ -367,12 +382,11 @@ export default function ProjectList() {
 
       return matchesSearch && matchesPm && matchesClient && matchesStatus && matchesKpi;
     });
-  }, [dateFilteredProjects, search, pmFilter, clientFilter, statusFilter, activeKpiFilter]);
+  }, [dateFilteredProjects, debouncedSearch, pmFilter, clientFilter, statusFilter, activeKpiFilter]);
 
   // Sort Logic for All Columns
   const sortedProjects = useMemo(() => {
     if (!sortField) return filteredProjects;
-    const stagesList = ['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4', 'Stage 5', 'Snags', 'Complete'];
 
     const getVal = (p, field) => {
       switch (field) {
@@ -380,6 +394,8 @@ export default function ProjectList() {
           return (p.name || '').toLowerCase();
         case 'client':
           return (p.client || '').toLowerCase();
+        case 'pm':
+          return (p.pm || '').toLowerCase();
         case 'projectType':
           return (p.projectType || '').toLowerCase();
         case 'designFees':
@@ -405,20 +421,33 @@ export default function ProjectList() {
           }
           return actualMargin;
         }
-        case 'status':
-          return (p.status || '').toLowerCase();
-        case 'outstanding': {
-          let totalValue = p.feeValue || 0;
-          let totalOutstanding = Number(p.outstanding?.replace(/[^0-9]/g, '')) || 0;
-          if (p.designFees && p.orders) {
-            const dfVal = p.designFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
-            const dfPaid = p.designFees.reduce((sum, d) => sum + (d.paid || 0), 0);
-            const poVal = p.orders.reduce((sum, o) => sum + (o.value || 0), 0);
-            const poPaid = p.orders.reduce((sum, o) => sum + (o.paid || 0), 0);
-            totalValue = dfVal + poVal;
-            totalOutstanding = Math.max(0, totalValue - (dfPaid + poPaid));
+        case 'value': {
+          const dfVal = (p.designFees || []).reduce((sum, d) => sum + (d.feeValue || 0), 0);
+          const poVal = (p.orders || []).reduce((sum, o) => sum + (o.value || 0), 0);
+          return dfVal + poVal || Number(p.feeValue) || 0;
+        }
+        case 'paid': {
+          const dfPaid = (p.designFees || []).reduce((sum, d) => sum + (d.paid || 0), 0);
+          const poPaid = (p.orders || []).reduce((sum, o) => sum + (o.paid || 0), 0);
+          return dfPaid + poPaid;
+        }
+        case 'status': {
+          let computedStatus = 'Pending';
+          if (p.orders && p.orders.length > 0) {
+            const statuses = p.orders.map(o => getOrderDynamicStatus(o).toLowerCase());
+            if (statuses.every(s => s === 'cancelled')) computedStatus = 'Cancelled';
+            else if (statuses.every(s => s === 'complete')) computedStatus = 'Complete';
+            else if (statuses.some(s => s === 'ongoing')) computedStatus = 'Ongoing';
           }
-          return totalOutstanding;
+          return computedStatus.toLowerCase();
+        }
+        case 'outstanding': {
+          const dfVal = (p.designFees || []).reduce((sum, d) => sum + (d.feeValue || 0), 0);
+          const dfPaid = (p.designFees || []).reduce((sum, d) => sum + (d.paid || 0), 0);
+          const poVal = (p.orders || []).reduce((sum, o) => sum + (o.value || 0), 0);
+          const poPaid = (p.orders || []).reduce((sum, o) => sum + (o.paid || 0), 0);
+          const totalValue = dfVal + poVal;
+          return Math.max(0, totalValue - (dfPaid + poPaid));
         }
         default:
           return '';
@@ -891,7 +920,18 @@ export default function ProjectList() {
                       <div style={{ fontWeight: 600, color: 'var(--text-info)' }}>{p.name}</div>
                     </td>
                     <td>
-                      <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{p.client}</div>
+                      <div 
+                        style={{ fontWeight: 500, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (p.client && p.client !== '—') {
+                            navigate('/crm', { state: { selectedClientName: p.client } });
+                          }
+                        }}
+                        title={`View ${p.client} in CRM`}
+                      >
+                        {p.client || '—'}
+                      </div>
                     </td>
                     <td>
                       <div style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{p.pm || '—'}</div>
@@ -953,6 +993,43 @@ export default function ProjectList() {
                 </tr>
               )}
             </tbody>
+            {sortedProjects.length > 0 && (() => {
+              let grandFees = 0;
+              let grandOrders = 0;
+              let grandValue = 0;
+              let grandPaid = 0;
+              let grandOutstanding = 0;
+              sortedProjects.forEach(p => {
+                const dfVal = (p.designFees || []).reduce((s, d) => s + (d.feeValue || 0), 0);
+                const dfPaid = (p.designFees || []).reduce((s, d) => s + (d.paid || 0), 0);
+                const poVal = (p.orders || []).reduce((s, o) => s + (o.value || 0), 0);
+                const poPaid = (p.orders || []).reduce((s, o) => s + (o.paid || 0), 0);
+                const val = dfVal + poVal || Number(p.feeValue) || 0;
+                const paid = dfPaid + poPaid;
+                grandFees += (p.designFees?.length || 0);
+                grandOrders += (p.orders?.length || 0);
+                grandValue += val;
+                grandPaid += paid;
+                grandOutstanding += Math.max(0, val - paid);
+              });
+              return (
+                <tfoot>
+                  <tr style={{ background: 'var(--bg-secondary)', borderTop: '2px solid var(--border)', fontWeight: 700, fontSize: '12px' }}>
+                    <td />
+                    <td colSpan={3} style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '11px' }}>
+                      PORTFOLIO TOTAL ({sortedProjects.length} {sortedProjects.length === 1 ? 'Project' : 'Projects'})
+                    </td>
+                    <td>{grandFees} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 500 }}>fees</span></td>
+                    <td>{grandOrders} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 500 }}>POs</span></td>
+                    <td>—</td>
+                    <td style={{ color: 'var(--text-primary)' }}>R {Math.round(grandValue).toLocaleString()}</td>
+                    <td style={{ color: 'var(--text-success)' }}>R {Math.round(grandPaid).toLocaleString()}</td>
+                    <td style={{ color: grandOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>R {Math.round(grandOutstanding).toLocaleString()}</td>
+                    <td colSpan={2} />
+                  </tr>
+                </tfoot>
+              );
+            })()}
           </table>
           </div>
         </div>

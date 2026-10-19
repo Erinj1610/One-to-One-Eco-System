@@ -23,6 +23,7 @@ class ProjectSchema(BaseModel):
     status: Optional[str] = "On track"
     deadline: Optional[str] = "TBD"
     start_date: Optional[str] = None
+    delay_reason: Optional[str] = None
     complete_status: Optional[str] = "Ongoing"
     target_margin: float = 0.0
     actual_margin: float = 0.0
@@ -31,6 +32,7 @@ class ProjectSchema(BaseModel):
     s3: Optional[str] = ""
     s4: Optional[str] = ""
     s5: Optional[str] = ""
+    project_metadata: Optional[dict] = None
 
 class BulkDeleteProjectsSchema(BaseModel):
     project_keys: list[str]
@@ -146,6 +148,7 @@ def create_project(project: ProjectSchema, db: Session = Depends(get_db)):
         if project.status is not None: existing.status = project.status
         if project.deadline is not None: existing.deadline = project.deadline
         if project.start_date is not None: existing.start_date = project.start_date
+        if project.delay_reason is not None: existing.delay_reason = project.delay_reason
         if project.complete_status is not None: existing.complete_status = project.complete_status
         if project.target_margin: existing.target_margin = project.target_margin
         if project.actual_margin: existing.actual_margin = project.actual_margin
@@ -154,6 +157,10 @@ def create_project(project: ProjectSchema, db: Session = Depends(get_db)):
         if project.s3: existing.s3 = project.s3
         if project.s4: existing.s4 = project.s4
         if project.s5: existing.s5 = project.s5
+        if project.project_metadata is not None:
+            cur_meta = dict(existing.project_metadata) if isinstance(existing.project_metadata, dict) else {}
+            cur_meta.update(project.project_metadata)
+            existing.project_metadata = cur_meta
         db.commit()
         db.refresh(existing)
         return existing
@@ -170,6 +177,7 @@ def create_project(project: ProjectSchema, db: Session = Depends(get_db)):
         status=project.status or "On track",
         deadline=project.deadline or "TBD",
         start_date=project.start_date or "",
+        delay_reason=project.delay_reason or "None",
         complete_status=project.complete_status or "Ongoing",
         target_margin=project.target_margin or 39.0,
         actual_margin=project.actual_margin or 39.0,
@@ -179,7 +187,8 @@ def create_project(project: ProjectSchema, db: Session = Depends(get_db)):
         s4=project.s4 or "",
         s5=project.s5 or "",
         design_fee_rates_snapshot=active_rates,
-        design_fee_rates_original=active_rates
+        design_fee_rates_original=active_rates,
+        project_metadata=project.project_metadata or {}
     )
     db.add(new_project)
     db.commit()
@@ -411,6 +420,8 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
             sqm=project_data.sqm,
             status=project_data.status or "On track",
             deadline=project_data.deadline or "TBD",
+            start_date=project_data.start_date or "",
+            delay_reason=project_data.delay_reason or "None",
             complete_status=project_data.complete_status or "Ongoing",
             target_margin=project_data.target_margin or 39.0,
             actual_margin=project_data.actual_margin or 39.0,
@@ -420,7 +431,8 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
             s4=project_data.s4,
             s5=project_data.s5,
             design_fee_rates_snapshot=active_rates,
-            design_fee_rates_original=active_rates
+            design_fee_rates_original=active_rates,
+            project_metadata=project_data.project_metadata or {}
         )
         db.add(project)
         db.commit()
@@ -449,8 +461,10 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
     project.sqm = project_data.sqm
     project.status = project_data.status
     project.deadline = project_data.deadline
-    if project_data.start_date:
+    if project_data.start_date is not None:
         project.start_date = project_data.start_date
+    if project_data.delay_reason is not None:
+        project.delay_reason = project_data.delay_reason
     project.complete_status = project_data.complete_status
     project.target_margin = project_data.target_margin
     project.actual_margin = project_data.actual_margin
@@ -459,6 +473,10 @@ def update_project_relational(project_key: str, project_data: ProjectSchema, db:
     project.s3 = project_data.s3
     project.s4 = project_data.s4
     project.s5 = project_data.s5
+    if project_data.project_metadata is not None:
+        cur_meta = dict(project.project_metadata) if isinstance(project.project_metadata, dict) else {}
+        cur_meta.update(project_data.project_metadata)
+        project.project_metadata = cur_meta
 
     # Also update or insert matching records in the design_fees table
     import json
@@ -1545,22 +1563,42 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
 
             is_draft_proj = bool((p.status and p.status.lower() == "draft") or p_key.startswith("new-project"))
             proj_status = "Draft" if is_draft_proj else computed_status
+            p_meta = p.project_metadata if isinstance(p.project_metadata, dict) else {}
 
             projects_dict[p_key] = {
                 "id": p.id,
                 "key": p_key,
                 "name": p.name,
                 "client": p.client_name,
+                "clientCompany": p_meta.get("clientCompany", ""),
+                "clientEmail": p_meta.get("clientEmail", ""),
+                "clientPhone": p_meta.get("clientPhone", ""),
                 "pm": p.pm_name,
+                "projectType": p_meta.get("projectType") or "Design & Orders",
                 "offering": p.offering,
                 "sqm": p.sqm,
                 "status": proj_status,
                 "isDraft": is_draft_proj,
                 "deadline": p.deadline,
                 "start": p.start_date,
+                "delay": p.delay_reason or p_meta.get("delay") or "None",
                 "complete": p.complete_status,
                 "targetMargin": p.target_margin,
                 "actualMargin": p.actual_margin,
+                "architectName": p_meta.get("architectName", ""),
+                "architectCompany": p_meta.get("architectCompany", ""),
+                "architectEmail": p_meta.get("architectEmail", ""),
+                "architectPhone": p_meta.get("architectPhone", ""),
+                "contractorName": p_meta.get("contractorName", ""),
+                "contractorCompany": p_meta.get("contractorCompany", ""),
+                "contractorEmail": p_meta.get("contractorEmail", ""),
+                "contractorPhone": p_meta.get("contractorPhone", ""),
+                "billingName": p_meta.get("billingName", ""),
+                "billingEmail": p_meta.get("billingEmail", ""),
+                "billingPhone": p_meta.get("billingPhone", ""),
+                "billingDetails": p_meta.get("billingDetails", ""),
+                "deliveryAddress": p_meta.get("deliveryAddress", ""),
+                "contactsList": p_meta.get("contactsList"),
                 "s1": p.s1 or "",
                 "s2": p.s2 or "",
                 "s3": p.s3 or "",

@@ -663,7 +663,8 @@ export default function ProductsPage() {
     sup = supplierFilter, 
     sort_by = sortField, 
     sort_dir = sortDirection,
-    palladium_status = activeFilterTab === 'pending_palladium' ? 'PENDING_PALLADIUM' : undefined
+    palladium_status = activeFilterTab === 'pending_palladium' ? 'PENDING_PALLADIUM' : undefined,
+    status = activeFilterTab === 'low_stock' ? 'low stock' : activeFilterTab === 'out_of_stock' ? 'out of stock' : undefined
   } = {}) => {
     setIsLoadingProducts(true);
     try {
@@ -673,6 +674,7 @@ export default function ProductsPage() {
       if (cat && cat !== 'All Categories') params.set('category', cat);
       if (sup && sup !== 'All Suppliers') params.set('supplier', sup);
       if (palladium_status) params.set('palladium_status', palladium_status);
+      if (status) params.set('status', status);
       if (sort_by) {
         params.set('sort_by', sort_by);
         params.set('sort_dir', sort_dir || 'asc');
@@ -872,7 +874,7 @@ export default function ProductsPage() {
       if (res.ok) {
         const data = await res.json();
         triggerToast(`🎉 ${data.message || 'Specifications synchronized successfully!'}`);
-        fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
+        fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
         fetchSpecsSheetInfo();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -992,7 +994,7 @@ export default function ProductsPage() {
         const data = await res.json();
         triggerToast(data.message);
         setShowBulkRepricingModal(false);
-        fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
+        fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
         fetchSummary();
       } else {
         const err = await res.json();
@@ -1047,7 +1049,7 @@ export default function ProductsPage() {
         const result = await res.json();
         setGridEdits({});
         triggerToast(`Batch Success: Updated ${result.updated_count} product(s) & wrote ${result.audit_logs_written} audit log entries.`);
-        fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
+        fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
         fetchSummary();
       } else {
         const err = await res.json();
@@ -1090,7 +1092,7 @@ export default function ProductsPage() {
       }
       setSelectedProductIds([]);
       triggerToast(`Bulk operation complete! Selected products set to Discontinued.`);
-      fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter });
+      fetchPage({ page: currentPage, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection });
       fetchSummary();
     } catch (err) {
       alert("Bulk archive error: " + err.message);
@@ -1098,7 +1100,7 @@ export default function ProductsPage() {
   };
 
   // Filters State — changes trigger a new server fetch
-  const [activeFilterTab, setActiveFilterTab] = useState('all'); // 'all' | 'pending_palladium'
+  const [activeFilterTab, setActiveFilterTab] = useState('all'); // 'all' | 'pending_palladium' | 'low_stock' | 'out_of_stock'
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All Categories');
   const [supplierFilter, setSupplierFilter] = useState('All Suppliers');
@@ -1119,7 +1121,8 @@ export default function ProductsPage() {
         sup: supplierFilter, 
         sort_by: sortField, 
         sort_dir: sortDirection,
-        palladium_status: activeFilterTab === 'pending_palladium' ? 'PENDING_PALLADIUM' : undefined
+        palladium_status: activeFilterTab === 'pending_palladium' ? 'PENDING_PALLADIUM' : undefined,
+        status: activeFilterTab === 'low_stock' ? 'low stock' : activeFilterTab === 'out_of_stock' ? 'out of stock' : undefined
       });
     }, 350);
   }, [searchQuery, categoryFilter, supplierFilter, activeFilterTab]);
@@ -1234,16 +1237,16 @@ export default function ProductsPage() {
       const formatted = formatDate(today);
       setStartDate(formatted);
       setEndDate(formatted);
-    } else if (preset === 'This Week') {
-      const firstDayOfWeek = new Date(today.setDate(today.getDate() - today.getDay() + 1));
-      setStartDate(formatDate(firstDayOfWeek));
-      setEndDate(formatDate(new Date()));
+    } else if (preset === 'This Week' || preset === 'Last Week') {
+      const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      setStartDate(formatDate(lastWeek));
+      setEndDate(formatDate(today));
     } else if (preset === 'This Month') {
       const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
       setStartDate(formatDate(firstDayOfMonth));
       setEndDate(formatDate(new Date()));
     } else if (preset === 'Last 30 Days') {
-      const lastMonth = new Date(today.getTime() - 30 * 24 * 60 * 1000);
+      const lastMonth = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
       setStartDate(formatDate(lastMonth));
       setEndDate(formatDate(today));
     }
@@ -1385,7 +1388,8 @@ export default function ProductsPage() {
     }
   };
 
-  const handleCreateProduct = async () => {
+  const handleCreateProduct = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (!newSku || !newName || !newUnitCost || !newRetailPrice) {
       alert("Please fill in all required fields (SKU, Name, Unit Cost, Retail Price).");
       return;
@@ -1401,6 +1405,7 @@ export default function ProductsPage() {
       name: newName.trim(),
       category: newCategory,
       brand: newBrand,
+      supplier_name: newSupplier.trim() || undefined,
       cost_price: costVal,
       retail_price: retailVal,
       trade_price: Math.round(retailVal * 0.9),
@@ -1487,16 +1492,21 @@ export default function ProductsPage() {
       alert("Please enter the new Palladium SKU code.");
       return;
     }
+    const targetSkuClean = remapNewSku.trim();
+    const oldTargetSku = remapTargetProduct.sku;
     setIsRemapping(true);
     try {
       const res = await fetch(`${API_BASE}/api/products/${remapTargetProduct.id}/remap-palladium-sku`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ new_sku: remapNewSku.trim() })
+        body: JSON.stringify({ new_sku: targetSkuClean })
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         triggerToast(`🎉 ${data.message}`);
+        if (selectedSku === oldTargetSku) {
+          setSelectedSku(targetSkuClean);
+        }
         setShowRemapModal(false);
         setRemapTargetProduct(null);
         setRemapNewSku('');
@@ -1952,10 +1962,11 @@ export default function ProductsPage() {
               <Package size={15} color="var(--text-success)" />
               <span style={{ fontSize: '13px', fontWeight: 600 }}>Filter Products by Date:</span>
               <div style={{ display: 'flex', gap: '6px' }}>
-                {['All Time', 'Last Week', 'Last 30 Days'].map(preset => (
+                {['All Time', 'Today', 'Last Week', 'This Month', 'Last 30 Days'].map(preset => (
                   <button
                     key={preset}
-                    onClick={() => applyPreset(preset)}
+                    type="button"
+                    onClick={() => handleDatePresetChange(preset)}
                     className={`btn btn-sm ${datePreset === preset ? 'btn-primary' : 'btn-ghost'}`}
                     style={{ padding: '4px 10px', height: 'auto', fontSize: '11px', borderRadius: '6px' }}
                   >
@@ -2033,7 +2044,18 @@ export default function ProductsPage() {
               </div>
             </div>
 
-            <div className="stat" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+            <div
+              className="stat"
+              onClick={() => { setActiveFilterTab(activeFilterTab === 'low_stock' ? 'all' : 'low_stock'); setCurrentPage(1); }}
+              style={{
+                background: activeFilterTab === 'low_stock' ? 'rgba(245, 158, 11, 0.08)' : 'var(--bg-primary)',
+                border: activeFilterTab === 'low_stock' ? '2px solid #f59e0b' : '1px solid var(--border)',
+                borderRadius: '12px',
+                padding: '16px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                 <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Low Stock Items</span>
                 <AlertTriangle size={15} color="var(--text-warning)" />
@@ -2042,11 +2064,22 @@ export default function ProductsPage() {
                 {kpis.lowStock.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Count</span>
               </div>
               <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>
-                <span className="badge b-warning" style={{ fontSize: '8.5px', padding: '1px 6px' }}>Warned</span> reorder threshold reached
+                <span className="badge b-warning" style={{ fontSize: '8.5px', padding: '1px 6px' }}>Click to Filter</span> reorder threshold reached
               </div>
             </div>
 
-            <div className="stat" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+            <div
+              className="stat"
+              onClick={() => { setActiveFilterTab(activeFilterTab === 'out_of_stock' ? 'all' : 'out_of_stock'); setCurrentPage(1); }}
+              style={{
+                background: activeFilterTab === 'out_of_stock' ? 'rgba(239, 68, 68, 0.08)' : 'var(--bg-primary)',
+                border: activeFilterTab === 'out_of_stock' ? '2px solid #ef4444' : '1px solid var(--border)',
+                borderRadius: '12px',
+                padding: '16px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                 <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Out of Stock Items</span>
                 <AlertTriangle size={15} color="var(--text-danger)" />
@@ -2055,7 +2088,7 @@ export default function ProductsPage() {
                 {kpis.outStock.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Count</span>
               </div>
               <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>
-                <span className="badge b-danger" style={{ fontSize: '8.5px', padding: '1px 6px' }}>Stock Alert</span> zero or negative inventory
+                <span className="badge b-danger" style={{ fontSize: '8.5px', padding: '1px 6px' }}>Click to Filter</span> zero or negative inventory
               </div>
             </div>
 
@@ -2076,9 +2109,9 @@ export default function ProductsPage() {
           {/* VIEW TABS & FILTER CONTROL BAR */}
           <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)', marginBottom: '20px' }}>
             
-            {/* VIEW TABS (All vs Pending Palladium) */}
+            {/* VIEW TABS (All vs Pending Palladium vs Low Stock vs Out of Stock) */}
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '14px', marginBottom: '14px', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <button
                   onClick={() => { setActiveFilterTab('all'); setCurrentPage(1); }}
                   className={`btn btn-sm ${activeFilterTab === 'all' ? 'btn-primary' : 'btn-ghost'}`}
@@ -2109,6 +2142,42 @@ export default function ProductsPage() {
                       {kpis.pendingPalladium}
                     </span>
                   )}
+                </button>
+
+                <button
+                  onClick={() => { setActiveFilterTab('low_stock'); setCurrentPage(1); }}
+                  className={`btn btn-sm ${activeFilterTab === 'low_stock' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{
+                    borderRadius: '8px',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    height: '32px',
+                    background: activeFilterTab === 'low_stock' ? '#f59e0b' : undefined,
+                    color: activeFilterTab === 'low_stock' ? '#fff' : undefined
+                  }}
+                >
+                  <AlertTriangle size={14} /> Low Stock ({kpis.lowStock.toLocaleString()})
+                </button>
+
+                <button
+                  onClick={() => { setActiveFilterTab('out_of_stock'); setCurrentPage(1); }}
+                  className={`btn btn-sm ${activeFilterTab === 'out_of_stock' ? 'btn-danger' : 'btn-ghost'}`}
+                  style={{
+                    borderRadius: '8px',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    height: '32px',
+                    background: activeFilterTab === 'out_of_stock' ? '#ef4444' : undefined,
+                    color: activeFilterTab === 'out_of_stock' ? '#fff' : undefined
+                  }}
+                >
+                  <AlertTriangle size={14} /> Out of Stock ({kpis.outStock.toLocaleString()})
                 </button>
               </div>
 
