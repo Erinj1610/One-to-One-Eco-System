@@ -203,6 +203,8 @@ export default function InvoicesPage() {
       else if (newTab === 'PARTIAL') tabParam = 'partially_allocated';
       else if (newTab === 'FULLY_ALLOCATED') tabParam = 'fully_allocated';
       else if (newTab === 'ISSUES') tabParam = 'issues';
+      else if (newTab === 'IN') tabParam = 'in';
+      else if (newTab === 'CN') tabParam = 'cn';
 
       const params = new URLSearchParams({
         tab: tabParam,
@@ -220,13 +222,7 @@ export default function InvoicesPage() {
       const res = await fetch(`${API_BASE}/api/invoicing/documents?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        let items = data.documents || [];
-        if (newTab === 'IN') {
-          items = items.filter(d => d.doc_type === 'INVOICE');
-        } else if (newTab === 'CN') {
-          items = items.filter(d => d.doc_type === 'CREDIT_NOTE');
-        }
-        setInvoicingDocs(items);
+        setInvoicingDocs(data.documents || []);
         setTotalCount(data.total_documents || 0);
         setTotalPages(data.total_pages || 1);
         setPage(data.page || 1);
@@ -284,6 +280,28 @@ export default function InvoicesPage() {
     fetchSummary();
   }, []);
 
+  // Deep-link support from Orders Module ("View in Invoicing")
+  useEffect(() => {
+    const filterOrderId = location.state?.filterOrderId;
+    if (!filterOrderId) return;
+
+    let resolvedQuery = String(filterOrderId);
+    for (const p of Object.values(projects || {})) {
+      const found = (p.orders || []).find(
+        o => String(o.id) === String(filterOrderId) || String(o.dbId) === String(filterOrderId) || String(o.poNumber) === String(filterOrderId)
+      );
+      if (found) {
+        resolvedQuery = found.poNumber || found.quoteName || found.quote_name || p.name || String(filterOrderId);
+        break;
+      }
+    }
+
+    setActiveFilterTab('ALL');
+    setSearchQuery(resolvedQuery);
+    setPage(1);
+    window.history.replaceState({}, document.title);
+  }, [location.state?.filterOrderId, projects]);
+
   // Debounced Search & Tab Change Effect
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -309,18 +327,15 @@ export default function InvoicesPage() {
     fetchInvoicingDocuments(1, activeFilterTab, customerFilter, searchQuery, limit);
   };
 
-  // Distinct clients list for filtering
+  // Distinct clients list for filtering (all ERP clients + current page)
   const uniqueCustomers = useMemo(() => {
-    const custs = new Set();
+    const custs = new Set(invoicingSummary?.all_customers || []);
     invoicingDocs.forEach(d => {
       if (d.customer_name) custs.add(d.customer_name);
     });
     return Array.from(custs).sort();
-  }, [invoicingDocs]);
+  }, [invoicingDocs, invoicingSummary?.all_customers]);
 
-  // -------------------------------------------------------------
-  // ALLOCATION ACTIONS
-  // -------------------------------------------------------------
   // -------------------------------------------------------------
   // ALLOCATION ACTIONS
   // -------------------------------------------------------------
@@ -329,6 +344,8 @@ export default function InvoicesPage() {
     setAllocTargetItem(line);
     setAllocQty(unalloc > 0 ? unalloc : 1);
     setAllocNotes('');
+    setAllocFile(null);
+    setShowNoDocPrompt(false);
     setAllocCreditIntent('WILL_NOT_REINVOICE');
 
     const cleanSku = (line.item_code || '').trim().toUpperCase();
@@ -645,6 +662,9 @@ export default function InvoicesPage() {
     setBatchProjectId(bestProjId || '');
     setBatchOrderId(bestOrderId ? String(bestOrderId) : '');
     setBatchNotes('');
+    setBatchFile(null);
+    setBatchLineMappings({});
+    setShowBatchNoDocPrompt(false);
     setBatchCreditIntent('WILL_NOT_REINVOICE');
     setBatchModalOpen(true);
   };
@@ -1264,11 +1284,11 @@ export default function InvoicesPage() {
         valA = (a.item_description || '').toLowerCase();
         valB = (b.item_description || '').toLowerCase();
       } else if (lineSortField === 'unit_price') {
-        valA = Number(a.unit_price_excl || 0);
-        valB = Number(b.unit_price_excl || 0);
+        valA = Number(a.effective_unit_price_excl || a.unit_price_excl || 0);
+        valB = Number(b.effective_unit_price_excl || b.unit_price_excl || 0);
       } else if (lineSortField === 'invoiced_qty') {
-        valA = Number(a.total_qty || 0);
-        valB = Number(b.total_qty || 0);
+        valA = Number(a.invoiced_qty ?? a.total_qty ?? 0);
+        valB = Number(b.invoiced_qty ?? b.total_qty ?? 0);
       } else if (lineSortField === 'allocated_qty') {
         valA = Number(a.allocated_qty || 0);
         valB = Number(b.allocated_qty || 0);
@@ -1276,8 +1296,8 @@ export default function InvoicesPage() {
         valA = Number(a.unallocated_qty || 0);
         valB = Number(b.unallocated_qty || 0);
       } else if (lineSortField === 'status') {
-        valA = (a.allocation_status || '').toLowerCase();
-        valB = (b.allocation_status || '').toLowerCase();
+        valA = (a.status || a.allocation_status || '').toLowerCase();
+        valB = (b.status || b.allocation_status || '').toLowerCase();
       }
 
       if (typeof valA === 'number' && typeof valB === 'number') {
@@ -1289,6 +1309,27 @@ export default function InvoicesPage() {
     });
     return list;
   }, [selectedDocument, lineSortField, lineSortDirection]);
+
+  const handleToggleCreditIntent = async (allocId, currentIntent) => {
+    const nextIntent = currentIntent === 'WILL_REINVOICE' ? 'WILL_NOT_REINVOICE' : 'WILL_REINVOICE';
+    try {
+      const res = await fetch(`${API_BASE}/api/invoicing/update-credit-intent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          allocation_id: allocId,
+          re_invoice_intent: nextIntent
+        })
+      });
+      if (res.ok) {
+        triggerToast(`✅ Credit Note intent updated to ${nextIntent === 'WILL_REINVOICE' ? 'Will Re-invoice' : 'Will NOT Re-invoice'}`);
+        if (selectedDocument) fetchSingleDocumentDetails(selectedDocument.document_no);
+        if (refreshProjects) refreshProjects();
+      }
+    } catch (e) {
+      console.error('Error updating credit intent:', e);
+    }
+  };
 
   return (
     <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 85px)', padding: '0 4px' }}>
@@ -1798,7 +1839,7 @@ export default function InvoicesPage() {
                     const isExpanded = expandedLineId === line.line_id;
                     const hasAllocations = line.allocations && line.allocations.length > 0;
                     const isSelected = selectedLineIds.has(line.line_id);
-                    const isUnallocated = (line.unallocated_qty || 0) > 0;
+                    const isCreditDoc = selectedDocument.doc_type === 'CREDIT_NOTE' || String(selectedDocument.document_no || '').startsWith('CN-') || String(selectedDocument.document_no || '').startsWith('CR-');
 
                     return (
                       <React.Fragment key={line.line_id}>
@@ -2005,10 +2046,12 @@ export default function InvoicesPage() {
                                         background: 'var(--bg-secondary)', 
                                         padding: '6px 12px', 
                                         borderRadius: '6px', 
-                                        fontSize: '11px' 
+                                        fontSize: '11px',
+                                        flexWrap: 'wrap',
+                                        gap: '8px'
                                       }}
                                     >
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                                         <span style={{ fontWeight: 700, color: '#3b82f6' }}>
                                           {alloc.allocated_qty} {line.item_unit}
                                         </span>
@@ -2020,6 +2063,25 @@ export default function InvoicesPage() {
                                           <span style={{ color: 'var(--text-secondary)' }}>
                                             (Order #{alloc.order_id}{alloc.fitting_code ? ` • Fitting: ${alloc.fitting_code}` : ''})
                                           </span>
+                                        )}
+                                        {isCreditDoc && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleToggleCreditIntent(alloc.id, alloc.re_invoice_intent)}
+                                            className="btn btn-xs"
+                                            style={{
+                                              background: alloc.re_invoice_intent === 'WILL_REINVOICE' ? 'rgba(245, 158, 11, 0.14)' : 'rgba(16, 185, 129, 0.14)',
+                                              color: alloc.re_invoice_intent === 'WILL_REINVOICE' ? '#f59e0b' : '#10b981',
+                                              border: `1px solid ${alloc.re_invoice_intent === 'WILL_REINVOICE' ? 'rgba(245, 158, 11, 0.4)' : 'rgba(16, 185, 129, 0.4)'}`,
+                                              padding: '1px 7px',
+                                              fontSize: '9.5px',
+                                              fontWeight: 700,
+                                              borderRadius: '10px'
+                                            }}
+                                            title="Click to toggle Credit Note Re-invoicing Intent"
+                                          >
+                                            {alloc.re_invoice_intent === 'WILL_REINVOICE' ? '🔄 Will Re-invoice' : '✓ Final Credit (No Re-bill)'}
+                                          </button>
                                         )}
                                         {alloc.notes && (
                                           <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
@@ -2052,6 +2114,34 @@ export default function InvoicesPage() {
                     );
                   })}
                 </tbody>
+                {sortedDocumentLines.length > 0 && (() => {
+                  const totalDocVal = sortedDocumentLines.reduce((acc, l) => acc + (Number(l.effective_line_total_excl ?? l.line_total_excl ?? ((l.invoiced_qty || 0) * (l.effective_unit_price_excl || l.unit_price_excl || 0)))), 0);
+                  const totalInvoicedQty = sortedDocumentLines.reduce((acc, l) => acc + Number(l.invoiced_qty || 0), 0);
+                  const totalAllocatedQty = sortedDocumentLines.reduce((acc, l) => acc + Number(l.allocated_qty || 0), 0);
+                  const totalUnallocatedQty = sortedDocumentLines.reduce((acc, l) => acc + Number(l.unallocated_qty || 0), 0);
+                  return (
+                    <tfoot style={{ position: 'sticky', bottom: 0, zIndex: 2, background: 'var(--bg-secondary)', borderTop: '2px solid var(--border)' }}>
+                      <tr>
+                        <td colSpan={4} style={{ padding: '10px 14px', fontWeight: 800, fontSize: '11.5px', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          Document Total ({sortedDocumentLines.length} lines)
+                        </td>
+                        <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 800, fontSize: '12px', color: 'var(--text-primary)' }}>
+                          R {totalDocVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 800, color: 'var(--text-primary)' }}>
+                          {totalInvoicedQty}
+                        </td>
+                        <td style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 800, color: '#10b981' }}>
+                          {totalAllocatedQty}
+                        </td>
+                        <td style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 800, color: totalUnallocatedQty > 0 ? '#f59e0b' : '#10b981' }}>
+                          {totalUnallocatedQty}
+                        </td>
+                        <td colSpan={2}></td>
+                      </tr>
+                    </tfoot>
+                  );
+                })()}
               </table>
             </div>
           </div>
@@ -2434,6 +2524,27 @@ export default function InvoicesPage() {
                     })
                   )}
                 </tbody>
+                {!isLoadingInvoicing && sortedInvoicingDocs.length > 0 && (() => {
+                  const pageTotalLines = sortedInvoicingDocs.reduce((acc, d) => acc + Number(d.lines_count || 0), 0);
+                  const pageTotalUnits = sortedInvoicingDocs.reduce((acc, d) => acc + Number(d.total_qty || 0), 0);
+                  const pageTotalVal = sortedInvoicingDocs.reduce((acc, d) => acc + Number(d.total_value_excl || 0), 0);
+                  return (
+                    <tfoot style={{ position: 'sticky', bottom: 0, zIndex: 2, background: 'var(--bg-secondary)', borderTop: '2px solid var(--border)' }}>
+                      <tr>
+                        <td colSpan={5} style={{ padding: '10px 14px', fontWeight: 800, fontSize: '11.5px', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          Page Total ({sortedInvoicingDocs.length} documents)
+                        </td>
+                        <td style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 800, color: 'var(--text-primary)' }}>
+                          {pageTotalLines} <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600 }}>items</span> • {pageTotalUnits} <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600 }}>units</span>
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, fontSize: '12px', color: 'var(--text-primary)' }}>
+                          R {pageTotalVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td colSpan={2}></td>
+                      </tr>
+                    </tfoot>
+                  );
+                })()}
               </table>
             </div>
 
