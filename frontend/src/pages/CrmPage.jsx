@@ -1403,10 +1403,28 @@ export default function CrmPage() {
               <Edit3 size={11} /> Edit Profile
             </button>
           </div>
-          <div style={{ display: 'flex', gap: '24px', marginTop: '12px', color: 'var(--text-secondary)', fontSize: '14px' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Building2 size={16} color="var(--text-tertiary)" /> {currentContact.company}</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Mail size={16} color="var(--text-tertiary)" /> {currentContact.email}</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Phone size={16} color="var(--text-tertiary)" /> {currentContact.phone}</span>
+          <div style={{ display: 'flex', gap: '24px', marginTop: '12px', color: 'var(--text-secondary)', fontSize: '14px', flexWrap: 'wrap' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Building2 size={16} color="var(--text-tertiary)" /> {currentContact.company || currentContact.name}
+            </span>
+            {currentContact.email ? (
+              <a href={`mailto:${currentContact.email}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-info)', textDecoration: 'none', fontWeight: 500 }}>
+                <Mail size={16} color="var(--text-info)" /> {currentContact.email}
+              </a>
+            ) : (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-tertiary)' }}>
+                <Mail size={16} color="var(--text-tertiary)" /> No email set
+              </span>
+            )}
+            {currentContact.phone ? (
+              <a href={`tel:${currentContact.phone}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-info)', textDecoration: 'none', fontWeight: 500 }}>
+                <Phone size={16} color="var(--text-info)" /> {currentContact.phone}
+              </a>
+            ) : (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-tertiary)' }}>
+                <Phone size={16} color="var(--text-tertiary)" /> No phone set
+              </span>
+            )}
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -2199,15 +2217,25 @@ export default function CrmPage() {
             projectsList.forEach(p => {
               const fees = p.scopedDesignFees || p.designFees || [];
               fees.forEach(df => {
-                designVal += Number(df.feeValue || 0);
-                designPaid += Number(df.paid || 0);
-                designOut += Number(df.outstanding || 0);
+                const fv = Number(df.feeValue || 0);
+                const fp = Number(df.paid || 0);
+                const fo = df.outstanding !== undefined && df.outstanding !== null && Number(df.outstanding) > 0
+                  ? Number(df.outstanding)
+                  : Math.max(0, fv - fp);
+                designVal += fv;
+                designPaid += fp;
+                designOut += fo;
               });
               const ords = p.scopedOrders || p.orders || [];
               ords.forEach(ord => {
-                orderVal += Number(ord.value || 0);
-                orderPaid += Number(ord.paid || 0);
-                orderOut += Number(ord.outstanding || 0);
+                const ov = Number(ord.value || 0);
+                const op = Number(ord.paid || 0);
+                const oo = ord.outstanding !== undefined && ord.outstanding !== null && Number(ord.outstanding) > 0
+                  ? Number(ord.outstanding)
+                  : Math.max(0, ov - op);
+                orderVal += ov;
+                orderPaid += op;
+                orderOut += oo;
               });
             });
 
@@ -2344,8 +2372,8 @@ export default function CrmPage() {
                       <span>R {allTimeSummary.totalVal.toLocaleString()}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                      <span>Total Paid: <strong>R {allTimeSummary.totalPaid.toLocaleString()}</strong></span>
-                      <span>Outstanding: <strong style={{color:'var(--text-danger)'}}>R {allTimeSummary.totalOut.toLocaleString()}</strong></span>
+                      <span>Total Paid: <strong style={{ color: 'var(--text-success)' }}>R {allTimeSummary.totalPaid.toLocaleString()}</strong></span>
+                      <span>Outstanding: <strong style={{color: allTimeSummary.totalOut > 0 ? 'var(--text-danger)' : 'var(--text-success)'}}>R {allTimeSummary.totalOut.toLocaleString()}</strong></span>
                     </div>
                   </div>
                 </div>
@@ -2367,8 +2395,8 @@ export default function CrmPage() {
                       <span>R {ytdSummary.totalVal.toLocaleString()}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                      <span>Total Paid: <strong>R {ytdSummary.totalPaid.toLocaleString()}</strong></span>
-                      <span>Outstanding: <strong style={{color:'var(--text-danger)'}}>R {ytdSummary.totalOut.toLocaleString()}</strong></span>
+                      <span>Total Paid: <strong style={{ color: 'var(--text-success)' }}>R {ytdSummary.totalPaid.toLocaleString()}</strong></span>
+                      <span>Outstanding: <strong style={{color: ytdSummary.totalOut > 0 ? 'var(--text-danger)' : 'var(--text-success)'}}>R {ytdSummary.totalOut.toLocaleString()}</strong></span>
                     </div>
                   </div>
                 </div>
@@ -2391,8 +2419,8 @@ export default function CrmPage() {
                         <span>R {filteredSummary.totalVal.toLocaleString()}</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                        <span>Total Paid: <strong>R {filteredSummary.totalPaid.toLocaleString()}</strong></span>
-                        <span>Outstanding: <strong style={{color:'var(--text-danger)'}}>R {filteredSummary.totalOut.toLocaleString()}</strong></span>
+                        <span>Total Paid: <strong style={{ color: 'var(--text-success)' }}>R {filteredSummary.totalPaid.toLocaleString()}</strong></span>
+                        <span>Outstanding: <strong style={{color: filteredSummary.totalOut > 0 ? 'var(--text-danger)' : 'var(--text-success)'}}>R {filteredSummary.totalOut.toLocaleString()}</strong></span>
                       </div>
                     </div>
                   </div>
@@ -2422,10 +2450,16 @@ export default function CrmPage() {
                     <tbody>
                       {finFilteredProjects.map(p => {
                         const sums = getFinSummary([p]);
+                        const pDateDisplay = p.start && p.start !== '—' ? p.start : (p.scopedOrders?.[0]?.orderDate || p.scopedOrders?.[0]?.pfDate || '—');
                         return (
-                          <tr key={p.key} className="hover-row">
-                            <td style={{ fontWeight: 600 }}>{p.name}</td>
-                            <td>{p.start || '—'}</td>
+                          <tr
+                            key={p.key || p.id || p.name}
+                            className="clickable hover-row"
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => navigate(`/projects/${p.key || p.id || p.name.toLowerCase().replace(/\s+/g, '-')}`)}
+                          >
+                            <td style={{ fontWeight: 600, color: 'var(--text-info)' }}>{p.name}</td>
+                            <td>{pDateDisplay}</td>
                             <td style={{ textAlign: 'right' }}>R {sums.designVal.toLocaleString()}</td>
                             <td style={{ textAlign: 'right', color: 'var(--text-success)' }}>R {sums.designPaid.toLocaleString()}</td>
                             <td style={{ textAlign: 'right', color: sums.designOut > 0 ? 'var(--text-danger)' : 'var(--text-secondary)' }}>R {sums.designOut.toLocaleString()}</td>
@@ -2436,6 +2470,19 @@ export default function CrmPage() {
                           </tr>
                         );
                       })}
+                      {finFilteredProjects.length > 1 && (
+                        <tr style={{ background: 'var(--bg-secondary)', fontWeight: 700, borderTop: '2px solid var(--border)' }}>
+                          <td>TOTAL ({finFilteredProjects.length} Projects)</td>
+                          <td>—</td>
+                          <td style={{ textAlign: 'right' }}>R {filteredSummary.designVal.toLocaleString()}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--text-success)' }}>R {filteredSummary.designPaid.toLocaleString()}</td>
+                          <td style={{ textAlign: 'right', color: filteredSummary.designOut > 0 ? 'var(--text-danger)' : 'var(--text-secondary)' }}>R {filteredSummary.designOut.toLocaleString()}</td>
+                          <td style={{ textAlign: 'right' }}>R {filteredSummary.orderVal.toLocaleString()}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--text-success)' }}>R {filteredSummary.orderPaid.toLocaleString()}</td>
+                          <td style={{ textAlign: 'right', color: filteredSummary.orderOut > 0 ? 'var(--text-danger)' : 'var(--text-secondary)' }}>R {filteredSummary.orderOut.toLocaleString()}</td>
+                          <td style={{ textAlign: 'right', color: filteredSummary.totalOut > 0 ? 'var(--text-danger)' : 'var(--text-success)' }}>R {filteredSummary.totalOut.toLocaleString()}</td>
+                        </tr>
+                      )}
                       {finFilteredProjects.length === 0 && (
                         <tr>
                           <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: '24px' }}>
@@ -2480,17 +2527,31 @@ export default function CrmPage() {
                 onChange={e => setEditClientData(d => ({ ...d, company: e.target.value }))} 
               />
             </div>
-            <div className="form-row">
-              <label className="form-label" style={{ fontWeight: 600 }}>Category / Type</label>
-              <select 
-                className="form-control" 
-                value={editClientData.type} 
-                onChange={e => setEditClientData(d => ({ ...d, type: e.target.value }))}
-              >
-                {clientTypes.map(t => (
-                  <option key={t.id || t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
+            <div className="row-2">
+              <div className="form-row">
+                <label className="form-label" style={{ fontWeight: 600 }}>Category / Type</label>
+                <select 
+                  className="form-control" 
+                  value={editClientData.type} 
+                  onChange={e => setEditClientData(d => ({ ...d, type: e.target.value }))}
+                >
+                  {clientTypes.map(t => (
+                    <option key={t.id || t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-row">
+                <label className="form-label" style={{ fontWeight: 600 }}>Client Satisfaction (NPS 1–10)</label>
+                <input 
+                  type="number" 
+                  min="1" 
+                  max="10" 
+                  placeholder="e.g. 9"
+                  className="form-control" 
+                  value={editClientData.nps} 
+                  onChange={e => setEditClientData(d => ({ ...d, nps: e.target.value }))} 
+                />
+              </div>
             </div>
             <div className="row-2">
               <div className="form-row">
@@ -2514,45 +2575,39 @@ export default function CrmPage() {
               <label className="form-label" style={{ fontWeight: 600 }}>Stated Long-Term Objective / Goal</label>
               <input 
                 className="form-control" 
+                placeholder="e.g. Expand hospitality lighting portfolio across Western Cape"
                 value={editClientData.statedGoal} 
                 onChange={e => setEditClientData(d => ({ ...d, statedGoal: e.target.value }))} 
               />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '15px' }}>
-              <div className="form-row" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontWeight: 600 }}>NPS (1-10)</label>
-                <input 
-                  type="number" 
-                  min="1" 
-                  max="10" 
-                  className="form-control" 
-                  value={editClientData.nps} 
-                  onChange={e => setEditClientData(d => ({ ...d, nps: Number(e.target.value) }))} 
-                />
-              </div>
-              <div className="form-row" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontWeight: 600 }}>Lifetime Spend (R)</label>
-                <input 
-                  type="number" 
-                  className="form-control" 
-                  value={editClientData.totalValue} 
-                  onChange={e => setEditClientData(d => ({ ...d, totalValue: Number(e.target.value) }))} 
-                />
-              </div>
-              <div className="form-row" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontWeight: 600 }}>YTD Spend (R)</label>
-                <input 
-                  type="number" 
-                  className="form-control" 
-                  value={editClientData.annualRevenue} 
-                  onChange={e => setEditClientData(d => ({ ...d, annualRevenue: Number(e.target.value) }))} 
-                />
+            <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', marginTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>Live Calculated Revenue (Orders + Design Fees)</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  Lifetime Spend: <strong style={{ color: 'var(--text-primary)' }}>R {clientLtv.toLocaleString()}</strong> · YTD Spend: <strong style={{ color: 'var(--text-success)' }}>R {clientYtd.toLocaleString()}</strong>
+                </div>
               </div>
             </div>
           </div>
-          <div className="modal-footer">
-            <button className="btn" onClick={() => setIsEditingClient(false)}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleSaveClient}>Save Changes</button>
+          <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <button
+              className="btn btn-ghost"
+              style={{ color: 'var(--text-danger)', display: 'flex', alignItems: 'center', gap: '6px' }}
+              onClick={async () => {
+                if (!window.confirm(`Are you sure you want to delete "${currentContact.name}"?`)) return;
+                if (deleteClient) {
+                  await deleteClient(selectedClient.id);
+                }
+                setIsEditingClient(false);
+                setSelectedClient(null);
+              }}
+            >
+              <Trash2 size={14} /> Delete Client
+            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="btn" onClick={() => setIsEditingClient(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleSaveClient}>Save Changes</button>
+            </div>
           </div>
         </div>
       </div>
