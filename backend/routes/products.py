@@ -246,6 +246,8 @@ def list_products(
         "unit_cost": Product.cost_price,
         "unitcost": Product.cost_price,
         "cost_price": Product.cost_price,
+        "supplier_cost": Product.supplier_cost,
+        "internal_cost": Product.internal_cost,
         "retail_price": Product.retail_price,
         "retailprice": Product.retail_price,
         "rrp": Product.retail_price,
@@ -609,6 +611,7 @@ def remap_product_sku(product_id: int, payload: RemapSkuPayload, db: Session = D
         "product": serialize_product(target_product)
     }
 
+@public_router.put("/{product_id}")
 @router.put("/{product_id}")
 def update_product(product_id: int, product_data: ProductUpdate, db: Session = Depends(get_db)):
     product = db.query(Product).filter(Product.id == product_id).first()
@@ -631,6 +634,7 @@ def update_product(product_id: int, product_data: ProductUpdate, db: Session = D
     db.refresh(product)
     return {"message": "Product updated successfully", "product": serialize_product(product)}
 
+@public_router.delete("/{product_id}")
 @router.delete("/{product_id}")
 def delete_product(product_id: int, db: Session = Depends(get_db)):
     product = db.query(Product).filter(Product.id == product_id).first()
@@ -648,6 +652,7 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     }
 
 # File uploading support
+@public_router.post("/{product_id}/upload")
 @router.post("/{product_id}/upload")
 def upload_product_file(
     product_id: int,
@@ -696,6 +701,7 @@ def upload_product_file(
     }
 
 # Dedicated image upload endpoint — stores URL directly on the product row
+@public_router.post("/{product_id}/upload-image")
 @router.post("/{product_id}/upload-image")
 def upload_product_image(
     product_id: int,
@@ -736,6 +742,7 @@ def upload_product_image(
     }
 
 # Also support deleting a file
+@public_router.delete("/{product_id}/files/{file_id}")
 @router.delete("/{product_id}/files/{file_id}")
 def delete_product_file(product_id: int, file_id: int, db: Session = Depends(get_db)):
     db_file = db.query(ProductFile).filter(
@@ -759,6 +766,7 @@ def delete_product_file(product_id: int, file_id: int, db: Session = Depends(get
     return {"message": "File deleted successfully"}
 
 # Fetch list of suppliers
+@public_router.get("/suppliers/list")
 @router.get("/suppliers/list")
 def list_suppliers(db: Session = Depends(get_db)):
     suppliers = db.query(Supplier).all()
@@ -806,6 +814,7 @@ def download_csv_template():
         headers={"Content-Disposition": "attachment; filename=product_import_template.csv"}
     )
 
+@public_router.post("/import/csv")
 @router.post("/import/csv")
 async def import_csv_file(
     file: UploadFile = File(...),
@@ -904,6 +913,7 @@ async def import_csv_file(
 class ReconcileProductsSchema(BaseModel):
     products: List[dict]
 
+@public_router.post("/reconcile-products-bulk")
 @router.post("/reconcile-products-bulk")
 def reconcile_products_bulk(payload: ReconcileProductsSchema, db: Session = Depends(get_db)):
     added_count = 0
@@ -1019,6 +1029,7 @@ class BatchUpdatePayload(BaseModel):
     updated_by_name: Optional[str] = "Product Manager"
     updates: List[BatchItemUpdate]
 
+@public_router.post("/batch-update")
 @router.post("/batch-update")
 def batch_update_products(
     payload: BatchUpdatePayload,
@@ -1145,6 +1156,7 @@ def batch_update_products(
         raise HTTPException(status_code=500, detail=f"Batch Transaction Failed & Rolled Back: {str(err)}")
 
 # 1. Fetch Audit Logs for a specific Product
+@public_router.get("/{product_id}/audit-logs")
 @router.get("/{product_id}/audit-logs")
 def get_product_audit_logs(product_id: int, db: Session = Depends(get_db)):
     from models.orm_models import ProductAuditLog
@@ -1171,6 +1183,7 @@ class BulkRepricingPayload(BaseModel):
     retail_percent_shift: float = 0.0 # e.g. 5.0 for +5%
     updated_by_name: Optional[str] = "Product Manager"
 
+@public_router.post("/bulk-repricing")
 @router.post("/bulk-repricing")
 def bulk_repricing_shift(payload: BulkRepricingPayload, db: Session = Depends(get_db)):
     from models.orm_models import ProductAuditLog
@@ -1239,6 +1252,7 @@ class AddAccessoryPayload(BaseModel):
     relationship_type: str = "Required Driver"
     notes: Optional[str] = None
 
+@public_router.get("/{product_id}/accessories")
 @router.get("/{product_id}/accessories")
 def get_product_accessories(product_id: int, db: Session = Depends(get_db)):
     from models.orm_models import ProductAccessory
@@ -1260,6 +1274,7 @@ def get_product_accessories(product_id: int, db: Session = Depends(get_db)):
             })
     return out
 
+@public_router.post("/{product_id}/accessories")
 @router.post("/{product_id}/accessories")
 def add_product_accessory(product_id: int, payload: AddAccessoryPayload, db: Session = Depends(get_db)):
     from models.orm_models import ProductAccessory
@@ -1278,6 +1293,7 @@ def add_product_accessory(product_id: int, payload: AddAccessoryPayload, db: Ses
     db.refresh(new_acc)
     return {"message": f"Linked accessory '{acc_prod.sku}' successfully.", "id": new_acc.id}
 
+@public_router.delete("/{product_id}/accessories/{accessory_link_id}")
 @router.delete("/{product_id}/accessories/{accessory_link_id}")
 def delete_product_accessory(product_id: int, accessory_link_id: int, db: Session = Depends(get_db)):
     from models.orm_models import ProductAccessory

@@ -19,7 +19,7 @@ export default function MobileProductsViewer({ items = [], onRefresh }) {
 
       const matchesSearch = !term || sku.includes(term) || name.includes(term) || brand.includes(term) || family.includes(term);
 
-      const qty = Number(item.stock_qty || item.stockQty || item.quantity || item.qty || 0);
+      const qty = Number(item.stock ?? item.stock_level ?? item.stock_qty ?? item.stockQty ?? item.quantity ?? item.qty ?? 0);
       let matchesStock = true;
       if (stockFilter === 'In Stock') {
         matchesStock = qty > 0;
@@ -87,8 +87,8 @@ export default function MobileProductsViewer({ items = [], onRefresh }) {
             const sku = item.sku || 'UNKNOWN-SKU';
             const name = item.name || item.description || 'Hardware Item';
             const brand = item.brand || item.family || 'Standard Catalog';
-            const qty = Number(item.stock_qty || item.stockQty || item.quantity || item.qty || 0);
-            const retail = Number(item.retail || item.unitRetail || item.price || 0);
+            const qty = Number(item.stock ?? item.stock_level ?? item.stock_qty ?? item.stockQty ?? item.quantity ?? item.qty ?? 0);
+            const retail = Number(item.retailPrice ?? item.retail_price ?? item.recommended_retail_price ?? item.retail ?? item.unitRetail ?? item.price ?? 0);
             const location = item.location || 'STOCK';
 
             const thumb = item.image_url 
