@@ -721,11 +721,14 @@ export default function OrdersPage() {
       const currentYear = today.getFullYear();
       const march1 = new Date(currentYear, 2, 1);
       if (today < march1) {
-        setStartDate(new Date(currentYear - 1, 2, 1).toISOString().split('T')[0]);
-        setEndDate(new Date(currentYear, 1, 28).toISOString().split('T')[0]);
+        setStartDate(`${currentYear - 1}-03-01`);
+        const isLeap = (currentYear % 4 === 0 && currentYear % 100 !== 0) || (currentYear % 400 === 0);
+        setEndDate(`${currentYear}-02-${isLeap ? '29' : '28'}`);
       } else {
-        setStartDate(march1.toISOString().split('T')[0]);
-        setEndDate(new Date(currentYear + 1, 1, 28).toISOString().split('T')[0]);
+        const nextYear = currentYear + 1;
+        const isLeap = (nextYear % 4 === 0 && nextYear % 100 !== 0) || (nextYear % 400 === 0);
+        setStartDate(`${currentYear}-03-01`);
+        setEndDate(`${nextYear}-02-${isLeap ? '29' : '28'}`);
       }
     }
   };
@@ -871,7 +874,7 @@ export default function OrdersPage() {
   const handleUploadXlsxTemplate = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (!file.name.lowerCase().endsWith('.xlsx')) {
+    if (!file.name.toLowerCase().endsWith('.xlsx')) {
       alert("Only .xlsx files are allowed.");
       return;
     }
@@ -1530,8 +1533,19 @@ export default function OrdersPage() {
       
       let matchesDate = true;
       if (startDate || endDate) {
-        if (o.orderDate) {
-          const orderTime = new Date(o.orderDate).getTime();
+        const rawDate = o.orderDate || o.order_date || o.quotationSentDate || o.quotation_sent_date || o.created_at || o.date || '';
+        let orderTime = NaN;
+        if (rawDate) {
+          const strDate = String(rawDate).trim();
+          // Handle DD/MM/YYYY format produced by toLocaleDateString('en-GB')
+          const dmyMatch = strDate.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+          if (dmyMatch) {
+            orderTime = new Date(Number(dmyMatch[3]), Number(dmyMatch[2]) - 1, Number(dmyMatch[1])).getTime();
+          } else {
+            orderTime = new Date(strDate).getTime();
+          }
+        }
+        if (!isNaN(orderTime)) {
           if (startDate && orderTime < new Date(startDate).getTime()) matchesDate = false;
           if (endDate && orderTime > new Date(endDate).getTime() + 86400000) matchesDate = false;
         } else {
@@ -1562,6 +1576,8 @@ export default function OrdersPage() {
           return (o.projectName || '').toLowerCase();
         case 'client':
           return (o.projectClient || '').toLowerCase();
+        case 'pm':
+          return (o.projectPm || o.pm || '').toLowerCase();
         case 'supplier':
           return (o.supplier || '').toLowerCase();
         case 'items':
@@ -1722,12 +1738,12 @@ export default function OrdersPage() {
     setProjectTier(order.projectTier || order.project_tier || proj.offering || 'Signature');
     setProjectSize(order.projectSize || order.project_size || proj.sqm || '—');
     
-    setElectrician(order.electrician || 'TBD Electrician');
-    setElectricianPhone(order.electricianPhone || '—');
-    setContractor(order.contractor || 'TBD Contractor');
-    setContractorPhone(order.contractorPhone || '—');
-    setInteriorDesigner(order.interiorDesigner || 'TBD Designer');
-    setInteriorDesignerPhone(order.interiorDesignerPhone || '—');
+    setElectrician(order.electrician || proj.electricianName || '');
+    setElectricianPhone(order.electricianPhone || order.electrician_phone || proj.electricianPhone || '');
+    setContractor(order.contractor || proj.contractorName || '');
+    setContractorPhone(order.contractorPhone || order.contractor_phone || proj.contractorPhone || '');
+    setInteriorDesigner(order.interiorDesigner || order.interior_designer || proj.architectName || '');
+    setInteriorDesignerPhone(order.interiorDesignerPhone || order.interior_designer_phone || proj.architectPhone || '');
 
     setOneOneRep(order.oneOneRep || order.salesRep || order.sales_rep || order.sales_rep_name || proj.pm || 'Martin Döller');
     
@@ -1774,8 +1790,11 @@ export default function OrdersPage() {
     setDivision(resolvedDiv);
     setQuoteName(order.quote_name || 'General Spec');
 
-    setDeliveryAddress(order.deliveryAddress || proj.deliveryAddress || '7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941');
-    setBillingDetails(order.billingDetails || proj.billingDetails || 'TEST TSTETESSETSETEESTSETEST\nTEST TSTETESSETSETEESTSETEST');
+    const cleanDeliv = (order.deliveryAddress || order.delivery_address || proj.deliveryAddress || contact.address || '').trim();
+    setDeliveryAddress(cleanDeliv === '7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941' ? (proj.deliveryAddress || contact.address || '') : cleanDeliv);
+
+    const rawBilling = (order.billingDetails || order.billing_details || proj.billingDetails || contact.billingAddress || '').trim();
+    setBillingDetails(rawBilling.includes('TEST TSTETESSET') ? (proj.billingDetails || contact.billingAddress || '') : rawBilling);
   };
 
   // Cell modification in the spreadsheet workspace
@@ -2638,8 +2657,11 @@ export default function OrdersPage() {
   // Create a brand-new Purchase Order / Quotation
   const handleCreatePo = async (e) => {
     e.preventDefault();
-    const proj = projects[newPoForm.projectKey];
-    if (!proj) return;
+    const firstAvailableKey = Object.keys(projects)[0] || '';
+    const targetKey = (newPoForm.projectKey && projects[newPoForm.projectKey])
+      ? newPoForm.projectKey
+      : (newPoForm.projectKey === 'direct-client' ? 'direct-client' : firstAvailableKey);
+    const proj = projects[targetKey] || { name: 'Client Direct', client: '', pm: '' };
 
     let newPoId = '';
     try {
@@ -2660,18 +2682,23 @@ export default function OrdersPage() {
     }
 
     const contact = (contacts || []).find(c => c.name === proj.client || c.company === proj.client) || {};
+    const formattedToday = new Date().toLocaleDateString('en-GB');
     const newOrder = {
       id: newPoId,
+      po_number: newPoId,
+      project_key: targetKey || 'direct-client',
       quote_name: newPoForm.quote_name || 'General Spec',
       supplier: 'Made by 1-to-1',
-      items: 1,
-      value: 1500,
+      items: 0,
+      items_count: 0,
+      value: 0,
       paid: 0,
-      outstanding: 1500,
-      status: newPoForm.status,
-      eta: newPoForm.eta,
-      costValue: 900,
+      outstanding: 0,
+      status: newPoForm.status || 'Draft',
+      eta: newPoForm.eta || '4 weeks',
+      costValue: 0,
       discount: 0,
+      orderDate: formattedToday,
       client: proj.client || '',
       client_name: proj.client || '',
       clientCompany: contact.company || proj.client || '',
@@ -2682,36 +2709,34 @@ export default function OrdersPage() {
       client_phone: contact.phone || '',
       clientEmail: contact.email || '',
       client_email: contact.email || '',
-      itemsList: [
-        {
-          id: 'I-' + Date.now(),
-          qty: 1,
-          type: 'DL-01',
-          code: '28402 9240 W',
-          description: 'Default Downlight Spec fixture',
-          floor: 'Ground',
-          area: 'Lobby',
-          dimming: 'Non-dim',
-          brand: 'Delta Light',
-          supplier: 'Made by 1-to-1',
-          unitCost: 900,
-          unitTrade: 1200,
-          unitRetail: 1500,
-          selection: 'Selection',
-          stockStatus: 'Ordered'
-        }
-      ]
+      projectFullName: proj.name || '',
+      pmName: proj.pm || '',
+      itemsList: []
     };
 
-    const updatedOrders = [...(proj.orders || []), newOrder];
-    updateProject(newPoForm.projectKey, 'orders', updatedOrders);
+    try {
+      await fetch(`${API_BASE}/api/orders/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newOrder)
+      });
+    } catch (err) {
+      console.warn('Direct order creation fallback:', err);
+    }
+
+    if (targetKey && projects[targetKey]) {
+      const updatedOrders = [...(proj.orders || []), newOrder];
+      await updateProject(targetKey, 'orders', updatedOrders);
+    } else if (refreshProjects) {
+      await refreshProjects();
+    }
     
     setShowCreatePoModal(false);
     handleOpenWorkspace({
       ...newOrder,
-      projectKey: newPoForm.projectKey,
-      projectName: proj.name,
-      projectClient: newOrder.clientCompany || newOrder.clientContact || proj.client
+      projectKey: targetKey || 'direct-client',
+      projectName: proj.name || 'Client Direct',
+      projectClient: newOrder.clientCompany || newOrder.clientContact || proj.client || ''
     });
   };
 
@@ -3268,12 +3293,39 @@ export default function OrdersPage() {
 
                     {filteredOrders.length === 0 && (
                       <tr>
-                        <td colSpan={11} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
+                        <td colSpan={12} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
                           No active quotations or Bills of Quantity found.
                         </td>
                       </tr>
                     )}
                   </tbody>
+                  {sortedOrders.length > 0 && (() => {
+                    const totalVal = sortedOrders.reduce((s, o) => s + (Number(o.value) || 0), 0);
+                    const totalPaid = sortedOrders.reduce((s, o) => s + (Number(o.paid) || 0), 0);
+                    const totalOut = sortedOrders.reduce((s, o) => s + (Number(o.outstanding) || 0), 0);
+                    return (
+                      <tfoot style={{ position: 'sticky', bottom: 0, background: 'var(--bg-secondary)', borderTop: '2px solid var(--border-strong)', zIndex: 2 }}>
+                        <tr>
+                          <td colSpan={6} style={{ fontWeight: 800, fontSize: '12px', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '12px' }}>
+                            LEDGER TOTAL ({sortedOrders.length} {sortedOrders.length === 1 ? 'Order' : 'Orders'})
+                          </td>
+                          <td style={{ fontWeight: 800, color: blendedMarginCompany < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                            {blendedMarginCompany}%
+                          </td>
+                          <td style={{ fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
+                            R {Math.round(totalVal).toLocaleString()}
+                          </td>
+                          <td style={{ fontWeight: 800, color: 'var(--text-success)', fontFamily: 'monospace' }}>
+                            R {Math.round(totalPaid).toLocaleString()}
+                          </td>
+                          <td style={{ fontWeight: 800, color: totalOut > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                            R {Math.round(totalOut).toLocaleString()}
+                          </td>
+                          <td colSpan={2} />
+                        </tr>
+                      </tfoot>
+                    );
+                  })()}
                 </table>
               </div>
 
@@ -5227,12 +5279,15 @@ export default function OrdersPage() {
 
                 {/* THE HIGH-FIDELITY LIVE DOCUMENT CANVAS PREVIEW */}
                 {(() => {
-                  const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost) || 0)), 0);
-                  const totalRetail = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail) || 0)), 0);
+                  const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
+                  const totalRetailGross = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
+                  const totalCreditedRetail = (erpCreditedItems || []).reduce((s, item) => s + Math.abs(Number(item.totalRetail || 0)), 0);
+                  const totalRetail = Math.max(0, totalRetailGross - totalCreditedRetail);
                   const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
-                  const vatAmount = discountedRetail * 0.15;
-                  const finalTotalInclVat = discountedRetail * 1.15;
-                  const balanceOutstanding = Math.max(0, discountedRetail - Number(orderPaidAmount));
+                  const effectiveVatPercent = orderVatPercent !== null && orderVatPercent !== undefined ? Number(orderVatPercent) : 15;
+                  const vatAmount = discountedRetail * (effectiveVatPercent / 100);
+                  const finalTotalInclVat = discountedRetail + vatAmount;
+                  const balanceOutstanding = Math.max(0, finalTotalInclVat - Number(orderPaidAmount));
 
                   // Group items by Area for clear section layouts
                   const groupedItems = {};
@@ -6592,11 +6647,12 @@ export default function OrdersPage() {
                   />
                   <select 
                     className="form-control" 
-                    value={newPoForm.projectKey} 
+                    value={projects[newPoForm.projectKey] ? newPoForm.projectKey : (newPoForm.projectKey === 'direct-client' ? 'direct-client' : (Object.keys(projects)[0] || 'direct-client'))} 
                     onChange={e => setNewPoForm({...newPoForm, projectKey: e.target.value})}
                   >
+                    <option value="direct-client">-- Client Direct / No Project --</option>
                     {Object.values(projects)
-                      .filter(p => p.name.toLowerCase().includes(poProjectSearch.toLowerCase()))
+                      .filter(p => (p.name || '').toLowerCase().includes(poProjectSearch.toLowerCase()))
                       .map(p => (
                         <option key={p.key} value={p.key}>{p.name}</option>
                       ))}
