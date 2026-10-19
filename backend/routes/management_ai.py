@@ -488,7 +488,7 @@ def call_vertex_gemini_with_tools(
         }],
         "generation_config": {
             "temperature": 0.2,
-            "max_output_tokens": 2048
+            "max_output_tokens": 4096
         }
     }
 
@@ -501,7 +501,7 @@ def call_vertex_gemini_with_tools(
         }
     )
 
-    with urllib.request.urlopen(req, context=_SSL_CTX, timeout=60) as resp:
+    with urllib.request.urlopen(req, context=_SSL_CTX, timeout=120) as resp:
         return json.loads(resp.read().decode('utf-8'))
 
 
