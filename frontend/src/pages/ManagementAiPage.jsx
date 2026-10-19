@@ -580,7 +580,7 @@ export default function ManagementAiPage() {
         <div style={{ padding: '14px 16px', borderTop: '1px solid rgba(255, 255, 255, 0.08)', fontSize: '11px', color: '#94a3b8' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
             <Sparkles size={13} color="#a855f7" />
-            <span style={{ fontWeight: 650, color: '#c084fc' }}>Gemini 2.5 Pro Engine</span>
+            <span style={{ fontWeight: 650, color: '#c084fc' }}>Gemini 3.8 Flash Engine</span>
           </div>
           <div>Management Grounded Intelligence</div>
         </div>
@@ -760,7 +760,7 @@ export default function ManagementAiPage() {
                     ) : (
                       <>
                         <Sparkles size={14} />
-                        <span>Gemini 2.5 Executive</span>
+                        <span>Gemini 3.8 Flash Executive</span>
                       </>
                     )}
                   </div>
@@ -880,7 +880,7 @@ export default function ManagementAiPage() {
                   color: '#c084fc'
                 }}>
                   <Sparkles size={14} />
-                  <span>Gemini 2.5 Pro Analyzing Palladium Data…</span>
+                  <span>Gemini 3.8 Flash Analyzing Palladium Data…</span>
                 </div>
                 <div style={{
                   padding: '16px 20px',
@@ -1006,7 +1006,7 @@ export default function ManagementAiPage() {
           </div>
 
           <div style={{ fontSize: '11px', color: '#64748b', marginTop: '8px', textAlign: 'center' }}>
-            Gemini 2.5 Pro answers using live mirrored Cloud SQL records. Numbers and ZAR values are verified against Palladium ERP.
+            Gemini 3.8 Flash answers using live mirrored Cloud SQL records. Numbers and ZAR values are verified against Palladium ERP.
           </div>
         </div>
       </div>

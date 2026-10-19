@@ -25,7 +25,8 @@ router = APIRouter(prefix="/management-ai", tags=["management-ai"])
 public_router = APIRouter(prefix="/management-ai", tags=["management-ai-public"])
 
 # Use Google Gemini on Vertex AI
-GEMINI_MODEL = "gemini-2.5-pro"
+GEMINI_MODEL = "gemini-3.8-flash"
+GEMINI_LOCATION = "global"
 
 # --------------------------------------------------------------------------
 # HELPER: Check Management / Admin Authorization
@@ -471,7 +472,10 @@ def call_vertex_gemini_with_tools(
     model: str = GEMINI_MODEL
 ) -> Dict[str, Any]:
     token = get_gcp_access_token()
-    url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/{model}:generateContent"
+    if GEMINI_LOCATION == "global":
+        url = f"https://aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/global/publishers/google/models/{model}:generateContent"
+    else:
+        url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/{model}:generateContent"
 
     payload = {
         "contents": contents,
@@ -507,7 +511,7 @@ def get_ai_status(db: Session = Depends(get_db)):
     sync_info = tool_get_sync_status(db)
     return {
         "status": "online",
-        "engine": "Google Gemini 2.5 Pro (Vertex AI)",
+        "engine": "Google Gemini 3.8 Flash (Vertex AI)",
         "sync_info": sync_info
     }
 
