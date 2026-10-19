@@ -540,9 +540,11 @@ def executive_chat_endpoint(
             "parts": [{"text": m.content}]
         })
 
-    # Execute multi-turn tool calling loop (up to 10 tool iterations)
-    max_turns = 10
-    for _ in range(max_turns):
+    # Execute multi-turn tool calling loop (fast 3 turns maximum)
+    max_turns = 3
+    tools_called_names = []
+
+    for turn in range(max_turns):
         gemini_response = call_vertex_gemini_with_tools(contents)
         candidate = gemini_response.get("candidates", [{}])[0]
         content_obj = candidate.get("content", {})
@@ -559,6 +561,7 @@ def executive_chat_endpoint(
                 "role": "assistant",
                 "content": full_reply,
                 "reply": full_reply,
+                "tools_called": tools_called_names,
                 "model": GEMINI_MODEL,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
@@ -571,6 +574,7 @@ def executive_chat_endpoint(
             fn_name = call.get("name")
             fn_args = call.get("args") or {}
             fn_call_id = call.get("id")
+            tools_called_names.append(fn_name)
             
             logger.info(f"Management AI Function Call: {fn_name}({fn_args}) [id={fn_call_id}]")
             fn_result = {}
@@ -610,10 +614,18 @@ def executive_chat_endpoint(
             "parts": tool_response_parts
         })
 
-    # Fallback if loop exceeded
+    # Final turn synthesis if model reached max_turns
+    final_response = call_vertex_gemini_with_tools(contents)
+    candidate = final_response.get("candidates", [{}])[0]
+    parts = candidate.get("content", {}).get("parts", [])
+    text_parts = [p.get("text", "") for p in parts if p.get("text")]
+    full_reply = "".join(text_parts).strip() if text_parts else "Summary of retrieved ERP data is ready."
+
     return {
         "role": "assistant",
-        "content": "I gathered the requested records from Palladium ERP, but exceeded the analytical iteration limit. Please ask for a more specific date range or item.",
+        "content": full_reply,
+        "reply": full_reply,
+        "tools_called": tools_called_names,
         "model": GEMINI_MODEL,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
