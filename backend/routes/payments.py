@@ -24,10 +24,11 @@ public_router = APIRouter(prefix="/payments", tags=["Payments Public"])
 
 def recalc_order_payments(db: Session, order_id_str: str):
     """
-    Recalculates an Order's paid amount and outstanding balance strictly from
-    active Palladium OrderPaymentAllocations (discarding legacy manual payments).
+    Recalculates an Order's paid amount, outstanding balance, and deposit/balance payment dates
+    strictly from active Palladium OrderPaymentAllocations (and active credit notes).
     """
     try:
+        from models.orm_models import ProcurementAllocation
         # Find order by po_number or id
         order = db.query(Order).filter(
             or_(Order.po_number == str(order_id_str), Order.id == int(order_id_str) if str(order_id_str).isdigit() else False)
@@ -39,34 +40,66 @@ def recalc_order_payments(db: Session, order_id_str: str):
         allocs = db.query(OrderPaymentAllocation).filter(
             OrderPaymentAllocation.order_id.in_([order.po_number, str(order.id)]),
             OrderPaymentAllocation.status == "Active"
-        ).all()
+        ).order_by(OrderPaymentAllocation.allocated_at.asc(), OrderPaymentAllocation.id.asc()).all()
 
         allocated_total = round(sum(float(a.allocated_amount or 0.0) for a in allocs), 2)
 
         # 2. Build consolidated payments array strictly from active Palladium allocations
         consolidated_payments = []
+        deposit_date_str = None
+        balance_date_str = None
+
         for a in allocs:
+            dt_str = a.allocated_at.strftime("%Y-%m-%d") if a.allocated_at else datetime.now().strftime("%Y-%m-%d")
+            ptype = (a.payment_type or "Deposit Payment")
+            if "deposit" in ptype.lower() and not deposit_date_str:
+                deposit_date_str = dt_str
+            if ("balance" in ptype.lower() or "settlement" in ptype.lower()):
+                balance_date_str = dt_str
+
             consolidated_payments.append({
                 "id": f"pal-alloc-{a.id}",
                 "allocation_id": a.id,
                 "palladium_payment_id": a.palladium_payment_id,
                 "receipt_no": a.receipt_no,
                 "amount": float(a.allocated_amount or 0.0),
-                "type": a.payment_type or "Deposit Payment",
-                "date": a.allocated_at.strftime("%Y-%m-%d") if a.allocated_at else datetime.now().strftime("%Y-%m-%d"),
+                "type": ptype,
+                "date": dt_str,
                 "notes": a.notes or f"Allocated from Palladium Receipt {a.receipt_no}",
                 "source": "PALLADIUM",
                 "is_palladium": True,
                 "allocated_by": a.allocated_by
             })
 
-        order_val_excl = float(order.value or 0.0)
-        order_val_incl = round(order_val_excl * 1.15, 2)
+        # Fallback: if there are payments and no explicit deposit_date_str, use earliest payment date
+        if consolidated_payments and not deposit_date_str:
+            deposit_date_str = consolidated_payments[0]["date"]
+
+        # Subtract active credit notes if any
+        active_credit_allocs = db.query(ProcurementAllocation).filter(
+            ProcurementAllocation.allocation_type == "INVOICE",
+            ProcurementAllocation.status == "Active",
+            ProcurementAllocation.order_id.in_([str(order.po_number), str(order.id)])
+        ).all()
+        cn_total_excl = sum(
+            float((ca.allocated_qty or 0) * (ca.unit_cost or 0))
+            for ca in active_credit_allocs
+            if str(ca.source_doc_no).upper().startswith(("CN-", "CR-"))
+        )
+
+        order_val_excl = max(0.0, round(float(order.value or 0.0) - cn_total_excl, 2))
+        vat_pct = float(order.vat_percentage if order.vat_percentage is not None else 15.0)
+        order_val_incl = round(order_val_excl * (1.0 + vat_pct / 100.0), 2)
         outstanding = max(0.0, round(order_val_incl - allocated_total, 2))
+
+        if outstanding <= 0.05 and consolidated_payments and not balance_date_str:
+            balance_date_str = consolidated_payments[-1]["date"]
 
         order.paid = allocated_total
         order.outstanding = outstanding
-        order.payments = json.dumps(consolidated_payments)
+        order.payments = consolidated_payments
+        order.deposit_payment_date = deposit_date_str
+        order.balance_payment_date = balance_date_str
         db.commit()
     except Exception as e:
         logger.error(f"Error recalculating order payments for order {order_id_str}: {e}")
@@ -97,12 +130,19 @@ def get_payments_summary(db: Session = Depends(get_db)):
         all_payments = db.query(PalladiumPayment).filter(PalladiumPayment.is_reversed == False).all()
         if not all_payments:
             return {
+                "total_documents": 0,
                 "total_payments_count": 0,
                 "total_amount_synced": 0.0,
+                "total_payments_value": 0.0,
                 "total_amount_allocated": 0.0,
                 "total_amount_unallocated": 0.0,
+                "unallocated_count": 0,
                 "unallocated_payments_count": 0,
+                "partially_allocated_count": 0,
+                "fully_allocated_count": 0,
                 "allocated_payments_count": 0,
+                "issues_count": 0,
+                "all_customers": [],
                 "last_synced_at": None
             }
 
@@ -115,44 +155,59 @@ def get_payments_summary(db: Session = Depends(get_db)):
         for a in active_allocs:
             alloc_by_pay_id[a.palladium_payment_id] = alloc_by_pay_id.get(a.palladium_payment_id, 0.0) + float(a.allocated_amount or 0.0)
 
+        # Open issues
+        open_issues = db.query(AllocationIssue).filter(
+            AllocationIssue.module == "PAYMENT",
+            AllocationIssue.status == "Open"
+        ).all()
+        issue_doc_nos = {iss.document_no for iss in open_issues if iss.document_no}
+
         total_amount_synced = 0.0
         total_amount_allocated = 0.0
         unallocated_cnt = 0
         partially_allocated_cnt = 0
         fully_allocated_cnt = 0
         latest_sync = None
+        all_customers_set = set()
 
         for p in all_payments:
+            if p.customer_name and p.customer_name.strip():
+                all_customers_set.add(p.customer_name.strip())
+
             amt = float(p.amount or 0.0)
             total_amount_synced += amt
             alc = alloc_by_pay_id.get(p.palladium_payment_id, 0.0)
             total_amount_allocated += min(amt, alc)
 
+            is_flagged = p.receipt_no in issue_doc_nos
+
             if alc >= amt - 0.01:
                 fully_allocated_cnt += 1
             elif alc > 0.01:
                 partially_allocated_cnt += 1
+                if not is_flagged:
+                    unallocated_cnt += 1
             else:
-                unallocated_cnt += 1
+                if not is_flagged:
+                    unallocated_cnt += 1
 
             if not latest_sync or (p.last_synced_at and p.last_synced_at > latest_sync):
                 latest_sync = p.last_synced_at
-
-        issues_count = db.query(AllocationIssue).filter(
-            AllocationIssue.module == "PAYMENT",
-            AllocationIssue.status == "Open"
-        ).count()
 
         return {
             "total_documents": len(all_payments),
             "total_payments_count": len(all_payments),
             "unallocated_count": unallocated_cnt,
+            "unallocated_payments_count": unallocated_cnt,
             "partially_allocated_count": partially_allocated_cnt,
             "fully_allocated_count": fully_allocated_cnt,
-            "issues_count": issues_count,
+            "allocated_payments_count": fully_allocated_cnt,
+            "issues_count": len(issue_doc_nos),
             "total_amount_synced": round(total_amount_synced, 2),
+            "total_payments_value": round(total_amount_synced, 2),
             "total_amount_allocated": round(total_amount_allocated, 2),
             "total_amount_unallocated": round(max(0.0, total_amount_synced - total_amount_allocated), 2),
+            "all_customers": sorted(list(all_customers_set)),
             "last_synced_at": latest_sync.isoformat() if latest_sync else None
         }
     except Exception as e:
@@ -173,6 +228,7 @@ def get_candidate_orders_for_payment(
     Finds active orders that match the customer name, code, reference keywords, or payment amount (70% deposit / 30% balance).
     """
     try:
+        import re
         from models.orm_models import ProcurementAllocation
         projects = db.query(Project).all()
         orders = db.query(Order).all()
@@ -191,10 +247,12 @@ def get_candidate_orders_for_payment(
         proj_map = {p.id: p for p in projects}
         proj_by_key = {p.project_key: p for p in projects if p.project_key}
 
-        c_name = (customer_name or "").strip().lower()
+        raw_c_name = (customer_name or "").strip().lower()
+        # Strip common Palladium numeric/code prefixes (e.g., "015 - ", "C001 - ")
+        c_name = re.sub(r'^[a-z0-9]{2,8}\s*[-–:]\s*', '', raw_c_name).strip() or raw_c_name
         c_code = (customer_code or "").strip().lower()
         ref = (reference or "").strip().lower()
-        ref_words = [w for w in ref.replace('-', ' ').replace('/', ' ').split() if len(w) > 2]
+        ref_words = [w for w in re.split(r'[\s\-/,;:]+', ref) if len(w) > 2]
 
         p_amt = float(payment_amount) if payment_amount is not None and payment_amount > 0 else None
 
@@ -203,13 +261,16 @@ def get_candidate_orders_for_payment(
             proj = proj_map.get(o.project_id) or (proj_by_key.get(o.project_key) if o.project_key else None)
             proj_name = proj.name if proj else (o.project_full_name or "")
             proj_client = proj.client_name if proj else ""
-            client_str = f"{o.client_company or ''} {o.client_name or ''} {o.client_contact or ''} {proj_client}".lower()
-            order_name = f"{o.quote_name or ''} {o.po_number or ''} {proj_name}".lower()
+            client_str = f"{o.client_company or ''} {o.client_name or ''} {o.client or ''} {o.client_contact or ''} {proj_client} {proj_name}".lower()
+            order_name = f"{o.quote_name or ''} {o.po_number or ''} {o.pf_number or ''} {proj_name}".lower()
+            po_num_lower = (o.po_number or "").strip().lower()
 
             match_score = 0
+            if po_num_lower and ref and po_num_lower in ref:
+                match_score += 50
             if c_code and c_code in client_str:
                 match_score += 12
-            if c_name and (c_name in client_str or any(word in client_str for word in c_name.split() if len(word) > 3)):
+            if c_name and (c_name in client_str or any(word in client_str for word in c_name.split() if len(word) > 2)):
                 match_score += 10
 
             for w in ref_words:
@@ -218,7 +279,8 @@ def get_candidate_orders_for_payment(
 
             ord_cn_val = cn_by_order.get(str(o.po_number), 0.0) or cn_by_order.get(str(o.id), 0.0)
             total_val_excl = max(0.0, round(float(o.value or 0.0) - ord_cn_val, 2))
-            total_val_incl = round(total_val_excl * 1.15, 2)
+            vat_pct = float(o.vat_percentage if o.vat_percentage is not None else 15.0)
+            total_val_incl = round(total_val_excl * (1.0 + vat_pct / 100.0), 2)
             deposit_70 = round(total_val_incl * 0.70, 2)
             balance_30 = round(total_val_incl * 0.30, 2)
             paid_amt = float(o.paid or 0.0)
@@ -247,7 +309,7 @@ def get_candidate_orders_for_payment(
                     "project_name": proj_name or "Project",
                     "order_id": o.po_number or str(o.id),
                     "quote_name": o.quote_name or "Spec Order",
-                    "client": o.client_company or o.client_name or (proj.client_name if proj else "Client"),
+                    "client": o.client_company or o.client_name or o.client or (proj.client_name if proj else "Client"),
                     "total_value": total_val_incl,
                     "total_value_excl": total_val_excl,
                     "deposit_70": deposit_70,
@@ -762,9 +824,22 @@ def get_order_payments_breakdown(order_id: str, db: Session = Depends(get_db)):
                 "allocated_by": a.allocated_by
             })
 
-        total_paid = sum(p["amount"] for p in allocated_payments)
-        total_value_excl = float(order.value or 0.0)
-        total_value_incl = round(total_value_excl * 1.15, 2)
+        from models.orm_models import ProcurementAllocation
+        active_credit_allocs = db.query(ProcurementAllocation).filter(
+            ProcurementAllocation.allocation_type == "INVOICE",
+            ProcurementAllocation.status == "Active",
+            ProcurementAllocation.order_id.in_([str(order.po_number), str(order.id)])
+        ).all()
+        cn_total_excl = sum(
+            float((ca.allocated_qty or 0) * (ca.unit_cost or 0))
+            for ca in active_credit_allocs
+            if str(ca.source_doc_no).upper().startswith(("CN-", "CR-"))
+        )
+
+        total_paid = round(sum(p["amount"] for p in allocated_payments), 2)
+        total_value_excl = max(0.0, round(float(order.value or 0.0) - cn_total_excl, 2))
+        vat_pct = float(order.vat_percentage if order.vat_percentage is not None else 15.0)
+        total_value_incl = round(total_value_excl * (1.0 + vat_pct / 100.0), 2)
         outstanding = max(0.0, round(total_value_incl - total_paid, 2))
 
         return {

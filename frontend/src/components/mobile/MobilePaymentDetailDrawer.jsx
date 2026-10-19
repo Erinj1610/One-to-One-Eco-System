@@ -7,14 +7,16 @@ export default function MobilePaymentDetailDrawer({ payment, onClose }) {
   const recNo = payment.receipt_no || payment.doc_no || payment.payment_no || 'RECEIPT';
   const customer = payment.customer_name || payment.client || 'Client';
   const amount = Number(payment.total_amount || payment.amount || 0);
-  const date = payment.receipt_date || payment.date || '—';
+  const date = payment.payment_date || payment.receipt_date || payment.date || '—';
   const status = payment.allocation_status || payment.status || 'Unallocated';
-  const isAllocated = status.toLowerCase().includes('fully') || status.toLowerCase().includes('allocated');
-  const orderId = payment.order_id || payment.orderId || payment.matched_order_id;
-  const project = payment.project_name || payment.projectName || payment.project;
-  const paymentType = payment.payment_type || payment.type || 'Direct Deposit / EFT';
-  const notes = payment.notes || payment.description || payment.comment;
-  const allocatedAmount = Number(payment.allocated_amount || (isAllocated ? amount : 0));
+  const isAllocated = status.toLowerCase() === 'fully allocated' || status.toLowerCase() === 'allocated';
+  const isPartial = status.toLowerCase().includes('partial');
+  const firstAlloc = Array.isArray(payment.allocations) && payment.allocations.length > 0 ? payment.allocations[0] : null;
+  const orderId = payment.order_id || payment.orderId || payment.matched_order_id || (firstAlloc ? firstAlloc.order_id : null);
+  const project = payment.project_name || payment.projectName || payment.project || (firstAlloc ? firstAlloc.project_name || firstAlloc.project_key : null);
+  const paymentType = payment.payment_method || payment.payment_type || payment.type || 'Direct Deposit / EFT';
+  const notes = payment.reference || payment.notes || payment.description || payment.comment;
+  const allocatedAmount = Number(payment.allocated_amount ?? (isAllocated ? amount : 0));
   const unallocatedAmount = Math.max(0, amount - allocatedAmount);
 
   return (

@@ -40,7 +40,10 @@ export default function MobilePaymentsViewer({ payments = [], summary = {}, onRe
         <div style={{ background: 'var(--bg-primary)', padding: '10px 12px', borderRadius: '10px', border: '1px solid var(--border)' }}>
           <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 700 }}>Total Ingest</span>
           <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
-            R {summary.total_payments_value ? (summary.total_payments_value / 1000000).toFixed(1) + 'M' : '—'}
+            {(() => {
+              const val = Number(summary.total_amount_synced || summary.total_payments_value || 0);
+              return val > 0 ? `R ${(val / 1000000).toFixed(1)}M` : '—';
+            })()}
           </div>
         </div>
 
@@ -113,9 +116,10 @@ export default function MobilePaymentsViewer({ payments = [], summary = {}, onRe
             const recNo = p.receipt_no || p.doc_no || `REC-${idx + 1}`;
             const customer = p.customer_name || p.client || 'Client';
             const amount = Number(p.total_amount || p.amount || 0);
-            const date = p.receipt_date || p.date || '—';
-            const status = p.allocation_status || 'Unallocated';
-            const isAllocated = status.toLowerCase().includes('fully') || status.toLowerCase().includes('allocated');
+            const date = p.payment_date || p.receipt_date || p.date || '—';
+            const status = p.allocation_status || p.status || 'Unallocated';
+            const isAllocated = status.toLowerCase() === 'fully allocated' || status.toLowerCase() === 'allocated';
+            const isPartial = status.toLowerCase().includes('partial');
 
             return (
               <div
@@ -130,10 +134,10 @@ export default function MobilePaymentsViewer({ payments = [], summary = {}, onRe
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span
-                      className={`badge ${isAllocated ? 'b-success' : 'b-warning'}`}
+                      className={`badge ${isAllocated ? 'b-success' : isPartial ? 'b-info' : 'b-warning'}`}
                       style={{ fontSize: '9.5px', padding: '2px 7px' }}
                     >
-                      {isAllocated ? '✓ Allocated' : '⏳ Unallocated'}
+                      {isAllocated ? '✓ Allocated' : isPartial ? '⏳ Partial' : '⏳ Unallocated'}
                     </span>
                     <ChevronRight size={14} color="var(--text-tertiary)" />
                   </div>

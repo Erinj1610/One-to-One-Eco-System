@@ -7,7 +7,7 @@ import MobilePaymentsViewer from '../components/mobile/MobilePaymentsViewer';
 import { 
   CreditCard, Search, RefreshCw, AlertTriangle, Check, Layers, ExternalLink, Filter, 
   ArrowLeft, ArrowRight, ShieldCheck, ChevronDown, ChevronRight, X, Sparkles, Box, 
-  CheckCircle2, Clock, Trash2, FileText, Package, CheckSquare, Square, DollarSign, Receipt, PlusCircle
+  CheckCircle2, Clock, Trash2, FileText, Package, CheckSquare, Square, DollarSign, Receipt, PlusCircle, Upload
 } from 'lucide-react';
 
 export default function PaymentsPage() {
@@ -41,6 +41,7 @@ export default function PaymentsPage() {
     total_amount_synced: 0.0,
     total_amount_allocated: 0.0,
     total_amount_unallocated: 0.0,
+    all_customers: [],
     last_synced_at: null
   });
 
@@ -54,6 +55,22 @@ export default function PaymentsPage() {
   const [customerFilter, setCustomerFilter] = useState('All Clients');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSyncingPalladium, setIsSyncingPalladium] = useState(false);
+  const [sortConfig, setSortConfig] = useState({ key: 'payment_date', direction: 'desc' });
+  const [auditSortConfig, setAuditSortConfig] = useState({ key: 'allocated_at', direction: 'desc' });
+
+  const handleSort = (key) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
+
+  const handleAuditSort = (key) => {
+    setAuditSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
 
   // Single Allocation Modal State
   const [allocModalOpen, setAllocModalOpen] = useState(false);
@@ -67,10 +84,12 @@ export default function PaymentsPage() {
   const [allocAmount, setAllocAmount] = useState('');
   const [allocPaymentType, setAllocPaymentType] = useState('Deposit Payment');
   const [allocNotes, setAllocNotes] = useState('');
+  const [allocPopFile, setAllocPopFile] = useState(null);
   const [isSavingAlloc, setIsSavingAlloc] = useState(false);
 
   // Unallocate confirmation
   const [unallocConfirmId, setUnallocConfirmId] = useState(null);
+  const [unallocConfirmReceiptNo, setUnallocConfirmReceiptNo] = useState('');
   const [isDeletingAlloc, setIsDeletingAlloc] = useState(false);
 
   // Issue Flagging State
@@ -122,6 +141,12 @@ export default function PaymentsPage() {
           items = items.filter(p => p.customer_name === newCustomer || p.customer_code === newCustomer);
         }
         setPaymentsDocs(items || []);
+        setSelectedDocument(prev => {
+          if (!prev) return null;
+          const updated = (items || []).find(i => i.id === prev.id || i.palladium_payment_id === prev.palladium_payment_id || i.receipt_no === prev.receipt_no);
+          return updated || prev;
+        });
+        return items || [];
       } else {
         const errData = await res.json().catch(() => ({}));
         console.warn('Payments list fetch status:', res.status, errData);
@@ -131,6 +156,21 @@ export default function PaymentsPage() {
     } finally {
       setIsLoadingPayments(false);
     }
+    return [];
+  };
+
+  const refreshSelectedDocFromServer = async (docRef) => {
+    if (!docRef) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/payments/list?status=all&search=${encodeURIComponent(docRef.receipt_no || '')}`);
+      if (res.ok) {
+        const allItems = await res.json();
+        const match = (allItems || []).find(
+          i => i.id === docRef.id || i.palladium_payment_id === docRef.palladium_payment_id || i.receipt_no === docRef.receipt_no
+        );
+        if (match) setSelectedDocument(match);
+      }
+    } catch (_) {}
   };
 
   const fetchAllocations = async () => {
@@ -175,10 +215,17 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     fetchSummary();
-    fetchPaymentsDocuments(activeFilterTab, customerFilter, searchQuery);
+    if (location.state?.filterOrderId) {
+      const oid = String(location.state.filterOrderId);
+      setActiveFilterTab('AUDIT');
+      setSearchQuery(oid);
+      fetchPaymentsDocuments('ALL', 'All Clients', oid);
+    } else {
+      fetchPaymentsDocuments(activeFilterTab, customerFilter, searchQuery);
+    }
     fetchAllocations();
     fetchProjectsOrders();
-  }, []);
+  }, [location.state?.filterOrderId]);
 
   // Debounced Search & Tab Change Effect
   useEffect(() => {
@@ -190,14 +237,14 @@ export default function PaymentsPage() {
     return () => clearTimeout(timer);
   }, [activeFilterTab, customerFilter, searchQuery]);
 
-  // Extract unique customers for dropdown filter
+  // Extract unique customers for dropdown filter (merge server-wide all_customers with current docs)
   const uniqueCustomers = useMemo(() => {
-    const set = new Set();
+    const set = new Set(paymentsSummary.all_customers || []);
     paymentsDocs.forEach(item => {
       if (item.customer_name && item.customer_name.trim()) set.add(item.customer_name.trim());
     });
     return Array.from(set).sort();
-  }, [paymentsDocs]);
+  }, [paymentsDocs, paymentsSummary.all_customers]);
 
   // -------------------------------------------------------------
   // ALLOCATION ACTIONS
@@ -208,6 +255,7 @@ export default function PaymentsPage() {
     setAllocAmount(avail.toFixed(2));
     setAllocPaymentType('Deposit Payment');
     setAllocNotes(payment.reference ? `Ref: ${payment.reference}` : '');
+    setAllocPopFile(null);
     setSelectedCandidateKey(null);
     setManualProjectId('');
     setManualOrderId('');
@@ -366,14 +414,30 @@ export default function PaymentsPage() {
       });
       const data = await res.json();
       if (res.ok) {
+        // Optional Proof of Payment (POP) upload to Google Drive
+        if (allocPopFile && targetOrderId) {
+          try {
+            const fd = new FormData();
+            fd.append('file', allocPopFile);
+            await fetch(`${API_BASE}/api/drive/order/${encodeURIComponent(targetOrderId)}/upload?category=POP`, {
+              method: 'POST',
+              body: fd
+            });
+          } catch (uploadErr) {
+            console.warn('POP Drive upload warning:', uploadErr);
+          }
+        }
+
         triggerToast(`🎉 ${data.message || 'Payment allocated successfully!'}`);
         setAllocModalOpen(false);
+        setAllocPopFile(null);
         await fetchSummary();
         await fetchPaymentsDocuments(activeFilterTab, customerFilter, searchQuery);
         await fetchAllocations();
+        await fetchProjectsOrders();
         if (refreshProjects) await refreshProjects();
         if (selectedDocument) {
-          setSelectedDocument(null);
+          await refreshSelectedDocFromServer(selectedDocument);
         }
       } else {
         alert(`Allocation notice: ${data.detail || 'Could not complete allocation.'}`);
@@ -393,12 +457,18 @@ export default function PaymentsPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        triggerToast(`Released allocation from ${receiptNo}`);
+        const displayReceipt = receiptNo || unallocConfirmReceiptNo || selectedDocument?.receipt_no || 'receipt';
+        triggerToast(`Released allocation from ${displayReceipt}`);
         setUnallocConfirmId(null);
+        setUnallocConfirmReceiptNo('');
         await fetchSummary();
         await fetchPaymentsDocuments(activeFilterTab, customerFilter, searchQuery);
         await fetchAllocations();
+        await fetchProjectsOrders();
         if (refreshProjects) await refreshProjects();
+        if (selectedDocument) {
+          await refreshSelectedDocFromServer(selectedDocument);
+        }
       } else {
         alert(`Notice: ${data.detail || 'Failed to unallocate.'}`);
       }
@@ -409,19 +479,61 @@ export default function PaymentsPage() {
     }
   };
 
-  // Filtered allocations for audit tab
+  // Sorted receipts list
+  const sortedPaymentsDocs = useMemo(() => {
+    const arr = [...paymentsDocs];
+    const { key, direction } = sortConfig;
+    if (!key) return arr;
+    const dir = direction === 'asc' ? 1 : -1;
+    arr.sort((a, b) => {
+      if (key === 'amount' || key === 'remaining_amount' || key === 'allocated_amount') {
+        return ((Number(a[key]) || 0) - (Number(b[key]) || 0)) * dir;
+      }
+      if (key === 'payment_date') {
+        const da = a.payment_date ? new Date(a.payment_date).getTime() : 0;
+        const db = b.payment_date ? new Date(b.payment_date).getTime() : 0;
+        return (da - db) * dir;
+      }
+      const va = String(a[key] || '').toLowerCase();
+      const vb = String(b[key] || '').toLowerCase();
+      return va.localeCompare(vb) * dir;
+    });
+    return arr;
+  }, [paymentsDocs, sortConfig]);
+
+  // Filtered & sorted allocations for audit tab
   const filteredAllocations = useMemo(() => {
-    if (!searchQuery.trim()) return allocations;
-    const q = searchQuery.toLowerCase();
-    return allocations.filter(a => 
-      (a.receipt_no && a.receipt_no.toLowerCase().includes(q)) ||
-      (a.order_id && a.order_id.toLowerCase().includes(q)) ||
-      (a.quote_name && a.quote_name.toLowerCase().includes(q)) ||
-      (a.client && a.client.toLowerCase().includes(q)) ||
-      (a.project_name && a.project_name.toLowerCase().includes(q)) ||
-      (a.notes && a.notes.toLowerCase().includes(q))
-    );
-  }, [allocations, searchQuery]);
+    let base = allocations;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      base = allocations.filter(a => 
+        (a.receipt_no && a.receipt_no.toLowerCase().includes(q)) ||
+        (a.order_id && a.order_id.toLowerCase().includes(q)) ||
+        (a.quote_name && a.quote_name.toLowerCase().includes(q)) ||
+        (a.client && a.client.toLowerCase().includes(q)) ||
+        (a.project_name && a.project_name.toLowerCase().includes(q)) ||
+        (a.notes && a.notes.toLowerCase().includes(q))
+      );
+    }
+    const arr = [...base];
+    const { key, direction } = auditSortConfig;
+    if (!key) return arr;
+    const dir = direction === 'asc' ? 1 : -1;
+    arr.sort((a, b) => {
+      if (key === 'allocated_amount') {
+        return ((Number(a.allocated_amount) || 0) - (Number(b.allocated_amount) || 0)) * dir;
+      }
+      if (key === 'allocated_at') {
+        const da = a.allocated_at ? new Date(a.allocated_at).getTime() : 0;
+        const db = b.allocated_at ? new Date(b.allocated_at).getTime() : 0;
+        return (da - db) * dir;
+      }
+      const va = String(a[key] || '').toLowerCase();
+      const vb = String(b[key] || '').toLowerCase();
+      return va.localeCompare(vb) * dir;
+    });
+    return arr;
+  }, [allocations, searchQuery, auditSortConfig]);
 
   if (isMobile) {
     return (
@@ -744,7 +856,10 @@ export default function PaymentsPage() {
                         </td>
                         <td style={{ padding: '10px 14px', textAlign: 'center' }}>
                           <button
-                            onClick={() => setUnallocConfirmId(a.id)}
+                            onClick={() => {
+                              setUnallocConfirmId(a.id);
+                              setUnallocConfirmReceiptNo(selectedDocument.receipt_no || '');
+                            }}
                             className="btn btn-sm btn-ghost"
                             style={{ color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', padding: '3px 8px', fontSize: '11px' }}
                           >
@@ -925,13 +1040,27 @@ export default function PaymentsPage() {
                 <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', fontSize: '10.5px', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>
-                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>Document #</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>Target Order</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>Project</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>Client</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>Type</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'right' }}>Allocated Amount</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>Allocated Date</th>
+                      <th onClick={() => handleAuditSort('receipt_no')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
+                        Document # {auditSortConfig.key === 'receipt_no' ? (auditSortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th onClick={() => handleAuditSort('order_id')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
+                        Target Order {auditSortConfig.key === 'order_id' ? (auditSortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th onClick={() => handleAuditSort('project_name')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
+                        Project {auditSortConfig.key === 'project_name' ? (auditSortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th onClick={() => handleAuditSort('client')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
+                        Client {auditSortConfig.key === 'client' ? (auditSortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th onClick={() => handleAuditSort('payment_type')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
+                        Type {auditSortConfig.key === 'payment_type' ? (auditSortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th onClick={() => handleAuditSort('allocated_amount')} style={{ padding: '12px 16px', textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}>
+                        Allocated Amount {auditSortConfig.key === 'allocated_amount' ? (auditSortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th onClick={() => handleAuditSort('allocated_at')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
+                        Allocated Date {auditSortConfig.key === 'allocated_at' ? (auditSortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                      </th>
                       <th style={{ padding: '12px 16px', textAlign: 'left' }}>Notes</th>
                       <th style={{ padding: '12px 16px', textAlign: 'center' }}>Action</th>
                     </tr>
@@ -972,7 +1101,10 @@ export default function PaymentsPage() {
                           </td>
                           <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                             <button
-                              onClick={() => setUnallocConfirmId(a.id)}
+                              onClick={() => {
+                                setUnallocConfirmId(a.id);
+                                setUnallocConfirmReceiptNo(a.receipt_no || '');
+                              }}
                               className="btn btn-sm btn-ghost"
                               style={{ color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', padding: '3px 8px', fontSize: '11px' }}
                             >
@@ -983,6 +1115,19 @@ export default function PaymentsPage() {
                       ))
                     )}
                   </tbody>
+                  {filteredAllocations.length > 0 && (
+                    <tfoot>
+                      <tr style={{ background: 'var(--bg-secondary)', borderTop: '2px solid var(--border)', fontWeight: 800, fontSize: '12.5px' }}>
+                        <td colSpan={5} style={{ padding: '12px 16px', color: 'var(--text-primary)' }}>
+                          TOTAL ALLOCATIONS ({filteredAllocations.length} records)
+                        </td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', color: '#10b981' }}>
+                          R {filteredAllocations.reduce((sum, a) => sum + (Number(a.allocated_amount) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td colSpan={3} />
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             ) : (
@@ -991,13 +1136,25 @@ export default function PaymentsPage() {
                 <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', fontSize: '10.5px', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>
-                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>DOCUMENT #</th>
+                      <th onClick={() => handleSort('receipt_no')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
+                        DOCUMENT # {sortConfig.key === 'receipt_no' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                      </th>
                       <th style={{ padding: '12px 16px', textAlign: 'left' }}>TYPE</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>DATE</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>CLIENT / CUSTOMER</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>METHOD / REF</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'right' }}>TOTAL VALUE</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>ALLOCATION STATUS</th>
+                      <th onClick={() => handleSort('payment_date')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
+                        DATE {sortConfig.key === 'payment_date' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th onClick={() => handleSort('customer_name')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
+                        CLIENT / CUSTOMER {sortConfig.key === 'customer_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th onClick={() => handleSort('payment_method')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
+                        METHOD / REF {sortConfig.key === 'payment_method' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th onClick={() => handleSort('amount')} style={{ padding: '12px 16px', textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}>
+                        TOTAL VALUE {sortConfig.key === 'amount' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                      </th>
+                      <th onClick={() => handleSort('status')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
+                        ALLOCATION STATUS {sortConfig.key === 'status' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                      </th>
                       <th style={{ padding: '12px 16px', textAlign: 'center' }}>ACTION</th>
                     </tr>
                   </thead>
@@ -1009,7 +1166,7 @@ export default function PaymentsPage() {
                           <div>Loading customer receipts...</div>
                         </td>
                       </tr>
-                    ) : paymentsDocs.length === 0 ? (
+                    ) : sortedPaymentsDocs.length === 0 ? (
                       <tr>
                         <td colSpan={8} style={{ padding: '50px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                           <Receipt size={32} style={{ margin: '0 auto 8px auto', opacity: 0.5 }} />
@@ -1018,7 +1175,7 @@ export default function PaymentsPage() {
                         </td>
                       </tr>
                     ) : (
-                      paymentsDocs.map((p) => {
+                      sortedPaymentsDocs.map((p) => {
                         const isFully = p.status === 'Fully Allocated';
                         const isPartial = p.status === 'Partially Allocated';
 
@@ -1158,6 +1315,23 @@ export default function PaymentsPage() {
                       })
                     )}
                   </tbody>
+                  {!isLoadingPayments && sortedPaymentsDocs.length > 0 && (
+                    <tfoot>
+                      <tr style={{ background: 'var(--bg-secondary)', borderTop: '2px solid var(--border)', fontWeight: 800, fontSize: '12.5px' }}>
+                        <td colSpan={5} style={{ padding: '12px 16px', color: 'var(--text-primary)' }}>
+                          TOTAL ({sortedPaymentsDocs.length} receipts shown)
+                        </td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', color: 'var(--text-primary)' }}>
+                          R {sortedPaymentsDocs.reduce((sum, p) => sum + (Number(p.amount) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td colSpan={2} style={{ padding: '12px 16px', fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                          Allocated: <span style={{ color: '#10b981', fontWeight: 700 }}>R {sortedPaymentsDocs.reduce((sum, p) => sum + (Number(p.allocated_amount) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                          {' • '}
+                          Unallocated: <span style={{ color: '#f59e0b', fontWeight: 700 }}>R {sortedPaymentsDocs.reduce((sum, p) => sum + (Number(p.remaining_amount) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             )}
@@ -1456,19 +1630,50 @@ export default function PaymentsPage() {
                 </div>
               </div>
 
-              {/* ALLOCATION NOTES */}
-              <div>
-                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                  Allocation Notes / Memo
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. 70% Deposit for Living Room tracks"
-                  value={allocNotes}
-                  onChange={(e) => setAllocNotes(e.target.value)}
-                  className="input input-sm"
-                  style={{ width: '100%', fontSize: '12px' }}
-                />
+              {/* ALLOCATION NOTES & OPTIONAL POP UPLOAD */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                    Allocation Notes / Memo
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 70% Deposit for Living Room tracks"
+                    value={allocNotes}
+                    onChange={(e) => setAllocNotes(e.target.value)}
+                    className="input input-sm"
+                    style={{ width: '100%', fontSize: '12px' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                    Attach Proof of Payment (Auto-files to Drive 04)
+                  </label>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    border: '1px dashed var(--border)',
+                    background: 'var(--bg-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '11.5px',
+                    color: allocPopFile ? '#10b981' : 'var(--text-secondary)'
+                  }}>
+                    <Upload size={13} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {allocPopFile ? allocPopFile.name : 'Choose PDF / Image (Optional)'}
+                    </span>
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg"
+                      style={{ display: 'none' }}
+                      onChange={(e) => setAllocPopFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                </div>
               </div>
 
               {/* Modal Footer Buttons */}
@@ -1568,21 +1773,25 @@ export default function PaymentsPage() {
               </h3>
             </div>
             <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 16px 0' }}>
-              Are you sure you want to remove this payment allocation? The allocated amount will be returned to the unallocated pool.
+              Are you sure you want to remove this payment allocation{unallocConfirmReceiptNo ? ` from ${unallocConfirmReceiptNo}` : ''}? The allocated amount will be returned to the unallocated pool.
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
-                onClick={() => setUnallocConfirmId(null)}
+                onClick={() => {
+                  setUnallocConfirmId(null);
+                  setUnallocConfirmReceiptNo('');
+                }}
                 className="btn btn-sm btn-ghost"
               >
                 Cancel
               </button>
               <button
-                onClick={() => handleUnallocate(unallocConfirmId)}
+                onClick={() => handleUnallocate(unallocConfirmId, unallocConfirmReceiptNo)}
+                disabled={isDeletingAlloc}
                 className="btn btn-sm"
                 style={{ background: '#ef4444', color: '#fff', border: 'none', fontWeight: 700 }}
               >
-                Yes, Unallocate
+                {isDeletingAlloc ? 'Unallocating...' : 'Yes, Unallocate'}
               </button>
             </div>
           </div>
