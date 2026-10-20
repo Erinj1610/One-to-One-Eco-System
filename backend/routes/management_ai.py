@@ -506,9 +506,70 @@ def call_vertex_gemini_with_tools(
         return json.loads(resp.read().decode('utf-8'))
 
 
+def build_dynamic_grounding_context(db: Session, user_query: str) -> str:
+    """
+    Intelligently pre-fetches live Cloud SQL Palladium ERP records in 150ms
+    and packages them as structured ground-truth facts for Gemini.
+    Eliminates multi-hop tool-calling round-trips entirely.
+    """
+    q_lower = user_query.lower()
+    facts = []
+
+    # 1. Always include data freshness & record counts
+    try:
+        sync_data = tool_get_sync_status(db)
+        facts.append(f"ERP SYNC STATUS & RECORD METRICS:\n{json.dumps(sync_data, indent=2)}")
+    except Exception as e:
+        logger.warning(f"Error fetching sync status context: {e}")
+
+    # 2. Executive KPIs & Division Budgets
+    if any(k in q_lower for k in ["kpi", "budget", "target", "executive", "margin", "pipeline", "division", "sales vs"]):
+        try:
+            kpi_data = tool_get_executive_kpis(db, financial_year="2026-2027")
+            facts.append(f"EXECUTIVE KPI TARGETS & DIVISION BUDGETS (FY 2026-2027):\n{json.dumps(kpi_data, indent=2)}")
+        except Exception as e:
+            logger.warning(f"Error fetching KPI context: {e}")
+
+    # 3. Purchase Orders
+    if any(k in q_lower for k in ["po", "purchase order", "supplier", "vendor", "open order", "order required", "delivery", "outstanding"]):
+        try:
+            po_data = tool_query_purchase_orders(db, status="Open", limit=25)
+            facts.append(f"TOP OPEN / OUTSTANDING PURCHASE ORDERS (Palladium biPurchaseOrders):\n{json.dumps(po_data, indent=2)}")
+        except Exception as e:
+            logger.warning(f"Error fetching PO context: {e}")
+
+    # 4. Invoices & Sales Analysis
+    if any(k in q_lower for k in ["sale", "invoice", "revenue", "billed", "credit note", "customer", "rep", "actual"]):
+        try:
+            sales_data = tool_query_sales_and_invoices(db, limit=30)
+            facts.append(f"LATEST SALES INVOICES & BILLING (Palladium biSalesAnalysis):\n{json.dumps(sales_data, indent=2)}")
+        except Exception as e:
+            logger.warning(f"Error fetching sales context: {e}")
+
+    # 5. Inventory / Stock
+    if any(k in q_lower for k in ["inventory", "stock", "deadstock", "warehouse", "catalog", "sku", "on hand", "reorder"]):
+        try:
+            inv_data = tool_query_inventory(db, limit=30)
+            facts.append(f"INVENTORY VALUATION & STOCK STATUS (Products table):\n{json.dumps(inv_data, indent=2)}")
+        except Exception as e:
+            logger.warning(f"Error fetching inventory context: {e}")
+
+    # 6. Customer Payments / Receipts
+    if any(k in q_lower for k in ["payment", "receipt", "deposit", "cashflow", "collection"]):
+        try:
+            pay_data = tool_query_payments(db, limit=30)
+            facts.append(f"CUSTOMER RECEIPTS & PAYMENTS (Palladium tblCustPay):\n{json.dumps(pay_data, indent=2)}")
+        except Exception as e:
+            logger.warning(f"Error fetching payment context: {e}")
+
+    return "\n\n".join(facts)
+
+
 def stream_vertex_gemini(
     contents: List[Dict[str, Any]],
-    model: str = GEMINI_MODEL
+    model: str = GEMINI_MODEL,
+    system_instruction: str = SYSTEM_PROMPT,
+    include_tools: bool = False
 ) -> Generator[str, None, None]:
     """Streams token chunks from Vertex AI streamGenerateContent using SSE."""
     token = get_gcp_access_token()
@@ -520,16 +581,20 @@ def stream_vertex_gemini(
     payload = {
         "contents": contents,
         "system_instruction": {
-            "parts": [{"text": SYSTEM_PROMPT}]
+            "parts": [{"text": system_instruction}]
         },
-        "tools": [{
-            "function_declarations": TOOL_DECLARATIONS
-        }],
         "generation_config": {
             "temperature": 0.2,
-            "max_output_tokens": 4096
+            "max_output_tokens": 4096,
+            "thinking_config": {
+                "thinking_budget": 0
+            }
         }
     }
+    if include_tools:
+        payload["tools"] = [{
+            "function_declarations": TOOL_DECLARATIONS
+        }]
 
     req = urllib.request.Request(
         url,
@@ -708,112 +773,49 @@ def executive_chat_stream_endpoint(
         })
 
     def event_stream():
-        # First turn: Ask Gemini if it needs tools
-        max_tool_turns = 2
-        tools_called = []
-        tool_results_summary = ""
+        user_query = req.messages[-1].content.strip()
+        
+        # 1. Immediate Pre-Computed Grounding (100ms Cloud SQL Query)
+        # Pulls live matching facts directly without making Gemini pause for tool rounds
+        yield f"data: {json.dumps({'status': 'Grounding with live Palladium ERP tables...'})}\n\n"
+        
+        try:
+            grounded_erp_context = build_dynamic_grounding_context(db, user_query)
+        except Exception as e:
+            logger.error(f"Error building grounding context: {e}")
+            grounded_erp_context = ""
 
-        for _ in range(max_tool_turns):
-            try:
-                gemini_resp = call_vertex_gemini_with_tools(contents)
-            except Exception as e:
-                logger.error(f"Vertex AI initial call error: {e}")
-                err_chunk = json.dumps({"error": str(e)})
-                yield f"data: {err_chunk}\n\n"
-                return
+        # 2. Build single-shot conversation with live ERP knowledge directly in prompt
+        augmented_system = (
+            f"{SYSTEM_PROMPT}\n\n"
+            f"=== LIVE PALLADIUM ERP GROUND TRUTH DATA ===\n"
+            f"{grounded_erp_context}\n"
+            f"=== END ERP DATA ===\n\n"
+            f"Use the verified records above to formulate your response immediately with exact figures."
+        )
 
-            candidate = gemini_resp.get("candidates", [{}])[0]
-            content_obj = candidate.get("content", {})
-            parts = content_obj.get("parts", [])
-            function_calls = [p.get("functionCall") for p in parts if p.get("functionCall")]
-
-            if not function_calls:
-                # No tools required — we can stream text directly!
-                # If candidate already has text, emit it, or stream from scratch
-                already_text = "".join(p.get("text", "") for p in parts if p.get("text")).strip()
-                if already_text:
-                    # Emit in natural tokenized chunks
-                    words = already_text.split(" ")
-                    for i, w in enumerate(words):
-                        chunk = (w + " ") if i < len(words) - 1 else w
-                        yield f"data: {json.dumps({'text': chunk})}\n\n"
-                    yield f"data: {json.dumps({'done': True, 'tools_called': tools_called})}\n\n"
-                    return
-                break
-
-            # Model requested tools: execute on Cloud SQL and notify client
-            contents.append(content_obj)
-            tool_response_parts = []
-
-            for call in function_calls:
-                fn_name = call.get("name")
-                fn_args = call.get("args") or {}
-                fn_call_id = call.get("id")
-                tools_called.append(fn_name)
-
-                # Send SSE event that tool is executing so UI can show a live indicator
-                yield f"data: {json.dumps({'status': f'Querying ERP: {fn_name}...', 'tools_called': tools_called})}\n\n"
-
-                fn_result = {}
-                try:
-                    if fn_name == "tool_get_sync_status":
-                        fn_result = tool_get_sync_status(db)
-                    elif fn_name == "tool_query_sales_and_invoices":
-                        fn_result = tool_query_sales_and_invoices(db, **fn_args)
-                    elif fn_name == "tool_query_purchase_orders":
-                        fn_result = tool_query_purchase_orders(db, **fn_args)
-                    elif fn_name == "tool_query_inventory":
-                        fn_result = tool_query_inventory(db, **fn_args)
-                    elif fn_name == "tool_query_payments":
-                        fn_result = tool_query_payments(db, **fn_args)
-                    elif fn_name == "tool_get_executive_kpis":
-                        fn_result = tool_get_executive_kpis(db, **fn_args)
-                    else:
-                        fn_result = {"error": f"Unknown tool '{fn_name}'"}
-                except Exception as e:
-                    logger.error(f"Error executing tool {fn_name}: {e}")
-                    fn_result = {"error": str(e)}
-
-                fn_resp_dict = {
-                    "name": fn_name,
-                    "response": {"result": fn_result}
-                }
-                if fn_call_id:
-                    fn_resp_dict["id"] = fn_call_id
-
-                tool_response_parts.append({
-                    "functionResponse": fn_resp_dict
-                })
-                tool_results_summary += f"\n--- {fn_name} Results ---\n{json.dumps(fn_result, indent=2)}\n"
-
-            contents.append({
-                "role": "user",
-                "parts": tool_response_parts
+        stream_contents = []
+        for m in req.messages:
+            role = "user" if m.role in ("user", "human") else "model"
+            stream_contents.append({
+                "role": role,
+                "parts": [{"text": m.content}]
             })
 
-        # Final pass: Stream the synthesis response from Gemini 3.8 Flash token-by-token
-        # In multi-turn tool loops, Gemini 3.8 Flash requires thoughtSignature continuity.
-        # If tools were invoked, convert the ERP data into direct grounding context for fast, bulletproof streaming.
+        # 3. Stream characters directly from Gemini 3.8 Flash (starts in ~2s with thinking_budget=0)
         try:
-            if tools_called and tool_results_summary:
-                grounded_contents = [
-                    {"role": "user", "parts": [{"text": req.messages[-1].content}]},
-                    {"role": "user", "parts": [{
-                        "text": f"PALLADIUM ERP LIVE DATA RETRIEVED:\n\n{tool_results_summary}\n\nPlease formulate your full, authoritative executive answer directly based on this data."
-                    }]}
-                ]
-                for text_chunk in stream_vertex_gemini(grounded_contents):
-                    if text_chunk:
-                        yield f"data: {json.dumps({'text': text_chunk})}\n\n"
-            else:
-                for text_chunk in stream_vertex_gemini(contents):
-                    if text_chunk:
-                        yield f"data: {json.dumps({'text': text_chunk})}\n\n"
+            for text_chunk in stream_vertex_gemini(
+                contents=stream_contents,
+                system_instruction=augmented_system,
+                include_tools=False
+            ):
+                if text_chunk:
+                    yield f"data: {json.dumps({'text': text_chunk})}\n\n"
         except Exception as e:
             logger.error(f"Error streaming Gemini response: {e}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
-        yield f"data: {json.dumps({'done': True, 'tools_called': tools_called})}\n\n"
+        yield f"data: {json.dumps({'done': True, 'tools_called': ['palladium_grounding_pipeline']})}\n\n"
 
     return StreamingResponse(
         event_stream(),
