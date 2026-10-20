@@ -711,6 +711,7 @@ def executive_chat_stream_endpoint(
         # First turn: Ask Gemini if it needs tools
         max_tool_turns = 2
         tools_called = []
+        tool_results_summary = ""
 
         for _ in range(max_tool_turns):
             try:
@@ -783,6 +784,7 @@ def executive_chat_stream_endpoint(
                 tool_response_parts.append({
                     "functionResponse": fn_resp_dict
                 })
+                tool_results_summary += f"\n--- {fn_name} Results ---\n{json.dumps(fn_result, indent=2)}\n"
 
             contents.append({
                 "role": "user",
@@ -790,10 +792,23 @@ def executive_chat_stream_endpoint(
             })
 
         # Final pass: Stream the synthesis response from Gemini 3.8 Flash token-by-token
+        # In multi-turn tool loops, Gemini 3.8 Flash requires thoughtSignature continuity.
+        # If tools were invoked, convert the ERP data into direct grounding context for fast, bulletproof streaming.
         try:
-            for text_chunk in stream_vertex_gemini(contents):
-                if text_chunk:
-                    yield f"data: {json.dumps({'text': text_chunk})}\n\n"
+            if tools_called and tool_results_summary:
+                grounded_contents = [
+                    {"role": "user", "parts": [{"text": req.messages[-1].content}]},
+                    {"role": "user", "parts": [{
+                        "text": f"PALLADIUM ERP LIVE DATA RETRIEVED:\n\n{tool_results_summary}\n\nPlease formulate your full, authoritative executive answer directly based on this data."
+                    }]}
+                ]
+                for text_chunk in stream_vertex_gemini(grounded_contents):
+                    if text_chunk:
+                        yield f"data: {json.dumps({'text': text_chunk})}\n\n"
+            else:
+                for text_chunk in stream_vertex_gemini(contents):
+                    if text_chunk:
+                        yield f"data: {json.dumps({'text': text_chunk})}\n\n"
         except Exception as e:
             logger.error(f"Error streaming Gemini response: {e}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
