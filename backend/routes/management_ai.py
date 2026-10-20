@@ -4,8 +4,9 @@ import logging
 import urllib.request
 import ssl
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Generator
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pydantic import BaseModel
@@ -505,6 +506,59 @@ def call_vertex_gemini_with_tools(
         return json.loads(resp.read().decode('utf-8'))
 
 
+def stream_vertex_gemini(
+    contents: List[Dict[str, Any]],
+    model: str = GEMINI_MODEL
+) -> Generator[str, None, None]:
+    """Streams token chunks from Vertex AI streamGenerateContent using SSE."""
+    token = get_gcp_access_token()
+    if GEMINI_LOCATION == "global":
+        url = f"https://aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/global/publishers/google/models/{model}:streamGenerateContent?alt=sse"
+    else:
+        url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/{model}:streamGenerateContent?alt=sse"
+
+    payload = {
+        "contents": contents,
+        "system_instruction": {
+            "parts": [{"text": SYSTEM_PROMPT}]
+        },
+        "tools": [{
+            "function_declarations": TOOL_DECLARATIONS
+        }],
+        "generation_config": {
+            "temperature": 0.2,
+            "max_output_tokens": 4096
+        }
+    }
+
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode('utf-8'),
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+    )
+
+    with urllib.request.urlopen(req, context=_SSL_CTX, timeout=120) as resp:
+        for line in resp:
+            line_str = line.decode('utf-8', errors='ignore')
+            if line_str.startswith("data:"):
+                raw_json = line_str[5:].strip()
+                if not raw_json:
+                    continue
+                try:
+                    data = json.loads(raw_json)
+                    candidate = data.get("candidates", [{}])[0]
+                    parts = candidate.get("content", {}).get("parts", [])
+                    for p in parts:
+                        txt = p.get("text")
+                        if txt:
+                            yield txt
+                except Exception as e:
+                    logger.debug(f"Error parsing SSE chunk: {e}")
+
+
 @public_router.get("/status")
 @router.get("/status")
 def get_ai_status(db: Session = Depends(get_db)):
@@ -629,3 +683,129 @@ def executive_chat_endpoint(
         "model": GEMINI_MODEL,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
+
+
+@public_router.post("/chat/stream")
+@router.post("/chat/stream")
+def executive_chat_stream_endpoint(
+    req: ChatRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Streaming Executive AI Conversational Endpoint:
+    Executes tool calls against Cloud SQL, then streams character-by-character
+    markdown output directly from Gemini 3.8 Flash to the client via Server-Sent Events (SSE).
+    """
+    if not req.messages:
+        raise HTTPException(status_code=400, detail="Messages list cannot be empty.")
+
+    contents = []
+    for m in req.messages:
+        role = "user" if m.role in ("user", "human") else "model"
+        contents.append({
+            "role": role,
+            "parts": [{"text": m.content}]
+        })
+
+    def event_stream():
+        # First turn: Ask Gemini if it needs tools
+        max_tool_turns = 2
+        tools_called = []
+
+        for _ in range(max_tool_turns):
+            try:
+                gemini_resp = call_vertex_gemini_with_tools(contents)
+            except Exception as e:
+                logger.error(f"Vertex AI initial call error: {e}")
+                err_chunk = json.dumps({"error": str(e)})
+                yield f"data: {err_chunk}\n\n"
+                return
+
+            candidate = gemini_resp.get("candidates", [{}])[0]
+            content_obj = candidate.get("content", {})
+            parts = content_obj.get("parts", [])
+            function_calls = [p.get("functionCall") for p in parts if p.get("functionCall")]
+
+            if not function_calls:
+                # No tools required — we can stream text directly!
+                # If candidate already has text, emit it, or stream from scratch
+                already_text = "".join(p.get("text", "") for p in parts if p.get("text")).strip()
+                if already_text:
+                    # Emit in natural tokenized chunks
+                    words = already_text.split(" ")
+                    for i, w in enumerate(words):
+                        chunk = (w + " ") if i < len(words) - 1 else w
+                        yield f"data: {json.dumps({'text': chunk})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'tools_called': tools_called})}\n\n"
+                    return
+                break
+
+            # Model requested tools: execute on Cloud SQL and notify client
+            contents.append(content_obj)
+            tool_response_parts = []
+
+            for call in function_calls:
+                fn_name = call.get("name")
+                fn_args = call.get("args") or {}
+                fn_call_id = call.get("id")
+                tools_called.append(fn_name)
+
+                # Send SSE event that tool is executing so UI can show a live indicator
+                yield f"data: {json.dumps({'status': f'Querying ERP: {fn_name}...', 'tools_called': tools_called})}\n\n"
+
+                fn_result = {}
+                try:
+                    if fn_name == "tool_get_sync_status":
+                        fn_result = tool_get_sync_status(db)
+                    elif fn_name == "tool_query_sales_and_invoices":
+                        fn_result = tool_query_sales_and_invoices(db, **fn_args)
+                    elif fn_name == "tool_query_purchase_orders":
+                        fn_result = tool_query_purchase_orders(db, **fn_args)
+                    elif fn_name == "tool_query_inventory":
+                        fn_result = tool_query_inventory(db, **fn_args)
+                    elif fn_name == "tool_query_payments":
+                        fn_result = tool_query_payments(db, **fn_args)
+                    elif fn_name == "tool_get_executive_kpis":
+                        fn_result = tool_get_executive_kpis(db, **fn_args)
+                    else:
+                        fn_result = {"error": f"Unknown tool '{fn_name}'"}
+                except Exception as e:
+                    logger.error(f"Error executing tool {fn_name}: {e}")
+                    fn_result = {"error": str(e)}
+
+                fn_resp_dict = {
+                    "name": fn_name,
+                    "response": {"result": fn_result}
+                }
+                if fn_call_id:
+                    fn_resp_dict["id"] = fn_call_id
+
+                tool_response_parts.append({
+                    "functionResponse": fn_resp_dict
+                })
+
+            contents.append({
+                "role": "user",
+                "parts": tool_response_parts
+            })
+
+        # Final pass: Stream the synthesis response from Gemini 3.8 Flash token-by-token
+        try:
+            for text_chunk in stream_vertex_gemini(contents):
+                if text_chunk:
+                    yield f"data: {json.dumps({'text': text_chunk})}\n\n"
+        except Exception as e:
+            logger.error(f"Error streaming Gemini response: {e}")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+        yield f"data: {json.dumps({'done': True, 'tools_called': tools_called})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )

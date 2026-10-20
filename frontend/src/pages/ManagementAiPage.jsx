@@ -230,6 +230,7 @@ export default function ManagementAiPage() {
 
   const [inputPrompt, setInputPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState('');
   const [syncStatus, setSyncStatus] = useState(null);
   const [isListening, setIsListening] = useState(false);
   const [speakingMsgIdx, setSpeakingMsgIdx] = useState(null);
@@ -388,14 +389,24 @@ export default function ManagementAiPage() {
       sessionTitle = query.slice(0, 32) + (query.length > 32 ? '…' : '');
     }
 
+    // Prepare assistant message slot for streaming output
+    const assistantIndex = updatedMessages.length;
+    const initialAssistantMessage = {
+      role: 'assistant',
+      content: '',
+      tools_called: [],
+      timestamp: new Date().toISOString()
+    };
+
     setSessions(prev => prev.map(s => {
       if (s.id === activeSessionId) {
-        return { ...s, title: sessionTitle, messages: updatedMessages };
+        return { ...s, title: sessionTitle, messages: [...updatedMessages, initialAssistantMessage] };
       }
       return s;
     }));
 
     setIsLoading(true);
+    setLoadingStatus('Connecting to Gemini 3.8 Flash...');
 
     try {
       const historyPayload = updatedMessages.map(m => ({
@@ -403,7 +414,7 @@ export default function ManagementAiPage() {
         content: m.content
       }));
 
-      const res = await fetch(`${API_BASE}/api/management-ai/chat`, {
+      const res = await fetch(`${API_BASE}/api/management-ai/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -418,36 +429,100 @@ export default function ManagementAiPage() {
         throw new Error(errData.detail || `Server responded with ${res.status}`);
       }
 
-      const data = await res.json();
-      const replyText = data.content || data.reply || '';
-      const assistantMessage = {
-        role: 'assistant',
-        content: replyText,
-        tools_called: data.tools_called || [],
-        timestamp: new Date().toISOString()
-      };
+      if (!res.body) {
+        throw new Error("ReadableStream not supported by browser or response.");
+      }
 
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let streamedContent = '';
+      let activeTools = [];
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        // Keep trailing partial chunk in buffer
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data:')) {
+            const dataStr = trimmed.slice(5).trim();
+            if (!dataStr) continue;
+            try {
+              const parsed = JSON.parse(dataStr);
+              if (parsed.status) {
+                setLoadingStatus(parsed.status);
+              }
+              if (parsed.tools_called) {
+                activeTools = parsed.tools_called;
+              }
+              if (parsed.text) {
+                streamedContent += parsed.text;
+                // Update message token-by-token
+                setSessions(prev => prev.map(s => {
+                  if (s.id === activeSessionId) {
+                    const newMsgs = [...s.messages];
+                    if (newMsgs[assistantIndex]) {
+                      newMsgs[assistantIndex] = {
+                        ...newMsgs[assistantIndex],
+                        content: streamedContent,
+                        tools_called: activeTools
+                      };
+                    }
+                    return { ...s, messages: newMsgs };
+                  }
+                  return s;
+                }));
+              }
+              if (parsed.error) {
+                throw new Error(parsed.error);
+              }
+            } catch (jsonErr) {
+              // Ignore non-json chunk or partial decode
+            }
+          }
+        }
+      }
+
+      // Final synchronization update
       setSessions(prev => prev.map(s => {
         if (s.id === activeSessionId) {
-          return { ...s, messages: [...updatedMessages, assistantMessage] };
+          const newMsgs = [...s.messages];
+          if (newMsgs[assistantIndex]) {
+            newMsgs[assistantIndex] = {
+              ...newMsgs[assistantIndex],
+              content: streamedContent || 'Summary of retrieved ERP data is ready.',
+              tools_called: activeTools
+            };
+          }
+          return { ...s, messages: newMsgs };
         }
         return s;
       }));
+
     } catch (err) {
-      console.error("Management AI error:", err);
-      const errorMessage = {
-        role: 'assistant',
-        content: `⚠️ **Executive Assistant Error**: Could not complete query.\n\n*Details*: ${err.message}`,
-        timestamp: new Date().toISOString()
-      };
+      console.error("Management AI streaming error:", err);
       setSessions(prev => prev.map(s => {
         if (s.id === activeSessionId) {
-          return { ...s, messages: [...updatedMessages, errorMessage] };
+          const newMsgs = [...s.messages];
+          if (newMsgs[assistantIndex]) {
+            newMsgs[assistantIndex] = {
+              ...newMsgs[assistantIndex],
+              content: `⚠️ **Executive Assistant Error**: Could not complete query.\n\n*Details*: ${err.message}`
+            };
+          }
+          return { ...s, messages: newMsgs };
         }
         return s;
       }));
     } finally {
       setIsLoading(false);
+      setLoadingStatus('');
     }
   };
 
@@ -862,7 +937,7 @@ export default function ManagementAiPage() {
             })}
 
             {/* Thinking / Tool Calling Animation */}
-            {isLoading && (
+            {isLoading && (!messages[messages.length - 1] || messages[messages.length - 1]?.content === '') && (
               <div style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -880,10 +955,10 @@ export default function ManagementAiPage() {
                   color: '#c084fc'
                 }}>
                   <Sparkles size={14} />
-                  <span>Gemini 3.8 Flash Analyzing Palladium Data…</span>
+                  <span>Gemini 3.8 Flash Executive</span>
                 </div>
                 <div style={{
-                  padding: '16px 20px',
+                  padding: '14px 18px',
                   borderRadius: '16px',
                   background: 'rgba(255, 255, 255, 0.03)',
                   border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -892,15 +967,15 @@ export default function ManagementAiPage() {
                   gap: '12px'
                 }}>
                   <div style={{
-                    width: '20px',
-                    height: '20px',
+                    width: '18px',
+                    height: '18px',
                     border: '2px solid rgba(168, 85, 247, 0.2)',
                     borderTopColor: '#c084fc',
                     borderRadius: '50%',
                     animation: 'spin 0.8s linear infinite'
                   }} />
-                  <span style={{ fontSize: '13px', color: '#94a3b8' }}>
-                    Querying Cloud SQL sales, POs, and stock tables…
+                  <span style={{ fontSize: '13px', color: '#cbd5e1' }}>
+                    {loadingStatus || 'Connecting to Gemini 3.8 Flash...'}
                   </span>
                 </div>
               </div>
