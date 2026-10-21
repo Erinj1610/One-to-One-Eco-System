@@ -454,6 +454,7 @@ function ReleasesDeploymentManager() {
   const [showTokenConfig, setShowTokenConfig] = useState(false);
   const [githubTokenInput, setGithubTokenInput] = useState('');
   const [savingToken, setSavingToken] = useState(false);
+  const [cloningDb, setCloningDb] = useState(false);
 
   const DEPLOY_BACKEND = 'https://one-to-one-backend-staging-858977785048.us-central1.run.app';
 
@@ -515,6 +516,36 @@ function ReleasesDeploymentManager() {
       alert(`Error saving GitHub token: ${err.message}`);
     } finally {
       setSavingToken(false);
+    }
+  };
+
+  const handleCloneProdToStaging = async () => {
+    if (!window.confirm("Are you sure you want to clone the live Production database into Staging? This will overwrite Staging data with the latest Production tables.")) return;
+    setCloningDb(true);
+    setActionMsg(null);
+    try {
+      let res = await fetch(`${API_BASE}/admin/database/clone-prod-to-staging`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        res = await fetch(`${DEPLOY_BACKEND}/admin/database/clone-prod-to-staging`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        }).catch(() => null);
+      }
+
+      const resData = res ? await res.json().catch(() => ({})) : {};
+      if (res && res.ok) {
+        setActionMsg({ type: 'success', text: `🟢 ${resData.message || 'Successfully cloned Production database into Staging!'}` });
+      } else {
+        alert(`Database clone failed: ${resData.detail || 'Error replicating database'}`);
+      }
+    } catch (err) {
+      alert(`Error replicating database: ${err.message}`);
+    } finally {
+      setCloningDb(false);
     }
   };
 
@@ -739,9 +770,16 @@ function ReleasesDeploymentManager() {
           <button 
             onClick={() => setShowPromoteModal(true)}
             className="glow-btn"
-            style={{ width: '100%', padding: '9px', background: '#2563eb', border: 'none', borderRadius: '6px', color: '#ffffff', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+            style={{ width: '100%', padding: '9px', background: '#2563eb', border: 'none', borderRadius: '6px', color: '#ffffff', fontWeight: 700, fontSize: '13px', cursor: 'pointer', marginBottom: '8px' }}
           >
             🚀 Promote Staging to Live Production
+          </button>
+          <button 
+            onClick={handleCloneProdToStaging}
+            disabled={cloningDb}
+            style={{ width: '100%', padding: '8px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', color: '#60a5fa', fontWeight: 600, fontSize: '12px', cursor: cloningDb ? 'not-allowed' : 'pointer' }}
+          >
+            {cloningDb ? '🔄 Replicating Prod Database to Staging...' : '📥 Sync Prod Database to Staging (Test Errors)'}
           </button>
         </div>
 
