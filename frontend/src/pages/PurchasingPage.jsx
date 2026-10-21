@@ -120,6 +120,7 @@ export default function PurchasingPage() {
   const [selectedCandidateKey, setSelectedCandidateKey] = useState(null); // 'orderItemId' or 'MANUAL'
   const [manualProjectId, setManualProjectId] = useState('');
   const [manualOrderId, setManualOrderId] = useState('');
+  const [allocSearch, setAllocSearch] = useState('');
   const [allocQty, setAllocQty] = useState(1);
   const [allocEta, setAllocEta] = useState('');
   const [allocNotes, setAllocNotes] = useState('');
@@ -131,12 +132,53 @@ export default function PurchasingPage() {
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [batchProjectId, setBatchProjectId] = useState('');
   const [batchOrderId, setBatchOrderId] = useState('');
+  const [batchSearch, setBatchSearch] = useState('');
   const [batchEta, setBatchEta] = useState('');
   const [batchNotes, setBatchNotes] = useState('');
   const [batchFile, setBatchFile] = useState(null);
   const [showBatchNoDocPrompt, setShowBatchNoDocPrompt] = useState(false);
   const [isSavingBatchAlloc, setIsSavingBatchAlloc] = useState(false);
   const [batchLineMappings, setBatchLineMappings] = useState({}); // { [line_id]: { type: 'item'|'service'|'ignore', orderItemId?: string } }
+
+  // Filtered Candidates in Single Alloc Modal
+  const filteredCandidateOrders = useMemo(() => {
+    if (!allocSearch.trim()) return candidateOrders;
+    const q = allocSearch.toLowerCase().trim();
+    return candidateOrders.filter(c => 
+      (c.project_name || '').toLowerCase().includes(q) ||
+      (c.order_title || '').toLowerCase().includes(q) ||
+      (c.fitting_code || '').toLowerCase().includes(q) ||
+      (c.area || '').toLowerCase().includes(q)
+    );
+  }, [candidateOrders, allocSearch]);
+
+  // Filtered Projects for Single Alloc Manual Dropdown
+  const filteredManualProjects = useMemo(() => {
+    if (!allocSearch.trim()) return Object.values(projects || {});
+    const q = allocSearch.toLowerCase().trim();
+    return Object.values(projects || {}).filter(p => 
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.client || '').toLowerCase().includes(q) ||
+      (p.orders || []).some(o => 
+        (o.quoteName || o.quote_name || '').toLowerCase().includes(q) ||
+        String(o.id || o.dbId || '').toLowerCase().includes(q)
+      )
+    );
+  }, [projects, allocSearch]);
+
+  // Filtered Projects for Batch Alloc Dropdown
+  const filteredBatchProjects = useMemo(() => {
+    if (!batchSearch.trim()) return Object.values(projects || {});
+    const q = batchSearch.toLowerCase().trim();
+    return Object.values(projects || {}).filter(p => 
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.client || '').toLowerCase().includes(q) ||
+      (p.orders || []).some(o => 
+        (o.quoteName || o.quote_name || '').toLowerCase().includes(q) ||
+        String(o.id || o.dbId || '').toLowerCase().includes(q)
+      )
+    );
+  }, [projects, batchSearch]);
 
   const selectedBatchOrder = useMemo(() => {
     if (!batchProjectId || !batchOrderId) return null;
@@ -447,6 +489,7 @@ export default function PurchasingPage() {
     setShowFulfilledCandidates(false);
     setManualProjectId('');
     setManualOrderId('');
+    setAllocSearch('');
     setAllocModalOpen(true);
 
     await fetchProcurementCandidates(item, false);
@@ -657,6 +700,7 @@ export default function PurchasingPage() {
     setBatchFile(null);
     setShowBatchNoDocPrompt(false);
     setBatchLineMappings({});
+    setBatchSearch('');
     setBatchModalOpen(true);
   };
 
@@ -3221,7 +3265,7 @@ export default function PurchasingPage() {
                         required
                       >
                         <option value="">-- Select Destination Project --</option>
-                        {Object.values(projects || {}).map(p => (
+                        {filteredBatchProjects.map(p => (
                           <option key={p.key || p.id} value={p.id ? String(p.id) : (p.key || '')}>{p.name}</option>
                         ))}
                       </select>
@@ -3239,7 +3283,15 @@ export default function PurchasingPage() {
                         <option value="">-- General Project Allocation --</option>
                         {(() => {
                           const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId || p.name === batchProjectId);
-                          return (proj?.orders || []).map(o => (
+                          let ords = proj?.orders || [];
+                          if (batchSearch.trim()) {
+                            const q = batchSearch.toLowerCase().trim();
+                            ords = ords.filter(o => 
+                              (o.quoteName || o.quote_name || '').toLowerCase().includes(q) ||
+                              String(o.id || o.dbId || '').toLowerCase().includes(q)
+                            );
+                          }
+                          return ords.map(o => (
                             <option key={o.id || o.dbId} value={o.id || o.dbId}>{o.quoteName || o.quote_name || `Order #${o.id || o.dbId}`}</option>
                           ));
                         })()}
@@ -3786,7 +3838,7 @@ export default function PurchasingPage() {
                             }}
                           >
                             <option value="">-- Select Target Project --</option>
-                            {Object.values(projects || {}).map(p => (
+                            {filteredManualProjects.map(p => (
                               <option key={p.key || p.id} value={p.id ? String(p.id) : (p.key || '')}>{p.name}</option>
                             ))}
                           </select>
@@ -3804,7 +3856,15 @@ export default function PurchasingPage() {
                             <option value="">-- General Project Allocation --</option>
                             {(() => {
                               const proj = Object.values(projects || {}).find(p => String(p.id) === String(manualProjectId) || p.key === manualProjectId || p.name === manualProjectId);
-                              return (proj?.orders || []).map(o => (
+                              let ords = proj?.orders || [];
+                              if (allocSearch.trim()) {
+                                const q = allocSearch.toLowerCase().trim();
+                                ords = ords.filter(o => 
+                                  (o.quoteName || o.quote_name || '').toLowerCase().includes(q) ||
+                                  String(o.id || o.dbId || '').toLowerCase().includes(q)
+                                );
+                              }
+                              return ords.map(o => (
                                 <option key={o.id || o.dbId} value={o.id || o.dbId}>{o.quoteName || o.quote_name || `Order #${o.id || o.dbId}`}</option>
                               ));
                             })()}

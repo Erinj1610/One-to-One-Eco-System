@@ -128,6 +128,7 @@ export default function InvoicesPage() {
   const [selectedCandidateKey, setSelectedCandidateKey] = useState(null);
   const [manualProjectId, setManualProjectId] = useState('');
   const [manualOrderId, setManualOrderId] = useState('');
+  const [allocSearch, setAllocSearch] = useState('');
   const [allocQty, setAllocQty] = useState(1);
   const [allocNotes, setAllocNotes] = useState('');
   const [allocFile, setAllocFile] = useState(null);
@@ -139,12 +140,53 @@ export default function InvoicesPage() {
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [batchProjectId, setBatchProjectId] = useState('');
   const [batchOrderId, setBatchOrderId] = useState('');
+  const [batchSearch, setBatchSearch] = useState('');
   const [batchNotes, setBatchNotes] = useState('');
   const [batchFile, setBatchFile] = useState(null);
   const [showBatchNoDocPrompt, setShowBatchNoDocPrompt] = useState(false);
   const [isSavingBatchAlloc, setIsSavingBatchAlloc] = useState(false);
   const [batchCreditIntent, setBatchCreditIntent] = useState('WILL_NOT_REINVOICE');
   const [batchLineMappings, setBatchLineMappings] = useState({}); // { [line_id]: { type: 'item'|'service'|'ignore', orderItemId?: string } }
+
+  // Filtered Candidates in Single Alloc Modal
+  const filteredCandidateOrders = useMemo(() => {
+    if (!allocSearch.trim()) return candidateOrders;
+    const q = allocSearch.toLowerCase().trim();
+    return candidateOrders.filter(c => 
+      (c.project_name || '').toLowerCase().includes(q) ||
+      (c.order_title || '').toLowerCase().includes(q) ||
+      (c.client || '').toLowerCase().includes(q) ||
+      (c.fitting_code || '').toLowerCase().includes(q)
+    );
+  }, [candidateOrders, allocSearch]);
+
+  // Filtered Projects for Single Alloc Manual Dropdown
+  const filteredManualProjects = useMemo(() => {
+    if (!allocSearch.trim()) return Object.values(projects || {});
+    const q = allocSearch.toLowerCase().trim();
+    return Object.values(projects || {}).filter(p => 
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.client || '').toLowerCase().includes(q) ||
+      (p.orders || []).some(o => 
+        (o.quoteName || o.quote_name || '').toLowerCase().includes(q) ||
+        String(o.id || o.dbId || '').toLowerCase().includes(q)
+      )
+    );
+  }, [projects, allocSearch]);
+
+  // Filtered Projects for Batch Alloc Dropdown
+  const filteredBatchProjects = useMemo(() => {
+    if (!batchSearch.trim()) return Object.values(projects || {});
+    const q = batchSearch.toLowerCase().trim();
+    return Object.values(projects || {}).filter(p => 
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.client || '').toLowerCase().includes(q) ||
+      (p.orders || []).some(o => 
+        (o.quoteName || o.quote_name || '').toLowerCase().includes(q) ||
+        String(o.id || o.dbId || '').toLowerCase().includes(q)
+      )
+    );
+  }, [projects, batchSearch]);
 
   const selectedBatchOrder = useMemo(() => {
     if (!batchProjectId || !batchOrderId) return null;
@@ -353,6 +395,7 @@ export default function InvoicesPage() {
     const custName = (selectedDocument?.customer_name || '').trim().toLowerCase();
 
     setShowFulfilledCandidates(false);
+    setAllocSearch('');
     await fetchInvoicingCandidates(line, false, docRef, custName);
     setAllocModalOpen(true);
   };
@@ -666,6 +709,7 @@ export default function InvoicesPage() {
     setBatchLineMappings({});
     setShowBatchNoDocPrompt(false);
     setBatchCreditIntent('WILL_NOT_REINVOICE');
+    setBatchSearch('');
     setBatchModalOpen(true);
   };
 
@@ -2734,7 +2778,7 @@ export default function InvoicesPage() {
                         required
                       >
                         <option value="">-- Select Destination Project --</option>
-                        {Object.values(projects || {}).map(p => (
+                        {filteredManualProjects.map(p => (
                           <option key={p.key || p.id} value={p.id ? String(p.id) : (p.key || '')}>{p.name}</option>
                         ))}
                       </select>
@@ -2752,7 +2796,15 @@ export default function InvoicesPage() {
                         <option value="">-- General Project Allocation --</option>
                         {(() => {
                           const proj = Object.values(projects || {}).find(p => String(p.id) === String(batchProjectId) || p.key === batchProjectId || p.name === batchProjectId);
-                          return (proj?.orders || []).map(o => (
+                          let ords = proj?.orders || [];
+                          if (batchSearch.trim()) {
+                            const q = batchSearch.toLowerCase().trim();
+                            ords = ords.filter(o => 
+                              (o.quoteName || o.quote_name || '').toLowerCase().includes(q) ||
+                              String(o.id || o.dbId || '').toLowerCase().includes(q)
+                            );
+                          }
+                          return ords.map(o => (
                             <option key={o.id || o.dbId} value={o.id || o.dbId}>{o.quoteName || o.quote_name || `Order #${o.id || o.dbId}`}</option>
                           ));
                         })()}
@@ -3206,9 +3258,31 @@ export default function InvoicesPage() {
                 {/* Candidate Orders (Intelligent ERP Matching) */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-                    <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Sparkles size={13} color="#3b82f6" />
-                      Intelligent Candidate Order Matches:
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                      <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Sparkles size={13} color="#3b82f6" />
+                        Candidate Matches:
+                      </div>
+                      <div style={{ position: 'relative', width: '200px' }}>
+                        <Search size={12} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
+                        <input
+                          type="text"
+                          placeholder="Search orders, PO #..."
+                          value={allocSearch}
+                          onChange={e => setAllocSearch(e.target.value)}
+                          className="input input-xs"
+                          style={{ width: '100%', paddingLeft: '24px', fontSize: '11px', height: '24px', background: 'var(--bg-primary)' }}
+                        />
+                        {allocSearch && (
+                          <button 
+                            type="button" 
+                            onClick={() => setAllocSearch('')} 
+                            style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px', color: 'var(--text-tertiary)', padding: 0 }}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: 'pointer', userSelect: 'none' }}>
@@ -3232,9 +3306,9 @@ export default function InvoicesPage() {
                     </div>
                   </div>
 
-                  {candidateOrders.length > 0 ? (
+                  {filteredCandidateOrders.length > 0 ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      {candidateOrders.map(cand => {
+                      {filteredCandidateOrders.map(cand => {
                         const isSelected = selectedCandidateKey === cand.candidate_key;
                         const reqQty = cand.required_qty ?? cand.needed_qty ?? 0;
                         const invQty = cand.invoiced_qty ?? 0;
@@ -3315,7 +3389,7 @@ export default function InvoicesPage() {
                         }}
                       >
                         <option value="">-- Choose Project --</option>
-                        {Object.values(projects || {}).map(p => (
+                        {filteredBatchProjects.map(p => (
                           <option key={p.key || p.id} value={p.id ? String(p.id) : (p.key || '')}>{p.name}</option>
                         ))}
                       </select>

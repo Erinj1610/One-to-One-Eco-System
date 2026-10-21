@@ -81,6 +81,7 @@ export default function PaymentsPage() {
   const [projectsOrders, setProjectsOrders] = useState([]);
   const [manualProjectId, setManualProjectId] = useState('');
   const [manualOrderId, setManualOrderId] = useState('');
+  const [allocSearch, setAllocSearch] = useState('');
   const [allocAmount, setAllocAmount] = useState('');
   const [allocPaymentType, setAllocPaymentType] = useState('Deposit Payment');
   const [allocNotes, setAllocNotes] = useState('');
@@ -259,6 +260,7 @@ export default function PaymentsPage() {
     setSelectedCandidateKey(null);
     setManualProjectId('');
     setManualOrderId('');
+    setAllocSearch('');
     setAllocModalOpen(true);
 
     setIsLoadingCandidates(true);
@@ -360,12 +362,46 @@ export default function PaymentsPage() {
     setAllocAmount(Math.min(needed, available).toFixed(2));
   };
 
-  // Orders available for the manually selected project
+  // Filtered Candidate Orders based on allocSearch
+  const filteredCandidateOrders = useMemo(() => {
+    if (!allocSearch.trim()) return candidateOrders;
+    const q = allocSearch.toLowerCase().trim();
+    return candidateOrders.filter(cand => 
+      (cand.quote_name || '').toLowerCase().includes(q) ||
+      (cand.order_id || '').toLowerCase().includes(q) ||
+      (cand.project_name || '').toLowerCase().includes(q) ||
+      (cand.client || '').toLowerCase().includes(q)
+    );
+  }, [candidateOrders, allocSearch]);
+
+  // Filtered projects for manual dropdown based on allocSearch
+  const filteredProjectsOrders = useMemo(() => {
+    if (!allocSearch.trim()) return projectsOrders;
+    const q = allocSearch.toLowerCase().trim();
+    return projectsOrders.filter(p => 
+      (p.project_name || '').toLowerCase().includes(q) ||
+      (p.project_key || '').toLowerCase().includes(q) ||
+      (p.orders || []).some(o => 
+        (o.quote_name || '').toLowerCase().includes(q) ||
+        (o.po_number || '').toLowerCase().includes(q) ||
+        String(o.id || '').toLowerCase().includes(q)
+      )
+    );
+  }, [projectsOrders, allocSearch]);
+
+  // Orders available for the manually selected project, filtered by allocSearch
   const availableManualOrders = useMemo(() => {
     if (!manualProjectId) return [];
     const proj = projectsOrders.find(p => String(p.project_id) === String(manualProjectId) || p.project_key === manualProjectId);
-    return proj ? proj.orders : [];
-  }, [manualProjectId, projectsOrders]);
+    if (!proj) return [];
+    if (!allocSearch.trim()) return proj.orders;
+    const q = allocSearch.toLowerCase().trim();
+    return proj.orders.filter(o => 
+      (o.quote_name || '').toLowerCase().includes(q) ||
+      (o.po_number || '').toLowerCase().includes(q) ||
+      String(o.id || '').toLowerCase().includes(q)
+    );
+  }, [manualProjectId, projectsOrders, allocSearch]);
 
   const handleSubmitAllocation = async (e) => {
     if (e) e.preventDefault();
@@ -1425,17 +1461,39 @@ export default function PaymentsPage() {
 
               {/* CANDIDATE ORDERS SUGGESTIONS (Automatic Intelligent Matching) */}
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                  🎯 Candidate Project Orders (Intelligent ERP Matching)
-                </label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: '10px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                    🎯 Destination Project & Order Matches
+                  </label>
+                  <div style={{ position: 'relative', width: '220px' }}>
+                    <Search size={13} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
+                    <input
+                      type="text"
+                      placeholder="Search order, PO #, project..."
+                      value={allocSearch}
+                      onChange={e => setAllocSearch(e.target.value)}
+                      className="input input-xs"
+                      style={{ width: '100%', paddingLeft: '26px', fontSize: '11px', height: '26px', background: 'var(--bg-primary)' }}
+                    />
+                    {allocSearch && (
+                      <button 
+                        type="button" 
+                        onClick={() => setAllocSearch('')} 
+                        style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'var(--text-tertiary)', padding: 0 }}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
 
                 {isLoadingCandidates ? (
                   <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '12px' }}>
                     <RefreshCw size={14} className="animate-spin" style={{ display: 'inline', marginRight: '6px' }} /> Searching project orders...
                   </div>
-                ) : candidateOrders.length > 0 ? (
+                ) : filteredCandidateOrders.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
-                    {candidateOrders.map((cand) => {
+                    {filteredCandidateOrders.map((cand) => {
                       const isSelected = selectedCandidateKey === cand.order_id;
                       return (
                         <div
@@ -1516,7 +1574,7 @@ export default function PaymentsPage() {
                         style={{ width: '100%', fontSize: '12px' }}
                       >
                         <option value="">-- Choose Project --</option>
-                        {projectsOrders.map(p => (
+                        {filteredProjectsOrders.map(p => (
                           <option key={p.project_id || p.project_key} value={p.project_id || p.project_key}>
                             {p.project_name} ({p.orders.length} orders)
                           </option>
