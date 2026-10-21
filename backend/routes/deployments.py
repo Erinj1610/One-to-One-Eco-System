@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, HTTPException, Depends, Body
 from sqlalchemy.orm import Session
 from database.cloud_sql import get_db
@@ -98,11 +99,10 @@ def get_deployments_status(db: Session = Depends(get_db)):
     github_releases = []
     try:
         gh_url = f"https://api.github.com/repos/{GITHUB_REPO}/commits?sha=main&per_page=100"
-        gh_headers = {"User-Agent": "OneToOne-Deployer"}
-        if token:
-            gh_headers["Authorization"] = f"Bearer {token}"
+        # The repository is public; query without invalid auth token so GitHub returns 200 without rate-limit or 401 Bad credentials
+        gh_headers = {"User-Agent": "OneToOne-Deployer", "Accept": "application/vnd.github.v3+json"}
         gh_req = urllib.request.Request(gh_url, headers=gh_headers)
-        with urllib.request.urlopen(gh_req, timeout=5) as gh_resp:
+        with urllib.request.urlopen(gh_req, timeout=6) as gh_resp:
             gh_commits = json.loads(gh_resp.read().decode("utf-8"))
             for c in gh_commits:
                 msg = c.get("commit", {}).get("message", "")
@@ -126,7 +126,7 @@ def get_deployments_status(db: Session = Depends(get_db)):
                         "is_active_prod": len(github_releases) == 0
                     })
     except Exception as gh_fetch_err:
-        logger.warning(f"Notice: Failed to fetch live GitHub commits for releases: {gh_fetch_err}")
+        logging.warning(f"Notice: Failed to fetch live GitHub commits for releases: {gh_fetch_err}")
 
     formatted_revisions = []
     if github_releases:
