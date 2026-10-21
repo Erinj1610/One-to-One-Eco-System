@@ -17,7 +17,8 @@ export const SYSTEM_MODULES = [
   'Documents',
   'HR & people',
   'Reports',
-  'Support'
+  'Support',
+  'Management AI'
 ];
 
 export const PATH_TO_MODULE = {
@@ -43,6 +44,7 @@ export const PATH_TO_MODULE = {
   '/reports': 'Reports',
   '/ticket-logger': 'Support',
   '/support': 'Support',
+  '/management-ai': 'Management AI',
 };
 
 export const MODULE_ID_TO_SYSTEM_MODULE = {
@@ -67,7 +69,8 @@ export const MODULE_ID_TO_SYSTEM_MODULE = {
   'hr': 'HR & people',
   'reports': 'Reports',
   'ticket_logger': 'Support',
-  'support': 'Support'
+  'support': 'Support',
+  'management_ai': 'Management AI'
 };
 
 export const getSystemModuleForPath = (pathname) => {

@@ -905,24 +905,36 @@ export default function OrdersPage() {
     const vatAmount = discountedRetail * (effectiveVatPercent / 100);
     const finalTotalInclVat = discountedRetail + vatAmount;
 
-    const finalItems = activeOrderItems.map((item, idx) => ({
-      index: (idx + 1).toString(),
-      isSpacer: !!(item.isSpacer || item.type === 'SPACER'),
-      code: item.code || '',
-      oneOneCode: item.oneOneCode || item.one_one_code || '',
-      type: item.type || '',
-      description: item.isSpacer || item.type === 'SPACER' ? '' : (item.description || item.client_description || item.clientDescription || ''),
-      clientDescription: item.isSpacer || item.type === 'SPACER' ? '' : (item.clientDescription || item.client_description || item.description || ''),
-      client_description: item.isSpacer || item.type === 'SPACER' ? '' : (item.client_description || item.clientDescription || item.description || ''),
-      qty: item.isSpacer || item.type === 'SPACER' ? '' : (item.qty || 0).toString(),
-      brand: item.brand || '',
-      retail: item.isSpacer || item.type === 'SPACER' ? '' : `R ${(Number(item.unitRetail || item.unit_retail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      totalRetail: item.isSpacer || item.type === 'SPACER' ? '' : `R ${((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      floor: item.floor || '',
-      area: item.area || '',
-      dimming: item.dimming || 'Non-dim',
-      stockStatus: item.stockStatus || item.stock_status || 'In Stock',
-      eta: item.eta || '4 weeks',
+    const finalItems = activeOrderItems.map((item, idx) => {
+      const isSpacer = !!(item.isSpacer || item.type === 'SPACER');
+      const rawCode = (item.code || item.oneOneCode || item.one_one_code || '').trim();
+      const rawDesc = (item.description || item.client_description || item.clientDescription || '').trim();
+      const isUnconfirmed = !isSpacer && (!rawCode || rawDesc.toLowerCase().includes('unassigned'));
+
+      const displayCode = isSpacer ? '' : (isUnconfirmed ? 'To be confirmed' : (item.oneOneCode || item.one_one_code || item.code || ''));
+      const displayDesc = isSpacer ? '' : (isUnconfirmed ? 'To be confirmed' : rawDesc);
+      const displayRetail = isSpacer ? '' : (isUnconfirmed ? 'To be confirmed' : `R ${(Number(item.unitRetail || item.unit_retail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      const displayTotalRetail = isSpacer ? '' : (isUnconfirmed ? 'To be confirmed' : `R ${((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      const displayEta = isSpacer ? '' : (isUnconfirmed ? 'To be confirmed' : (item.eta || '4 weeks'));
+
+      return {
+        index: (idx + 1).toString(),
+        isSpacer,
+        code: displayCode,
+        oneOneCode: displayCode,
+        type: item.type || '',
+        description: displayDesc,
+        clientDescription: displayDesc,
+        client_description: displayDesc,
+        qty: isSpacer ? '' : (item.qty || 0).toString(),
+        brand: isUnconfirmed ? '' : (item.brand || ''),
+        retail: displayRetail,
+        totalRetail: displayTotalRetail,
+        floor: item.floor || '',
+        area: item.area || '',
+        dimming: isUnconfirmed ? 'To be confirmed' : (item.dimming || 'Non-dim'),
+        stockStatus: isUnconfirmed ? 'To be confirmed' : (item.stockStatus || item.stock_status || 'In Stock'),
+        eta: displayEta,
       image_url: item.image_url || item.imageUrl || item.image || item.Image || item.photo || '',
       imageUrl: item.image_url || item.imageUrl || item.image || item.Image || item.photo || '',
       image: item.image_url || item.imageUrl || item.image || item.Image || item.photo || '',
@@ -935,7 +947,8 @@ export default function OrdersPage() {
       qr_code_link: item.qr_code_link || item.qr_link || item.qr || '',
       QR_CODE: item.qr_code || item.qr || item.qr_link || '',
       QR_CODE_LINK: item.qr_code_link || item.qr_link || item.qr || ''
-    }));
+      };
+    });
 
     // Resolve Representative & PM Info
     const resolvedRep = oneOneRep || pmName || 'Martin Döller';
@@ -1342,6 +1355,7 @@ export default function OrdersPage() {
 
   // Modal creation state
   const [showCreatePoModal, setShowCreatePoModal] = useState(false);
+  const [isSubmittingPo, setIsSubmittingPo] = useState(false);
   const [newPoForm, setNewPoForm] = useState({
     projectKey: 'upper',
     supplier: 'Molecule Dist.',
@@ -2657,87 +2671,97 @@ export default function OrdersPage() {
   // Create a brand-new Purchase Order / Quotation
   const handleCreatePo = async (e) => {
     e.preventDefault();
-    const firstAvailableKey = Object.keys(projects)[0] || '';
-    const targetKey = (newPoForm.projectKey && projects[newPoForm.projectKey])
-      ? newPoForm.projectKey
-      : (newPoForm.projectKey === 'direct-client' ? 'direct-client' : firstAvailableKey);
-    const proj = projects[targetKey] || { name: 'Client Direct', client: '', pm: '' };
+    if (isSubmittingPo) return;
+    setIsSubmittingPo(true);
 
-    let newPoId = '';
     try {
-      const resp = await fetch(`${API_BASE}/api/orders/next-quote-number`);
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.next_po_id) {
-          newPoId = data.next_po_id;
+      const firstAvailableKey = Object.keys(projects)[0] || '';
+      const targetKey = (newPoForm.projectKey && projects[newPoForm.projectKey])
+        ? newPoForm.projectKey
+        : (newPoForm.projectKey === 'direct-client' ? 'direct-client' : firstAvailableKey);
+      const proj = projects[targetKey] || { name: 'Client Direct', client: '', pm: '' };
+
+      let newPoId = '';
+      try {
+        const resp = await fetch(`${API_BASE}/api/orders/next-quote-number`);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.next_po_id) {
+            newPoId = data.next_po_id;
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch atomic next quote ID, using timestamp fallback:', err);
+      }
+
+      if (!newPoId) {
+        const year = new Date().getFullYear();
+        newPoId = `Q-${year}-${Date.now().toString().slice(-4)}`;
+      }
+
+      const contact = (contacts || []).find(c => c.name === proj.client || c.company === proj.client) || {};
+      const formattedToday = new Date().toLocaleDateString('en-GB');
+      const newOrder = {
+        id: newPoId,
+        po_number: newPoId,
+        project_key: targetKey || 'direct-client',
+        quote_name: newPoForm.quote_name || 'General Spec',
+        supplier: 'Made by 1-to-1',
+        items: 0,
+        items_count: 0,
+        value: 0,
+        paid: 0,
+        outstanding: 0,
+        status: newPoForm.status || 'Draft',
+        eta: newPoForm.eta || '4 weeks',
+        costValue: 0,
+        discount: 0,
+        orderDate: formattedToday,
+        client: proj.client || '',
+        client_name: proj.client || '',
+        clientCompany: contact.company || proj.client || '',
+        client_company: contact.company || proj.client || '',
+        clientContact: contact.name || proj.client || '',
+        client_contact: contact.name || proj.client || '',
+        clientPhone: contact.phone || '',
+        client_phone: contact.phone || '',
+        clientEmail: contact.email || '',
+        client_email: contact.email || '',
+        projectFullName: proj.name || '',
+        pmName: proj.pm || '',
+        itemsList: []
+      };
+
+      if (targetKey && projects[targetKey]) {
+        const updatedOrders = [...(proj.orders || []), newOrder];
+        await updateProject(targetKey, 'orders', updatedOrders);
+      } else {
+        try {
+          await fetch(`${API_BASE}/api/orders/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newOrder)
+          });
+        } catch (err) {
+          console.warn('Direct order creation fallback:', err);
+        }
+        if (refreshProjects) {
+          await refreshProjects();
         }
       }
-    } catch (err) {
-      console.warn('Could not fetch atomic next quote ID, using timestamp fallback:', err);
-    }
-
-    if (!newPoId) {
-      const year = new Date().getFullYear();
-      newPoId = `Q-${year}-${Date.now().toString().slice(-4)}`;
-    }
-
-    const contact = (contacts || []).find(c => c.name === proj.client || c.company === proj.client) || {};
-    const formattedToday = new Date().toLocaleDateString('en-GB');
-    const newOrder = {
-      id: newPoId,
-      po_number: newPoId,
-      project_key: targetKey || 'direct-client',
-      quote_name: newPoForm.quote_name || 'General Spec',
-      supplier: 'Made by 1-to-1',
-      items: 0,
-      items_count: 0,
-      value: 0,
-      paid: 0,
-      outstanding: 0,
-      status: newPoForm.status || 'Draft',
-      eta: newPoForm.eta || '4 weeks',
-      costValue: 0,
-      discount: 0,
-      orderDate: formattedToday,
-      client: proj.client || '',
-      client_name: proj.client || '',
-      clientCompany: contact.company || proj.client || '',
-      client_company: contact.company || proj.client || '',
-      clientContact: contact.name || proj.client || '',
-      client_contact: contact.name || proj.client || '',
-      clientPhone: contact.phone || '',
-      client_phone: contact.phone || '',
-      clientEmail: contact.email || '',
-      client_email: contact.email || '',
-      projectFullName: proj.name || '',
-      pmName: proj.pm || '',
-      itemsList: []
-    };
-
-    try {
-      await fetch(`${API_BASE}/api/orders/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newOrder)
+      
+      setShowCreatePoModal(false);
+      handleOpenWorkspace({
+        ...newOrder,
+        projectKey: targetKey || 'direct-client',
+        projectName: proj.name || 'Client Direct',
+        projectClient: newOrder.clientCompany || newOrder.clientContact || proj.client || ''
       });
     } catch (err) {
-      console.warn('Direct order creation fallback:', err);
+      console.error('Error creating order:', err);
+    } finally {
+      setIsSubmittingPo(false);
     }
-
-    if (targetKey && projects[targetKey]) {
-      const updatedOrders = [...(proj.orders || []), newOrder];
-      await updateProject(targetKey, 'orders', updatedOrders);
-    } else if (refreshProjects) {
-      await refreshProjects();
-    }
-    
-    setShowCreatePoModal(false);
-    handleOpenWorkspace({
-      ...newOrder,
-      projectKey: targetKey || 'direct-client',
-      projectName: proj.name || 'Client Direct',
-      projectClient: newOrder.clientCompany || newOrder.clientContact || proj.client || ''
-    });
   };
 
   const activeOrderObject = useMemo(() => {
@@ -6693,8 +6717,10 @@ export default function OrdersPage() {
               </div>
 
               <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 20px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                <button type="button" className="btn" onClick={() => setShowCreatePoModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Initialize BOQ & Open Spec 🧠</button>
+                <button type="button" className="btn" disabled={isSubmittingPo} onClick={() => setShowCreatePoModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={isSubmittingPo}>
+                  {isSubmittingPo ? 'Initializing...' : 'Initialize BOQ & Open Spec 🧠'}
+                </button>
               </div>
             </form>
           </div>

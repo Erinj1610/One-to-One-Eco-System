@@ -1073,6 +1073,7 @@ export default function SalesTracker() {
 
   // Modal creation state
   const [showCreatePoModal, setShowCreatePoModal] = useState(false);
+  const [isSubmittingPo, setIsSubmittingPo] = useState(false);
   const [newPoForm, setNewPoForm] = useState({
     projectKey: 'upper',
     supplier: 'Molecule Dist.',
@@ -4236,69 +4237,78 @@ export default function SalesTracker() {
   // Create a brand-new Purchase Order / Quotation
   const handleCreatePo = async (e) => {
     e.preventDefault();
-    const proj = projects[newPoForm.projectKey];
-    if (!proj) return;
+    if (isSubmittingPo) return;
+    setIsSubmittingPo(true);
 
-    let newPoId = '';
     try {
-      const resp = await fetch(`${API_BASE}/api/orders/next-quote-number`);
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.next_po_id) {
-          newPoId = data.next_po_id;
+      const proj = projects[newPoForm.projectKey];
+      if (!proj) return;
+
+      let newPoId = '';
+      try {
+        const resp = await fetch(`${API_BASE}/api/orders/next-quote-number`);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.next_po_id) {
+            newPoId = data.next_po_id;
+          }
         }
+      } catch (err) {
+        console.warn('Could not fetch atomic next quote ID, using timestamp fallback:', err);
       }
+
+      if (!newPoId) {
+        const year = new Date().getFullYear();
+        newPoId = `Q-${year}-${Date.now().toString().slice(-4)}`;
+      }
+
+      const newOrder = {
+        id: newPoId,
+        supplier: newPoForm.supplier,
+        items: 1,
+        value: 1500,
+        paid: 0,
+        outstanding: 1500,
+        status: newPoForm.status,
+        eta: newPoForm.eta,
+        costValue: 900,
+        discount: 0,
+        itemsList: [
+          {
+            id: 'I-' + Date.now(),
+            qty: 1,
+            type: 'DL-01',
+            code: '28402 9240 W',
+            description: 'Default Downlight Spec fixture',
+            floor: 'Ground',
+            area: 'Lobby',
+            dimming: 'Non-dim',
+            brand: 'Delta Light',
+            supplier: newPoForm.supplier,
+            unitCost: 900,
+            unitTrade: 1200,
+            unitRetail: 1500,
+            selection: 'Selection',
+            stockStatus: 'Ordered'
+          }
+        ]
+      };
+
+      const updatedOrders = [...(proj.orders || []), newOrder];
+      await updateProject(newPoForm.projectKey, 'orders', updatedOrders);
+      
+      setShowCreatePoModal(false);
+      handleOpenWorkspace({
+        ...newOrder,
+        projectKey: newPoForm.projectKey,
+        projectName: proj.name,
+        projectClient: proj.client
+      });
     } catch (err) {
-      console.warn('Could not fetch atomic next quote ID, using timestamp fallback:', err);
+      console.error('Error creating sales order:', err);
+    } finally {
+      setIsSubmittingPo(false);
     }
-
-    if (!newPoId) {
-      const year = new Date().getFullYear();
-      newPoId = `Q-${year}-${Date.now().toString().slice(-4)}`;
-    }
-
-    const newOrder = {
-      id: newPoId,
-      supplier: newPoForm.supplier,
-      items: 1,
-      value: 1500,
-      paid: 0,
-      outstanding: 1500,
-      status: newPoForm.status,
-      eta: newPoForm.eta,
-      costValue: 900,
-      discount: 0,
-      itemsList: [
-        {
-          id: 'I-' + Date.now(),
-          qty: 1,
-          type: 'DL-01',
-          code: '28402 9240 W',
-          description: 'Default Downlight Spec fixture',
-          floor: 'Ground',
-          area: 'Lobby',
-          dimming: 'Non-dim',
-          brand: 'Delta Light',
-          supplier: newPoForm.supplier,
-          unitCost: 900,
-          unitTrade: 1200,
-          unitRetail: 1500,
-          selection: 'Selection',
-          stockStatus: 'Ordered'
-        }
-      ]
-    };
-
-    const updatedOrders = [...(proj.orders || []), newOrder];
-    updateProject(newPoForm.projectKey, 'orders', updatedOrders);
-    
-    setShowCreatePoModal(false);
-    handleOpenWorkspace({
-      ...newOrder,
-      projectKey: newPoForm.projectKey,
-      projectName: proj.name,
-      projectClient: proj.client
-    });
   };
 
   return (
@@ -7084,8 +7094,10 @@ export default function SalesTracker() {
               </div>
 
               <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '12px 20px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                <button type="button" className="btn" onClick={() => setShowCreatePoModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Initialize Sales Order & Open Spec 📈</button>
+                <button type="button" className="btn" disabled={isSubmittingPo} onClick={() => setShowCreatePoModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={isSubmittingPo}>
+                  {isSubmittingPo ? 'Initializing...' : 'Initialize Sales Order & Open Spec 📈'}
+                </button>
               </div>
             </form>
           </div>

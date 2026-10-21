@@ -942,3 +942,17 @@ def consolidate_drive_duplicates_endpoint(payload: dict = Body(...), db: Session
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Consolidation failed: {str(e)}")
 
+
+@router.post("/database/clone-prod-to-staging")
+def trigger_clone_prod_to_staging():
+    """
+    Clones live Production database into Staging Cloud SQL database.
+    Can be triggered on-demand from Portal Admin Settings or via daily Cloud Scheduler.
+    """
+    try:
+        from services.prod_to_staging_sync import clone_prod_db_to_staging
+        result = clone_prod_db_to_staging()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database replication failed: {str(e)}")
+

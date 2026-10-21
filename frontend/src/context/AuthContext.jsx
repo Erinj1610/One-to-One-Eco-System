@@ -166,6 +166,15 @@ export function AuthProvider({ children, devBypass = false }) {
     if (moduleName === 'Settings') {
       return Boolean(effectiveIsAdmin);
     }
+
+    // Management AI is strictly restricted to Management role or Admin
+    if (moduleName === 'Management AI') {
+      const userRole = (userProfile?.role_name || userProfile?.role || '').toLowerCase();
+      const isManagement = userRole.includes('management') || userRole.includes('director') || userRole.includes('executive');
+      const perm = getPermission(moduleName);
+      if (perm && perm === 'No access') return false;
+      return Boolean(effectiveIsAdmin || isManagement || perm === 'Full access' || perm === 'Can edit' || perm === 'View only');
+    }
     
     // Check if an explicit effective permission exists for this module
     const perm = getPermission(moduleName);

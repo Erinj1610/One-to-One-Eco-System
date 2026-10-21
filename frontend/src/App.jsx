@@ -35,6 +35,7 @@ const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const SupportPage = lazy(() => import('./pages/SupportPage'));
 const TicketLoggerPage = lazy(() => import('./pages/TicketLoggerPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const ManagementAiPage = lazy(() => import('./pages/ManagementAiPage'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 
 import './index.css';
@@ -120,6 +121,7 @@ function AppInner({ devBypass, setDevBypass }) {
             <Route path="docs" element={<PermissionRoute module="Documents"><DocsPage /></PermissionRoute>} />
             <Route path="hr" element={<PermissionRoute module="HR & people"><HrPage /></PermissionRoute>} />
             <Route path="reports" element={<PermissionRoute module="Reports"><ReportsPage /></PermissionRoute>} />
+            <Route path="management-ai" element={<PermissionRoute module="Management AI"><ManagementAiPage /></PermissionRoute>} />
             <Route path="ticket-logger" element={<PermissionRoute module="Support"><TicketLoggerPage /></PermissionRoute>} />
             <Route path="support" element={<PermissionRoute module="Support"><TicketLoggerPage /></PermissionRoute>} />
             <Route path="settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
