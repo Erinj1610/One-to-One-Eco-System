@@ -905,24 +905,36 @@ export default function OrdersPage() {
     const vatAmount = discountedRetail * (effectiveVatPercent / 100);
     const finalTotalInclVat = discountedRetail + vatAmount;
 
-    const finalItems = activeOrderItems.map((item, idx) => ({
-      index: (idx + 1).toString(),
-      isSpacer: !!(item.isSpacer || item.type === 'SPACER'),
-      code: item.code || '',
-      oneOneCode: item.oneOneCode || item.one_one_code || '',
-      type: item.type || '',
-      description: item.isSpacer || item.type === 'SPACER' ? '' : (item.description || item.client_description || item.clientDescription || ''),
-      clientDescription: item.isSpacer || item.type === 'SPACER' ? '' : (item.clientDescription || item.client_description || item.description || ''),
-      client_description: item.isSpacer || item.type === 'SPACER' ? '' : (item.client_description || item.clientDescription || item.description || ''),
-      qty: item.isSpacer || item.type === 'SPACER' ? '' : (item.qty || 0).toString(),
-      brand: item.brand || '',
-      retail: item.isSpacer || item.type === 'SPACER' ? '' : `R ${(Number(item.unitRetail || item.unit_retail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      totalRetail: item.isSpacer || item.type === 'SPACER' ? '' : `R ${((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      floor: item.floor || '',
-      area: item.area || '',
-      dimming: item.dimming || 'Non-dim',
-      stockStatus: item.stockStatus || item.stock_status || 'In Stock',
-      eta: item.eta || '4 weeks',
+    const finalItems = activeOrderItems.map((item, idx) => {
+      const isSpacer = !!(item.isSpacer || item.type === 'SPACER');
+      const rawCode = (item.code || item.oneOneCode || item.one_one_code || '').trim();
+      const rawDesc = (item.description || item.client_description || item.clientDescription || '').trim();
+      const isUnconfirmed = !isSpacer && (!rawCode || rawDesc.toLowerCase().includes('unassigned'));
+
+      const displayCode = isSpacer ? '' : (isUnconfirmed ? 'To be confirmed' : (item.oneOneCode || item.one_one_code || item.code || ''));
+      const displayDesc = isSpacer ? '' : (isUnconfirmed ? 'To be confirmed' : rawDesc);
+      const displayRetail = isSpacer ? '' : (isUnconfirmed ? 'To be confirmed' : `R ${(Number(item.unitRetail || item.unit_retail) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      const displayTotalRetail = isSpacer ? '' : (isUnconfirmed ? 'To be confirmed' : `R ${((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      const displayEta = isSpacer ? '' : (isUnconfirmed ? 'To be confirmed' : (item.eta || '4 weeks'));
+
+      return {
+        index: (idx + 1).toString(),
+        isSpacer,
+        code: displayCode,
+        oneOneCode: displayCode,
+        type: item.type || '',
+        description: displayDesc,
+        clientDescription: displayDesc,
+        client_description: displayDesc,
+        qty: isSpacer ? '' : (item.qty || 0).toString(),
+        brand: isUnconfirmed ? '' : (item.brand || ''),
+        retail: displayRetail,
+        totalRetail: displayTotalRetail,
+        floor: item.floor || '',
+        area: item.area || '',
+        dimming: isUnconfirmed ? 'To be confirmed' : (item.dimming || 'Non-dim'),
+        stockStatus: isUnconfirmed ? 'To be confirmed' : (item.stockStatus || item.stock_status || 'In Stock'),
+        eta: displayEta,
       image_url: item.image_url || item.imageUrl || item.image || item.Image || item.photo || '',
       imageUrl: item.image_url || item.imageUrl || item.image || item.Image || item.photo || '',
       image: item.image_url || item.imageUrl || item.image || item.Image || item.photo || '',
@@ -935,7 +947,8 @@ export default function OrdersPage() {
       qr_code_link: item.qr_code_link || item.qr_link || item.qr || '',
       QR_CODE: item.qr_code || item.qr || item.qr_link || '',
       QR_CODE_LINK: item.qr_code_link || item.qr_link || item.qr || ''
-    }));
+      };
+    });
 
     // Resolve Representative & PM Info
     const resolvedRep = oneOneRep || pmName || 'Martin Döller';

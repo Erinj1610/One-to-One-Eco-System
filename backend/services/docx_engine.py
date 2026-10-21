@@ -289,21 +289,30 @@ def merge_docx_template(template_path, tokens, output_pdf_name, credentials_json
                 item_copy = dict(item)
                 code = item_copy.get('code')
                 prod = prod_map.get(code)
-                if prod:
+                raw_code = str(code or item_copy.get('oneOneCode') or item_copy.get('one_one_code') or '').strip()
+                raw_desc = str(item_copy.get('description') or '').strip()
+                is_unconfirmed = not raw_code or 'unassigned' in raw_desc.lower()
+
+                if prod and not is_unconfirmed:
                     item_copy['material/colour'] = prod.color or ''
                     item_copy['Cut Out Size'] = prod.cutout or ''
-                    # Use dimming from order item if present, otherwise product default
                     item_copy['Dimming Type'] = item_copy.get('dimming') or prod.dimming_protocol or 'Non-dim'
                     item_copy['Light Sorce'] = prod.light_source_type or ''
                     item_copy['Wattage'] = f"{prod.system_power}W" if prod.system_power else ""
                     item_copy['wireinformation'] = prod.driver_spec or ''
                 else:
-                    item_copy['material/colour'] = ''
-                    item_copy['Cut Out Size'] = ''
-                    item_copy['Dimming Type'] = item_copy.get('dimming') or 'Non-dim'
-                    item_copy['Light Sorce'] = ''
-                    item_copy['Wattage'] = ''
-                    item_copy['wireinformation'] = ''
+                    item_copy['material/colour'] = 'To be confirmed' if is_unconfirmed else ''
+                    item_copy['Cut Out Size'] = 'To be confirmed' if is_unconfirmed else ''
+                    item_copy['Dimming Type'] = 'To be confirmed' if is_unconfirmed else (item_copy.get('dimming') or 'Non-dim')
+                    item_copy['Light Sorce'] = 'To be confirmed' if is_unconfirmed else ''
+                    item_copy['Wattage'] = 'To be confirmed' if is_unconfirmed else ''
+                    item_copy['wireinformation'] = 'To be confirmed' if is_unconfirmed else ''
+                    if is_unconfirmed:
+                        item_copy['description'] = 'To be confirmed'
+                        item_copy['code'] = 'To be confirmed'
+                        item_copy['oneOneCode'] = 'To be confirmed'
+                        item_copy['retail'] = 'To be confirmed'
+                        item_copy['totalRetail'] = 'To be confirmed'
                 
                 # Image placeholders
                 item_copy['Image'] = ''

@@ -1129,22 +1129,32 @@ def merge_google_sheet(
                         '_is_spacer': True
                     }
 
+                # Unconfirmed item placeholder logic: when no item code / SKU is set
+                is_unassigned = not code_str or 'unassigned' in desc_str.lower()
+                effective_code = code_str if not is_unassigned else 'To be confirmed'
+                effective_desc = desc_str if not is_unassigned else 'To be confirmed'
+                effective_retail = f"R {u_val:,.2f}" if not is_unassigned else 'To be confirmed'
+                effective_total = f"R {tot_val:,.2f}" if not is_unassigned else 'To be confirmed'
+                effective_eta = str(item_obj.get('lead_time') or item_obj.get('eta') or '4-8 Weeks') if not is_unassigned else 'To be confirmed'
+
                 img_url = str(item_obj.get('image_url') or item_obj.get('imageUrl') or item_obj.get('image') or item_obj.get('Image') or item_obj.get('photo') or '').strip()
                 tech_img_url = str(item_obj.get('technical_image') or item_obj.get('technical_image_url') or item_obj.get('technicalImageUrl') or item_obj.get('tech_image') or '').strip()
                 driver_info = str(item_obj.get('driver_information') or item_obj.get('driver_spec') or item_obj.get('driverInformation') or item_obj.get('driver') or '').strip()
+                if is_unassigned and not driver_info:
+                    driver_info = 'To be confirmed'
                 qr_link = str(item_obj.get('qr_code_link') or item_obj.get('qr_link') or item_obj.get('qr') or item_obj.get('qrLink') or '').strip()
                 qr_code_val = str(item_obj.get('qr_code') or item_obj.get('qr') or item_obj.get('qr_link') or '').strip()
 
                 item_ctx = {
                     'item.qty': str(int(q_val)) if q_val.is_integer() else f"{q_val:.2f}",
-                    'item.oneOneCode': code_str,
+                    'item.oneOneCode': effective_code,
                     'item.type': str(item_obj.get('type') or item_obj.get('category') or item_obj.get('plan_code') or ''),
-                    'item.description': desc_str,
+                    'item.description': effective_desc,
                     'item.floor': str(item_obj.get('floor') or ''),
                     'item.area': str(item_obj.get('area') or ''),
-                    'item.eta': str(item_obj.get('lead_time') or item_obj.get('eta') or '4-8 Weeks'),
-                    'item.retail': f"R {u_val:,.2f}",
-                    'item.totalRetail': f"R {tot_val:,.2f}",
+                    'item.eta': effective_eta,
+                    'item.retail': effective_retail,
+                    'item.totalRetail': effective_total,
                     'item.image_url': img_url,
                     'item.imageUrl': img_url,
                     'item.image': img_url,
@@ -1415,9 +1425,7 @@ def merge_google_sheet(
 
                                 current_page_capacity_px = max(200.0, PAGE_TOTAL_PRINT_PX - continuation_headers_h - 15.0)
 
-                            item_ctx = {**ar_ctx}
-                            for k, v in item_obj.items():
-                                item_ctx[k] = str(v) if v is not None else ''
+                            item_ctx = {**ar_ctx, **build_item_ctx(item_obj)}
                             generated_dynamic_rows.append(('[ITEM_ROW]', item_row_cells, item_ctx))
                             px_on_current_page += it_height_px
 
