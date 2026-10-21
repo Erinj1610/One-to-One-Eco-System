@@ -1361,6 +1361,15 @@ export function StoreProvider({ children }) {
                   if (proj && (proj.isDraft || k.startsWith('new-project'))) {
                     // Preserve active local draft state so typing/saving isn't wiped by background polling
                     merged[k] = proj;
+                  } else if (proj && merged[k] && Array.isArray(proj.orders) && Array.isArray(merged[k].orders)) {
+                    // Preserve in-memory takeoffData on orders if newly polled project doesn't have it yet
+                    merged[k].orders = merged[k].orders.map(newOrd => {
+                      const oldOrd = proj.orders.find(o => String(o.id) === String(newOrd.id));
+                      if (oldOrd && oldOrd.takeoffData && !newOrd.takeoffData) {
+                        return { ...newOrd, takeoffData: oldOrd.takeoffData, takeoff_data: oldOrd.takeoffData };
+                      }
+                      return newOrd;
+                    });
                   }
                 });
               }
