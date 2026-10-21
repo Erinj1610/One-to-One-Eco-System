@@ -2946,13 +2946,15 @@ export default function TakeoffSpecEngine({
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <span style={{ 
-                                background: 'var(--bg-info)', 
-                                color: '#fff', 
+                                background: '#185fa5', 
+                                color: '#ffffff', 
                                 fontFamily: 'monospace', 
                                 fontWeight: 800, 
                                 fontSize: '13px', 
-                                padding: '3px 8px', 
-                                borderRadius: '4px' 
+                                padding: '3px 9px', 
+                                borderRadius: '6px', 
+                                boxShadow: '0 1px 2px rgba(24, 95, 165, 0.25)', 
+                                letterSpacing: '0.5px' 
                               }}>
                                 {tag}
                               </span>
@@ -3606,13 +3608,15 @@ export default function TakeoffSpecEngine({
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <span style={{ 
-                                background: 'var(--bg-info)', 
-                                color: '#fff', 
+                                background: '#185fa5', 
+                                color: '#ffffff', 
                                 fontFamily: 'monospace', 
                                 fontWeight: 800, 
                                 fontSize: '13px', 
-                                padding: '3px 8px', 
-                                borderRadius: '4px' 
+                                padding: '3px 9px', 
+                                borderRadius: '6px', 
+                                boxShadow: '0 1px 2px rgba(24, 95, 165, 0.25)', 
+                                letterSpacing: '0.5px' 
                               }}>
                                 〰️ {tag}
                               </span>
@@ -4462,13 +4466,15 @@ export default function TakeoffSpecEngine({
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <span style={{ 
-                                background: 'var(--bg-info)', 
-                                color: '#fff', 
+                                background: '#185fa5', 
+                                color: '#ffffff', 
                                 fontFamily: 'monospace', 
                                 fontWeight: 800, 
                                 fontSize: '13px', 
-                                padding: '3px 8px', 
-                                borderRadius: '4px' 
+                                padding: '3px 9px', 
+                                borderRadius: '6px', 
+                                boxShadow: '0 1px 2px rgba(24, 95, 165, 0.25)', 
+                                letterSpacing: '0.5px' 
                               }}>
                                 🛤️ {tag}
                               </span>
@@ -6183,13 +6189,15 @@ export default function TakeoffSpecEngine({
               <div className="card-head" style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <span style={{ 
-                    background: 'var(--bg-info)', 
-                    color: '#fff', 
+                    background: '#185fa5', 
+                    color: '#ffffff', 
                     fontFamily: 'monospace', 
                     fontWeight: 800, 
                     fontSize: '13px', 
-                    padding: '3px 9px', 
-                    borderRadius: '4px' 
+                    padding: '3px 10px', 
+                    borderRadius: '6px', 
+                    boxShadow: '0 1px 2px rgba(24, 95, 165, 0.25)', 
+                    letterSpacing: '0.5px' 
                   }}>
                     〰️ {tag}
                   </span>
