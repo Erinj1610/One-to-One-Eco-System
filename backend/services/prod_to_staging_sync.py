@@ -9,8 +9,8 @@ logger = logging.getLogger("db_sync")
 
 # Canonical order of tables to respect foreign keys during truncation & copy
 TABLES_SYNC_ORDER = [
-    'users',
     'roles',
+    'users',
     'role_permissions',
     'suppliers',
     'clients',
