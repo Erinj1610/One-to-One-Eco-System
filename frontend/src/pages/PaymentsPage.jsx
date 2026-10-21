@@ -362,6 +362,24 @@ export default function PaymentsPage() {
     setAllocAmount(Math.min(needed, available).toFixed(2));
   };
 
+  // Flatten all orders across all projects for direct search
+  const allFlatOrders = useMemo(() => {
+    const list = [];
+    (projectsOrders || []).forEach(p => {
+      (p.orders || []).forEach(o => {
+        list.push({
+          ...o,
+          order_id: String(o.id || o.dbId || ''),
+          project_id: p.project_id || p.project_key,
+          project_key: p.project_key || p.project_id,
+          project_name: p.project_name || 'Direct Project',
+          client: o.client || p.client || o.clientCompany || ''
+        });
+      });
+    });
+    return list;
+  }, [projectsOrders]);
+
   // Filtered Candidate Orders based on allocSearch
   const filteredCandidateOrders = useMemo(() => {
     if (!allocSearch.trim()) return candidateOrders;
@@ -373,6 +391,19 @@ export default function PaymentsPage() {
       (cand.client || '').toLowerCase().includes(q)
     );
   }, [candidateOrders, allocSearch]);
+
+  // Cross-project direct order search matches (searches across EVERY order in the company)
+  const crossProjectOrderMatches = useMemo(() => {
+    if (!allocSearch.trim()) return [];
+    const q = allocSearch.toLowerCase().trim();
+    return allFlatOrders.filter(o => 
+      (o.quote_name || '').toLowerCase().includes(q) ||
+      (o.po_number || '').toLowerCase().includes(q) ||
+      String(o.order_id || '').toLowerCase().includes(q) ||
+      (o.project_name || '').toLowerCase().includes(q) ||
+      (o.client || '').toLowerCase().includes(q)
+    ).slice(0, 15);
+  }, [allFlatOrders, allocSearch]);
 
   // Filtered projects for manual dropdown based on allocSearch
   const filteredProjectsOrders = useMemo(() => {
@@ -1541,21 +1572,106 @@ export default function PaymentsPage() {
                 )}
               </div>
 
-              {/* MANUAL PROJECT & ORDER SELECTOR */}
+              {/* DIRECT ORDER SEARCH RESULTS (If user searched and candidates didn't match) */}
+              {allocSearch.trim() && crossProjectOrderMatches.length > 0 && (
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: '10px', marginTop: '4px' }}>
+                  <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Search size={13} color="#3b82f6" />
+                    All Company Orders Matching "{allocSearch}":
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
+                    {crossProjectOrderMatches.map(ord => {
+                      const isSelected = selectedCandidateKey === 'MANUAL' && manualOrderId === ord.order_id;
+                      return (
+                        <div
+                          key={ord.order_id}
+                          onClick={() => {
+                            setSelectedCandidateKey('MANUAL');
+                            setManualProjectId(ord.project_id || ord.project_key);
+                            setManualOrderId(ord.order_id);
+                            const needed = ord.outstanding > 0 ? ord.outstanding : (ord.total_value || 0);
+                            const available = allocTargetItem?.remaining_amount || allocTargetItem?.amount || 0;
+                            if (needed > 0) {
+                              setAllocAmount(Math.min(needed, available).toFixed(2));
+                            }
+                          }}
+                          style={{
+                            padding: '8px 12px',
+                            borderRadius: '8px',
+                            border: isSelected ? '1.5px solid #3b82f6' : '1px solid var(--border)',
+                            background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-secondary)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '12px' }}>
+                              {ord.quote_name} ({ord.po_number || ord.order_id})
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                              Project: <strong style={{ color: 'var(--text-primary)' }}>{ord.project_name}</strong> {ord.client ? `| Client: ${ord.client}` : ''}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '11.5px', fontWeight: 700, color: (ord.outstanding || 0) > 0 ? '#f59e0b' : '#10b981' }}>
+                              Outstanding: R {(ord.outstanding || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </div>
+                            <span style={{
+                              background: isSelected ? '#3b82f6' : 'var(--bg-primary)',
+                              color: isSelected ? '#fff' : 'var(--text-primary)',
+                              border: '1px solid var(--border)',
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              display: 'inline-block',
+                              marginTop: '2px'
+                            }}>
+                              {isSelected ? 'Selected' : 'Select'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* MANUAL PROJECT & ORDER SELECTOR (Browse by hierarchy or manual selection) */}
               <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
                 <div 
                   onClick={() => setSelectedCandidateKey('MANUAL')}
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '10px' }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: '8px' }}
                 >
-                  <input
-                    type="radio"
-                    name="allocChoice"
-                    checked={selectedCandidateKey === 'MANUAL'}
-                    onChange={() => setSelectedCandidateKey('MANUAL')}
-                  />
-                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Or select destination Project & Order manually
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="radio"
+                      name="allocChoice"
+                      checked={selectedCandidateKey === 'MANUAL'}
+                      onChange={() => setSelectedCandidateKey('MANUAL')}
+                    />
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {manualOrderId 
+                        ? `Selected Destination: ${allFlatOrders.find(o => o.order_id === manualOrderId)?.quote_name || manualOrderId} (in ${allFlatOrders.find(o => o.order_id === manualOrderId)?.project_name || 'Project'})`
+                        : 'Or browse Project & Order dropdowns'}
+                    </span>
+                  </div>
+                  {selectedCandidateKey === 'MANUAL' && manualOrderId && (
+                    <button
+                      type="button"
+                      className="btn btn-xs btn-ghost text-info"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setManualOrderId('');
+                      }}
+                      style={{ fontSize: '10.5px' }}
+                    >
+                      Change Selection
+                    </button>
+                  )}
                 </div>
 
                 {selectedCandidateKey === 'MANUAL' && (
@@ -1588,7 +1704,16 @@ export default function PaymentsPage() {
                       </label>
                       <select
                         value={manualOrderId}
-                        onChange={(e) => setManualOrderId(e.target.value)}
+                        onChange={(e) => {
+                          const oId = e.target.value;
+                          setManualOrderId(oId);
+                          const chosen = allFlatOrders.find(o => o.order_id === oId);
+                          if (chosen) {
+                            const needed = chosen.outstanding > 0 ? chosen.outstanding : (chosen.total_value || 0);
+                            const available = allocTargetItem?.remaining_amount || allocTargetItem?.amount || 0;
+                            if (needed > 0) setAllocAmount(Math.min(needed, available).toFixed(2));
+                          }
+                        }}
                         disabled={!manualProjectId}
                         className="input input-sm"
                         style={{ width: '100%', fontSize: '12px' }}

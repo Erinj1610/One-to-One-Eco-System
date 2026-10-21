@@ -1571,6 +1571,38 @@ export default function PurchasingPage() {
       : <ArrowDown size={12} style={{ marginLeft: '4px', color: 'var(--text-info, #3b82f6)', verticalAlign: 'middle' }} />;
   };
 
+  // Flatten all orders across all projects for direct search
+  const allFlatOrders = useMemo(() => {
+    const list = [];
+    Object.values(projects || {}).forEach(p => {
+      (p.orders || []).forEach(o => {
+        list.push({
+          ...o,
+          order_id: String(o.id || o.dbId || ''),
+          project_id: p.id ? String(p.id) : (p.key || ''),
+          project_key: p.key || (p.id ? String(p.id) : ''),
+          project_name: p.name || 'Direct Project',
+          client: p.client || o.clientCompany || o.clientContact || 'Client',
+          quote_name: o.quoteName || o.quote_name || o.poNumber || `Order #${o.id || o.dbId}`
+        });
+      });
+    });
+    return list;
+  }, [projects]);
+
+  // Cross-project direct order search matches for procurement allocation
+  const crossProjectOrderMatches = useMemo(() => {
+    if (!allocSearch.trim()) return [];
+    const q = allocSearch.toLowerCase().trim();
+    return allFlatOrders.filter(o => 
+      (o.quote_name || '').toLowerCase().includes(q) ||
+      (o.poNumber || '').toLowerCase().includes(q) ||
+      String(o.order_id || '').toLowerCase().includes(q) ||
+      (o.project_name || '').toLowerCase().includes(q) ||
+      (o.client || '').toLowerCase().includes(q)
+    ).slice(0, 15);
+  }, [allFlatOrders, allocSearch]);
+
   const sortedDocumentLines = useMemo(() => {
     if (!selectedDocument || !selectedDocument.lines) return [];
     const list = [...selectedDocument.lines];
@@ -3800,14 +3832,70 @@ export default function PurchasingPage() {
                     </div>
                   )}
 
+                  {/* DIRECT ORDER SEARCH RESULTS (If user searched and candidates didn't match) */}
+                  {allocSearch.trim() && crossProjectOrderMatches.length > 0 && (
+                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '10px', marginTop: '8px' }}>
+                      <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Search size={13} color="#3b82f6" />
+                        All Company Orders Matching "{allocSearch}":
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '170px', overflowY: 'auto' }}>
+                        {crossProjectOrderMatches.map(ord => {
+                          const isSelected = selectedCandidateKey === 'MANUAL' && manualOrderId === ord.order_id;
+                          return (
+                            <div
+                              key={ord.order_id}
+                              onClick={() => {
+                                setSelectedCandidateKey('MANUAL');
+                                setManualProjectId(ord.project_id || ord.project_key);
+                                setManualOrderId(ord.order_id);
+                              }}
+                              style={{
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                border: isSelected ? '1.5px solid #3b82f6' : '1px solid var(--border)',
+                                background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-secondary)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '12px' }}>
+                                  {ord.quote_name} ({ord.poNumber || ord.order_id})
+                                </div>
+                                <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                  Project: <strong style={{ color: 'var(--text-primary)' }}>{ord.project_name}</strong> {ord.client ? `| Client: ${ord.client}` : ''}
+                                </div>
+                              </div>
+                              <span style={{
+                                background: isSelected ? '#3b82f6' : 'var(--bg-primary)',
+                                color: isSelected ? '#fff' : 'var(--text-primary)',
+                                border: '1px solid var(--border)',
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                fontSize: '10px',
+                                fontWeight: 700
+                              }}>
+                                {isSelected ? 'Selected' : 'Select'}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Manual Project Assignment Option */}
                   <div style={{ marginTop: '10px' }}>
                     <div 
                       onClick={() => setSelectedCandidateKey('MANUAL')}
                       style={{ 
                         display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '6px', 
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
                         fontSize: '11.5px', 
                         fontWeight: 700, 
                         color: selectedCandidateKey === 'MANUAL' ? '#3b82f6' : 'var(--text-primary)',
@@ -3815,13 +3903,32 @@ export default function PurchasingPage() {
                         marginBottom: '6px'
                       }}
                     >
-                      <input 
-                        type="radio" 
-                        name="alloc_target" 
-                        checked={selectedCandidateKey === 'MANUAL'} 
-                        onChange={() => setSelectedCandidateKey('MANUAL')} 
-                      />
-                      <span>Or manually select any Project & Order</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input 
+                          type="radio" 
+                          name="alloc_target" 
+                          checked={selectedCandidateKey === 'MANUAL'} 
+                          onChange={() => setSelectedCandidateKey('MANUAL')} 
+                        />
+                        <span>
+                          {manualOrderId
+                            ? `Selected Destination: ${allFlatOrders.find(o => o.order_id === manualOrderId)?.quote_name || manualOrderId} (in ${allFlatOrders.find(o => o.order_id === manualOrderId)?.project_name || 'Project'})`
+                            : 'Or manually select any Project & Order'}
+                        </span>
+                      </div>
+                      {selectedCandidateKey === 'MANUAL' && manualOrderId && (
+                        <button
+                          type="button"
+                          className="btn btn-xs btn-ghost text-info"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setManualOrderId('');
+                          }}
+                          style={{ fontSize: '10.5px' }}
+                        >
+                          Change Selection
+                        </button>
+                      )}
                     </div>
 
                     {selectedCandidateKey === 'MANUAL' && (
@@ -3850,7 +3957,10 @@ export default function PurchasingPage() {
                             className="form-control"
                             style={{ height: '32px', fontSize: '11.5px', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
                             value={manualOrderId}
-                            onChange={(e) => setManualOrderId(e.target.value)}
+                            onChange={(e) => {
+                              setManualOrderId(e.target.value);
+                              setSelectedCandidateKey('MANUAL');
+                            }}
                             disabled={!manualProjectId}
                           >
                             <option value="">-- General Project Allocation --</option>
