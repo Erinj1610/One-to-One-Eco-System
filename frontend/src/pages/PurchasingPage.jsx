@@ -1603,6 +1603,19 @@ export default function PurchasingPage() {
     ).slice(0, 15);
   }, [allFlatOrders, allocSearch]);
 
+  // Cross-project direct order search matches for procurement batch allocation
+  const crossProjectBatchOrderMatches = useMemo(() => {
+    if (!batchSearch.trim()) return [];
+    const q = batchSearch.toLowerCase().trim();
+    return allFlatOrders.filter(o => 
+      (o.quote_name || '').toLowerCase().includes(q) ||
+      (o.poNumber || '').toLowerCase().includes(q) ||
+      String(o.order_id || '').toLowerCase().includes(q) ||
+      (o.project_name || '').toLowerCase().includes(q) ||
+      (o.client || '').toLowerCase().includes(q)
+    ).slice(0, 15);
+  }, [allFlatOrders, batchSearch]);
+
   const sortedDocumentLines = useMemo(() => {
     if (!selectedDocument || !selectedDocument.lines) return [];
     const list = [...selectedDocument.lines];
@@ -3280,9 +3293,84 @@ export default function PurchasingPage() {
                 
                 {/* Target Project & Order Selectors */}
                 <div style={{ background: 'var(--bg-secondary)', border: '1.5px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', padding: '14px 16px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '10px' }}>
-                    🎯 Destination Project & Order
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      🎯 Destination Project & Order
+                    </div>
+                    <div style={{ position: 'relative', width: '230px' }}>
+                      <Search size={12} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
+                      <input
+                        type="text"
+                        placeholder="Search any order, PO#, client..."
+                        value={batchSearch}
+                        onChange={e => setBatchSearch(e.target.value)}
+                        className="input input-xs"
+                        style={{ width: '100%', paddingLeft: '24px', fontSize: '11px', height: '24px', background: 'var(--bg-primary)' }}
+                      />
+                      {batchSearch && (
+                        <button 
+                          type="button" 
+                          onClick={() => setBatchSearch('')} 
+                          style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px', color: 'var(--text-tertiary)', padding: 0 }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Direct search matches across all company orders */}
+                  {batchSearch.trim() && crossProjectBatchOrderMatches.length > 0 && (
+                    <div style={{ marginBottom: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 10px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 700, color: '#3b82f6', marginBottom: '6px' }}>
+                        Matching Orders Across Company:
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', maxHeight: '150px', overflowY: 'auto' }}>
+                        {crossProjectBatchOrderMatches.map(ord => {
+                          const isSelected = batchOrderId === ord.order_id;
+                          return (
+                            <div
+                              key={ord.order_id}
+                              onClick={() => {
+                                setBatchProjectId(ord.project_id || ord.project_key);
+                                setBatchOrderId(ord.order_id);
+                              }}
+                              style={{
+                                padding: '6px 10px',
+                                borderRadius: '6px',
+                                border: isSelected ? '1.5px solid #3b82f6' : '1px solid var(--border)',
+                                background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-secondary)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '11.5px' }}>
+                                  {ord.quote_name} ({ord.poNumber || ord.order_id})
+                                </div>
+                                <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                                  Project: <strong style={{ color: 'var(--text-primary)' }}>{ord.project_name}</strong> {ord.client ? `| Client: ${ord.client}` : ''}
+                                </div>
+                              </div>
+                              <span style={{
+                                background: isSelected ? '#3b82f6' : 'var(--bg-primary)',
+                                color: isSelected ? '#fff' : 'var(--text-primary)',
+                                border: '1px solid var(--border)',
+                                padding: '2px 7px',
+                                borderRadius: '5px',
+                                fontSize: '10px',
+                                fontWeight: 700
+                              }}>
+                                {isSelected ? 'Selected' : 'Select'}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 700 }}>Target Project *</label>
@@ -3749,9 +3837,31 @@ export default function PurchasingPage() {
                 {/* Candidate Orders Section */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      🎯 Select Target Project Order:
-                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                      <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                        🎯 Select Target Project Order:
+                      </label>
+                      <div style={{ position: 'relative', width: '200px' }}>
+                        <Search size={12} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
+                        <input
+                          type="text"
+                          placeholder="Search orders, PO #..."
+                          value={allocSearch}
+                          onChange={e => setAllocSearch(e.target.value)}
+                          className="input input-xs"
+                          style={{ width: '100%', paddingLeft: '24px', fontSize: '11px', height: '24px', background: 'var(--bg-primary)' }}
+                        />
+                        {allocSearch && (
+                          <button 
+                            type="button" 
+                            onClick={() => setAllocSearch('')} 
+                            style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px', color: 'var(--text-tertiary)', padding: 0 }}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <label style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '5px', cursor: 'pointer', userSelect: 'none' }}>
                         <input
