@@ -1494,15 +1494,19 @@ export default function OrdersPage() {
     return Array.from(new Set(allOrders.map(o => o.projectPm).filter(Boolean))).sort();
   }, [allOrders]);
 
+  // Ref tracking open order IDs to prevent background polling from re-triggering handleOpenWorkspace
+  const handledOpenOrderRef = useRef(null);
+
   // Check router state from location for automatic redirection/filtering
   useEffect(() => {
     if (location.state?.projectKey) {
       setProjectFilterKey(location.state.projectKey);
     }
-    if (location.state?.openOrderId) {
+    if (location.state?.openOrderId && handledOpenOrderRef.current !== location.state.openOrderId) {
       // Find the specific quotation
       const targetOrder = allOrders.find(o => o.id === location.state.openOrderId);
       if (targetOrder) {
+        handledOpenOrderRef.current = location.state.openOrderId;
         handleOpenWorkspace(targetOrder);
         if (location.state?.initialSubTab) {
           setWorkspaceSubTab(location.state.initialSubTab);
