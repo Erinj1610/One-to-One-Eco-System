@@ -94,44 +94,68 @@ def get_deployments_status(db: Session = Depends(get_db)):
     github_configured = bool(token and len(token) > 10)
     masked_token = f"{token[:4]}...{token[-4:]}" if github_configured else None
 
-    formatted_revisions = []
-    for r in revisions:
-        formatted_revisions.append({
-            "id": r.id,
-            "version_tag": r.version_tag,
-            "release_name": r.release_name,
-            "release_notes": r.release_notes or "",
-            "environment": r.environment,
-            "commit_hash": r.commit_hash or "",
-            "cloud_run_revision": r.cloud_run_revision or "",
-            "deployed_by": r.deployed_by or "Admin",
-            "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else "",
-            "is_active_prod": r.is_active_prod
-        })
+    # Fetch live git release history directly from GitHub main branch
+    github_releases = []
+    try:
+        gh_url = f"https://api.github.com/repos/{GITHUB_REPO}/commits?sha=main&per_page=100"
+        gh_headers = {"User-Agent": "OneToOne-Deployer"}
+        if token:
+            gh_headers["Authorization"] = f"Bearer {token}"
+        gh_req = urllib.request.Request(gh_url, headers=gh_headers)
+        with urllib.request.urlopen(gh_req, timeout=5) as gh_resp:
+            gh_commits = json.loads(gh_resp.read().decode("utf-8"))
+            for c in gh_commits:
+                msg = c.get("commit", {}).get("message", "")
+                m = re.match(r'^(?:[^\w\s]*\s*)?Production Release\s+([\w\.\-]+):\s*(.*)', msg.split('\n')[0])
+                if m:
+                    v_tag = m.group(1).strip()
+                    r_name = m.group(2).strip()
+                    r_notes = '\n'.join(msg.split('\n')[1:]).strip()
+                    author = c.get("commit", {}).get("author", {}).get("name") or "Admin"
+                    date_str = (c.get("commit", {}).get("author", {}).get("date") or "").replace('T', ' ').replace('Z', '')
+                    github_releases.append({
+                        "id": f"gh-{c.get('sha', '')[:8]}",
+                        "version_tag": v_tag,
+                        "release_name": r_name,
+                        "release_notes": r_notes,
+                        "environment": "production",
+                        "commit_hash": c.get("sha", "")[:8],
+                        "cloud_run_revision": f"one-to-one-backend-{v_tag.replace('.', '')}",
+                        "deployed_by": author,
+                        "created_at": date_str,
+                        "is_active_prod": len(github_releases) == 0
+                    })
+    except Exception as gh_fetch_err:
+        logger.warning(f"Notice: Failed to fetch live GitHub commits for releases: {gh_fetch_err}")
 
-    # Fallback initial status if no DB rows exist yet
-    if not active_prod and not formatted_revisions:
-        formatted_revisions = [{
-            "id": 1,
-            "version_tag": "v1.5.0",
-            "release_name": "Initial Production Release & Live Vault Engine",
-            "release_notes": "Google Sheets document engine, template row height preservation, Drive Vault hierarchy, bulk product reconciliation.",
-            "environment": "production",
-            "commit_hash": "95ba1cf",
-            "cloud_run_revision": "one-to-one-backend-00509-hq6",
-            "deployed_by": "erin.jones@1-to-1.world",
-            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "is_active_prod": True
-        }]
+    formatted_revisions = []
+    if github_releases:
+        formatted_revisions = github_releases
+    else:
+        for r in revisions:
+            formatted_revisions.append({
+                "id": r.id,
+                "version_tag": r.version_tag,
+                "release_name": r.release_name,
+                "release_notes": r.release_notes or "",
+                "environment": r.environment,
+                "commit_hash": r.commit_hash or "",
+                "cloud_run_revision": r.cloud_run_revision or "",
+                "deployed_by": r.deployed_by or "Admin",
+                "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else "",
+                "is_active_prod": r.is_active_prod
+            })
+
+    current_prod_info = {
+        "version_tag": formatted_revisions[0]["version_tag"] if formatted_revisions else "v2.05",
+        "release_name": formatted_revisions[0]["release_name"] if formatted_revisions else "Gemini Argon 4 bug fixes",
+        "cloud_run_revision": formatted_revisions[0].get("cloud_run_revision") if formatted_revisions else "one-to-one-backend-205",
+        "deployed_by": formatted_revisions[0]["deployed_by"] if formatted_revisions else "erin.jones@1-to-1.world",
+        "created_at": formatted_revisions[0]["created_at"] if formatted_revisions else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
 
     return {
-        "current_production": {
-            "version_tag": active_prod.version_tag if active_prod else "v1.5.0",
-            "release_name": active_prod.release_name if active_prod else "Initial Production Release & Live Vault Engine",
-            "cloud_run_revision": active_prod.cloud_run_revision if active_prod else "one-to-one-backend-00509-hq6",
-            "deployed_by": active_prod.deployed_by if active_prod else "erin.jones@1-to-1.world",
-            "created_at": active_prod.created_at.strftime("%Y-%m-%d %H:%M:%S") if active_prod and active_prod.created_at else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        },
+        "current_production": current_prod_info,
         "staging": {
             "url": "https://frontend-git-staging-erinj1610s-projects.vercel.app",
             "backend_url": "https://one-to-one-backend-staging-858977785048.us-central1.run.app",

@@ -50,7 +50,6 @@ TABLES_SYNC_ORDER = [
     'payments',
     'time_logs',
     'support_tickets',
-    'deployment_revisions',
     'procurement_allocations',
     'order_payment_allocations',
     'palladium_po_lines',
