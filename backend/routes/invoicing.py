@@ -914,6 +914,14 @@ def allocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get_d
         if matched_item:
             recalc_order_item_invoicing(db, matched_item)
 
+        # Trigger order payments recalculation to update outstanding balance immediately
+        if resolved_order_id:
+            try:
+                from routes.payments import recalc_order_payments
+                recalc_order_payments(db, str(resolved_order_id))
+            except Exception as pe:
+                logger.warning(f"Could not recalculate order payments for {resolved_order_id}: {pe}")
+
         db.commit()
         logger.info(f"Allocated invoice {source_doc_no} (qty {allocated_qty}) to {real_proj_name}.")
         return {
@@ -1041,6 +1049,13 @@ def batch_allocate_invoicing_items(payload: Dict[str, Any], db: Session = Depend
                 recalc_order_item_invoicing(db, matched_item)
 
             count_allocated += 1
+
+        if resolved_item_order_id:
+            try:
+                from routes.payments import recalc_order_payments
+                recalc_order_payments(db, str(resolved_item_order_id))
+            except Exception as pe:
+                logger.warning(f"Could not recalculate order payments for {resolved_item_order_id}: {pe}")
 
         db.commit()
         logger.info(f"Batch allocated {count_allocated} invoice items from {source_doc_no} to {real_proj_name}.")
@@ -1211,6 +1226,13 @@ def unallocate_invoicing_item(payload: Dict[str, Any], db: Session = Depends(get
         if matched_item:
             recalc_order_item_invoicing(db, matched_item)
 
+        if alloc.order_id:
+            try:
+                from routes.payments import recalc_order_payments
+                recalc_order_payments(db, str(alloc.order_id))
+            except Exception as pe:
+                logger.warning(f"Could not recalculate order payments for {alloc.order_id}: {pe}")
+
         db.commit()
         logger.info(f"Unallocated invoice #{allocation_id} for {alloc.sku} ({alloc.source_doc_no}).")
         return {
@@ -1326,6 +1348,15 @@ def batch_unallocate_invoicing_items(payload: Dict[str, Any], db: Session = Depe
 
         for it in affected_items:
             recalc_order_item_invoicing(db, it)
+
+        # Recalculate payments/balances for all affected orders
+        affected_order_ids = set([str(a.order_id) for a in allocs_to_cancel if a.order_id])
+        for a_oid in affected_order_ids:
+            try:
+                from routes.payments import recalc_order_payments
+                recalc_order_payments(db, a_oid)
+            except Exception as pe:
+                logger.warning(f"Could not recalculate order payments for {a_oid}: {pe}")
 
         db.commit()
         count = len(allocs_to_cancel)

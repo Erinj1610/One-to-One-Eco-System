@@ -904,16 +904,19 @@ def get_candidate_orders(
     sku: str = Query(..., description="Item Code / SKU to find candidate orders for"),
     doc_type: Optional[str] = Query("PO", description="Document type: PO or GRN"),
     include_fulfilled: bool = Query(False, description="Whether to include fulfilled orders"),
+    project_id: Optional[str] = Query(None, description="Optional target project ID or key to filter candidates"),
+    order_id: Optional[str] = Query(None, description="Optional target order ID or po_number to filter candidates"),
     db: Session = Depends(get_db)
 ):
     """
     Finds active client project orders and fittings in the portal matching the given SKU.
     Resolves project and order even with composite slug order IDs.
     Calculates remaining needed based on doc_type (PO vs GRN).
+    Supports optional project_id and order_id filters for direct order targeting.
     """
     try:
         clean_sku = sku.strip()
-        if not clean_sku:
+        if not clean_sku and not order_id and not project_id:
             return {"sku": "", "candidate_count": 0, "candidates": []}
 
         # 1. Preload projects and orders for quick resolution
@@ -930,19 +933,49 @@ def get_candidate_orders(
                     order_by_quote_slug[slug_key] = o
 
         # 2. Find matching order items by code or one_one_code or description (including stripped supplier prefix)
-        stripped_sku = strip_sku_prefix(clean_sku)
-        sku_filters = [
-            OrderItem.code.ilike(f"%{clean_sku}%"),
-            OrderItem.one_one_code.ilike(f"%{clean_sku}%"),
-            OrderItem.description.ilike(f"%{clean_sku}%")
-        ]
-        if stripped_sku and stripped_sku.upper() != clean_sku.upper():
-            sku_filters.extend([
-                OrderItem.code.ilike(f"%{stripped_sku}%"),
-                OrderItem.one_one_code.ilike(f"%{stripped_sku}%"),
-                OrderItem.description.ilike(f"%{stripped_sku}%")
-            ])
-        order_items = db.query(OrderItem).filter(or_(*sku_filters)).all()
+        query = db.query(OrderItem)
+
+        # Apply order_id filter if explicitly supplied
+        if order_id:
+            raw_target_oid = str(order_id).strip()
+            # Match by numeric ID, PO number, or slug
+            matched_target_order = order_by_id.get(int(raw_target_oid)) if raw_target_oid.isdigit() else order_by_po_number.get(raw_target_oid)
+            if matched_target_order:
+                query = query.filter(OrderItem.order_id.in_([str(matched_target_order.id), matched_target_order.po_number]))
+            else:
+                query = query.filter(OrderItem.order_id == raw_target_oid)
+
+        # Apply project_id filter if explicitly supplied
+        if project_id and not order_id:
+            raw_target_pid = str(project_id).strip()
+            matched_proj = all_projects.get(int(raw_target_pid)) if raw_target_pid.isdigit() else proj_by_key.get(raw_target_pid)
+            if matched_proj:
+                p_orders = [o for o in all_orders if o.project_id == matched_proj.id]
+                p_oids = [str(o.id) for o in p_orders] + [o.po_number for o in p_orders if o.po_number]
+                p_filters = []
+                if p_oids:
+                    p_filters.append(OrderItem.order_id.in_(p_oids))
+                if matched_proj.project_key:
+                    p_filters.append(OrderItem.order_id.ilike(f"{matched_proj.project_key}%"))
+                if p_filters:
+                    query = query.filter(or_(*p_filters))
+
+        if clean_sku:
+            stripped_sku = strip_sku_prefix(clean_sku)
+            sku_filters = [
+                OrderItem.code.ilike(f"%{clean_sku}%"),
+                OrderItem.one_one_code.ilike(f"%{clean_sku}%"),
+                OrderItem.description.ilike(f"%{clean_sku}%")
+            ]
+            if stripped_sku and stripped_sku.upper() != clean_sku.upper():
+                sku_filters.extend([
+                    OrderItem.code.ilike(f"%{stripped_sku}%"),
+                    OrderItem.one_one_code.ilike(f"%{stripped_sku}%"),
+                    OrderItem.description.ilike(f"%{stripped_sku}%")
+                ])
+            query = query.filter(or_(*sku_filters))
+
+        order_items = query.all()
 
         norm_doc_type = (doc_type or "PO").upper().strip()
 
@@ -1183,49 +1216,9 @@ def allocate_procurement_item(
 
         # 4. Update OrderItem if matched
         if matched_item:
-            if allocation_type == "PO":
-                matched_item.po_ref = source_doc_no
-                matched_item.po_qty_ordered = (matched_item.po_qty_ordered or 0) + int(allocated_qty)
-                matched_item.unit_cost = unit_cost
-                if vendor_name:
-                    matched_item.po_supplier = vendor_name
-                if doc_date:
-                    matched_item.po_date = str(doc_date).split("T")[0]
-                else:
-                    matched_item.po_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                if eta:
-                    matched_item.po_eta = str(eta)
-                    matched_item.eta = str(eta)
-                p_hist = list(matched_item.purchase_history or [])
-                p_hist.append({
-                    "allocation_id": alloc.id,
-                    "id": source_doc_no,
-                    "ref": source_doc_no,
-                    "qty": allocated_qty,
-                    "cost": unit_cost,
-                    "supplier": vendor_name,
-                    "date": matched_item.po_date,
-                    "eta": eta,
-                    "by": allocated_by
-                })
-                matched_item.purchase_history = p_hist
-            elif allocation_type == "GRN":
-                matched_item.received_qty = (matched_item.received_qty or 0) + int(allocated_qty)
-                if doc_date:
-                    matched_item.received_date = str(doc_date).split("T")[0]
-                else:
-                    matched_item.received_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                r_hist = list(matched_item.receiving_history or [])
-                r_hist.append({
-                    "allocation_id": alloc.id,
-                    "id": source_doc_no,
-                    "ref": source_doc_no,
-                    "qty": allocated_qty,
-                    "supplier": vendor_name,
-                    "date": matched_item.received_date,
-                    "by": allocated_by
-                })
-                matched_item.receiving_history = r_hist
+            if vendor_name and not matched_item.po_supplier:
+                matched_item.po_supplier = vendor_name
+            recalc_order_item_procurement(db, matched_item)
 
         db.commit()
         logger.info(f"Allocated {allocated_qty} of {sku} from {source_doc_no} to {real_proj_name} (Order #{order_id}).")
@@ -1377,49 +1370,9 @@ def batch_allocate_procurement_items(
             db.flush()
 
             if matched_item:
-                if allocation_type == "PO":
-                    matched_item.po_ref = source_doc_no
-                    matched_item.po_qty_ordered = (matched_item.po_qty_ordered or 0) + int(allocated_qty)
-                    matched_item.unit_cost = unit_cost
-                    if vendor_name:
-                        matched_item.po_supplier = vendor_name
-                    if doc_date:
-                        matched_item.po_date = str(doc_date).split("T")[0]
-                    else:
-                        matched_item.po_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                    if eta:
-                        matched_item.po_eta = str(eta)
-                        matched_item.eta = str(eta)
-                    p_hist = list(matched_item.purchase_history or [])
-                    p_hist.append({
-                        "allocation_id": alloc.id,
-                        "id": source_doc_no,
-                        "ref": source_doc_no,
-                        "qty": allocated_qty,
-                        "cost": unit_cost,
-                        "supplier": vendor_name,
-                        "date": matched_item.po_date,
-                        "eta": eta,
-                        "by": allocated_by
-                    })
-                    matched_item.purchase_history = p_hist
-                elif allocation_type == "GRN":
-                    matched_item.received_qty = (matched_item.received_qty or 0) + int(allocated_qty)
-                    if doc_date:
-                        matched_item.received_date = str(doc_date).split("T")[0]
-                    else:
-                        matched_item.received_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                    r_hist = list(matched_item.receiving_history or [])
-                    r_hist.append({
-                        "allocation_id": alloc.id,
-                        "id": source_doc_no,
-                        "ref": source_doc_no,
-                        "qty": allocated_qty,
-                        "supplier": vendor_name,
-                        "date": matched_item.received_date,
-                        "by": allocated_by
-                    })
-                    matched_item.receiving_history = r_hist
+                if vendor_name and not matched_item.po_supplier:
+                    matched_item.po_supplier = vendor_name
+                recalc_order_item_procurement(db, matched_item)
 
             count_allocated += 1
 
@@ -1437,68 +1390,156 @@ def batch_allocate_procurement_items(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def revert_order_item_for_cancelled_allocations(db: Session, item: OrderItem, cancelled_alloc_ids: set, cancelled_docs: set):
+def recalc_order_item_procurement(db: Session, item: OrderItem):
     """
-    Safely removes cancelled allocations from OrderItem purchase_history / receiving_history
-    and recalculates po_qty_ordered, po_ref, dates, and ETAs.
-    Guarantees safe JSON parsing so string representations never crash with 'str' object has no attribute 'get'.
+    Authoritative recalculation of OrderItem procurement fields (po_qty_ordered, received_qty,
+    po_ref, po_date, po_supplier, po_eta, eta, received_date, purchase_history, receiving_history)
+    strictly from active ProcurementAllocation rows in Cloud SQL.
     """
     if not item:
         return
 
-    def parse_hist_safely(raw_val):
-        if not raw_val:
-            return []
-        if isinstance(raw_val, list):
-            return [h for h in raw_val if isinstance(h, dict)]
-        if isinstance(raw_val, str):
+    # 1. Fetch active allocations matching this order item directly by id
+    active_allocs = db.query(ProcurementAllocation).filter(
+        ProcurementAllocation.order_item_id == str(item.id),
+        ProcurementAllocation.status == "Active",
+        ProcurementAllocation.allocation_type.in_(["PO", "GRN"])
+    ).all()
+
+    # 2. If no direct allocation by order_item_id, fallback to matching unlinked allocations by order_id and SKU
+    if not active_allocs and item.order_id and (item.code or item.one_one_code):
+        sku_filter = or_(
+            ProcurementAllocation.sku == item.code,
+            ProcurementAllocation.sku == item.one_one_code
+        )
+        if str(item.order_id).isdigit():
+            active_allocs = db.query(ProcurementAllocation).filter(
+                ProcurementAllocation.allocation_type.in_(["PO", "GRN"]),
+                ProcurementAllocation.order_item_id.is_(None),
+                ProcurementAllocation.order_id == int(item.order_id),
+                sku_filter,
+                ProcurementAllocation.status == "Active"
+            ).all()
+        else:
+            order_prefix = str(item.order_id).split('--')[0] if '--' in str(item.order_id) else str(item.order_id)
+            matched_proj = db.query(Project).filter(
+                (Project.project_key == order_prefix) | (Project.name == order_prefix)
+            ).first()
+            if matched_proj:
+                active_allocs = db.query(ProcurementAllocation).filter(
+                    ProcurementAllocation.allocation_type.in_(["PO", "GRN"]),
+                    ProcurementAllocation.order_item_id.is_(None),
+                    ProcurementAllocation.project_id == matched_proj.id,
+                    sku_filter,
+                    ProcurementAllocation.status == "Active"
+                ).all()
+
+    # Deduplicate allocations
+    unique_po_allocs = []
+    unique_grn_allocs = []
+    seen_po = set()
+    seen_grn = set()
+
+    for a in active_allocs:
+        dedup_key = (a.source_doc_no, a.source_line_id) if a.source_line_id is not None else (a.source_doc_no, a.sku, round(float(a.allocated_qty or 0.0), 4))
+        if a.allocation_type == "PO":
+            if dedup_key in seen_po:
+                a.status = "Cancelled"
+                continue
+            seen_po.add(dedup_key)
+            unique_po_allocs.append(a)
+        elif a.allocation_type == "GRN":
+            if dedup_key in seen_grn:
+                a.status = "Cancelled"
+                continue
+            seen_grn.add(dedup_key)
+            unique_grn_allocs.append(a)
+
+    # Recalculate PO fields
+    new_p_hist = []
+    total_po_qty = 0.0
+    po_refs = set()
+    po_dates = []
+    po_etas = []
+    po_suppliers = []
+
+    for a in unique_po_allocs:
+        qty_val = float(a.allocated_qty or 0.0)
+        cost_val = float(a.unit_cost or 0.0)
+        total_po_qty += qty_val
+        if a.source_doc_no:
+            po_refs.add(str(a.source_doc_no))
+        if a.doc_date:
+            po_dates.append(str(a.doc_date).split("T")[0])
+        eta_val = None
+        if a.notes and "ETA:" in a.notes:
             try:
-                import json
-                parsed = json.loads(raw_val)
-                if isinstance(parsed, list):
-                    return [h for h in parsed if isinstance(h, dict)]
+                eta_val = a.notes.split("ETA:")[1].strip().split()[0]
             except Exception:
-                return []
-        return []
+                pass
+        if eta_val:
+            po_etas.append(eta_val)
 
-    # PO
-    cur_p = parse_hist_safely(item.purchase_history)
-    new_p = [
-        h for h in cur_p
-        if int(h.get("allocation_id") or 0) not in cancelled_alloc_ids
-        and (bool(h.get("allocation_id")) or str(h.get("id") or h.get("ref") or "").strip() not in cancelled_docs)
-    ]
-    item.purchase_history = new_p
-    item.po_qty_ordered = int(sum(float(h.get("qty") or 0) for h in new_p))
-    if new_p:
-        item.po_ref = "; ".join(sorted(set(str(h.get("ref")) for h in new_p if h.get("ref"))))
-        dates = [h.get("date") for h in new_p if h.get("date")]
-        item.po_date = max(dates) if dates else None
-        etas = [h.get("eta") for h in new_p if h.get("eta")]
-        item.po_eta = max(etas) if etas else None
-        item.eta = item.po_eta
-    else:
-        item.po_ref = None
-        item.po_date = None
-        item.po_eta = None
-        item.eta = None
-        item.po_qty_ordered = 0
+        new_p_hist.append({
+            "allocation_id": a.id,
+            "id": a.source_doc_no,
+            "ref": a.source_doc_no,
+            "qty": qty_val,
+            "cost": cost_val,
+            "supplier": getattr(a, 'supplier_name', None) or (item.po_supplier or "Supplier"),
+            "date": str(a.doc_date).split("T")[0] if a.doc_date else (str(a.allocated_at).split("T")[0] if a.allocated_at else None),
+            "eta": eta_val or item.po_eta,
+            "by": a.allocated_by_name or "Staff",
+            "type": "PO"
+        })
 
-    # GRN
-    cur_r = parse_hist_safely(item.receiving_history)
-    new_r = [
-        h for h in cur_r
-        if int(h.get("allocation_id") or 0) not in cancelled_alloc_ids
-        and (bool(h.get("allocation_id")) or str(h.get("id") or h.get("ref") or "").strip() not in cancelled_docs)
-    ]
-    item.receiving_history = new_r
-    item.received_qty = int(sum(float(h.get("qty") or 0) for h in new_r))
-    if new_r:
-        dates = [h.get("date") for h in new_r if h.get("date")]
-        item.received_date = max(dates) if dates else None
-    else:
-        item.received_date = None
-        item.received_qty = 0
+    item.purchase_history = new_p_hist
+    item.po_qty_ordered = int(round(total_po_qty))
+    item.po_ref = "; ".join(sorted(po_refs)) if po_refs else None
+    item.po_date = max(po_dates) if po_dates else None
+    item.po_eta = max(po_etas) if po_etas else item.po_eta
+    item.eta = item.po_eta
+
+    # Recalculate GRN fields
+    new_r_hist = []
+    total_grn_qty = 0.0
+    grn_refs = set()
+    grn_dates = []
+
+    for a in unique_grn_allocs:
+        qty_val = float(a.allocated_qty or 0.0)
+        total_grn_qty += qty_val
+        if a.source_doc_no:
+            grn_refs.add(str(a.source_doc_no))
+        if a.doc_date:
+            grn_dates.append(str(a.doc_date).split("T")[0])
+
+        new_r_hist.append({
+            "allocation_id": a.id,
+            "id": a.source_doc_no,
+            "ref": a.source_doc_no,
+            "qty": qty_val,
+            "supplier": getattr(a, 'supplier_name', None) or (item.po_supplier or "Supplier"),
+            "date": str(a.doc_date).split("T")[0] if a.doc_date else (str(a.allocated_at).split("T")[0] if a.allocated_at else None),
+            "by": a.allocated_by_name or "Staff",
+            "type": "GRN"
+        })
+
+    item.receiving_history = new_r_hist
+    item.received_qty = int(round(total_grn_qty))
+    if grn_refs and hasattr(item, 'grn_ref'):
+        item.grn_ref = "; ".join(sorted(grn_refs))
+    item.received_date = max(grn_dates) if grn_dates else None
+
+
+def revert_order_item_for_cancelled_allocations(db: Session, item: OrderItem, cancelled_alloc_ids: set, cancelled_docs: set):
+    """
+    Safely removes cancelled allocations from OrderItem purchase_history / receiving_history
+    and recalculates po_qty_ordered, po_ref, dates, and ETAs using authoritative active allocations.
+    """
+    if not item:
+        return
+    recalc_order_item_procurement(db, item)
 
 
 def clean_string_tokens(s: Optional[str]) -> List[str]:
@@ -1934,35 +1975,9 @@ def bulk_allocate_approved(
                 db.flush()
 
                 if matched_item:
-                    matched_item.po_ref = doc_no
-                    matched_item.po_qty_ordered = (matched_item.po_qty_ordered or 0) + int(rem_qty)
-                    matched_item.unit_cost = float(r.unit_cost or 0.0)
-                    if r.vendor_name:
+                    if r.vendor_name and not matched_item.po_supplier:
                         matched_item.po_supplier = r.vendor_name
-                    if r.transaction_date:
-                        matched_item.po_date = str(r.transaction_date).split("T")[0]
-                    else:
-                        matched_item.po_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                    if eta:
-                        matched_item.po_eta = str(eta).split("T")[0]
-                        matched_item.eta = str(eta).split("T")[0]
-                    elif r.order_required_date:
-                        matched_item.po_eta = str(r.order_required_date).split("T")[0]
-                        matched_item.eta = str(r.order_required_date).split("T")[0]
-
-                    p_hist = list(matched_item.purchase_history or [])
-                    p_hist.append({
-                        "allocation_id": alloc.id,
-                        "id": doc_no,
-                        "ref": doc_no,
-                        "qty": rem_qty,
-                        "cost": float(r.unit_cost or 0.0),
-                        "supplier": r.vendor_name,
-                        "date": matched_item.po_date,
-                        "eta": matched_item.po_eta,
-                        "by": allocated_by
-                    })
-                    matched_item.purchase_history = p_hist
+                    recalc_order_item_procurement(db, matched_item)
 
                 total_lines += 1
                 total_units += rem_qty
@@ -2436,23 +2451,9 @@ def manual_batch_record_procurement(payload: Dict[str, Any] = Body(...), db: Ses
 
                 # 4. Update OrderItem fields directly
                 if target_item:
-                    date_str = str(raw_date or now_dt.strftime("%Y-%m-%d")).split("T")[0]
-                    if doc_type == "PO":
-                        target_item.po_ref = d_no
+                    if supplier and not target_item.po_supplier:
                         target_item.po_supplier = supplier
-                        target_item.po_date = date_str
-                        target_item.po_qty_ordered = (target_item.po_qty_ordered or 0) + int(round(qty_val))
-                        # Note: We preserve the user's explicit Stock Status (All Stock on Hand / Partial / To Be Ordered)
-                        p_hist = list(target_item.purchase_history or [])
-                        p_hist.append({"allocation_id": alloc.id, "id": d_no, "ref": d_no, "qty": qty_val, "cost": unit_cst, "supplier": supplier, "date": date_str, "type": "PO"})
-                        target_item.purchase_history = p_hist
-                    else: # GRN
-                        target_item.grn_ref = d_no
-                        target_item.received_date = date_str
-                        target_item.received_qty = (target_item.received_qty or 0) + int(round(qty_val))
-                        r_hist = list(target_item.receiving_history or [])
-                        r_hist.append({"allocation_id": alloc.id, "id": d_no, "ref": d_no, "qty": qty_val, "date": date_str, "type": "GRN"})
-                        target_item.receiving_history = r_hist
+                    recalc_order_item_procurement(db, target_item)
 
                     if target_item not in affected_order_items:
                         affected_order_items.append(target_item)
