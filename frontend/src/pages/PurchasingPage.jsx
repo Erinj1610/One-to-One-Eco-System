@@ -244,7 +244,9 @@ export default function PurchasingPage() {
     newTab = activeFilterTab, 
     newSupplier = supplierFilter, 
     newQ = searchQuery,
-    newLimit = limit
+    newLimit = limit,
+    newSortField = docSortField,
+    newSortDir = docSortDirection
   ) => {
     setIsLoadingProcurement(true);
     try {
@@ -274,7 +276,9 @@ export default function PurchasingPage() {
         status: statusParam,
         page: newPage.toString(),
         limit: newLimit.toString(),
-        view_level: 'document'
+        view_level: 'document',
+        sort_by: newSortField,
+        sort_dir: newSortDir
       });
 
       if (newSupplier && newSupplier !== 'All Suppliers') {
@@ -399,10 +403,10 @@ export default function PurchasingPage() {
   // Debounced Search & Tab Change Effect
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchProcurementDocuments(1, activeFilterTab, supplierFilter, searchQuery);
+      fetchProcurementDocuments(1, activeFilterTab, supplierFilter, searchQuery, limit, docSortField, docSortDirection);
     }, 250);
     return () => clearTimeout(timer);
-  }, [activeFilterTab, supplierFilter, searchQuery]);
+  }, [activeFilterTab, supplierFilter, searchQuery, docSortField, docSortDirection]);
 
   // Extract unique suppliers for filter (combine summary all_suppliers + current page docs)
   const uniqueSuppliers = useMemo(() => {
@@ -1493,12 +1497,11 @@ export default function PurchasingPage() {
   }, [selectedDocument]);
 
   const handleDocSort = (field) => {
-    if (docSortField === field) {
-      setDocSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setDocSortField(field);
-      setDocSortDirection('asc');
-    }
+    const nextDir = docSortField === field ? (docSortDirection === 'asc' ? 'desc' : 'asc') : 'desc';
+    setDocSortField(field);
+    setDocSortDirection(nextDir);
+    setPage(1);
+    fetchProcurementDocuments(1, activeFilterTab, supplierFilter, searchQuery, limit, field, nextDir);
   };
 
   const renderDocSortIcon = (field) => {
