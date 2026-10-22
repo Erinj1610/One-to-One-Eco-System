@@ -241,6 +241,8 @@ def get_procurement_documents(
     view_level: str = "document",  # "document" or "line"
     page: int = 1,
     limit: int = 50,
+    sort_by: str = "date",
+    sort_dir: str = "desc",
     db: Session = Depends(get_db)
 ):
     """
@@ -416,6 +418,22 @@ def get_procurement_documents(
                     "issue_flagged_at": iss_l.flagged_at.isoformat() if iss_l and iss_l.flagged_at else None,
                     "allocations": active_allocs
                 })
+
+            # Sort raw lines globally across all database records
+            is_asc = sort_dir.lower() == "asc"
+            if sort_by == "document_no":
+                raw_lines.sort(key=lambda x: (x.get("document_no") or "").lower(), reverse=not is_asc)
+            elif sort_by == "supplier":
+                raw_lines.sort(key=lambda x: (x.get("vendor_name") or "").lower(), reverse=not is_asc)
+            elif sort_by == "total_value":
+                raw_lines.sort(key=lambda x: float(x.get("total_value") or 0.0), reverse=not is_asc)
+            elif sort_by == "items_qty":
+                raw_lines.sort(key=lambda x: float(x.get("total_qty") or 0.0), reverse=not is_asc)
+            elif sort_by == "status":
+                status_rank = {"NEEDS_ALLOCATION": 0, "PARTIAL": 1, "FULLY_ALLOCATED": 2}
+                raw_lines.sort(key=lambda x: status_rank.get(x.get("allocation_status"), 3), reverse=not is_asc)
+            else:  # default 'date'
+                raw_lines.sort(key=lambda x: x.get("transaction_date") or "", reverse=not is_asc)
 
             total_count = len(raw_lines)
             start_idx = (page - 1) * limit
@@ -654,14 +672,28 @@ def get_procurement_documents(
 
             doc_list.append(d)
 
-        # Sort documents: Needs Allocation first, then most recent transaction date
-        doc_list.sort(
-            key=lambda x: (
-                0 if x["allocation_status"] == "NEEDS_ALLOCATION" else (1 if x["allocation_status"] == "PARTIAL" else 2),
-                x["transaction_date"] or ""
-            ),
-            reverse=False
-        )
+        # Global server-side document sorting across all database records
+        is_asc = sort_dir.lower() == "asc"
+        if sort_by == "document_no":
+            doc_list.sort(key=lambda x: (x.get("document_no") or "").lower(), reverse=not is_asc)
+        elif sort_by == "doc_type":
+            doc_list.sort(key=lambda x: (x.get("doc_type") or "").lower(), reverse=not is_asc)
+        elif sort_by == "supplier":
+            doc_list.sort(key=lambda x: (x.get("vendor_name") or "").lower(), reverse=not is_asc)
+        elif sort_by == "reference":
+            doc_list.sort(key=lambda x: (x.get("reference") or x.get("customer_name") or "").lower(), reverse=not is_asc)
+        elif sort_by == "total_value":
+            doc_list.sort(key=lambda x: float(x.get("total_value") or 0.0), reverse=not is_asc)
+        elif sort_by == "items_qty":
+            doc_list.sort(key=lambda x: float(x.get("total_qty") or 0.0), reverse=not is_asc)
+        elif sort_by == "status":
+            status_rank = {"NEEDS_ALLOCATION": 0, "PARTIAL": 1, "FULLY_ALLOCATED": 2}
+            doc_list.sort(key=lambda x: (
+                3 if x.get("is_internal") else (4 if x.get("is_archived") else (5 if x.get("is_flagged_issue") else status_rank.get(x.get("allocation_status"), 2))),
+                x.get("transaction_date") or ""
+            ), reverse=not is_asc)
+        else:  # default 'date'
+            doc_list.sort(key=lambda x: x.get("transaction_date") or "", reverse=not is_asc)
 
         total_count = len(doc_list)
         start_idx = (page - 1) * limit
