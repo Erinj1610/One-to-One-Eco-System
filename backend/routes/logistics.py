@@ -298,11 +298,18 @@ def _serialize_dn_for_order_json(dn: LogisticsDeliveryNote) -> Dict[str, Any]:
     }
 
 
+_LEGACY_MIGRATED_DONE = False
+
+
 def ensure_legacy_logistics_migrated(db: Session):
     """
     One-time/idempotent backfill that migrates any legacy JSON Order.packing_lists and Order.delivery_notes
     into the relational LogisticsPackingList and LogisticsDeliveryNote tables so zero data is ever lost.
     """
+    global _LEGACY_MIGRATED_DONE
+    if _LEGACY_MIGRATED_DONE:
+        return
+
     from database.cloud_sql import engine, Base
     try:
         Base.metadata.create_all(bind=engine)
@@ -315,18 +322,41 @@ def ensure_legacy_logistics_migrated(db: Session):
     migrated_any = False
 
     for ord_obj in orders:
-        proj = db.query(Project).filter(Project.project_key == ord_obj.project_key).first() if ord_obj.project_key else None
-        order_items = db.query(OrderItem).filter(OrderItem.order_id.in_([ord_obj.po_number, str(ord_obj.id)])).all()
-
-        # 1. Migrate legacy Packing Lists
         raw_pls = ord_obj.packing_lists
         if isinstance(raw_pls, str):
             try:
                 raw_pls = json.loads(raw_pls)
             except Exception:
                 raw_pls = []
-        if isinstance(raw_pls, list):
-            for pl_json in raw_pls:
+        if not isinstance(raw_pls, list):
+            raw_pls = []
+
+        raw_dns = ord_obj.delivery_notes
+        if isinstance(raw_dns, str):
+            try:
+                raw_dns = json.loads(raw_dns)
+            except Exception:
+                raw_dns = []
+        if not isinstance(raw_dns, list):
+            raw_dns = []
+
+        unmigrated_pls = [
+            p for p in raw_pls
+            if isinstance(p, dict) and (p.get("id") or p.get("document_number")) and (p.get("id") or p.get("document_number")) not in existing_pls
+        ]
+        unmigrated_dns = [
+            d for d in raw_dns
+            if isinstance(d, dict) and (d.get("id") or d.get("document_number")) and (d.get("id") or d.get("document_number")) not in existing_dns
+        ]
+        if not unmigrated_pls and not unmigrated_dns:
+            continue
+
+        proj = db.query(Project).filter(Project.project_key == ord_obj.project_key).first() if ord_obj.project_key else None
+        order_items = db.query(OrderItem).filter(OrderItem.order_id.in_([ord_obj.po_number, str(ord_obj.id)])).all()
+
+        # 1. Migrate legacy Packing Lists
+        if unmigrated_pls:
+            for pl_json in unmigrated_pls:
                 if not isinstance(pl_json, dict):
                     continue
                 doc_no = pl_json.get("id") or pl_json.get("document_number")
@@ -379,14 +409,8 @@ def ensure_legacy_logistics_migrated(db: Session):
                 migrated_any = True
 
         # 2. Migrate legacy Delivery Notes
-        raw_dns = ord_obj.delivery_notes
-        if isinstance(raw_dns, str):
-            try:
-                raw_dns = json.loads(raw_dns)
-            except Exception:
-                raw_dns = []
-        if isinstance(raw_dns, list):
-            for dn_json in raw_dns:
+        if unmigrated_dns:
+            for dn_json in unmigrated_dns:
                 if not isinstance(dn_json, dict):
                     continue
                 doc_no = dn_json.get("id") or dn_json.get("document_number")
@@ -449,6 +473,7 @@ def ensure_legacy_logistics_migrated(db: Session):
 
     if migrated_any:
         db.commit()
+    _LEGACY_MIGRATED_DONE = True
 
 
 def recalc_order_item_logistics(db: Session, order_obj: Order):
@@ -571,14 +596,24 @@ def get_enriched_order_items_for_logistics(
     order_keys = [k for k in [order_obj.po_number, str(order_obj.id)] if k]
     order_items = db.query(OrderItem).filter(OrderItem.order_id.in_(order_keys)).order_by(OrderItem.sort_order.asc(), OrderItem.id.asc()).all()
 
-    # Load product catalog lookup for enrichment
-    products = db.query(Product).all()
+    # Load targeted product catalog lookup for enrichment (only codes in this order)
+    lookup_codes = set()
+    for oi in order_items:
+        if oi.one_one_code and oi.one_one_code.strip():
+            lookup_codes.add(oi.one_one_code.strip())
+        if oi.code and oi.code.strip():
+            lookup_codes.add(oi.code.strip())
+
     prod_by_code = {}
-    for p in products:
-        if p.one_to_one_code:
-            prod_by_code[p.one_to_one_code.strip().upper()] = p
-        if p.sku:
-            prod_by_code[p.sku.strip().upper()] = p
+    if lookup_codes:
+        products = db.query(Product).filter(
+            (Product.one_to_one_code.in_(lookup_codes)) | (Product.sku.in_(lookup_codes))
+        ).all()
+        for p in products:
+            if p.one_to_one_code:
+                prod_by_code[p.one_to_one_code.strip().upper()] = p
+            if p.sku:
+                prod_by_code[p.sku.strip().upper()] = p
 
     # Calculate already packed quantities across active Packing Lists for this order
     active_pls = db.query(LogisticsPackingList).filter(
@@ -1270,11 +1305,20 @@ def void_delivery_note(dn_ref: str, payload: DeliveryNoteVoidInput, db: Session 
 @public_router.get("/logistics/label-templates")
 @router.get("/logistics/label-templates")
 def get_label_templates(db: Session = Depends(get_db)):
+    # Check full-fidelity PortalSetting first (preserves fields, marginMm, rotation, orientation, carrierWebMm)
+    setting = db.query(PortalSetting).filter(PortalSetting.key == "label_templates").first()
+    if setting and isinstance(setting.value, list) and len(setting.value) > 0:
+        valid = [t for t in setting.value if isinstance(t, dict) and (t.get("fields") or t.get("elements"))]
+        if valid:
+            return {"templates": valid}
+
     rows = db.query(LogisticsLabelTemplate).order_by(LogisticsLabelTemplate.id.asc()).all()
     if rows:
-        return {
-            "templates": [
-                {
+        result = []
+        for r in rows:
+            elems = r.elements_json or []
+            if elems:
+                result.append({
                     "id": r.template_id,
                     "name": r.name,
                     "type": r.type,
@@ -1283,16 +1327,11 @@ def get_label_templates(db: Session = Depends(get_db)):
                     "gapMm": r.gap_mm,
                     "dpi": r.dpi,
                     "isDefault": r.is_default,
-                    "elements": r.elements_json or [],
-                }
-                for r in rows
-            ]
-        }
-
-    # Check legacy PortalSetting fallback
-    setting = db.query(PortalSetting).filter(PortalSetting.key == "label_templates").first()
-    if setting and isinstance(setting.value, list) and len(setting.value) > 0:
-        return {"templates": setting.value}
+                    "fields": elems,
+                    "elements": elems,
+                })
+        if result:
+            return {"templates": result}
 
     return {"templates": None}
 
@@ -1303,21 +1342,22 @@ def save_label_templates(payload: LabelTemplatesSaveInput, db: Session = Depends
     db.flush()
 
     for tpl in payload.templates:
+        fields_arr = tpl.get("fields") or tpl.get("elements") or []
         rec = LogisticsLabelTemplate(
             template_id=str(tpl.get("id") or f"tpl_{int(datetime.now().timestamp())}"),
             name=str(tpl.get("name") or "Custom Label"),
             type=str(tpl.get("type") or "item"),
             width_mm=float(tpl.get("widthMm") or 50.0),
             height_mm=float(tpl.get("heightMm") or 30.0),
-            gap_mm=float(tpl.get("gapMm") or 3.0),
+            gap_mm=float(tpl.get("gapMm") or 2.0),
             dpi=int(tpl.get("dpi") or 203),
             is_default=bool(tpl.get("isDefault", False)),
-            elements_json=tpl.get("elements") or [],
+            elements_json=fields_arr,
             updated_by=payload.updated_by or "Admin",
         )
         db.add(rec)
 
-    # Also keep PortalSetting('label_templates') in sync for backward compatibility
+    # Keep PortalSetting('label_templates') in sync with full template properties
     setting = db.query(PortalSetting).filter(PortalSetting.key == "label_templates").first()
     if setting:
         setting.value = payload.templates

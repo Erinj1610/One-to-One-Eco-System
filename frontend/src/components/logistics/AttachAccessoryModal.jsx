@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Link2, Plus, Trash2, Check, Layers } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Link2, Plus, Trash2, Check } from 'lucide-react';
 
 /**
  * Modal allowing warehouse packers to allocate/attach lumped accessory, lamp, driver,
@@ -14,20 +14,27 @@ export default function AttachAccessoryModal({
   existingAttachments = [],
   onConfirmAttachments,
 }) {
-  if (!isOpen || !accessoryRow) return null;
-
+  const existingAttachedSum = (existingAttachments || []).reduce(
+    (s, a) => s + (Number(a.qty_packed) || 0),
+    0
+  );
+  const standaloneQty = accessoryRow?.is_accessory ? 0 : Number(accessoryRow?.qty_packed || 0);
   const maxAvailable = Math.max(
     1,
-    Number(accessoryRow.remaining_to_pack ?? accessoryRow.qty_ordered ?? 1)
+    standaloneQty + existingAttachedSum ||
+      Number(accessoryRow?.remaining_to_pack) ||
+      Number(accessoryRow?.qty_ordered) ||
+      1
   );
 
-  const [allocations, setAllocations] = useState(() => {
+  const buildInitialAllocations = () => {
+    if (!accessoryRow) return [];
     if (existingAttachments && existingAttachments.length > 0) {
       return existingAttachments.map((a, idx) => ({
-        id: a.id || `alloc_${idx}`,
+        id: a.rowKey || a.id || `alloc_${idx}`,
         parentOrderItemId: String(a.parent_item_id || ''),
         qty: Number(a.qty_packed || 1),
-        boxOverride: a.box_number || '',
+        boxOverride: a.box_number || 'Box 1',
       }));
     }
     const defaultParent = candidateParentRows[0];
@@ -35,11 +42,21 @@ export default function AttachAccessoryModal({
       {
         id: `alloc_${Date.now()}`,
         parentOrderItemId: defaultParent ? String(defaultParent.order_item_id) : '',
-        qty: Math.min(maxAvailable, defaultParent ? Number(defaultParent.qty_packed || defaultParent.remaining_to_pack || 1) : 1),
-        boxOverride: defaultParent ? defaultParent.box_number || 'Box 1' : 'Box 1',
+        qty: maxAvailable,
+        boxOverride: defaultParent ? defaultParent.box_number || 'Box 1' : accessoryRow.box_number || 'Box 1',
       },
     ];
-  });
+  };
+
+  const [allocations, setAllocations] = useState(buildInitialAllocations);
+
+  useEffect(() => {
+    if (isOpen && accessoryRow) {
+      setAllocations(buildInitialAllocations());
+    }
+  }, [isOpen, accessoryRow?.rowKey, accessoryRow?.order_item_id]);
+
+  if (!isOpen || !accessoryRow) return null;
 
   const totalAllocated = allocations.reduce((s, a) => s + (Number(a.qty) || 0), 0);
   const unallocated = Math.max(0, maxAvailable - totalAllocated);

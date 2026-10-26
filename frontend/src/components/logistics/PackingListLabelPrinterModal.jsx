@@ -49,10 +49,11 @@ export default function PackingListLabelPrinterModal({
   const [isDirectPrinting, setIsDirectPrinting] = useState(false);
   const [showSetupBanner, setShowSetupBanner] = useState(true);
   
-  // Printing mode: 'pplb' (Argox native EPL2 raw commands - recommended for perfect gap tracking) or 'raster' (PNG graphics)
+  // Printing mode: 'raster' (exact 203-DPI WYSIWYG template graphic via configured Windows driver - default)
+  // or 'pplb' (Argox native EPL2 raw commands)
   const [usePplbRaw, setUsePplbRaw] = useState(() => {
-    const saved = localStorage.getItem('oto_label_print_mode');
-    return saved !== 'raster'; // Default to true (Native Argox PPLB)
+    const saved = localStorage.getItem('oto_label_print_mode_v2');
+    return saved === 'pplb';
   });
 
   // Auto-discover Windows printers via QZ Tray on modal open or user click
@@ -358,6 +359,9 @@ export default function PackingListLabelPrinterModal({
       return;
     }
 
+    // Subtract 0.5mm sub-pixel guard in @media print so Chromium never overflows a 30mm page box onto a 2nd label
+    const safePrintHeightMm = Math.max(10, Number((printHeightMm - 0.5).toFixed(2)));
+
     const imagesHtml = dataUrls.map((dataUrl, idx) => `
       <div class="thermal-label-page">
         <img src="${dataUrl}" class="thermal-img" alt="Label ${idx + 1}" />
@@ -372,7 +376,7 @@ export default function PackingListLabelPrinterModal({
         <style>
           @page {
             size: ${printWidthMm}mm ${printHeightMm}mm;
-            margin: 0mm;
+            margin: 0mm !important;
           }
           * {
             box-sizing: border-box;
@@ -381,29 +385,35 @@ export default function PackingListLabelPrinterModal({
           }
           html, body {
             width: ${printWidthMm}mm;
-            height: 100%;
-            margin: 0;
-            padding: 0;
+            margin: 0 !important;
+            padding: 0 !important;
             background: #ffffff;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
           .thermal-label-page {
             width: ${printWidthMm}mm;
-            height: ${printHeightMm}mm;
+            height: ${safePrintHeightMm}mm;
+            max-width: ${printWidthMm}mm;
+            max-height: ${safePrintHeightMm}mm;
             page-break-before: auto;
-            page-break-inside: avoid;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
             page-break-after: always;
             break-after: page;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
+            display: block;
+            overflow: hidden !important;
             background: #ffffff;
           }
+          .thermal-label-page:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
+          }
           .thermal-img {
-            width: 100%;
-            height: 100%;
+            width: ${printWidthMm}mm;
+            height: ${safePrintHeightMm}mm;
+            max-width: ${printWidthMm}mm;
+            max-height: ${safePrintHeightMm}mm;
             object-fit: fill;
             display: block;
             image-rendering: -webkit-optimize-contrast;
@@ -411,17 +421,25 @@ export default function PackingListLabelPrinterModal({
             image-rendering: pixelated;
           }
           @media screen {
-            body {
+            html, body {
+              width: 100%;
               background: #f1f5f9;
-              padding: 20px;
+              padding: 20px !important;
               display: flex;
               flex-direction: column;
               align-items: center;
               gap: 16px;
             }
             .thermal-label-page {
+              width: ${printWidthMm}mm;
+              height: ${printHeightMm}mm;
+              max-height: ${printHeightMm}mm;
               box-shadow: 0 4px 12px rgba(0,0,0,0.15);
               border: 1px solid #cbd5e1;
+            }
+            .thermal-img {
+              width: 100%;
+              height: 100%;
             }
           }
         </style>
@@ -430,10 +448,15 @@ export default function PackingListLabelPrinterModal({
         ${imagesHtml}
         <script>
           window.onload = function() {
-            setTimeout(function() {
-              window.focus();
-              window.print();
-            }, 300);
+            var imgs = Array.prototype.slice.call(document.images || []);
+            Promise.all(imgs.map(function(img) {
+              return img.decode ? img.decode().catch(function(){}) : Promise.resolve();
+            })).then(function() {
+              setTimeout(function() {
+                window.focus();
+                window.print();
+              }, 150);
+            });
           };
         </script>
       </body>
@@ -785,7 +808,7 @@ export default function PackingListLabelPrinterModal({
                 onClick={() => {
                   const next = !usePplbRaw;
                   setUsePplbRaw(next);
-                  localStorage.setItem('oto_label_print_mode', next ? 'pplb' : 'raster');
+                  localStorage.setItem('oto_label_print_mode_v2', next ? 'pplb' : 'raster');
                 }}
                 className="btn btn-ghost btn-xs"
                 style={{

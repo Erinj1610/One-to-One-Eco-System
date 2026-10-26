@@ -547,47 +547,51 @@ export function generatePplbCommands(template, context, copies = 1) {
   const DOTS_PER_MM = 8;
   const stickerW = Number(template.widthMm ?? 50);
   const stickerH = Number(template.heightMm ?? 30);
-  const gapMm = Number(template.gapMm ?? 2);
+  const gapMm = Number(template.gapMm ?? 1.5);
 
-  const widthDots = Math.round(stickerW * DOTS_PER_MM);  // e.g. 400 dots for 50mm
-  const heightDots = Math.round(stickerH * DOTS_PER_MM); // e.g. 240 dots for 30mm
-  const gapDots = Math.max(8, Math.round(gapMm * DOTS_PER_MM));
+  const widthDots = Math.round(stickerW * DOTS_PER_MM);  // 400 dots for 50mm
+  const heightDots = Math.round(stickerH * DOTS_PER_MM); // 240 dots for 30mm
+  const gapDots = Math.max(8, Math.round(gapMm * DOTS_PER_MM)); // 12 dots for 1.5mm gap
 
   const cmds = [];
 
-  // Reset and set label dimensions
+  // Reset and set label dimensions strictly within single sticker
   cmds.push('N'); // Clear image buffer
   cmds.push(`q${widthDots}`); // Set label width
   cmds.push(`Q${heightDots},${gapDots}`); // Set form length and gap sensor height
-  cmds.push('D11'); // Darkness / density (11 is sharp thermal transfer/direct)
+  cmds.push('D11'); // Darkness / density
   cmds.push('S3');  // Speed (3 inches/sec)
 
   let flowY = 8;
+  const maxSafeY = heightDots - 4;
 
   (template.fields || template.elements || []).forEach(field => {
     const isExplicit = field.xMm !== undefined && field.yMm !== undefined;
-    const xDots = Math.round((isExplicit ? Number(field.xMm) : 1) * DOTS_PER_MM);
-    const yDots = isExplicit ? Math.round(Number(field.yMm) * DOTS_PER_MM) : flowY;
-    const wDots = Math.round((field.wMm !== undefined ? Number(field.wMm) : (stickerW - 2)) * DOTS_PER_MM);
+    const xDots = Math.max(0, Math.min(widthDots - 4, Math.round((isExplicit ? Number(field.xMm) : 1) * DOTS_PER_MM)));
+    const yDots = Math.max(0, Math.min(maxSafeY, isExplicit ? Math.round(Number(field.yMm) * DOTS_PER_MM) : flowY));
+    const wDots = Math.max(16, Math.min(widthDots - xDots, Math.round((field.wMm !== undefined ? Number(field.wMm) : (stickerW - 2)) * DOTS_PER_MM)));
 
     if (field.type === 'line') {
       const thickness = Math.max(1, Math.round((field.thicknessMm || 0.5) * DOTS_PER_MM));
       if (field.orientation === 'vertical') {
-        const hDots = Math.round((field.hMm || stickerH) * DOTS_PER_MM);
+        const rawH = Math.round((field.hMm || stickerH) * DOTS_PER_MM);
+        const hDots = Math.max(4, Math.min(rawH, maxSafeY - yDots));
         cmds.push(`LO${xDots},${yDots},${thickness},${hDots}`);
       } else {
-        cmds.push(`LO${xDots},${yDots},${wDots},${thickness}`);
-        if (!isExplicit) flowY = yDots + thickness + 6;
+        const safeW = Math.max(4, Math.min(wDots, widthDots - xDots - 2));
+        cmds.push(`LO${xDots},${yDots},${safeW},${thickness}`);
+        if (!isExplicit) flowY = Math.min(maxSafeY, yDots + thickness + 6);
       }
     } else if (field.type === 'box_frame') {
-      const hDots = Math.round((field.hMm || 10) * DOTS_PER_MM);
+      const rawH = Math.round((field.hMm || 10) * DOTS_PER_MM);
+      const hDots = Math.max(4, Math.min(rawH, maxSafeY - yDots));
       const borderDots = Math.max(1, Math.round((field.borderThicknessMm || 0.5) * DOTS_PER_MM));
       if (field.filled) {
         cmds.push(`LO${xDots},${yDots},${wDots},${hDots}`);
       } else {
         cmds.push(`X${xDots},${yDots},${borderDots},${xDots + wDots},${yDots + hDots}`);
       }
-      if (!isExplicit) flowY = yDots + hDots + 6;
+      if (!isExplicit) flowY = Math.min(maxSafeY, yDots + hDots + 6);
     } else if (field.type === 'text') {
       const text = evaluateTokens(field.content, context).replace(/"/g, "'");
       if (!text) return;
@@ -598,22 +602,29 @@ export function generatePplbCommands(template, context, copies = 1) {
       let vMul = 1;
 
       if (fs <= 7) {
-        fontNum = 2;
-      } else if (fs <= 10) {
-        fontNum = 3;
+        fontNum = 1; // 8x12 dots (compact label headers)
+      } else if (fs <= 9.5) {
+        fontNum = 2; // 10x16 dots
       } else if (fs <= 12) {
-        fontNum = 4;
+        fontNum = 3; // 12x20 dots
       } else {
-        fontNum = 4;
-        hMul = 2;
-        vMul = 2;
+        fontNum = 4; // 14x24 dots
       }
 
-      const charW = (fontNum === 2 ? 10 : fontNum === 3 ? 12 : 14) * hMul;
-      const charH = (fontNum === 2 ? 16 : fontNum === 3 ? 20 : 24) * vMul;
+      // Shrink font if text is wider than box
+      const getCharW = (fn, hm) => (fn === 1 ? 10 : fn === 2 ? 12 : fn === 3 ? 14 : 16) * hm;
+      const getCharH = (fn, vm) => (fn === 1 ? 12 : fn === 2 ? 16 : fn === 3 ? 20 : 24) * vm;
+
+      if (!field.wrap) {
+        while (fontNum > 1 && text.length * getCharW(fontNum, hMul) > wDots) {
+          fontNum -= 1;
+        }
+      }
+
+      const charW = getCharW(fontNum, hMul);
+      const charH = getCharH(fontNum, vMul);
       const maxCharsPerLine = Math.max(4, Math.floor(wDots / charW));
 
-      // Support multi-line wrapping in PPLB
       const lines = [];
       if (field.wrap && text.length > maxCharsPerLine) {
         const words = text.split(' ');
@@ -629,10 +640,12 @@ export function generatePplbCommands(template, context, copies = 1) {
         });
         if (cur) lines.push(cur);
       } else {
-        lines.push(text);
+        lines.push(text.length > maxCharsPerLine ? text.slice(0, maxCharsPerLine) : text);
       }
 
-      lines.slice(0, 3).forEach((lnText, idx) => {
+      lines.slice(0, 2).forEach((lnText, idx) => {
+        const lnY = yDots + idx * (charH + 2);
+        if (lnY + charH > maxSafeY) return; // Never overflow bottom of label buffer!
         let drawX = xDots;
         if (field.align === 'center') {
           const totalTextW = lnText.length * charW;
@@ -641,28 +654,29 @@ export function generatePplbCommands(template, context, copies = 1) {
           const totalTextW = lnText.length * charW;
           drawX = Math.max(xDots, Math.round(xDots + wDots - totalTextW));
         }
-        const lnY = yDots + idx * (charH + 4);
         cmds.push(`A${drawX},${lnY},0,${fontNum},${hMul},${vMul},N,"${lnText}"`);
       });
 
-      if (!isExplicit) flowY = yDots + lines.slice(0, 3).length * (charH + 4) + 6;
+      if (!isExplicit) flowY = Math.min(maxSafeY, yDots + lines.slice(0, 2).length * (charH + 2) + 4);
     } else if (field.type === 'barcode') {
       const barVal = evaluateTokens(field.barcodeValue || '{{item.code}}', context).replace(/"/g, '');
       if (barVal) {
-        const barH = Math.round((field.barcodeHeight || 20) * DOTS_PER_MM * 0.35);
+        const rawBarH = Math.round((field.barcodeHeight || 20) * DOTS_PER_MM * 0.35);
+        const barH = Math.max(12, Math.min(rawBarH, maxSafeY - yDots - 16));
         cmds.push(`B${xDots},${yDots},0,1,2,4,${barH},${field.showBarcodeText !== false ? 'B' : 'N'},"${barVal}"`);
-        if (!isExplicit) flowY = yDots + barH + 28;
+        if (!isExplicit) flowY = Math.min(maxSafeY, yDots + barH + 20);
       }
     } else if (field.type === 'box_manifest') {
       const items = context.box?.manifestItems || [];
       const maxRows = field.maxLines || 8;
       const displayItems = items.slice(0, maxRows);
       displayItems.forEach((it, idx) => {
-        const rowY = yDots + idx * 22;
+        const rowY = yDots + idx * 20;
+        if (rowY + 16 > maxSafeY) return;
         const rowTxt = `${it.qtyDelivered || it.qty_packed || it.qty || 1}x ${it.code || it.one_one_code || 'Item'} (${it.area || it.floor || 'Site'})`.replace(/"/g, "'");
         cmds.push(`A${xDots + 6},${rowY},0,2,1,1,N,"${rowTxt.slice(0, 36)}"`);
       });
-      if (!isExplicit) flowY = yDots + displayItems.length * 22 + 10;
+      if (!isExplicit) flowY = Math.min(maxSafeY, yDots + displayItems.length * 20 + 8);
     }
   });
 

@@ -74,13 +74,16 @@ export async function printDirectLabels(printerName, dataUrls, options = {}) {
   const { widthMm = 50, heightMm = 30 } = options;
 
   // Build QZ Tray print configuration for thermal label roll
+  // scaleContent: true maps the 203-DPI canvas (e.g. 400x240px) strictly to widthMm x heightMm (e.g. 50x30mm)
+  // so it never prints at 72-DPI (141x85mm) across multiple labels.
   const config = qz.configs.create(printerName, {
     size: { width: widthMm, height: heightMm },
     units: 'mm',
-    colorType: 'color',
-    interpolation: 'bicubic',
-    margins: 0,
-    scaleContent: false,
+    density: 203,
+    colorType: 'grayscale',
+    interpolation: 'nearest-neighbor',
+    margins: { top: 0, right: 0, bottom: 0, left: 0 },
+    scaleContent: true,
     rasterize: false
   });
 
