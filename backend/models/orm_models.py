@@ -927,8 +927,8 @@ class LogisticsPackingListItem(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     packing_list_id = Column(Integer, ForeignKey("logistics_packing_lists.id", ondelete="CASCADE"), nullable=False, index=True)
-    order_item_id = Column(Integer, ForeignKey("order_items.id", ondelete="SET NULL"), nullable=True, index=True)
-    parent_item_id = Column(Integer, nullable=True, index=True)                # Set if this is an accessory attached to a parent fitting
+    order_item_id = Column(String, nullable=True, index=True)                  # Matches OrderItem.id (String)
+    parent_item_id = Column(String, nullable=True, index=True)                 # Set if this is an accessory attached to a parent fitting
     parent_fitting_code = Column(String, nullable=True)                        # Display reference for parent fitting
     one_one_code = Column(String, index=True, nullable=True)
     plan_code = Column(String, nullable=True)
@@ -994,8 +994,8 @@ class LogisticsDeliveryNoteItem(Base):
     delivery_note_id = Column(Integer, ForeignKey("logistics_delivery_notes.id", ondelete="CASCADE"), nullable=False, index=True)
     packing_list_id = Column(Integer, ForeignKey("logistics_packing_lists.id", ondelete="SET NULL"), nullable=True)
     packing_list_number = Column(String, nullable=True)
-    order_item_id = Column(Integer, ForeignKey("order_items.id", ondelete="SET NULL"), nullable=True, index=True)
-    parent_item_id = Column(Integer, nullable=True)
+    order_item_id = Column(String, nullable=True, index=True)                  # Matches OrderItem.id (String)
+    parent_item_id = Column(String, nullable=True)
     parent_fitting_code = Column(String, nullable=True)
     one_one_code = Column(String, index=True, nullable=True)
     plan_code = Column(String, nullable=True)

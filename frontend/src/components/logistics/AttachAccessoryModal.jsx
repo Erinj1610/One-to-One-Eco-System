@@ -101,8 +101,8 @@ export default function AttachAccessoryModal({
       );
       return {
         rowKey: `att_${accessoryRow.order_item_id}_${a.parentOrderItemId}_${idx}_${Date.now()}`,
-        order_item_id: accessoryRow.order_item_id,
-        parent_item_id: Number(a.parentOrderItemId),
+        order_item_id: String(accessoryRow.order_item_id),
+        parent_item_id: String(a.parentOrderItemId),
         parent_fitting_code: parentObj
           ? `${parentObj.plan_code ? `[${parentObj.plan_code}] ` : ''}${parentObj.one_one_code} (${parentObj.area || parentObj.floor || 'Site'})`
           : `Fitting #${a.parentOrderItemId}`,

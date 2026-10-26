@@ -28,8 +28,8 @@ public_router = APIRouter()
 # ─── PYDANTIC SCHEMAS ────────────────────────────────────────────────────────
 
 class PackingListItemInput(BaseModel):
-    order_item_id: Optional[int] = None
-    parent_item_id: Optional[int] = None
+    order_item_id: Optional[Any] = None
+    parent_item_id: Optional[Any] = None
     parent_fitting_code: Optional[str] = None
     one_one_code: Optional[str] = None
     plan_code: Optional[str] = None
@@ -65,8 +65,8 @@ class PackingListUpdateInput(BaseModel):
 class DeliveryNoteItemInput(BaseModel):
     packing_list_id: Optional[int] = None
     packing_list_number: Optional[str] = None
-    order_item_id: Optional[int] = None
-    parent_item_id: Optional[int] = None
+    order_item_id: Optional[Any] = None
+    parent_item_id: Optional[Any] = None
     parent_fitting_code: Optional[str] = None
     one_one_code: Optional[str] = None
     plan_code: Optional[str] = None
@@ -303,6 +303,12 @@ def ensure_legacy_logistics_migrated(db: Session):
     One-time/idempotent backfill that migrates any legacy JSON Order.packing_lists and Order.delivery_notes
     into the relational LogisticsPackingList and LogisticsDeliveryNote tables so zero data is ever lost.
     """
+    from database.cloud_sql import engine, Base
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as tbl_err:
+        print(f"Logistics table ensure notice: {tbl_err}")
+
     orders = db.query(Order).all()
     existing_pls = {r[0] for r in db.query(LogisticsPackingList.document_number).all() if r[0]}
     existing_dns = {r[0] for r in db.query(LogisticsDeliveryNote.document_number).all() if r[0]}
@@ -486,7 +492,7 @@ def recalc_order_item_logistics(db: Session, order_obj: Order):
             matched_dn_qty = 0
             for dn_it in dn.items:
                 is_match = False
-                if dn_it.order_item_id and int(dn_it.order_item_id) == int(oi.id):
+                if dn_it.order_item_id and str(dn_it.order_item_id) == str(oi.id):
                     is_match = True
                 elif not dn_it.order_item_id:
                     oi_codes = {str(c).strip().upper() for c in [oi.one_one_code, oi.code] if c}
@@ -580,13 +586,14 @@ def get_enriched_order_items_for_logistics(
         LogisticsPackingList.status != "Cancelled"
     ).all()
 
-    packed_by_item_id: Dict[int, int] = {}
+    packed_by_item_id: Dict[str, int] = {}
     for pl in active_pls:
         if exclude_pl_id and pl.id == exclude_pl_id:
             continue
         for pl_it in pl.items:
             if pl_it.order_item_id:
-                packed_by_item_id[int(pl_it.order_item_id)] = packed_by_item_id.get(int(pl_it.order_item_id), 0) + int(pl_it.qty_packed or 0)
+                k = str(pl_it.order_item_id)
+                packed_by_item_id[k] = packed_by_item_id.get(k, 0) + int(pl_it.qty_packed or 0)
 
     # Also extract Project / Client site delivery contact details for DN pre-fill
     proj = db.query(Project).filter(Project.key == order_obj.project_key).first() if order_obj.project_key else None
@@ -632,7 +639,7 @@ def get_enriched_order_items_for_logistics(
             areas_set.add(area_val)
 
         qty_ordered = int(oi.qty or 0)
-        qty_packed_prev = int(packed_by_item_id.get(oi.id, 0))
+        qty_packed_prev = int(packed_by_item_id.get(str(oi.id), 0))
         qty_delivered = int(oi.delivery_qty or 0)
         remaining_to_pack = max(0, qty_ordered - qty_packed_prev)
         remaining_to_deliver = max(0, qty_ordered - qty_delivered)
@@ -780,8 +787,8 @@ def create_packing_list(payload: PackingListCreateInput, db: Session = Depends(g
     for it in active_items:
         pl_item = LogisticsPackingListItem(
             packing_list_id=pl_rec.id,
-            order_item_id=it.order_item_id,
-            parent_item_id=it.parent_item_id,
+            order_item_id=str(it.order_item_id) if it.order_item_id is not None else None,
+            parent_item_id=str(it.parent_item_id) if it.parent_item_id is not None else None,
             parent_fitting_code=it.parent_fitting_code,
             one_one_code=it.one_one_code or it.supplier_code or "",
             plan_code=it.plan_code or "",
@@ -843,8 +850,8 @@ def update_packing_list(pl_ref: str, payload: PackingListUpdateInput, db: Sessio
         for it in active_items:
             pl_item = LogisticsPackingListItem(
                 packing_list_id=pl_rec.id,
-                order_item_id=it.order_item_id,
-                parent_item_id=it.parent_item_id,
+                order_item_id=str(it.order_item_id) if it.order_item_id is not None else None,
+                parent_item_id=str(it.parent_item_id) if it.parent_item_id is not None else None,
                 parent_fitting_code=it.parent_fitting_code,
                 one_one_code=it.one_one_code or it.supplier_code or "",
                 plan_code=it.plan_code or "",
@@ -994,11 +1001,12 @@ def create_delivery_note(payload: DeliveryNoteCreateInput, db: Session = Depends
     order_keys = [k for k in [order_obj.po_number, str(order_obj.id)] if k]
     all_order_items = db.query(OrderItem).filter(OrderItem.order_id.in_(order_keys)).order_by(OrderItem.sort_order.asc(), OrderItem.id.asc()).all()
 
-    dispatched_in_this_dn_by_item: Dict[int, int] = {}
+    dispatched_in_this_dn_by_item: Dict[str, int] = {}
     for dit in dn_items_to_create:
         oid = dit.get("order_item_id")
-        if oid:
-            dispatched_in_this_dn_by_item[int(oid)] = dispatched_in_this_dn_by_item.get(int(oid), 0) + int(dit.get("qty_delivered") or 0)
+        if oid is not None:
+            k = str(oid)
+            dispatched_in_this_dn_by_item[k] = dispatched_in_this_dn_by_item.get(k, 0) + int(dit.get("qty_delivered") or 0)
 
     outstanding_snapshot = []
     has_undelivered = False
@@ -1007,7 +1015,7 @@ def create_delivery_note(payload: DeliveryNoteCreateInput, db: Session = Depends
             continue
         ordered = int(oi.qty or 0)
         prev_deliv = int(oi.delivery_qty or 0)
-        this_deliv = dispatched_in_this_dn_by_item.get(oi.id, 0)
+        this_deliv = dispatched_in_this_dn_by_item.get(str(oi.id), 0)
         remaining_after = max(0, ordered - (prev_deliv + this_deliv))
 
         eta_val = (
@@ -1069,17 +1077,17 @@ def create_delivery_note(payload: DeliveryNoteCreateInput, db: Session = Depends
 
     for dit in dn_items_to_create:
         oid = dit.get("order_item_id")
-        oi_match = next((x for x in all_order_items if oid and x.id == int(oid)), None)
+        oi_match = next((x for x in all_order_items if oid is not None and str(x.id) == str(oid)), None)
         rem_qty = dit.get("qty_remaining") or 0
         if oi_match:
-            rem_qty = max(0, int(oi_match.qty or 0) - (int(oi_match.delivery_qty or 0) + dispatched_in_this_dn_by_item.get(oi_match.id, 0)))
+            rem_qty = max(0, int(oi_match.qty or 0) - (int(oi_match.delivery_qty or 0) + dispatched_in_this_dn_by_item.get(str(oi_match.id), 0)))
 
         dn_item = LogisticsDeliveryNoteItem(
             delivery_note_id=dn_rec.id,
             packing_list_id=dit.get("packing_list_id"),
             packing_list_number=dit.get("packing_list_number"),
-            order_item_id=oid,
-            parent_item_id=dit.get("parent_item_id"),
+            order_item_id=str(oid) if oid is not None else None,
+            parent_item_id=str(dit.get("parent_item_id")) if dit.get("parent_item_id") is not None else None,
             parent_fitting_code=dit.get("parent_fitting_code"),
             one_one_code=dit.get("one_one_code") or "",
             plan_code=dit.get("plan_code") or "",

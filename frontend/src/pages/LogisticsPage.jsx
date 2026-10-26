@@ -468,7 +468,7 @@ export default function LogisticsPage() {
       orderedResult.push(main);
       if (!main.is_split_child) {
         attachedRows
-          .filter(att => Number(att.parent_item_id) === Number(main.order_item_id))
+          .filter(att => String(att.parent_item_id) === String(main.order_item_id))
           .forEach(att => orderedResult.push(att));
       }
     });
@@ -501,7 +501,7 @@ export default function LogisticsPage() {
   // Split a row across multiple boxes (e.g. 50 ordered -> user enters 30 in Box 1, clicks Split -> new sub-row with 20 in next Box)
   const handleSplitRowAcrossBoxes = (targetRow) => {
     const totalForOrderItem = plRows
-      .filter(r => Number(r.order_item_id) === Number(targetRow.order_item_id))
+      .filter(r => String(r.order_item_id) === String(targetRow.order_item_id))
       .reduce((s, r) => s + (Number(r.qty_packed) || 0), 0);
 
     const maxAllowed = Math.max(targetRow.qty_ordered, targetRow.remaining_to_pack || targetRow.qty_ordered);
@@ -548,11 +548,11 @@ export default function LogisticsPage() {
     setPlRows(prev => {
       // Remove any previous attachments from this same accessory order_item_id
       const withoutOld = prev.filter(
-        r => !(r.is_accessory && Number(r.order_item_id) === Number(accessoryOrderItemId))
+        r => !(r.is_accessory && String(r.order_item_id) === String(accessoryOrderItemId))
       );
       // Update the standalone accessory row's packed qty to whatever remains unattached
       const updatedMains = withoutOld.map(r => {
-        if (!r.is_accessory && Number(r.order_item_id) === Number(accessoryOrderItemId)) {
+        if (!r.is_accessory && String(r.order_item_id) === String(accessoryOrderItemId)) {
           return { ...r, qty_packed: unallocatedRemainder };
         }
         return r;
@@ -570,8 +570,8 @@ export default function LogisticsPage() {
     const activeItems = plRows
       .filter(r => Number(r.qty_packed) > 0)
       .map(r => ({
-        order_item_id: r.order_item_id ? Number(r.order_item_id) : null,
-        parent_item_id: r.parent_item_id ? Number(r.parent_item_id) : null,
+        order_item_id: r.order_item_id ? String(r.order_item_id) : null,
+        parent_item_id: r.parent_item_id ? String(r.parent_item_id) : null,
         parent_fitting_code: r.parent_fitting_code || null,
         one_one_code: r.one_one_code || '',
         plan_code: r.plan_code || '',
@@ -2623,10 +2623,10 @@ export default function LogisticsPage() {
         onClose={() => setAttachModalTargetRow(null)}
         accessoryRow={attachModalTargetRow}
         candidateParentRows={plRows.filter(
-          r => !r.is_accessory && !r.is_split_child && Number(r.order_item_id) !== Number(attachModalTargetRow?.order_item_id)
+          r => !r.is_accessory && !r.is_split_child && String(r.order_item_id) !== String(attachModalTargetRow?.order_item_id)
         )}
         existingAttachments={plRows.filter(
-          r => r.is_accessory && Number(r.order_item_id) === Number(attachModalTargetRow?.order_item_id)
+          r => r.is_accessory && String(r.order_item_id) === String(attachModalTargetRow?.order_item_id)
         )}
         onConfirmAttachments={handleConfirmAccessoryAttachments}
       />
