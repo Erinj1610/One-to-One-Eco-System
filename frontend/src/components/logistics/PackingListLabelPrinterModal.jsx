@@ -101,8 +101,27 @@ export default function PackingListLabelPrinterModal({
     }
   };
 
-  // Raw items from the packing list
-  const plItems = packingList.items || [];
+  // Raw items from the packing list, normalized so every item has a guaranteed unique id and packed qty
+  const plItems = useMemo(() => {
+    return (packingList.items || []).map((item, idx) => {
+      const packedQty = Math.max(1, Number(item.qty_packed ?? item.qtyDelivered ?? item.qty ?? 1));
+      const boxVal = item.box_number || item.box || item.boxNumber || 'Box 1';
+      return {
+        ...item,
+        id: item.id !== undefined && item.id !== null ? String(item.id) : `pl_item_${idx}`,
+        code: item.code || item.one_one_code || item.oneOneCode || item.supplier_code || 'ITEM',
+        oneOneCode: item.one_one_code || item.oneOneCode || item.code || '',
+        planCode: item.plan_code || item.planCode || '',
+        supplierCode: item.supplier_code || item.supplierCode || item.code || '',
+        materialColour: item.material_colour || item.materialColour || '',
+        firstFix: item.first_fix || item.firstFix || 'No',
+        redList: item.red_list || item.redList || 'No',
+        qtyDelivered: packedQty,
+        qty: packedQty,
+        boxNumber: boxVal,
+      };
+    });
+  }, [packingList]);
 
   // Item mode selection state: { [itemId]: { selected: boolean, qtyToPrint: number } }
   const [itemSelections, setItemSelections] = useState(() => {
@@ -113,6 +132,21 @@ export default function PackingListLabelPrinterModal({
     });
     return init;
   });
+
+  // Quick helper to switch between 1 label per physical unit vs 1 label per line
+  const handleSetCopyPreset = (preset) => {
+    setItemSelections(prev => {
+      const next = { ...prev };
+      plItems.forEach(it => {
+        const packedQty = Math.max(1, Number(it.qtyDelivered ?? it.qty) || 1);
+        next[it.id] = {
+          selected: prev[it.id]?.selected ?? true,
+          qtyToPrint: preset === 'per_unit' ? packedQty : 1
+        };
+      });
+      return next;
+    });
+  };
 
   // Box mode selection state: { [boxName]: boolean }
   const boxGroups = useMemo(() => {
@@ -317,7 +351,7 @@ export default function PackingListLabelPrinterModal({
       }
     }
 
-    // 2. Fallback: Open browser print window
+    // 2. Fallback: Open exact-millimeter zero-margin browser print / PDF window
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     if (!printWindow) {
       alert("Please allow pop-ups to open the thermal print dialog.");
@@ -337,7 +371,7 @@ export default function PackingListLabelPrinterModal({
         <title>Argox O4-250 Thermal Print - ${packingList.id}</title>
         <style>
           @page {
-            size: ${widthMm}mm ${heightMm}mm;
+            size: ${printWidthMm}mm ${printHeightMm}mm;
             margin: 0mm;
           }
           * {
@@ -346,7 +380,7 @@ export default function PackingListLabelPrinterModal({
             padding: 0;
           }
           html, body {
-            width: ${widthMm}mm;
+            width: ${printWidthMm}mm;
             height: 100%;
             margin: 0;
             padding: 0;
@@ -355,8 +389,8 @@ export default function PackingListLabelPrinterModal({
             print-color-adjust: exact;
           }
           .thermal-label-page {
-            width: ${widthMm}mm;
-            height: ${heightMm}mm;
+            width: ${printWidthMm}mm;
+            height: ${printHeightMm}mm;
             page-break-before: auto;
             page-break-inside: avoid;
             page-break-after: always;
@@ -826,7 +860,27 @@ export default function PackingListLabelPrinterModal({
                 </span>
               </div>
 
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {mode === 'item' && (
+                  <>
+                    <button
+                      className="btn btn-ghost btn-xs"
+                      onClick={() => handleSetCopyPreset('per_unit')}
+                      style={{ fontSize: '11px', border: '1px solid var(--border)', padding: '3px 8px' }}
+                      title="Set copies equal to Packed Qty (1 sticker per physical fitting)"
+                    >
+                      1 per Packed Unit
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-xs"
+                      onClick={() => handleSetCopyPreset('per_line')}
+                      style={{ fontSize: '11px', border: '1px solid var(--border)', padding: '3px 8px' }}
+                      title="Set 1 copy per line item"
+                    >
+                      1 per Line
+                    </button>
+                  </>
+                )}
                 <button
                   className="btn btn-ghost btn-xs"
                   onClick={() => mode === 'item' ? handleSelectAllItems(true) : handleSelectAllBoxes(true)}

@@ -31,6 +31,7 @@ from routes.cad import router as cad_router
 from routes.workflow import router as workflow_router
 from routes.technical_pack import router as technical_pack_router
 from routes.management_ai import router as management_ai_router, public_router as management_ai_public_router
+from routes.logistics import router as logistics_router, public_router as logistics_public_router
 import services.firebase_auth
 
 app = FastAPI(title="One to One Eco System API")
@@ -112,6 +113,8 @@ app.include_router(cad_router)
 app.include_router(technical_pack_router)
 app.include_router(management_ai_public_router, prefix="/api", tags=["management-ai"])
 app.include_router(management_ai_router, prefix="/api", tags=["management-ai"])
+app.include_router(logistics_public_router, prefix="/api", tags=["logistics"])
+app.include_router(logistics_router, prefix="/api", tags=["logistics"], dependencies=[Depends(verify_firebase_token)])
 
 # Mount uploads static directory
 from fastapi.staticfiles import StaticFiles
@@ -828,9 +831,11 @@ def init_db():
         print(f"DB Init Error: {e}")
 
 def run_quick_schema_check():
-    from database.cloud_sql import engine
+    from database.cloud_sql import engine, Base
     from sqlalchemy import text, inspect
     try:
+        # Ensure all new ORM tables (including logistics_*) exist immediately on boot
+        Base.metadata.create_all(bind=engine)
         with engine.connect() as conn:
             insp = inspect(engine)
             tables = insp.get_table_names()

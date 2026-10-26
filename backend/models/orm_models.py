@@ -900,6 +900,139 @@ class WorkflowTicket(Base):
     completed_by = Column(String, nullable=True)
 
 
+class LogisticsPackingList(Base):
+    __tablename__ = "logistics_packing_lists"
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_number = Column(String, unique=True, index=True, nullable=False)  # e.g. "PL-2026-0001"
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    project_key = Column(String, index=True, nullable=True)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    order_po_number = Column(String, index=True, nullable=True)                # e.g. "ORD-2026-101"
+    status = Column(String, default="Pending Dispatch", index=True)            # "Draft", "Pending Dispatch", "Dispatched", "Delivered", "Cancelled"
+    total_boxes = Column(Integer, default=1)
+    total_items = Column(Integer, default=0)
+    notes = Column(Text, nullable=True)
+    delivery_note_id = Column(Integer, nullable=True, index=True)              # Linked DN id if dispatched
+    delivery_note_number = Column(String, nullable=True, index=True)           # Linked DN number e.g. "DN-2026-0001"
+    created_by = Column(String, default="Warehouse Team")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    items = relationship("LogisticsPackingListItem", back_populates="packing_list", cascade="all, delete-orphan")
+
+
+class LogisticsPackingListItem(Base):
+    __tablename__ = "logistics_packing_list_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    packing_list_id = Column(Integer, ForeignKey("logistics_packing_lists.id", ondelete="CASCADE"), nullable=False, index=True)
+    order_item_id = Column(Integer, ForeignKey("order_items.id", ondelete="SET NULL"), nullable=True, index=True)
+    parent_item_id = Column(Integer, nullable=True, index=True)                # Set if this is an accessory attached to a parent fitting
+    parent_fitting_code = Column(String, nullable=True)                        # Display reference for parent fitting
+    one_one_code = Column(String, index=True, nullable=True)
+    plan_code = Column(String, nullable=True)
+    supplier_code = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    floor = Column(String, nullable=True)
+    area = Column(String, nullable=True)
+    material_colour = Column(String, nullable=True)
+    first_fix = Column(String, default="No")                                   # "Yes" / "No"
+    red_list = Column(String, default="No")                                    # "Yes" / "No"
+    qty_ordered = Column(Integer, default=0)
+    qty_packed = Column(Integer, default=0)
+    qty_backorder = Column(Integer, default=0)
+    box_number = Column(String, default="Box 1")                               # e.g. "Box 1", "Box 2", "Pallet 1"
+    is_accessory = Column(Boolean, default=False)
+    notes = Column(Text, nullable=True)
+
+    packing_list = relationship("LogisticsPackingList", back_populates="items")
+
+
+class LogisticsDeliveryNote(Base):
+    __tablename__ = "logistics_delivery_notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_number = Column(String, unique=True, index=True, nullable=False)  # e.g. "DN-2026-0001"
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    project_key = Column(String, index=True, nullable=True)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    order_po_number = Column(String, index=True, nullable=True)
+    status = Column(String, default="Dispatched", index=True)                  # "Pending", "In Transit", "Dispatched", "Delivered", "Cancelled"
+    delivery_type = Column(String, default="Full")                             # "Full", "Partial"
+    source_packing_lists = Column(JSON, default=list)                          # e.g. ["PL-2026-0001"]
+    dispatch_method = Column(String, default="Internal Driver")                # "Internal Driver", "Third-Party Courier", "Client Collection"
+    carrier_driver = Column(String, nullable=True)
+    vehicle_reg = Column(String, nullable=True)
+    tracking_number = Column(String, nullable=True)
+    delivery_address = Column(Text, nullable=True)
+    site_contact_name = Column(String, nullable=True)
+    site_contact_phone = Column(String, nullable=True)
+    site_instructions = Column(Text, nullable=True)
+    received_by = Column(String, nullable=True)
+    received_at = Column(DateTime, nullable=True)
+    pod_received = Column(Boolean, default=False)
+    pod_file_url = Column(Text, nullable=True)                                 # Data URL or storage link of signed POD
+    pod_file_name = Column(String, nullable=True)
+    outstanding_snapshot = Column(JSON, default=list)                          # Snapshot of remaining backordered items & ETAs at dispatch time
+    notes = Column(Text, nullable=True)
+    dispatched_by = Column(String, default="Logistics Team")
+    dispatched_at = Column(DateTime, default=datetime.utcnow)
+    voided_at = Column(DateTime, nullable=True)
+    voided_by = Column(String, nullable=True)
+    void_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    items = relationship("LogisticsDeliveryNoteItem", back_populates="delivery_note", cascade="all, delete-orphan")
+
+
+class LogisticsDeliveryNoteItem(Base):
+    __tablename__ = "logistics_delivery_note_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    delivery_note_id = Column(Integer, ForeignKey("logistics_delivery_notes.id", ondelete="CASCADE"), nullable=False, index=True)
+    packing_list_id = Column(Integer, ForeignKey("logistics_packing_lists.id", ondelete="SET NULL"), nullable=True)
+    packing_list_number = Column(String, nullable=True)
+    order_item_id = Column(Integer, ForeignKey("order_items.id", ondelete="SET NULL"), nullable=True, index=True)
+    parent_item_id = Column(Integer, nullable=True)
+    parent_fitting_code = Column(String, nullable=True)
+    one_one_code = Column(String, index=True, nullable=True)
+    plan_code = Column(String, nullable=True)
+    supplier_code = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    floor = Column(String, nullable=True)
+    area = Column(String, nullable=True)
+    material_colour = Column(String, nullable=True)
+    first_fix = Column(String, default="No")
+    red_list = Column(String, default="No")
+    box_number = Column(String, default="Box 1")
+    qty_ordered = Column(Integer, default=0)
+    qty_delivered = Column(Integer, default=0)
+    qty_remaining = Column(Integer, default=0)
+    backorder_eta = Column(String, nullable=True)
+    is_accessory = Column(Boolean, default=False)
+
+    delivery_note = relationship("LogisticsDeliveryNote", back_populates="items")
+
+
+class LogisticsLabelTemplate(Base):
+    __tablename__ = "logistics_label_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    template_id = Column(String, unique=True, index=True, nullable=False)      # e.g. "tpl_fitting_50x30"
+    name = Column(String, nullable=False)
+    type = Column(String, default="item")                                      # "item" | "box"
+    width_mm = Column(Float, default=50.0)
+    height_mm = Column(Float, default=30.0)
+    gap_mm = Column(Float, default=3.0)
+    dpi = Column(Integer, default=203)
+    is_default = Column(Boolean, default=False)
+    elements_json = Column(JSON, default=list)
+    updated_by = Column(String, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 
 
 
