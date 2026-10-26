@@ -948,10 +948,10 @@ DEFAULT CURRENCY: South African Rand (ZAR / R) unless foreign currency (`currenc
 {CLOUD_SQL_SCHEMA_DOCS}
 
 AGENTIC EXECUTION RULES:
-1. NEVER GUESS OR HALLUCINATE NUMBERS. Always call your tools first.
-2. USE `tool_execute_readonly_sql` FOR AGGREGATIONS & RANKINGS: Whenever a user asks for totals, monthly breakdowns, top customers, top products, sales rep comparisons, deadstock, or cross-table questions, write and execute a real PostgreSQL query (`SELECT ... SUM(...) GROUP BY ...`) via `tool_execute_readonly_sql`. Do not rely on small 30-row samples when an SQL aggregate gives the exact figure across all rows.
-3. MULTI-STEP REASONING: You can call multiple tools in parallel or across sequential turns. If a SQL query returns an error or unexpected column name, inspect the error and immediately run a corrected query.
-4. EXECUTIVE FORMATTING: Present your findings in crisp, structured Markdown with bold figures (`R 1,245,000.00`), Markdown tables for comparisons, and actionable insights. No fluff or filler."""
+1. CONVERSATIONAL & NATURAL: You are a real, intelligent Google Gemini assistant. If the user says hello, asks a general question, or chats casually, reply naturally and conversationally without running unnecessary SQL queries.
+2. NEVER GUESS OR HALLUCINATE BUSINESS NUMBERS: When asked about sales, products, stock, POs, projects, or logistics, call your tools first.
+3. EFFICIENT SQL QUERIES (1 TO 2 QUERIES MAX): Combine metrics (such as revenue AND quantity, or FY vs Calendar Year) into a single comprehensive PostgreSQL query using `tool_execute_readonly_sql`. Once you have the data rows from 1 or 2 queries, IMMEDIATELY write your full, detailed answer. Do NOT keep running 4 or 5 redundant variations of the same SQL query.
+4. EXECUTIVE FORMATTING: Present your findings in crisp, structured Markdown with bold figures (`R 1,245,000.00`), Markdown tables for comparisons, and clear executive commentary."""
 
 
 def build_agent_system_prompt(db: Session, agent_id: Optional[str] = None, custom_instructions: Optional[str] = None) -> str:
@@ -1068,6 +1068,16 @@ def call_vertex_gemini_with_tools(
         payload["tools"] = [{
             "function_declarations": TOOL_DECLARATIONS
         }]
+    elif any("functionCall" in str(c) or "functionResponse" in str(c) for c in contents):
+        # Vertex AI requires tools declaration + tool_config: NONE when history contains functionCall/functionResponse
+        payload["tools"] = [{
+            "function_declarations": TOOL_DECLARATIONS
+        }]
+        payload["tool_config"] = {
+            "function_calling_config": {
+                "mode": "NONE"
+            }
+        }
 
     req = urllib.request.Request(
         url,
@@ -1113,6 +1123,16 @@ def stream_vertex_gemini(
         payload["tools"] = [{
             "function_declarations": TOOL_DECLARATIONS
         }]
+    elif any("functionCall" in str(c) or "functionResponse" in str(c) for c in contents):
+        # Vertex AI requires tools declaration + tool_config: NONE when history contains functionCall/functionResponse
+        payload["tools"] = [{
+            "function_declarations": TOOL_DECLARATIONS
+        }]
+        payload["tool_config"] = {
+            "function_calling_config": {
+                "mode": "NONE"
+            }
+        }
 
     req = urllib.request.Request(
         url,
@@ -1367,7 +1387,7 @@ def executive_chat_stream_endpoint(
         tools_called_names: List[str] = []
         sql_queries_executed: List[str] = []
         tool_steps_log: List[Dict[str, Any]] = []
-        max_turns = 5
+        max_turns = 3
 
         agent_name_str = selected_agent.get("name", "Gemini Agent")
         yield f"data: {json.dumps({'status': f'{agent_name_str} is reasoning & planning tool calls...'})}\n\n"
@@ -1456,15 +1476,20 @@ def executive_chat_stream_endpoint(
                 })
                 yield f"data: {json.dumps({'status': 'Synthesizing verified database results...'})}\n\n"
 
-            # If max_turns was reached, stream final synthesis directly from Gemini
-            for text_chunk in stream_vertex_gemini(
+            # If max_turns was reached, force final synthesis with tool_config mode="NONE"
+            final_synth = call_vertex_gemini_with_tools(
                 contents=contents,
                 system_instruction=system_prompt,
                 model=chosen_model,
                 include_tools=False
-            ):
-                if text_chunk:
-                    yield f"data: {json.dumps({'text': text_chunk, 'tools_called': tools_called_names, 'tool_steps': tool_steps_log, 'sql_queries': sql_queries_executed})}\n\n"
+            )
+            f_cand = final_synth.get("candidates", [{}])[0]
+            f_parts = f_cand.get("content", {}).get("parts", [])
+            f_text = "".join([p.get("text", "") for p in f_parts if p.get("text") and not p.get("thought")]).strip()
+            if f_text:
+                chunk_size = 48
+                for i in range(0, len(f_text), chunk_size):
+                    yield f"data: {json.dumps({'text': f_text[i:i+chunk_size], 'tools_called': tools_called_names, 'tool_steps': tool_steps_log, 'sql_queries': sql_queries_executed})}\n\n"
 
         except Exception as e:
             logger.error(f"Error in autonomous agent stream: {e}")
