@@ -315,7 +315,7 @@ def ensure_legacy_logistics_migrated(db: Session):
     migrated_any = False
 
     for ord_obj in orders:
-        proj = db.query(Project).filter(Project.key == ord_obj.project_key).first() if ord_obj.project_key else None
+        proj = db.query(Project).filter(Project.project_key == ord_obj.project_key).first() if ord_obj.project_key else None
         order_items = db.query(OrderItem).filter(OrderItem.order_id.in_([ord_obj.po_number, str(ord_obj.id)])).all()
 
         # 1. Migrate legacy Packing Lists
@@ -575,10 +575,10 @@ def get_enriched_order_items_for_logistics(
     products = db.query(Product).all()
     prod_by_code = {}
     for p in products:
-        if p.one_one_code:
-            prod_by_code[p.one_one_code.strip().upper()] = p
-        if p.supplier_code:
-            prod_by_code[p.supplier_code.strip().upper()] = p
+        if p.one_to_one_code:
+            prod_by_code[p.one_to_one_code.strip().upper()] = p
+        if p.sku:
+            prod_by_code[p.sku.strip().upper()] = p
 
     # Calculate already packed quantities across active Packing Lists for this order
     active_pls = db.query(LogisticsPackingList).filter(
@@ -596,7 +596,7 @@ def get_enriched_order_items_for_logistics(
                 packed_by_item_id[k] = packed_by_item_id.get(k, 0) + int(pl_it.qty_packed or 0)
 
     # Also extract Project / Client site delivery contact details for DN pre-fill
-    proj = db.query(Project).filter(Project.key == order_obj.project_key).first() if order_obj.project_key else None
+    proj = db.query(Project).filter(Project.project_key == order_obj.project_key).first() if order_obj.project_key else None
     proj_meta = (proj.project_metadata if proj and isinstance(proj.project_metadata, dict) else {}) or {}
 
     enriched_items = []
@@ -610,8 +610,8 @@ def get_enriched_order_items_for_logistics(
         supp_code = (oi.code or oi.one_one_code or "").strip()
         prod = prod_by_code.get(one_one.upper()) or prod_by_code.get(supp_code.upper())
 
-        if prod and prod.supplier_code:
-            supp_code = prod.supplier_code
+        if prod and prod.sku:
+            supp_code = prod.sku
 
         material_colour = ""
         if prod and prod.color:
@@ -679,10 +679,10 @@ def get_enriched_order_items_for_logistics(
         "quote_name": order_obj.quote_name or order_obj.po_number,
         "project_key": order_obj.project_key,
         "project_name": proj.name if proj else order_obj.project_key,
-        "client_name": (proj.client if proj else None) or order_obj.client_ref or "",
-        "site_address": proj_meta.get("site_address") or proj_meta.get("address") or (proj.location if proj else "") or "",
-        "site_contact_name": proj_meta.get("site_contact") or (proj.client if proj else "") or "",
-        "site_contact_phone": proj_meta.get("site_phone") or (proj.phone if proj else "") or "",
+        "client_name": (proj.client_name if proj else None) or order_obj.client_name or order_obj.client or "",
+        "site_address": order_obj.delivery_address or proj_meta.get("site_address") or proj_meta.get("address") or "",
+        "site_contact_name": order_obj.client_contact or proj_meta.get("site_contact") or (proj.client_name if proj else "") or "",
+        "site_contact_phone": order_obj.client_phone or proj_meta.get("site_phone") or "",
         "floors": sorted(floors_set),
         "areas": sorted(areas_set),
         "items": enriched_items,
@@ -700,7 +700,7 @@ def list_logistics_documents(
     """Returns all relational Packing Lists and Delivery Notes with project & order metadata."""
     ensure_legacy_logistics_migrated(db)
 
-    projects_map = {p.key: p for p in db.query(Project).all() if p.key}
+    projects_map = {p.project_key: p for p in db.query(Project).all() if p.project_key}
     orders_map = {o.id: o for o in db.query(Order).all()}
 
     documents = []
@@ -719,7 +719,7 @@ def list_logistics_documents(
                 "docType": "Packing List",
                 "projectKey": pl.project_key,
                 "projectName": proj.name if proj else pl.project_key,
-                "clientName": (proj.client if proj else None) or (ord_obj.client_ref if ord_obj else "") or "",
+                "clientName": (proj.client_name if proj else None) or (ord_obj.client_name if ord_obj else "") or "",
                 "orderId": pl.order_po_number or (ord_obj.po_number if ord_obj else str(pl.order_id)),
                 "orderDbId": pl.order_id,
                 "orderName": (ord_obj.quote_name if ord_obj else None) or pl.order_po_number,
@@ -741,7 +741,7 @@ def list_logistics_documents(
                 "docType": "Delivery Note",
                 "projectKey": dn.project_key,
                 "projectName": proj.name if proj else dn.project_key,
-                "clientName": (proj.client if proj else None) or (ord_obj.client_ref if ord_obj else "") or "",
+                "clientName": (proj.client_name if proj else None) or (ord_obj.client_name if ord_obj else "") or "",
                 "orderId": dn.order_po_number or (ord_obj.po_number if ord_obj else str(dn.order_id)),
                 "orderDbId": dn.order_id,
                 "orderName": (ord_obj.quote_name if ord_obj else None) or dn.order_po_number,
@@ -767,7 +767,7 @@ def create_packing_list(payload: PackingListCreateInput, db: Session = Depends(g
     unique_boxes = {str(it.box_number or "Box 1").strip() for it in active_items}
     total_packed_units = sum(int(it.qty_packed or 0) for it in active_items)
 
-    proj = db.query(Project).filter(Project.key == (payload.project_key or order_obj.project_key)).first()
+    proj = db.query(Project).filter(Project.project_key == (payload.project_key or order_obj.project_key)).first()
 
     pl_rec = LogisticsPackingList(
         document_number=doc_no,
@@ -927,7 +927,7 @@ def create_delivery_note(payload: DeliveryNoteCreateInput, db: Session = Depends
         raise HTTPException(status_code=404, detail=f"Order '{payload.order_id}' not found")
 
     doc_no = _next_document_number(db, "DN")
-    proj = db.query(Project).filter(Project.key == (payload.project_key or order_obj.project_key)).first()
+    proj = db.query(Project).filter(Project.project_key == (payload.project_key or order_obj.project_key)).first()
 
     # Resolve source Packing Lists if provided
     linked_pls: List[LogisticsPackingList] = []
