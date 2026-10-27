@@ -480,11 +480,22 @@ export default function LogisticsPage() {
   const plUniqueAreas = useMemo(() => {
     const s = new Set();
     plRows.forEach(r => {
-      if (plFilterFloor !== 'ALL' && (r.floor || '').trim() !== plFilterFloor) return;
-      if (r.area && r.area.trim()) s.add(r.area.trim());
+      const a = (r.area || '').trim();
+      if (a) s.add(a);
     });
     return Array.from(s).sort();
-  }, [plRows, plFilterFloor]);
+  }, [plRows]);
+
+  // Quick statistics per area for pill badges
+  const plAreaItemCounts = useMemo(() => {
+    const counts = {};
+    plRows.forEach(r => {
+      if (r.parent_item_id || r.is_hidden_by_attachment) return;
+      const a = (r.area || '').trim() || 'General / Unspecified';
+      counts[a] = (counts[a] || 0) + 1;
+    });
+    return counts;
+  }, [plRows]);
 
   // Filtered PL rows keeping attached accessories directly underneath their parent fitting
   const visiblePlRows = useMemo(() => {
@@ -493,7 +504,10 @@ export default function LogisticsPage() {
 
     const filteredMains = mainRows.filter(r => {
       if (plFilterFloor !== 'ALL' && (r.floor || '').trim() !== plFilterFloor) return false;
-      if (plFilterArea !== 'ALL' && (r.area || '').trim() !== plFilterArea) return false;
+      if (plFilterArea !== 'ALL') {
+        const rowArea = (r.area || '').trim() || 'General / Unspecified';
+        if (rowArea !== plFilterArea) return false;
+      }
       return true;
     });
 
@@ -1869,41 +1883,113 @@ export default function LogisticsPage() {
                 {/* Warehouse Packing Controls Toolbar */}
                 {plOrderKey && (
                   <>
-                    <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                      {/* Left: Floor & Area Filters */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Filter size={13} /> Filter Area:
+                    {/* AREA FILTER PILLS ROW (Fast 1-click room selection) */}
+                    <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <Filter size={12} style={{ color: 'var(--text-info)' }} /> Pack Per Area / Room:
                         </span>
-                        <select
-                          className="form-control"
-                          style={{ height: '30px', fontSize: '12px', width: '150px', background: 'var(--bg-secondary)' }}
-                          value={plFilterFloor}
-                          onChange={e => {
-                            setPlFilterFloor(e.target.value);
-                            setPlFilterArea('ALL');
-                          }}
-                        >
-                          <option value="ALL">All Floors ({plUniqueFloors.length})</option>
-                          {plUniqueFloors.map(f => (
-                            <option key={f} value={f}>{f}</option>
-                          ))}
-                        </select>
-
-                        <select
-                          className="form-control"
-                          style={{ height: '30px', fontSize: '12px', width: '170px', background: 'var(--bg-secondary)' }}
-                          value={plFilterArea}
-                          onChange={e => setPlFilterArea(e.target.value)}
-                        >
-                          <option value="ALL">All Rooms / Areas ({plUniqueAreas.length})</option>
-                          {plUniqueAreas.map(a => (
-                            <option key={a} value={a}>{a}</option>
-                          ))}
-                        </select>
+                        {plFilterArea !== 'ALL' && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '11.5px', color: 'var(--text-info)', fontWeight: 700 }}>
+                              Filtering: {plFilterArea}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs"
+                              style={{ border: '1px solid var(--border)', fontSize: '10.5px', padding: '1px 6px' }}
+                              onClick={() => {
+                                // 1-click pack only this area
+                                setPlRows(prev =>
+                                  prev.map(r => {
+                                    const a = (r.area || '').trim() || 'General / Unspecified';
+                                    if (a === plFilterArea && !r.is_split_child && !r.is_accessory) {
+                                      return { ...r, qty_packed: Number(r.remaining_to_pack || r.qty_ordered || 0), is_hidden_by_attachment: false };
+                                    }
+                                    return r;
+                                  })
+                                );
+                              }}
+                            >
+                              ✓ Pack Only {plFilterArea}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs"
+                              style={{ border: '1px solid var(--border)', fontSize: '10.5px', padding: '1px 6px', color: 'var(--text-tertiary)' }}
+                              onClick={() => setPlFilterArea('ALL')}
+                            >
+                              Show All Areas
+                            </button>
+                          </div>
+                        )}
                       </div>
 
-                      {/* Middle: Active Box Batch Assignment */}
+                      {/* Horizontal Pill Bar */}
+                      <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '3px', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => setPlFilterArea('ALL')}
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: '16px',
+                            border: plFilterArea === 'ALL' ? '1px solid var(--text-info)' : '1px solid var(--border)',
+                            background: plFilterArea === 'ALL' ? 'rgba(59, 130, 246, 0.2)' : 'var(--bg-secondary)',
+                            color: plFilterArea === 'ALL' ? '#fff' : 'var(--text-secondary)',
+                            fontSize: '11.5px',
+                            fontWeight: plFilterArea === 'ALL' ? 700 : 500,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px'
+                          }}
+                        >
+                          All Areas ({plRows.filter(r => !r.parent_item_id && !r.is_hidden_by_attachment).length})
+                        </button>
+
+                        {plUniqueAreas.map(areaName => {
+                          const isSelected = plFilterArea === areaName;
+                          const count = plAreaItemCounts[areaName] || 0;
+                          return (
+                            <button
+                              key={areaName}
+                              type="button"
+                              onClick={() => setPlFilterArea(areaName)}
+                              style={{
+                                padding: '4px 10px',
+                                borderRadius: '16px',
+                                border: isSelected ? '1px solid #a855f7' : '1px solid var(--border)',
+                                background: isSelected ? 'rgba(168, 85, 247, 0.22)' : 'var(--bg-secondary)',
+                                color: isSelected ? '#fff' : 'var(--text-secondary)',
+                                fontSize: '11.5px',
+                                fontWeight: isSelected ? 700 : 500,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px'
+                              }}
+                            >
+                              <span>{areaName}</span>
+                              <span style={{
+                                fontSize: '10px',
+                                background: isSelected ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)',
+                                padding: '1px 5px',
+                                borderRadius: '8px',
+                                fontWeight: 700
+                              }}>
+                                {count}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Secondary Action Toolbar: Box Assignment + Global Pack */}
+                    <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                      {/* Left: Active Box Selector */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-secondary)', padding: '4px 10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
                         <Box size={14} style={{ color: 'var(--text-info)' }} />
                         <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)' }}>Active Box:</span>
@@ -1923,7 +2009,7 @@ export default function LogisticsPage() {
                           style={{ border: '1px solid var(--border)', fontSize: '11px' }}
                           onClick={handleAddBoxOption}
                         >
-                          + Add Box
+                          + Box
                         </button>
                         <button
                           type="button"
@@ -1935,7 +2021,7 @@ export default function LogisticsPage() {
                         </button>
                       </div>
 
-                      {/* Right: Pack All / Reset All */}
+                      {/* Right: Quick Batch Actions */}
                       <div style={{ display: 'flex', gap: '6px' }}>
                         <button
                           type="button"
@@ -1966,12 +2052,12 @@ export default function LogisticsPage() {
                       </div>
                     </div>
 
-                    {/* Packing List Items Table */}
-                    <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '420px', overflowY: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px', textAlign: 'left' }}>
+                    {/* Packing List Items Table (Streamlined & Clean) */}
+                    <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '430px', overflowY: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
                         <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-primary)' }}>
-                          <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 700 }}>
-                            <th style={{ padding: '8px', width: '32px', textAlign: 'center' }}>
+                          <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 650 }}>
+                            <th style={{ padding: '9px 10px', width: '32px', textAlign: 'center' }}>
                               <input
                                 type="checkbox"
                                 onChange={e => {
@@ -1984,26 +2070,21 @@ export default function LogisticsPage() {
                                 }}
                               />
                             </th>
-                            <th style={{ padding: '8px' }}>1-TO-1 Code</th>
-                            <th style={{ padding: '8px' }}>Plan Code</th>
-                            <th style={{ padding: '8px' }}>Supplier Code</th>
-                            <th style={{ padding: '8px' }}>Description</th>
-                            <th style={{ padding: '8px' }}>Floor / Area</th>
-                            <th style={{ padding: '8px' }}>Material / Colour</th>
-                            <th style={{ padding: '8px', textAlign: 'center' }}>1st Fix</th>
-                            <th style={{ padding: '8px', textAlign: 'center' }}>Red List</th>
-                            <th style={{ padding: '8px', textAlign: 'center' }}>Ord</th>
-                            <th style={{ padding: '8px', width: '82px', textAlign: 'center' }}>Packed Qty</th>
-                            <th style={{ padding: '8px', textAlign: 'center' }}>B/Order</th>
-                            <th style={{ padding: '8px', width: '105px' }}>Box #</th>
-                            <th style={{ padding: '8px', textAlign: 'right', width: '150px' }}>Split / Attach</th>
+                            <th style={{ padding: '9px 10px' }}>Item Code</th>
+                            <th style={{ padding: '9px 10px' }}>Description</th>
+                            <th style={{ padding: '9px 10px' }}>Area / Room</th>
+                            <th style={{ padding: '9px 10px', textAlign: 'center', width: '60px' }}>Ord</th>
+                            <th style={{ padding: '9px 10px', width: '92px', textAlign: 'center' }}>Packed Qty</th>
+                            <th style={{ padding: '9px 10px', textAlign: 'center', width: '60px' }}>B/Order</th>
+                            <th style={{ padding: '9px 10px', width: '105px' }}>Box #</th>
+                            <th style={{ padding: '9px 10px', textAlign: 'right', width: '140px' }}>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           {visiblePlRows.length === 0 ? (
                             <tr>
-                              <td colSpan={14} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12.5px' }}>
-                                {isLoadingPlItems ? 'Loading order items & product catalog specifications...' : 'No packable hardware items found for this filter.'}
+                              <td colSpan={9} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                                {isLoadingPlItems ? 'Loading order items & product catalog specifications...' : `No items found for area "${plFilterArea}".`}
                               </td>
                             </tr>
                           ) : (
@@ -2029,7 +2110,7 @@ export default function LogisticsPage() {
                                       : 'transparent',
                                   }}
                                 >
-                                  <td style={{ padding: '7px 8px', textAlign: 'center' }}>
+                                  <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                                     <input
                                       type="checkbox"
                                       checked={isChecked}
@@ -2041,17 +2122,17 @@ export default function LogisticsPage() {
                                       }
                                     />
                                   </td>
-                                  <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)', paddingLeft: isSubRow ? '18px' : '8px' }}>
+                                  <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)', paddingLeft: isSubRow ? '22px' : '10px' }}>
                                     {row.is_accessory ? `↳ ${row.one_one_code}` : row.is_split_child ? `➗ ${row.one_one_code}` : row.one_one_code || '—'}
                                   </td>
-                                  <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-info)' }}>
-                                    {row.plan_code || '—'}
-                                  </td>
-                                  <td style={{ padding: '7px 8px', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
-                                    {row.supplier_code || '—'}
-                                  </td>
-                                  <td style={{ padding: '7px 8px' }}>
-                                    <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{row.description}</div>
+                                  <td style={{ padding: '8px 10px' }}>
+                                    <div style={{ fontWeight: 550, color: 'var(--text-primary)' }}>{row.description}</div>
+                                    <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', display: 'flex', gap: '8px', marginTop: '2px' }}>
+                                      {row.plan_code && <span>Plan: <strong>{row.plan_code}</strong></span>}
+                                      {row.material_colour && row.material_colour !== '—' && <span>Col: {row.material_colour}</span>}
+                                      {row.first_fix === 'Yes' && <span style={{ color: 'var(--text-info)', fontWeight: 700 }}>1st Fix</span>}
+                                      {row.red_list === 'Yes' && <span style={{ color: 'var(--text-danger)', fontWeight: 700 }}>Red List</span>}
+                                    </div>
                                     {row.parent_fitting_code && (
                                       <span style={{ fontSize: '10px', color: '#a855f7', fontWeight: 700 }}>
                                         Attached to: {row.parent_fitting_code}
@@ -2063,32 +2144,19 @@ export default function LogisticsPage() {
                                       </span>
                                     )}
                                   </td>
-                                  <td style={{ padding: '7px 8px', color: 'var(--text-secondary)', fontSize: '11px' }}>
-                                    <div>{row.floor || '—'}</div>
-                                    <div style={{ color: 'var(--text-tertiary)', fontSize: '10px' }}>{row.area || '—'}</div>
+                                  <td style={{ padding: '8px 10px', color: 'var(--text-primary)', fontSize: '11.5px' }}>
+                                    <div style={{ fontWeight: 600 }}>{row.area || 'General'}</div>
+                                    {row.floor && <div style={{ color: 'var(--text-tertiary)', fontSize: '10px' }}>{row.floor}</div>}
                                   </td>
-                                  <td style={{ padding: '7px 8px', color: 'var(--text-secondary)', fontSize: '11px' }}>
-                                    {row.material_colour || '—'}
-                                  </td>
-                                  <td style={{ padding: '7px 8px', textAlign: 'center' }}>
-                                    <span style={{ fontSize: '10px', fontWeight: 700, color: row.first_fix === 'Yes' ? 'var(--text-info)' : 'var(--text-tertiary)' }}>
-                                      {row.first_fix || 'No'}
-                                    </span>
-                                  </td>
-                                  <td style={{ padding: '7px 8px', textAlign: 'center' }}>
-                                    <span style={{ fontSize: '10px', fontWeight: 700, color: row.red_list === 'Yes' ? 'var(--text-danger)' : 'var(--text-tertiary)' }}>
-                                      {row.red_list || 'No'}
-                                    </span>
-                                  </td>
-                                  <td style={{ padding: '7px 8px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, color: isSubRow ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>
+                                  <td style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, color: isSubRow ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>
                                     {isSubRow ? `(${row.qty_ordered})` : row.qty_ordered}
                                   </td>
-                                  <td style={{ padding: '7px 8px' }}>
+                                  <td style={{ padding: '8px 10px' }}>
                                     <input
                                       type="number"
                                       min="0"
                                       className="form-control"
-                                      style={{ height: '28px', padding: '2px 6px', fontSize: '12px', textAlign: 'center', fontWeight: 800, background: 'var(--bg-secondary)' }}
+                                      style={{ height: '30px', padding: '2px 8px', fontSize: '12.5px', textAlign: 'center', fontWeight: 800, background: 'var(--bg-secondary)', width: '100%' }}
                                       value={row.qty_packed}
                                       onChange={e => {
                                         const val = Math.max(0, parseInt(e.target.value, 10) || 0);
@@ -2098,14 +2166,14 @@ export default function LogisticsPage() {
                                       }}
                                     />
                                   </td>
-                                  <td style={{ padding: '7px 8px', textAlign: 'center', fontFamily: 'monospace', color: !isSubRow && backorder > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 700 }}>
+                                  <td style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace', color: !isSubRow && backorder > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 700 }}>
                                     {isSubRow ? '—' : backorder}
                                   </td>
-                                  <td style={{ padding: '7px 8px' }}>
+                                  <td style={{ padding: '8px 10px' }}>
                                     <input
                                       type="text"
                                       className="form-control"
-                                      style={{ height: '28px', padding: '2px 6px', fontSize: '11.5px', fontWeight: 700, background: 'var(--bg-secondary)' }}
+                                      style={{ height: '30px', padding: '2px 8px', fontSize: '12px', fontWeight: 650, background: 'var(--bg-secondary)', width: '100%' }}
                                       value={row.box_number}
                                       onChange={e => {
                                         const val = e.target.value;
@@ -2115,7 +2183,7 @@ export default function LogisticsPage() {
                                       }}
                                     />
                                   </td>
-                                  <td style={{ padding: '7px 8px', textAlign: 'right' }}>
+                                  <td style={{ padding: '8px 10px', textAlign: 'right' }}>
                                     <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
                                       {!row.is_accessory && (
                                         <button
