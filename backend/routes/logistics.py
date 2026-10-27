@@ -641,6 +641,11 @@ def get_enriched_order_items_for_logistics(
     for oi in order_items:
         if oi.is_credit:
             continue
+        # Filter out UI layout spacers and empty blank placeholder rows
+        plan_raw = (oi.type or "").strip()
+        desc_raw = (oi.description or "").strip()
+        if plan_raw == "SPACER" or (not desc_raw and not oi.one_one_code and not oi.code):
+            continue
         one_one = (oi.one_one_code or oi.code or "").strip()
         supp_code = (oi.code or oi.one_one_code or "").strip()
         prod = prod_by_code.get(one_one.upper()) or prod_by_code.get(supp_code.upper())

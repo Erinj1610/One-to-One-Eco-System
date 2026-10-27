@@ -371,7 +371,7 @@ export default function LogisticsPage() {
     const order = allOrders.find(o => (o.projectKey === pKey && o.id === oId) || o.id === oId);
     const localItemsRaw = order ? (order.itemsList || order.items || []) : [];
     const instantRows = localItemsRaw
-      .filter(it => (it.itemType || it.item_type) !== 'Service' && !it.is_credit)
+      .filter(it => (it.itemType || it.item_type) !== 'Service' && !it.is_credit && (it.plan_code || it.type) !== 'SPACER' && (it.description || '').trim() !== '')
       .map((it, idx) => {
         const ordered = Number(it.qty ?? it.quantity ?? 1);
         const oiId = String(it.id || it.order_item_id || `local_${idx}`);
@@ -413,7 +413,7 @@ export default function LogisticsPage() {
       );
       if (res.ok) {
         const data = await res.json();
-        const apiItems = data.items || [];
+        const apiItems = (data.items || []).filter(it => (it.plan_code || '').trim() !== 'SPACER' && ((it.description || '').trim() !== '' || it.one_one_code || it.supplier_code));
         if (apiItems.length > 0) {
           const allRemainingZero = apiItems.every(it => Number(it.remaining_to_pack || 0) <= 0);
           const builtRows = apiItems.map((it, idx) => {
@@ -553,17 +553,21 @@ export default function LogisticsPage() {
     setPlSelectedRowKeys({});
   };
 
-  // Split this exact row's quantity across another box cleanly (never duplicates order items)
+  // Split this item across another box cleanly without errors
   const handleSplitRowAcrossBoxes = (targetRow) => {
     let currentQty = Number(targetRow.qty_packed) || 0;
-    if (currentQty < 2) {
-      alert(`Cannot split a line with Packed Qty of ${currentQty}. Minimum quantity to split across boxes is 2.`);
-      return;
+    
+    // Determine split allocation
+    let splitQty = 0;
+    let remainingQty = currentQty;
+    if (currentQty >= 2) {
+      splitQty = Math.floor(currentQty / 2);
+      remainingQty = currentQty - splitQty;
+    } else {
+      // For qty 1 or 0, create the split row with 0 packed so packer can set box & qty freely
+      splitQty = 0;
+      remainingQty = currentQty;
     }
-
-    // Split this exact row's packed quantity into two portions
-    const splitQty = Math.floor(currentQty / 2);
-    const remainingQty = currentQty - splitQty;
 
     // Pick or create next box
     const currentBoxNum = parseInt((targetRow.box_number || 'Box 1').replace(/\D/g, ''), 10) || 1;
@@ -1831,16 +1835,16 @@ export default function LogisticsPage() {
                               const [pKey, oId] = plOrderKey.split(':::');
                               const ord = allOrders.find(o => o.projectKey === pKey && o.id === oId);
                               return ord
-                                ? `Project: ${ord.projectName} • Order: ${ord.quote_name ? `${ord.quote_name} (${ord.id})` : ord.id}`
-                                : `${pKey} • Order: ${oId}`;
+                                ? `${ord.quote_name ? `${ord.quote_name} (${ord.id})` : ord.id} • ${ord.projectName}`
+                                : `${oId} • ${pKey}`;
                             })()
-                          : 'Select Project & Order...'}
+                          : 'Select Order...' }
                       </span>
                       <ChevronDown size={14} style={{ color: 'var(--text-secondary)' }} />
                     </div>
 
                     {plOrderDropdownOpen && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.45)', marginTop: '4px', maxHeight: '280px', overflowY: 'auto' }}>
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.45)', marginTop: '4px', maxHeight: '380px', overflowY: 'auto' }}>
                         <div style={{ padding: '8px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg-primary)' }}>
                           <input
                             type="text"
@@ -1863,25 +1867,19 @@ export default function LogisticsPage() {
                               key={`${o.projectKey}:::${o.id}`}
                               onClick={() => loadOrderItemsForPl(`${o.projectKey}:::${o.id}`)}
                               className="hover-row"
-                              style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: '12px' }}
+                              style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
                             >
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '12.5px' }}>
-                                  📁 {o.projectName}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                <span style={{ fontWeight: 750, color: 'var(--text-primary)', fontSize: '13px' }}>
+                                  {o.quote_name ? o.quote_name : o.id}
                                 </span>
-                                {o.projectClient && (
-                                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500 }}>
-                                    Client: {o.projectClient}
-                                  </span>
-                                )}
+                                <span style={{ fontFamily: 'monospace', color: 'var(--text-info)', fontSize: '11px', fontWeight: 600 }}>
+                                  {o.id}
+                                </span>
                               </div>
-                              <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', marginTop: '3px' }}>
-                                <span style={{ color: 'var(--text-info)', fontWeight: 600 }}>
-                                  📦 Order: {o.quote_name ? `${o.quote_name} (${o.id})` : o.id}
-                                </span>
-                                <span style={{ fontFamily: 'monospace', color: 'var(--text-tertiary)', fontSize: '10.5px' }}>
-                                  ID: {o.id}
-                                </span>
+                              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', display: 'flex', justifyContent: 'space-between' }}>
+                                <span>{o.projectName}</span>
+                                {o.projectClient && <span style={{ color: 'var(--text-tertiary)' }}>{o.projectClient}</span>}
                               </div>
                             </div>
                           ))}
@@ -2012,7 +2010,7 @@ export default function LogisticsPage() {
                       </div>
                     </div>
 
-                    {/* Packing List Items Table (Fast, Clean, Dedicated Code Columns) */}
+                    {/* Packing List Items Table (One to One Code, Plan Code, Supplier/SKU Code) */}
                     <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '430px', overflowY: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
                         <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-primary)' }}>
@@ -2030,21 +2028,22 @@ export default function LogisticsPage() {
                                 }}
                               />
                             </th>
-                            <th style={{ padding: '9px 10px', minWidth: '110px' }}>Made Code</th>
-                            <th style={{ padding: '9px 8px', minWidth: '70px', textAlign: 'center' }}>Plan Code</th>
+                            <th style={{ padding: '9px 10px', minWidth: '105px' }}>One to One Code</th>
+                            <th style={{ padding: '9px 8px', width: '70px', textAlign: 'center' }}>Plan Code</th>
+                            <th style={{ padding: '9px 10px', minWidth: '95px' }}>Supplier / SKU</th>
                             <th style={{ padding: '9px 10px' }}>Description & Spec</th>
-                            <th style={{ padding: '9px 10px', minWidth: '130px' }}>Area / Room</th>
-                            <th style={{ padding: '9px 8px', textAlign: 'center', width: '50px' }}>Ord</th>
-                            <th style={{ padding: '9px 8px', width: '85px', textAlign: 'center' }}>Packed</th>
-                            <th style={{ padding: '9px 8px', textAlign: 'center', width: '50px' }}>B/O</th>
-                            <th style={{ padding: '9px 10px', width: '100px' }}>Box #</th>
-                            <th style={{ padding: '9px 8px', textAlign: 'right', width: '110px' }}>Actions</th>
+                            <th style={{ padding: '9px 10px', minWidth: '120px' }}>Area / Room</th>
+                            <th style={{ padding: '9px 8px', textAlign: 'center', width: '45px' }}>Ord</th>
+                            <th style={{ padding: '9px 8px', width: '80px', textAlign: 'center' }}>Packed</th>
+                            <th style={{ padding: '9px 8px', textAlign: 'center', width: '45px' }}>B/O</th>
+                            <th style={{ padding: '9px 10px', width: '95px' }}>Box #</th>
+                            <th style={{ padding: '9px 8px', textAlign: 'right', width: '115px' }}>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           {visiblePlRows.length === 0 ? (
                             <tr>
-                              <td colSpan={10} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                              <td colSpan={11} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
                                 {isLoadingPlItems ? 'Loading order items & product specifications...' : `No items found for area "${plFilterArea}".`}
                               </td>
                             </tr>
@@ -2086,20 +2085,20 @@ export default function LogisticsPage() {
                                     />
                                   </td>
 
-                                  {/* Dedicated Made / 1-to-1 Code */}
-                                  <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)', paddingLeft: isSubRow ? '20px' : '10px' }}>
+                                  {/* 1. One to One Code */}
+                                  <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)', paddingLeft: row.is_accessory ? '20px' : '10px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                      {row.is_accessory ? <span style={{ color: '#a855f7' }}>↳</span> : row.is_split_child ? <span style={{ color: 'var(--text-info)' }}>➗</span> : null}
+                                      {row.is_accessory && <span style={{ color: '#a855f7' }}>↳</span>}
+                                      {row.is_split_child && (
+                                        <span style={{ fontSize: '9.5px', background: 'rgba(59, 130, 246, 0.2)', color: 'var(--text-info)', padding: '1px 4px', borderRadius: '3px', fontWeight: 800 }}>
+                                          SPLIT
+                                        </span>
+                                      )}
                                       <span>{row.one_one_code || '—'}</span>
                                     </div>
-                                    {row.supplier_code && row.supplier_code !== row.one_one_code && (
-                                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 400 }}>
-                                        {row.supplier_code}
-                                      </div>
-                                    )}
                                   </td>
 
-                                  {/* Dedicated Plan Code Column */}
+                                  {/* 2. Plan Code */}
                                   <td style={{ padding: '8px', textAlign: 'center' }}>
                                     {row.plan_code ? (
                                       <span style={{
@@ -2119,6 +2118,11 @@ export default function LogisticsPage() {
                                     )}
                                   </td>
 
+                                  {/* 3. SKU / Supplier Code */}
+                                  <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                    {row.supplier_code || '—'}
+                                  </td>
+
                                   {/* Description & Spec Flags */}
                                   <td style={{ padding: '8px 10px' }}>
                                     <div style={{ fontWeight: 550, color: 'var(--text-primary)', lineHeight: '1.3' }}>{row.description}</div>
@@ -2133,7 +2137,7 @@ export default function LogisticsPage() {
                                       )}
                                       {row.is_split_child && (
                                         <span style={{ color: 'var(--text-info)', fontWeight: 700 }}>
-                                          Split (Total: {row.qty_ordered})
+                                          Split Line (Total: {row.qty_ordered})
                                         </span>
                                       )}
                                     </div>
