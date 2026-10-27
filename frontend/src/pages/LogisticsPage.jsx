@@ -5,7 +5,7 @@ import {
   Truck, ClipboardList, FileText, Plus, Printer,
   ArrowLeft, Search, CheckCircle2, AlertCircle, Eye, Trash2,
   Package, Layers, Filter, Check, Clock, Box, Sparkles, X, ChevronDown, ChevronRight,
-  Tag, Settings, Link2, Split, Upload, FileCheck, Ban, Edit3, MapPin, Phone, User
+  Tag, Settings, Link2, Split, MoreVertical, Upload, FileCheck, Ban, Edit3, MapPin, Phone, User
 } from 'lucide-react';
 import LabelTemplateModal from '../components/logistics/LabelTemplateModal';
 import PackingListLabelPrinterModal from '../components/logistics/PackingListLabelPrinterModal';
@@ -106,19 +106,25 @@ export default function LogisticsPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Gather all orders
+  // Gather all orders with clean, human-readable Project Names and Clients
   const allOrders = useMemo(() => {
-    return Object.entries(projects || {}).flatMap(([pKey, p]) =>
-      ((p && p.orders) || []).map(o => ({
+    return Object.entries(projects || {}).flatMap(([pKey, p]) => {
+      const rawName = (p?.name || '').trim();
+      const client = (p?.client || p?.client_name || p?.clientCompany || '').trim();
+      let cleanProjName = rawName;
+      if (!rawName || /^\d+$/.test(rawName)) {
+        cleanProjName = client ? `${client} (Project #${rawName || pKey})` : `Project #${rawName || pKey}`;
+      }
+      return ((p && p.orders) || []).map(o => ({
         ...o,
         projectKey: p.key || p.project_key || pKey,
-        projectName: p.name || pKey,
-        projectClient: p.client || p.client_name || '',
+        projectName: cleanProjName,
+        projectClient: client,
         projectPm: p.pm || p.pm_name || o.pmName || '',
         projectLocation: p.location || p.deliveryAddress || '',
         projectPhone: p.phone || p.clientPhone || '',
-      }))
-    );
+      }));
+    });
   }, [projects]);
 
   // Read filter routing parameter state on mount (including quick create actions from OrdersPage)
@@ -306,6 +312,7 @@ export default function LogisticsPage() {
   const [plActiveBox, setPlActiveBox] = useState('Box 1');
   const [plSelectedRowKeys, setPlSelectedRowKeys] = useState({});
   const [attachModalTargetRow, setAttachModalTargetRow] = useState(null);
+  const [activeOptionsRowKey, setActiveOptionsRowKey] = useState(null);
 
   const loadOrderItemsForPl = async (compositeKey, existingPlDoc = null) => {
     setPlOrderKey(compositeKey);
@@ -546,38 +553,28 @@ export default function LogisticsPage() {
     setPlSelectedRowKeys({});
   };
 
-  // Split a row across multiple boxes without duplicating quantities
+  // Split this exact row's quantity across another box cleanly (never duplicates order items)
   const handleSplitRowAcrossBoxes = (targetRow) => {
-    const totalForOrderItem = plRows
-      .filter(r => String(r.order_item_id) === String(targetRow.order_item_id))
-      .reduce((s, r) => s + (Number(r.qty_packed) || 0), 0);
-
-    const itemMax = Number(targetRow.remaining_to_pack || targetRow.qty_ordered || 0);
-    const unassignedRemainder = Math.max(0, itemMax - totalForOrderItem);
-
-    let updatedCurrentQty = Number(targetRow.qty_packed) || 0;
-    let splitQty = 0;
-
-    if (unassignedRemainder > 0 && updatedCurrentQty > 0) {
-      // User already reduced this row's Packed Qty; put the exact unassigned balance into the new split row
-      splitQty = unassignedRemainder;
-    } else if (updatedCurrentQty >= 2) {
-      // Split this row's current Packed Qty across the two boxes
-      splitQty = Math.floor(updatedCurrentQty / 2);
-      updatedCurrentQty = updatedCurrentQty - splitQty;
-    } else {
-      alert(`Cannot split a quantity of ${updatedCurrentQty} across multiple boxes. Packed Qty must be at least 2 (or lower Packed Qty below Ordered Qty first) to split.`);
+    let currentQty = Number(targetRow.qty_packed) || 0;
+    if (currentQty < 2) {
+      alert(`Cannot split a line with Packed Qty of ${currentQty}. Minimum quantity to split across boxes is 2.`);
       return;
     }
 
-    const nextBox = plAvailableBoxes.find(b => b !== targetRow.box_number) || 'Box 2';
+    // Split this exact row's packed quantity into two portions
+    const splitQty = Math.floor(currentQty / 2);
+    const remainingQty = currentQty - splitQty;
+
+    // Pick or create next box
+    const currentBoxNum = parseInt((targetRow.box_number || 'Box 1').replace(/\D/g, ''), 10) || 1;
+    const nextBox = `Box ${currentBoxNum + 1}`;
     if (!plAvailableBoxes.includes(nextBox)) {
       setPlAvailableBoxes(prev => [...prev, nextBox]);
     }
 
     const newSplitRow = {
       ...targetRow,
-      rowKey: `split_${targetRow.order_item_id}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      rowKey: `split_${targetRow.order_item_id || 'item'}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       qty_packed: splitQty,
       box_number: nextBox,
       is_split_child: true,
@@ -588,7 +585,7 @@ export default function LogisticsPage() {
       const idx = prev.findIndex(r => r.rowKey === targetRow.rowKey);
       if (idx === -1) return prev;
       const copy = [...prev];
-      copy[idx] = { ...copy[idx], qty_packed: updatedCurrentQty };
+      copy[idx] = { ...copy[idx], qty_packed: remainingQty };
       copy.splice(idx + 1, 0, newSplitRow);
       return copy;
     });
@@ -1834,10 +1831,10 @@ export default function LogisticsPage() {
                               const [pKey, oId] = plOrderKey.split(':::');
                               const ord = allOrders.find(o => o.projectKey === pKey && o.id === oId);
                               return ord
-                                ? `${ord.projectName} ➔ ${ord.quote_name ? `${ord.quote_name} (${ord.id})` : ord.id} [${ord.projectClient || 'Direct'}]`
-                                : `${pKey} ➔ ${oId}`;
+                                ? `Project: ${ord.projectName} • Order: ${ord.quote_name ? `${ord.quote_name} (${ord.id})` : ord.id}`
+                                : `${pKey} • Order: ${oId}`;
                             })()
-                          : 'Select Project Order...'}
+                          : 'Select Project & Order...'}
                       </span>
                       <ChevronDown size={14} style={{ color: 'var(--text-secondary)' }} />
                     </div>
@@ -1868,10 +1865,23 @@ export default function LogisticsPage() {
                               className="hover-row"
                               style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: '12px' }}
                             >
-                              <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{o.projectName}</div>
-                              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-                                <span>Order: {o.quote_name ? `${o.quote_name} (${o.id})` : o.id}</span>
-                                <span>Client: {o.projectClient || '—'}</span>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '12.5px' }}>
+                                  📁 {o.projectName}
+                                </span>
+                                {o.projectClient && (
+                                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500 }}>
+                                    Client: {o.projectClient}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', marginTop: '3px' }}>
+                                <span style={{ color: 'var(--text-info)', fontWeight: 600 }}>
+                                  📦 Order: {o.quote_name ? `${o.quote_name} (${o.id})` : o.id}
+                                </span>
+                                <span style={{ fontFamily: 'monospace', color: 'var(--text-tertiary)', fontSize: '10.5px' }}>
+                                  ID: {o.id}
+                                </span>
                               </div>
                             </div>
                           ))}
@@ -1883,23 +1893,35 @@ export default function LogisticsPage() {
                 {/* Warehouse Packing Controls Toolbar */}
                 {plOrderKey && (
                   <>
-                    {/* AREA FILTER PILLS ROW (Fast 1-click room selection) */}
-                    <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <Filter size={12} style={{ color: 'var(--text-info)' }} /> Pack Per Area / Room:
+                    {/* AREA & ROOM SELECTOR TOOLBAR (Clean, compact dropdown) */}
+                    <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '280px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
+                          <Filter size={13} style={{ color: 'var(--text-info)' }} /> Pack Per Area / Room:
                         </span>
+                        <select
+                          className="form-control"
+                          style={{ height: '32px', fontSize: '12.5px', fontWeight: 650, flex: 1, maxWidth: '380px', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                          value={plFilterArea}
+                          onChange={e => setPlFilterArea(e.target.value)}
+                        >
+                          <option value="ALL">All Areas / Rooms ({plRows.filter(r => !r.parent_item_id && !r.is_hidden_by_attachment).length} line items)</option>
+                          {plUniqueAreas.map(areaName => (
+                            <option key={areaName} value={areaName}>
+                              {areaName} ({plAreaItemCounts[areaName] || 0} items)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         {plFilterArea !== 'ALL' && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '11.5px', color: 'var(--text-info)', fontWeight: 700 }}>
-                              Filtering: {plFilterArea}
-                            </span>
+                          <>
                             <button
                               type="button"
-                              className="btn btn-ghost btn-xs"
-                              style={{ border: '1px solid var(--border)', fontSize: '10.5px', padding: '1px 6px' }}
+                              className="btn btn-primary btn-sm"
+                              style={{ fontSize: '11.5px', fontWeight: 700, padding: '4px 12px' }}
                               onClick={() => {
-                                // 1-click pack only this area
                                 setPlRows(prev =>
                                   prev.map(r => {
                                     const a = (r.area || '').trim() || 'General / Unspecified';
@@ -1915,78 +1937,16 @@ export default function LogisticsPage() {
                             </button>
                             <button
                               type="button"
-                              className="btn btn-ghost btn-xs"
-                              style={{ border: '1px solid var(--border)', fontSize: '10.5px', padding: '1px 6px', color: 'var(--text-tertiary)' }}
+                              className="btn btn-ghost btn-sm"
+                              style={{ border: '1px solid var(--border)', fontSize: '11.5px', padding: '4px 10px', color: 'var(--text-secondary)' }}
                               onClick={() => setPlFilterArea('ALL')}
                             >
                               Show All Areas
                             </button>
-                          </div>
+                          </>
                         )}
                       </div>
-
-                      {/* Horizontal Pill Bar */}
-                      <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '3px', alignItems: 'center' }}>
-                        <button
-                          type="button"
-                          onClick={() => setPlFilterArea('ALL')}
-                          style={{
-                            padding: '4px 10px',
-                            borderRadius: '16px',
-                            border: plFilterArea === 'ALL' ? '1px solid var(--text-info)' : '1px solid var(--border)',
-                            background: plFilterArea === 'ALL' ? 'rgba(59, 130, 246, 0.2)' : 'var(--bg-secondary)',
-                            color: plFilterArea === 'ALL' ? '#fff' : 'var(--text-secondary)',
-                            fontSize: '11.5px',
-                            fontWeight: plFilterArea === 'ALL' ? 700 : 500,
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '5px'
-                          }}
-                        >
-                          All Areas ({plRows.filter(r => !r.parent_item_id && !r.is_hidden_by_attachment).length})
-                        </button>
-
-                        {plUniqueAreas.map(areaName => {
-                          const isSelected = plFilterArea === areaName;
-                          const count = plAreaItemCounts[areaName] || 0;
-                          return (
-                            <button
-                              key={areaName}
-                              type="button"
-                              onClick={() => setPlFilterArea(areaName)}
-                              style={{
-                                padding: '4px 10px',
-                                borderRadius: '16px',
-                                border: isSelected ? '1px solid #a855f7' : '1px solid var(--border)',
-                                background: isSelected ? 'rgba(168, 85, 247, 0.22)' : 'var(--bg-secondary)',
-                                color: isSelected ? '#fff' : 'var(--text-secondary)',
-                                fontSize: '11.5px',
-                                fontWeight: isSelected ? 700 : 500,
-                                cursor: 'pointer',
-                                whiteSpace: 'nowrap',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '5px'
-                              }}
-                            >
-                              <span>{areaName}</span>
-                              <span style={{
-                                fontSize: '10px',
-                                background: isSelected ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)',
-                                padding: '1px 5px',
-                                borderRadius: '8px',
-                                fontWeight: 700
-                              }}>
-                                {count}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
                     </div>
-
                     {/* Secondary Action Toolbar: Box Assignment + Global Pack */}
                     <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                       {/* Left: Active Box Selector */}
@@ -2052,12 +2012,12 @@ export default function LogisticsPage() {
                       </div>
                     </div>
 
-                    {/* Packing List Items Table (Streamlined & Clean) */}
+                    {/* Packing List Items Table (Fast, Clean, Dedicated Code Columns) */}
                     <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '430px', overflowY: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
                         <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-primary)' }}>
                           <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 650 }}>
-                            <th style={{ padding: '9px 10px', width: '32px', textAlign: 'center' }}>
+                            <th style={{ padding: '9px 8px', width: '32px', textAlign: 'center' }}>
                               <input
                                 type="checkbox"
                                 onChange={e => {
@@ -2070,21 +2030,22 @@ export default function LogisticsPage() {
                                 }}
                               />
                             </th>
-                            <th style={{ padding: '9px 10px' }}>Item Code</th>
-                            <th style={{ padding: '9px 10px' }}>Description</th>
-                            <th style={{ padding: '9px 10px' }}>Area / Room</th>
-                            <th style={{ padding: '9px 10px', textAlign: 'center', width: '60px' }}>Ord</th>
-                            <th style={{ padding: '9px 10px', width: '92px', textAlign: 'center' }}>Packed Qty</th>
-                            <th style={{ padding: '9px 10px', textAlign: 'center', width: '60px' }}>B/Order</th>
-                            <th style={{ padding: '9px 10px', width: '105px' }}>Box #</th>
-                            <th style={{ padding: '9px 10px', textAlign: 'right', width: '140px' }}>Actions</th>
+                            <th style={{ padding: '9px 10px', minWidth: '110px' }}>Made Code</th>
+                            <th style={{ padding: '9px 8px', minWidth: '70px', textAlign: 'center' }}>Plan Code</th>
+                            <th style={{ padding: '9px 10px' }}>Description & Spec</th>
+                            <th style={{ padding: '9px 10px', minWidth: '130px' }}>Area / Room</th>
+                            <th style={{ padding: '9px 8px', textAlign: 'center', width: '50px' }}>Ord</th>
+                            <th style={{ padding: '9px 8px', width: '85px', textAlign: 'center' }}>Packed</th>
+                            <th style={{ padding: '9px 8px', textAlign: 'center', width: '50px' }}>B/O</th>
+                            <th style={{ padding: '9px 10px', width: '100px' }}>Box #</th>
+                            <th style={{ padding: '9px 8px', textAlign: 'right', width: '110px' }}>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
                           {visiblePlRows.length === 0 ? (
                             <tr>
-                              <td colSpan={9} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                                {isLoadingPlItems ? 'Loading order items & product catalog specifications...' : `No items found for area "${plFilterArea}".`}
+                              <td colSpan={10} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                                {isLoadingPlItems ? 'Loading order items & product specifications...' : `No items found for area "${plFilterArea}".`}
                               </td>
                             </tr>
                           ) : (
@@ -2095,6 +2056,7 @@ export default function LogisticsPage() {
                               const backorder = Math.max(0, Number(row.qty_ordered || 0) - totalPackedForItem);
                               const isChecked = !!plSelectedRowKeys[row.rowKey];
                               const isSubRow = !!(row.is_split_child || row.is_accessory);
+                              const showAttachBtn = !!(row.is_accessory || row.is_accessory_candidate || !row.area);
 
                               return (
                                 <tr
@@ -2110,7 +2072,8 @@ export default function LogisticsPage() {
                                       : 'transparent',
                                   }}
                                 >
-                                  <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                                  {/* Checkbox */}
+                                  <td style={{ padding: '8px', textAlign: 'center' }}>
                                     <input
                                       type="checkbox"
                                       checked={isChecked}
@@ -2122,41 +2085,78 @@ export default function LogisticsPage() {
                                       }
                                     />
                                   </td>
-                                  <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)', paddingLeft: isSubRow ? '22px' : '10px' }}>
-                                    {row.is_accessory ? `↳ ${row.one_one_code}` : row.is_split_child ? `➗ ${row.one_one_code}` : row.one_one_code || '—'}
+
+                                  {/* Dedicated Made / 1-to-1 Code */}
+                                  <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)', paddingLeft: isSubRow ? '20px' : '10px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      {row.is_accessory ? <span style={{ color: '#a855f7' }}>↳</span> : row.is_split_child ? <span style={{ color: 'var(--text-info)' }}>➗</span> : null}
+                                      <span>{row.one_one_code || '—'}</span>
+                                    </div>
+                                    {row.supplier_code && row.supplier_code !== row.one_one_code && (
+                                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 400 }}>
+                                        {row.supplier_code}
+                                      </div>
+                                    )}
                                   </td>
+
+                                  {/* Dedicated Plan Code Column */}
+                                  <td style={{ padding: '8px', textAlign: 'center' }}>
+                                    {row.plan_code ? (
+                                      <span style={{
+                                        display: 'inline-block',
+                                        fontSize: '11px',
+                                        fontWeight: 800,
+                                        padding: '2px 7px',
+                                        borderRadius: '4px',
+                                        background: 'rgba(59, 130, 246, 0.15)',
+                                        color: 'var(--text-info)',
+                                        fontFamily: 'monospace'
+                                      }}>
+                                        {row.plan_code}
+                                      </span>
+                                    ) : (
+                                      <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>—</span>
+                                    )}
+                                  </td>
+
+                                  {/* Description & Spec Flags */}
                                   <td style={{ padding: '8px 10px' }}>
-                                    <div style={{ fontWeight: 550, color: 'var(--text-primary)' }}>{row.description}</div>
+                                    <div style={{ fontWeight: 550, color: 'var(--text-primary)', lineHeight: '1.3' }}>{row.description}</div>
                                     <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', display: 'flex', gap: '8px', marginTop: '2px' }}>
-                                      {row.plan_code && <span>Plan: <strong>{row.plan_code}</strong></span>}
-                                      {row.material_colour && row.material_colour !== '—' && <span>Col: {row.material_colour}</span>}
+                                      {row.material_colour && row.material_colour !== '—' && <span>Col: <strong>{row.material_colour}</strong></span>}
                                       {row.first_fix === 'Yes' && <span style={{ color: 'var(--text-info)', fontWeight: 700 }}>1st Fix</span>}
                                       {row.red_list === 'Yes' && <span style={{ color: 'var(--text-danger)', fontWeight: 700 }}>Red List</span>}
+                                      {row.parent_fitting_code && (
+                                        <span style={{ color: '#a855f7', fontWeight: 700 }}>
+                                          Attached to: {row.parent_fitting_code}
+                                        </span>
+                                      )}
+                                      {row.is_split_child && (
+                                        <span style={{ color: 'var(--text-info)', fontWeight: 700 }}>
+                                          Split (Total: {row.qty_ordered})
+                                        </span>
+                                      )}
                                     </div>
-                                    {row.parent_fitting_code && (
-                                      <span style={{ fontSize: '10px', color: '#a855f7', fontWeight: 700 }}>
-                                        Attached to: {row.parent_fitting_code}
-                                      </span>
-                                    )}
-                                    {row.is_split_child && (
-                                      <span style={{ fontSize: '10px', color: 'var(--text-info)', fontWeight: 700 }}>
-                                        Split across box (Total Ordered: {row.qty_ordered})
-                                      </span>
-                                    )}
                                   </td>
+
+                                  {/* Area / Room */}
                                   <td style={{ padding: '8px 10px', color: 'var(--text-primary)', fontSize: '11.5px' }}>
-                                    <div style={{ fontWeight: 600 }}>{row.area || 'General'}</div>
+                                    <div style={{ fontWeight: 650 }}>{row.area || 'General / Unspecified'}</div>
                                     {row.floor && <div style={{ color: 'var(--text-tertiary)', fontSize: '10px' }}>{row.floor}</div>}
                                   </td>
-                                  <td style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, color: isSubRow ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>
+
+                                  {/* Ord Qty */}
+                                  <td style={{ padding: '8px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, color: isSubRow ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>
                                     {isSubRow ? `(${row.qty_ordered})` : row.qty_ordered}
                                   </td>
-                                  <td style={{ padding: '8px 10px' }}>
+
+                                  {/* Packed Qty Input */}
+                                  <td style={{ padding: '8px' }}>
                                     <input
                                       type="number"
                                       min="0"
                                       className="form-control"
-                                      style={{ height: '30px', padding: '2px 8px', fontSize: '12.5px', textAlign: 'center', fontWeight: 800, background: 'var(--bg-secondary)', width: '100%' }}
+                                      style={{ height: '28px', padding: '2px 6px', fontSize: '12.5px', textAlign: 'center', fontWeight: 800, background: 'var(--bg-secondary)', width: '100%' }}
                                       value={row.qty_packed}
                                       onChange={e => {
                                         const val = Math.max(0, parseInt(e.target.value, 10) || 0);
@@ -2166,14 +2166,18 @@ export default function LogisticsPage() {
                                       }}
                                     />
                                   </td>
-                                  <td style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace', color: !isSubRow && backorder > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 700 }}>
+
+                                  {/* Backorder Qty */}
+                                  <td style={{ padding: '8px', textAlign: 'center', fontFamily: 'monospace', color: !isSubRow && backorder > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 700 }}>
                                     {isSubRow ? '—' : backorder}
                                   </td>
+
+                                  {/* Box # Input */}
                                   <td style={{ padding: '8px 10px' }}>
                                     <input
                                       type="text"
                                       className="form-control"
-                                      style={{ height: '30px', padding: '2px 8px', fontSize: '12px', fontWeight: 650, background: 'var(--bg-secondary)', width: '100%' }}
+                                      style={{ height: '28px', padding: '2px 6px', fontSize: '12px', fontWeight: 650, background: 'var(--bg-secondary)', width: '100%' }}
                                       value={row.box_number}
                                       onChange={e => {
                                         const val = e.target.value;
@@ -2183,37 +2187,41 @@ export default function LogisticsPage() {
                                       }}
                                     />
                                   </td>
-                                  <td style={{ padding: '8px 10px', textAlign: 'right' }}>
-                                    <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+
+                                  {/* Simplified Actions Column */}
+                                  <td style={{ padding: '8px', textAlign: 'right' }}>
+                                    <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', alignItems: 'center' }}>
                                       {!row.is_accessory && (
                                         <button
                                           type="button"
                                           className="btn btn-ghost btn-xs"
                                           style={{ border: '1px solid var(--border)', fontSize: '10.5px', padding: '2px 6px', color: 'var(--text-info)' }}
-                                          title="Split this item's quantity across another Box"
+                                          title="Split quantity across another box"
                                           onClick={() => handleSplitRowAcrossBoxes(row)}
                                         >
                                           <Split size={11} /> Split
                                         </button>
                                       )}
-                                      {!row.is_split_child && (
+
+                                      {showAttachBtn && !row.is_split_child && (
                                         <button
                                           type="button"
                                           className="btn btn-ghost btn-xs"
-                                          style={{ border: '1px solid rgba(168, 85, 247, 0.35)', fontSize: '10.5px', padding: '2px 6px', color: '#a855f7' }}
-                                          title="Attach this accessory/bulb/driver to specific main fittings across rooms"
+                                          style={{ border: '1px solid rgba(168, 85, 247, 0.4)', fontSize: '10.5px', padding: '2px 6px', color: '#a855f7' }}
+                                          title="Attach accessory to parent fitting"
                                           onClick={() => setAttachModalTargetRow(row)}
                                         >
                                           <Link2 size={11} /> {row.is_accessory ? 'Re-Attach' : 'Attach'}
                                         </button>
                                       )}
+
                                       {isSubRow && (
                                         <button
                                           type="button"
                                           className="btn btn-ghost btn-xs"
                                           style={{ color: 'var(--text-danger)', padding: '2px 5px' }}
                                           onClick={() => handleRemoveSubRow(row.rowKey)}
-                                          title="Remove split / attachment and restore quantity to main line"
+                                          title="Remove split line and restore quantity"
                                         >
                                           <X size={12} />
                                         </button>
