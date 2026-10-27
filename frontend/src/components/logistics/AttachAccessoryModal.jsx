@@ -10,6 +10,7 @@ export default function AttachAccessoryModal({
   isOpen,
   onClose,
   accessoryRow,
+  availableBoxes = ['Box 1', 'Box 2', 'Box 3'],
   candidateParentRows = [],
   existingAttachments = [],
   onConfirmAttachments,
@@ -363,14 +364,20 @@ export default function AttachAccessoryModal({
                           />
                         </td>
                         <td style={{ padding: '8px 10px' }}>
-                          <input
-                            type="text"
+                          <select
                             disabled={!isChecked}
                             className="form-control"
-                            style={{ height: '28px', padding: '2px 6px', fontSize: '11.5px', width: '100%', background: isChecked ? 'var(--bg-secondary)' : 'transparent' }}
+                            style={{ height: '28px', padding: '2px 6px', fontSize: '11.5px', fontWeight: 650, width: '100%', background: isChecked ? 'var(--bg-secondary)' : 'transparent', color: 'var(--text-primary)', cursor: isChecked ? 'pointer' : 'default' }}
                             value={alloc.box || inst.box_number || 'Box 1'}
                             onChange={e => handleBoxChange(itemId, e.target.value)}
-                          />
+                          >
+                            {availableBoxes.map(b => (
+                              <option key={b} value={b}>{b}</option>
+                            ))}
+                            {alloc.box && !availableBoxes.includes(alloc.box) && (
+                              <option value={alloc.box}>{alloc.box}</option>
+                            )}
+                          </select>
                         </td>
                       </tr>
                     );

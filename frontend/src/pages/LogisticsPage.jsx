@@ -158,7 +158,7 @@ export default function LogisticsPage() {
         const linkedDn = pl.delivery_note_number || pl.deliveryNoteId || '';
         const normalizedItems = (pl.items || []).map(it => ({
           ...it,
-          one_one_code: it.one_one_code || it.code || '',
+          one_one_code: it.one_one_code || '',
           code: it.code || it.one_one_code || '',
           plan_code: it.plan_code || it.type || '',
           supplier_code: it.supplier_code || it.code || '',
@@ -192,7 +192,7 @@ export default function LogisticsPage() {
       (order.deliveryNotes || []).forEach(dn => {
         const normalizedItems = (dn.items || []).map(it => ({
           ...it,
-          one_one_code: it.one_one_code || it.code || '',
+          one_one_code: it.one_one_code || '',
           code: it.code || it.one_one_code || '',
           plan_code: it.plan_code || it.type || '',
           supplier_code: it.supplier_code || it.code || '',
@@ -343,7 +343,7 @@ export default function LogisticsPage() {
           order_item_id: oiId,
           parent_item_id: it.parent_item_id ? String(it.parent_item_id) : null,
           parent_fitting_code: it.parent_fitting_code || null,
-          one_one_code: it.one_one_code || it.code || '',
+          one_one_code: it.one_one_code || '',
           plan_code: it.plan_code || '',
           supplier_code: it.supplier_code || it.code || '',
           description: it.description || '',
@@ -380,7 +380,7 @@ export default function LogisticsPage() {
           order_item_id: oiId,
           parent_item_id: null,
           parent_fitting_code: null,
-          one_one_code: it.oneOneCode || it.one_one_code || it.code || '',
+          one_one_code: it.oneOneCode || it.one_one_code || '',
           plan_code: it.type || it.plan_code || '',
           supplier_code: it.code || it.supplier_code || it.oneOneCode || '',
           description: it.description || it.name || '',
@@ -1844,7 +1844,7 @@ export default function LogisticsPage() {
                     </div>
 
                     {plOrderDropdownOpen && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.45)', marginTop: '4px', maxHeight: '380px', overflowY: 'auto' }}>
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', boxShadow: '0 15px 35px rgba(0,0,0,0.55)', marginTop: '4px', minHeight: '260px', maxHeight: '460px', overflowY: 'auto' }}>
                         <div style={{ padding: '8px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg-primary)' }}>
                           <input
                             type="text"
@@ -2176,20 +2176,41 @@ export default function LogisticsPage() {
                                     {isSubRow ? '—' : backorder}
                                   </td>
 
-                                  {/* Box # Input */}
-                                  <td style={{ padding: '8px 10px' }}>
-                                    <input
-                                      type="text"
+                                  {/* Box # Dropdown */}
+                                  <td style={{ padding: '8px 10px', minWidth: '120px' }}>
+                                    <select
                                       className="form-control"
-                                      style={{ height: '28px', padding: '2px 6px', fontSize: '12px', fontWeight: 650, background: 'var(--bg-secondary)', width: '100%' }}
-                                      value={row.box_number}
+                                      style={{ height: '28px', padding: '2px 6px', fontSize: '12px', fontWeight: 700, background: 'var(--bg-secondary)', color: 'var(--text-primary)', width: '100%', cursor: 'pointer' }}
+                                      value={plAvailableBoxes.includes(row.box_number) ? row.box_number : (row.box_number || 'Box 1')}
                                       onChange={e => {
                                         const val = e.target.value;
-                                        setPlRows(prev =>
-                                          prev.map(r => (r.rowKey === row.rowKey ? { ...r, box_number: val } : r))
-                                        );
+                                        if (val === '__ADD_NEW__') {
+                                          const nextNum = plAvailableBoxes.length + 1;
+                                          const customName = prompt('Enter new Box Name / Identifier:', `Box ${nextNum}`);
+                                          if (customName && customName.trim()) {
+                                            const trimmed = customName.trim();
+                                            if (!plAvailableBoxes.includes(trimmed)) {
+                                              setPlAvailableBoxes(prev => [...prev, trimmed]);
+                                            }
+                                            setPlRows(prev =>
+                                              prev.map(r => (r.rowKey === row.rowKey ? { ...r, box_number: trimmed } : r))
+                                            );
+                                          }
+                                        } else {
+                                          setPlRows(prev =>
+                                            prev.map(r => (r.rowKey === row.rowKey ? { ...r, box_number: val } : r))
+                                          );
+                                        }
                                       }}
-                                    />
+                                    >
+                                      {plAvailableBoxes.map(b => (
+                                        <option key={b} value={b}>{b}</option>
+                                      ))}
+                                      {row.box_number && !plAvailableBoxes.includes(row.box_number) && (
+                                        <option value={row.box_number}>{row.box_number}</option>
+                                      )}
+                                      <option value="__ADD_NEW__">+ New Box...</option>
+                                    </select>
                                   </td>
 
                                   {/* Simplified Actions Column */}
@@ -2785,6 +2806,7 @@ export default function LogisticsPage() {
         isOpen={!!attachModalTargetRow}
         onClose={() => setAttachModalTargetRow(null)}
         accessoryRow={attachModalTargetRow}
+        availableBoxes={plAvailableBoxes}
         candidateParentRows={plRows.filter(
           r => !r.is_accessory && !r.is_split_child && String(r.order_item_id) !== String(attachModalTargetRow?.order_item_id)
         )}
