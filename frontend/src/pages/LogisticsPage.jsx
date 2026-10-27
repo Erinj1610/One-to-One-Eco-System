@@ -446,7 +446,29 @@ export default function LogisticsPage() {
               is_hidden_by_attachment: false,
             };
           });
-          setPlRows(builtRows);
+          setPlRows(prev => {
+            // If user has already made modifications (splits or attached accessories), merge enrichment rather than clobbering!
+            const hasModifications = prev.some(r => r.is_accessory || r.is_split_child || r.parent_item_id);
+            if (hasModifications) {
+              const metaMap = {};
+              builtRows.forEach(br => { metaMap[String(br.order_item_id)] = br; });
+              return prev.map(r => {
+                const meta = metaMap[String(r.order_item_id)];
+                if (!meta) return r;
+                return {
+                  ...r,
+                  one_one_code: r.one_one_code || meta.one_one_code,
+                  plan_code: r.plan_code || meta.plan_code,
+                  supplier_code: r.supplier_code || meta.supplier_code,
+                  description: r.description || meta.description,
+                  material_colour: r.material_colour !== '—' ? r.material_colour : meta.material_colour,
+                  first_fix: meta.first_fix,
+                  red_list: meta.red_list,
+                };
+              });
+            }
+            return builtRows;
+          });
         }
       }
     } catch (err) {
@@ -1792,6 +1814,7 @@ export default function LogisticsPage() {
               borderRadius: '12px',
               width: '100%',
               maxWidth: '1360px',
+              minHeight: '620px',
               maxHeight: 'calc(100vh - 40px)',
               display: 'flex',
               flexDirection: 'column',
@@ -2055,7 +2078,7 @@ export default function LogisticsPage() {
                               const backorder = Math.max(0, Number(row.qty_ordered || 0) - totalPackedForItem);
                               const isChecked = !!plSelectedRowKeys[row.rowKey];
                               const isSubRow = !!(row.is_split_child || row.is_accessory);
-                              const showAttachBtn = !!(row.is_accessory || row.is_accessory_candidate || !row.area);
+                              const showAttachBtn = true;
 
                               return (
                                 <tr
