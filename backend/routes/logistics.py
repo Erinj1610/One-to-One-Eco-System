@@ -52,6 +52,7 @@ class PackingListCreateInput(BaseModel):
     project_key: Optional[str] = None
     order_id: Any  # Can be integer order.id or string order.po_number
     notes: Optional[str] = None
+    status: Optional[str] = "Pick Sheet Ready"
     created_by: Optional[str] = "Warehouse Team"
     items: List[PackingListItemInput]
 
@@ -815,7 +816,7 @@ def create_packing_list(payload: PackingListCreateInput, db: Session = Depends(g
         project_key=order_obj.project_key,
         order_id=order_obj.id,
         order_po_number=order_obj.po_number,
-        status="Pending Dispatch",
+        status=payload.status or "Pick Sheet Ready",
         total_boxes=max(1, len(unique_boxes)),
         total_items=total_packed_units,
         notes=payload.notes or "",
