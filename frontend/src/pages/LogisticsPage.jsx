@@ -639,79 +639,6 @@ export default function LogisticsPage() {
     });
   };
 
-  // Group visible rows by Floor & Area for Room Accordion / Board view
-  const plGroupedByRoom = useMemo(() => {
-    const groups = {};
-    visiblePlRows.forEach(row => {
-      const roomKey = (row.area || '').trim() || 'General / Unspecified';
-      const floorKey = (row.floor || '').trim() || 'Unspecified Floor';
-      const fullKey = `${floorKey} • ${roomKey}`;
-      if (!groups[fullKey]) {
-        groups[fullKey] = {
-          key: fullKey,
-          room: roomKey,
-          floor: floorKey,
-          items: [],
-          totalOrdered: 0,
-          totalPacked: 0,
-        };
-      }
-      groups[fullKey].items.push(row);
-      groups[fullKey].totalOrdered += Number(row.qty_ordered || 0);
-      groups[fullKey].totalPacked += Number(row.qty_packed || 0);
-    });
-    return Object.values(groups);
-  }, [visiblePlRows]);
-
-  // Drag and Drop row reordering / box moving
-  const handleDragStart = (e, rowKey) => {
-    setDraggedRowKey(rowKey);
-    e.dataTransfer.setData('text/plain', rowKey);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  };
-
-  const handleDropOnRoom = (e, targetRoom, targetFloor) => {
-    e.preventDefault();
-    if (!draggedRowKey) return;
-    setPlRows(prev =>
-      prev.map(r => {
-        if (r.rowKey === draggedRowKey) {
-          return {
-            ...r,
-            area: targetRoom,
-            floor: targetFloor || r.floor,
-          };
-        }
-        return r;
-      })
-    );
-    setDraggedRowKey(null);
-  };
-
-  const handleDropOnRow = (e, targetRowKey) => {
-    e.preventDefault();
-    if (!draggedRowKey || draggedRowKey === targetRowKey) return;
-    setPlRows(prev => {
-      const copy = [...prev];
-      const fromIdx = copy.findIndex(r => r.rowKey === draggedRowKey);
-      const toIdx = copy.findIndex(r => r.rowKey === targetRowKey);
-      if (fromIdx === -1 || toIdx === -1) return prev;
-      const [moved] = copy.splice(fromIdx, 1);
-      // Adopt target area & box for natural warehouse grouping
-      const targetItem = copy[toIdx];
-      moved.area = targetItem.area;
-      moved.floor = targetItem.floor;
-      copy.splice(toIdx, 0, moved);
-      return copy;
-    });
-    setDraggedRowKey(null);
-  };
-
   // Filtered & Sorted PL rows keeping attached accessories nested directly underneath parent fittings
   const visiblePlRows = useMemo(() => {
     const mainRows = plRows.filter(r => !r.parent_item_id && !r.is_hidden_by_attachment);
@@ -808,6 +735,79 @@ export default function LogisticsPage() {
   };
 
   // ─── 1-CLICK WAREHOUSE PICK & PACK SHEET PRINT GENERATOR ──────────────────
+  // Group visible rows by Floor & Area for Room Accordion / Board view
+  const plGroupedByRoom = useMemo(() => {
+    const groups = {};
+    visiblePlRows.forEach(row => {
+      const roomKey = (row.area || '').trim() || 'General / Unspecified';
+      const floorKey = (row.floor || '').trim() || 'Unspecified Floor';
+      const fullKey = `${floorKey} • ${roomKey}`;
+      if (!groups[fullKey]) {
+        groups[fullKey] = {
+          key: fullKey,
+          room: roomKey,
+          floor: floorKey,
+          items: [],
+          totalOrdered: 0,
+          totalPacked: 0,
+        };
+      }
+      groups[fullKey].items.push(row);
+      groups[fullKey].totalOrdered += Number(row.qty_ordered || 0);
+      groups[fullKey].totalPacked += Number(row.qty_packed || 0);
+    });
+    return Object.values(groups);
+  }, [visiblePlRows]);
+
+  // Drag and Drop row reordering / box moving
+  const handleDragStart = (e, rowKey) => {
+    setDraggedRowKey(rowKey);
+    e.dataTransfer.setData('text/plain', rowKey);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDropOnRoom = (e, targetRoom, targetFloor) => {
+    e.preventDefault();
+    if (!draggedRowKey) return;
+    setPlRows(prev =>
+      prev.map(r => {
+        if (r.rowKey === draggedRowKey) {
+          return {
+            ...r,
+            area: targetRoom,
+            floor: targetFloor || r.floor,
+          };
+        }
+        return r;
+      })
+    );
+    setDraggedRowKey(null);
+  };
+
+  const handleDropOnRow = (e, targetRowKey) => {
+    e.preventDefault();
+    if (!draggedRowKey || draggedRowKey === targetRowKey) return;
+    setPlRows(prev => {
+      const copy = [...prev];
+      const fromIdx = copy.findIndex(r => r.rowKey === draggedRowKey);
+      const toIdx = copy.findIndex(r => r.rowKey === targetRowKey);
+      if (fromIdx === -1 || toIdx === -1) return prev;
+      const [moved] = copy.splice(fromIdx, 1);
+      // Adopt target area & box for natural warehouse grouping
+      const targetItem = copy[toIdx];
+      moved.area = targetItem.area;
+      moved.floor = targetItem.floor;
+      copy.splice(toIdx, 0, moved);
+      return copy;
+    });
+    setDraggedRowKey(null);
+  };
+
   const handlePrintWarehouseWorksheet = () => {
     if (!plOrderKey || plRows.length === 0) {
       alert('Select an order with items first before printing a warehouse pack sheet.');
