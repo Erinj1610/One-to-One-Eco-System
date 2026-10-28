@@ -317,6 +317,9 @@ export default function LogisticsPage() {
   const [plSelectedRowKeys, setPlSelectedRowKeys] = useState({});
   const [attachModalTargetRow, setAttachModalTargetRow] = useState(null);
   const [activeOptionsRowKey, setActiveOptionsRowKey] = useState(null);
+  const [plViewMode, setPlViewMode] = useState('table'); // 'table' or 'accordion'
+  const [collapsedRooms, setCollapsedRooms] = useState({});
+  const [draggedRowKey, setDraggedRowKey] = useState(null);
 
   const loadOrderItemsForPl = async (compositeKey, existingPlDoc = null) => {
     setPlOrderKey(compositeKey);
@@ -532,6 +535,182 @@ export default function LogisticsPage() {
     });
     return counts;
   }, [plRows]);
+
+  // ─── AUTO-GROUP & AUTO-NEST ACCESSORIES UNDER MATCHING FITTINGS ─────────
+  const handleAutoNestAccessories = () => {
+    setPlRows(prev => {
+      // Find candidate accessories (items where is_accessory_candidate is true or type is lamp/driver/accessory)
+      const nonAccessories = prev.filter(r => !r.is_accessory && !r.is_accessory_candidate && !r.parent_item_id);
+      const accessoryRows = prev.filter(r => !r.is_accessory && (r.is_accessory_candidate || r.description?.toLowerCase().includes('lamp') || r.description?.toLowerCase().includes('driver') || r.description?.toLowerCase().includes('gu10')));
+
+      if (accessoryRows.length === 0) {
+        alert('No unattached accessory or lamp lines detected to auto-nest.');
+        return prev;
+      }
+
+      let newRows = [...prev];
+      let nestedCount = 0;
+
+      accessoryRows.forEach(acc => {
+        // Find potential parent fittings that match by Plan Code or Description
+        const accPlan = (acc.plan_code || '').trim().toLowerCase();
+        const accDesc = (acc.description || '').toLowerCase();
+
+        // 1. Try to find parent fittings in the same room/area
+        let matchingParents = prev.filter(p => {
+          if (p.rowKey === acc.rowKey || p.is_accessory || p.parent_item_id) return false;
+          const pPlan = (p.plan_code || '').trim().toLowerCase();
+          const pArea = (p.area || '').trim().toLowerCase();
+          const accArea = (acc.area || '').trim().toLowerCase();
+
+          // If both have area and area matches
+          const areaMatches = pArea && accArea && pArea === accArea;
+          const planMatches = accPlan && pPlan && (accPlan === pPlan || accDesc.includes(pPlan));
+          return areaMatches || planMatches;
+        });
+
+        // 2. If no area match, find by Plan Code anywhere
+        if (matchingParents.length === 0 && accPlan) {
+          matchingParents = prev.filter(p => !p.is_accessory && !p.parent_item_id && p.rowKey !== acc.rowKey && (p.plan_code || '').trim().toLowerCase() === accPlan);
+        }
+
+        // 3. Fallback: If accessory has "gu10" or "lamp" and there are pendant/downlight fittings without accessories
+        if (matchingParents.length === 0 && (accDesc.includes('gu10') || accDesc.includes('lamp') || accDesc.includes('bulb'))) {
+          matchingParents = prev.filter(p => !p.is_accessory && !p.parent_item_id && p.rowKey !== acc.rowKey && ((p.description || '').toLowerCase().includes('pendant') || (p.description || '').toLowerCase().includes('downlight') || (p.description || '').toLowerCase().includes('spot')));
+        }
+
+        if (matchingParents.length > 0) {
+          // Distribute accessory units across matching parent rooms
+          let remainingUnits = Number(acc.qty_packed || acc.remaining_to_pack || acc.qty_ordered || 0);
+          const builtAttachments = [];
+
+          matchingParents.forEach((parent, pIdx) => {
+            if (remainingUnits <= 0) return;
+            const neededQty = Math.min(Number(parent.qty_ordered || 1), remainingUnits);
+            if (neededQty > 0) {
+              builtAttachments.push({
+                rowKey: `auto_att_${acc.order_item_id}_${parent.order_item_id}_${pIdx}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+                order_item_id: String(acc.order_item_id),
+                parent_item_id: String(parent.order_item_id),
+                parent_fitting_code: `${parent.plan_code ? `[${parent.plan_code}] ` : ''}${parent.one_one_code || parent.supplier_code} (${parent.area || 'Site'})`,
+                one_one_code: acc.one_one_code,
+                plan_code: parent.plan_code || acc.plan_code || '',
+                supplier_code: acc.supplier_code,
+                description: acc.description,
+                floor: parent.floor || acc.floor || '',
+                area: parent.area || acc.area || '',
+                material_colour: acc.material_colour || '',
+                first_fix: acc.first_fix || 'No',
+                red_list: acc.red_list || 'No',
+                qty_ordered: acc.qty_ordered,
+                qty_packed: neededQty,
+                box_number: parent.box_number || 'Box 1',
+                is_accessory: true,
+              });
+              remainingUnits -= neededQty;
+              nestedCount += neededQty;
+            }
+          });
+
+          if (builtAttachments.length > 0) {
+            // Update original accessory row
+            newRows = newRows.filter(r => !(r.is_accessory && String(r.order_item_id) === String(acc.order_item_id)));
+            newRows = newRows.map(r => {
+              if (!r.is_accessory && String(r.order_item_id) === String(acc.order_item_id)) {
+                return {
+                  ...r,
+                  qty_packed: remainingUnits,
+                  is_hidden_by_attachment: remainingUnits === 0,
+                };
+              }
+              return r;
+            });
+            newRows = [...newRows, ...builtAttachments];
+          }
+        }
+      });
+
+      if (nestedCount > 0) {
+        alert(`✓ Auto-nested ${nestedCount} accessory & lamp units under matching room fittings!`);
+      } else {
+        alert('Could not automatically determine fitting matches. Use the "Attach" button on specific lines to choose parent fittings.');
+      }
+      return newRows;
+    });
+  };
+
+  // Group visible rows by Floor & Area for Room Accordion / Board view
+  const plGroupedByRoom = useMemo(() => {
+    const groups = {};
+    visiblePlRows.forEach(row => {
+      const roomKey = (row.area || '').trim() || 'General / Unspecified';
+      const floorKey = (row.floor || '').trim() || 'Unspecified Floor';
+      const fullKey = `${floorKey} • ${roomKey}`;
+      if (!groups[fullKey]) {
+        groups[fullKey] = {
+          key: fullKey,
+          room: roomKey,
+          floor: floorKey,
+          items: [],
+          totalOrdered: 0,
+          totalPacked: 0,
+        };
+      }
+      groups[fullKey].items.push(row);
+      groups[fullKey].totalOrdered += Number(row.qty_ordered || 0);
+      groups[fullKey].totalPacked += Number(row.qty_packed || 0);
+    });
+    return Object.values(groups);
+  }, [visiblePlRows]);
+
+  // Drag and Drop row reordering / box moving
+  const handleDragStart = (e, rowKey) => {
+    setDraggedRowKey(rowKey);
+    e.dataTransfer.setData('text/plain', rowKey);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDropOnRoom = (e, targetRoom, targetFloor) => {
+    e.preventDefault();
+    if (!draggedRowKey) return;
+    setPlRows(prev =>
+      prev.map(r => {
+        if (r.rowKey === draggedRowKey) {
+          return {
+            ...r,
+            area: targetRoom,
+            floor: targetFloor || r.floor,
+          };
+        }
+        return r;
+      })
+    );
+    setDraggedRowKey(null);
+  };
+
+  const handleDropOnRow = (e, targetRowKey) => {
+    e.preventDefault();
+    if (!draggedRowKey || draggedRowKey === targetRowKey) return;
+    setPlRows(prev => {
+      const copy = [...prev];
+      const fromIdx = copy.findIndex(r => r.rowKey === draggedRowKey);
+      const toIdx = copy.findIndex(r => r.rowKey === targetRowKey);
+      if (fromIdx === -1 || toIdx === -1) return prev;
+      const [moved] = copy.splice(fromIdx, 1);
+      // Adopt target area & box for natural warehouse grouping
+      const targetItem = copy[toIdx];
+      moved.area = targetItem.area;
+      moved.floor = targetItem.floor;
+      copy.splice(toIdx, 0, moved);
+      return copy;
+    });
+    setDraggedRowKey(null);
+  };
 
   // Filtered & Sorted PL rows keeping attached accessories nested directly underneath parent fittings
   const visiblePlRows = useMemo(() => {
@@ -2237,8 +2416,51 @@ export default function LogisticsPage() {
                         </button>
                       </div>
 
-                      {/* Right: Quick Batch Actions */}
-                      <div style={{ display: 'flex', gap: '6px' }}>
+                      {/* Center/Right: View Switcher, Auto-Nest & Batch Pack */}
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {/* Auto-Nest Button */}
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-xs"
+                          style={{ border: '1px solid rgba(168, 85, 247, 0.4)', background: 'rgba(168, 85, 247, 0.08)', color: '#a855f7', fontSize: '11px', fontWeight: 700 }}
+                          title="Automatically group & nest accessories under matching room fittings"
+                          onClick={handleAutoNestAccessories}
+                        >
+                          <Sparkles size={12} /> Auto-Nest Accessories
+                        </button>
+
+                        {/* View Switcher: Flat Table vs Room Accordion */}
+                        <div style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden' }}>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs"
+                            style={{
+                              borderRadius: 0,
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              background: plViewMode === 'table' ? 'var(--bg-secondary)' : 'transparent',
+                              color: plViewMode === 'table' ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                            }}
+                            onClick={() => setPlViewMode('table')}
+                          >
+                            Table View
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs"
+                            style={{
+                              borderRadius: 0,
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              background: plViewMode === 'accordion' ? 'var(--bg-secondary)' : 'transparent',
+                              color: plViewMode === 'accordion' ? 'var(--text-info)' : 'var(--text-tertiary)',
+                            }}
+                            onClick={() => setPlViewMode('accordion')}
+                          >
+                            Room Groups ({plGroupedByRoom.length})
+                          </button>
+                        </div>
+
                         <button
                           type="button"
                           className="btn btn-ghost btn-xs"
@@ -2255,7 +2477,7 @@ export default function LogisticsPage() {
                             )
                           }
                         >
-                          <Sparkles size={12} style={{ color: 'var(--text-info)' }} /> Pack All Remaining
+                          Pack All
                         </button>
                         <button
                           type="button"
@@ -2268,266 +2490,505 @@ export default function LogisticsPage() {
                       </div>
                     </div>
 
-                    {/* Packing List Items Table (One to One Code, Plan Code, Supplier/SKU Code) */}
-                    <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '430px', overflowY: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
-                        <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-primary)' }}>
-                          <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 650 }}>
-                            <th style={{ padding: '9px 8px', width: '32px', textAlign: 'center' }}>
-                              <input
-                                type="checkbox"
-                                onChange={e => {
-                                  const checked = e.target.checked;
-                                  const next = {};
-                                  visiblePlRows.forEach(r => {
-                                    next[r.rowKey] = checked;
-                                  });
-                                  setPlSelectedRowKeys(next);
+                    {/* VIEW MODE 1: ACCORDION ROOM GROUPS VIEW */}
+                    {plViewMode === 'accordion' ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '440px', overflowY: 'auto', paddingRight: '4px' }}>
+                        {plGroupedByRoom.map(group => {
+                          const isCollapsed = !!collapsedRooms[group.key];
+                          return (
+                            <div
+                              key={group.key}
+                              onDragOver={handleDragOver}
+                              onDrop={e => handleDropOnRoom(e, group.room, group.floor)}
+                              style={{
+                                border: '1px solid var(--border)',
+                                borderRadius: '8px',
+                                background: 'var(--bg-primary)',
+                                overflow: 'hidden',
+                                transition: 'all 0.15s ease',
+                              }}
+                            >
+                              {/* Room Group Header */}
+                              <div
+                                onClick={() => setCollapsedRooms(prev => ({ ...prev, [group.key]: !prev[group.key] }))}
+                                style={{
+                                  padding: '10px 14px',
+                                  background: 'var(--bg-secondary)',
+                                  borderBottom: isCollapsed ? 'none' : '1px solid var(--border)',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  cursor: 'pointer',
                                 }}
-                              />
-                            </th>
-                            <th onClick={() => handleTogglePlSort('one_one')} style={{ padding: '9px 10px', minWidth: '105px', cursor: 'pointer', userSelect: 'none' }}>
-                              One to One Code {renderPlSortIcon('one_one')}
-                            </th>
-                            <th onClick={() => handleTogglePlSort('plan')} style={{ padding: '9px 8px', width: '85px', textAlign: 'center', cursor: 'pointer', userSelect: 'none' }}>
-                              Plan Code {renderPlSortIcon('plan')}
-                            </th>
-                            <th onClick={() => handleTogglePlSort('sku')} style={{ padding: '9px 10px', minWidth: '105px', cursor: 'pointer', userSelect: 'none' }}>
-                              Supplier / SKU {renderPlSortIcon('sku')}
-                            </th>
-                            <th style={{ padding: '9px 10px' }}>Description & Spec</th>
-                            <th onClick={() => handleTogglePlSort('area')} style={{ padding: '9px 10px', minWidth: '130px', cursor: 'pointer', userSelect: 'none', color: plSortField === 'area' ? 'var(--text-info)' : 'inherit' }}>
-                              Area / Room {renderPlSortIcon('area')}
-                            </th>
-                            <th style={{ padding: '9px 8px', textAlign: 'center', width: '45px' }}>Ord</th>
-                            <th style={{ padding: '9px 8px', width: '80px', textAlign: 'center' }}>Packed</th>
-                            <th style={{ padding: '9px 8px', textAlign: 'center', width: '45px' }}>B/O</th>
-                            <th onClick={() => handleTogglePlSort('box')} style={{ padding: '9px 10px', width: '110px', cursor: 'pointer', userSelect: 'none', color: plSortField === 'box' ? '#a855f7' : 'inherit' }}>
-                              Box # {renderPlSortIcon('box')}
-                            </th>
-                            <th style={{ padding: '9px 8px', textAlign: 'right', width: '115px' }}>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {visiblePlRows.length === 0 ? (
-                            <tr>
-                              <td colSpan={11} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                                {isLoadingPlItems ? 'Loading order items & product specifications...' : `No items found for area "${plFilterArea}".`}
-                              </td>
-                            </tr>
-                          ) : (
-                            visiblePlRows.map((row, idx) => {
-                              const totalPackedForItem = plRows
-                                .filter(r => String(r.order_item_id) === String(row.order_item_id))
-                                .reduce((s, r) => s + (Number(r.qty_packed) || 0), 0);
-                              const backorder = Math.max(0, Number(row.qty_ordered || 0) - totalPackedForItem);
-                              const isChecked = !!plSelectedRowKeys[row.rowKey];
-                              const isSubRow = !!(row.is_split_child || row.is_accessory);
-                              const showAttachBtn = true;
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  {isCollapsed ? <ChevronRight size={15} style={{ color: 'var(--text-secondary)' }} /> : <ChevronDown size={15} style={{ color: 'var(--text-secondary)' }} />}
+                                  <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                                    {group.room}
+                                  </span>
+                                  {group.floor && (
+                                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', background: 'var(--bg-primary)', padding: '1px 6px', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                                      {group.floor}
+                                    </span>
+                                  )}
+                                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                    ({group.items.length} items • {group.totalPacked} / {group.totalOrdered} packed)
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px' }} onClick={e => e.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-xs"
+                                    style={{ border: '1px solid var(--border)', fontSize: '10.5px' }}
+                                    onClick={() => {
+                                      setPlRows(prev =>
+                                        prev.map(r => {
+                                          if ((r.area || '').trim() === group.room) {
+                                            return { ...r, qty_packed: Number(r.remaining_to_pack || r.qty_ordered || 0), is_hidden_by_attachment: false };
+                                          }
+                                          return r;
+                                        })
+                                      );
+                                    }}
+                                  >
+                                    Pack Room
+                                  </button>
+                                </div>
+                              </div>
 
-                              return (
-                                <tr
-                                  key={row.rowKey}
-                                  style={{
-                                    borderBottom: '1px solid var(--border)',
-                                    background: row.is_accessory
-                                      ? 'rgba(168, 85, 247, 0.08)'
-                                      : row.is_split_child
-                                      ? 'rgba(59, 130, 246, 0.06)'
-                                      : idx % 2 === 0
-                                      ? 'var(--bg-primary)'
-                                      : 'transparent',
+                              {/* Room Group Items Table */}
+                              {!isCollapsed && (
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                                  <tbody>
+                                    {group.items.map((row, idx) => {
+                                      const totalPackedForItem = plRows
+                                        .filter(r => String(r.order_item_id) === String(row.order_item_id))
+                                        .reduce((s, r) => s + (Number(r.qty_packed) || 0), 0);
+                                      const backorder = Math.max(0, Number(row.qty_ordered || 0) - totalPackedForItem);
+                                      const isChecked = !!plSelectedRowKeys[row.rowKey];
+                                      const isSubRow = !!(row.is_split_child || row.is_accessory);
+                                      const showAttachBtn = true;
+
+                                      return (
+                                        <tr
+                                          key={row.rowKey}
+                                          draggable
+                                          onDragStart={e => handleDragStart(e, row.rowKey)}
+                                          onDragOver={handleDragOver}
+                                          onDrop={e => handleDropOnRow(e, row.rowKey)}
+                                          style={{
+                                            borderBottom: idx === group.items.length - 1 ? 'none' : '1px solid var(--border)',
+                                            cursor: 'grab',
+                                            background: draggedRowKey === row.rowKey
+                                              ? 'rgba(59, 130, 246, 0.15)'
+                                              : row.is_accessory
+                                              ? 'rgba(168, 85, 247, 0.08)'
+                                              : row.is_split_child
+                                              ? 'rgba(59, 130, 246, 0.06)'
+                                              : 'transparent',
+                                          }}
+                                        >
+                                          <td style={{ padding: '7px 8px', width: '32px', textAlign: 'center' }}>
+                                            <input
+                                              type="checkbox"
+                                              checked={isChecked}
+                                              onChange={() =>
+                                                setPlSelectedRowKeys(prev => ({ ...prev, [row.rowKey]: !prev[row.rowKey] }))
+                                              }
+                                            />
+                                          </td>
+                                          <td style={{ padding: '7px 10px', width: '75px', textAlign: 'center' }}>
+                                            {row.plan_code ? (
+                                              <span style={{ fontSize: '10.5px', fontWeight: 800, padding: '1px 6px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.15)', color: 'var(--text-info)', fontFamily: 'monospace' }}>
+                                                {row.plan_code}
+                                              </span>
+                                            ) : (
+                                              <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+                                            )}
+                                          </td>
+                                          <td style={{ padding: '7px 10px', fontFamily: 'monospace', fontWeight: 700, width: '130px', paddingLeft: row.is_accessory ? '20px' : '10px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                              {row.is_accessory && <span style={{ color: '#a855f7' }}>↳</span>}
+                                              <span>{row.one_one_code || '—'}</span>
+                                            </div>
+                                          </td>
+                                          <td style={{ padding: '7px 10px' }}>
+                                            <div style={{ fontWeight: 550, color: 'var(--text-primary)' }}>{row.description}</div>
+                                            {row.parent_fitting_code && (
+                                              <div style={{ fontSize: '10px', color: '#a855f7', fontWeight: 700 }}>
+                                                Attached to: {row.parent_fitting_code}
+                                              </div>
+                                            )}
+                                          </td>
+                                          <td style={{ padding: '7px 8px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, width: '45px' }}>
+                                            {isSubRow ? `(${row.qty_ordered})` : row.qty_ordered}
+                                          </td>
+                                          <td style={{ padding: '7px 8px', width: '80px', textAlign: 'center' }}>
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              className="form-control"
+                                              style={{ height: '26px', padding: '1px 4px', fontSize: '12px', textAlign: 'center', fontWeight: 800, background: 'var(--bg-secondary)', width: '100%' }}
+                                              value={row.qty_packed}
+                                              onChange={e => {
+                                                const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                                setPlRows(prev =>
+                                                  prev.map(r => (r.rowKey === row.rowKey ? { ...r, qty_packed: val } : r))
+                                                );
+                                              }}
+                                            />
+                                          </td>
+                                          <td style={{ padding: '7px 8px', textAlign: 'center', width: '45px', fontFamily: 'monospace', color: !isSubRow && backorder > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 700 }}>
+                                            {isSubRow ? '—' : backorder}
+                                          </td>
+                                          <td style={{ padding: '7px 8px', width: '110px' }}>
+                                            <select
+                                              className="form-control"
+                                              style={{ height: '26px', padding: '1px 4px', fontSize: '11.5px', fontWeight: 700, background: 'var(--bg-secondary)', color: 'var(--text-primary)', width: '100%', cursor: 'pointer' }}
+                                              value={plAvailableBoxes.includes(row.box_number) ? row.box_number : (row.box_number || 'Box 1')}
+                                              onChange={e => {
+                                                const val = e.target.value;
+                                                if (val === '__ADD_NEW__') {
+                                                  const nextNum = plAvailableBoxes.length + 1;
+                                                  const customName = prompt('Enter new Box Name / Identifier:', `Box ${nextNum}`);
+                                                  if (customName && customName.trim()) {
+                                                    const trimmed = customName.trim();
+                                                    if (!plAvailableBoxes.includes(trimmed)) {
+                                                      setPlAvailableBoxes(prev => [...prev, trimmed]);
+                                                    }
+                                                    setPlRows(prev =>
+                                                      prev.map(r => (r.rowKey === row.rowKey ? { ...r, box_number: trimmed } : r))
+                                                    );
+                                                  }
+                                                } else {
+                                                  setPlRows(prev =>
+                                                    prev.map(r => (r.rowKey === row.rowKey ? { ...r, box_number: val } : r))
+                                                  );
+                                                }
+                                              }}
+                                            >
+                                              {plAvailableBoxes.map(b => (
+                                                <option key={b} value={b}>{b}</option>
+                                              ))}
+                                              <option value="__ADD_NEW__">+ New Box...</option>
+                                            </select>
+                                          </td>
+                                          <td style={{ padding: '7px 8px', textAlign: 'right', width: '115px' }}>
+                                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                              {!row.is_accessory && (
+                                                <button
+                                                  type="button"
+                                                  className="btn btn-ghost btn-xs"
+                                                  style={{ border: '1px solid var(--border)', fontSize: '10px', padding: '2px 5px', color: 'var(--text-info)' }}
+                                                  onClick={() => handleSplitRowAcrossBoxes(row)}
+                                                  title="Split quantity across another box"
+                                                >
+                                                  <Split size={10} /> Split
+                                                </button>
+                                              )}
+                                              {showAttachBtn && !row.is_split_child && (
+                                                <button
+                                                  type="button"
+                                                  className="btn btn-ghost btn-xs"
+                                                  style={{ border: '1px solid rgba(168, 85, 247, 0.4)', fontSize: '10px', padding: '2px 5px', color: '#a855f7' }}
+                                                  onClick={() => setAttachModalTargetRow(row)}
+                                                  title="Attach accessory to parent fitting"
+                                                >
+                                                  <Link2 size={10} /> {row.is_accessory ? 'Re-Attach' : 'Attach'}
+                                                </button>
+                                              )}
+                                              {isSubRow && (
+                                                <button
+                                                  type="button"
+                                                  className="btn btn-ghost btn-xs"
+                                                  style={{ color: 'var(--text-danger)', padding: '2px 4px' }}
+                                                  onClick={() => handleRemoveSubRow(row.rowKey)}
+                                                  title="Remove"
+                                                >
+                                                  <X size={11} />
+                                                </button>
+                                              )}
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      /* VIEW MODE 2: FLAT TABLE VIEW WITH DRAG & DROP */
+                      <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '430px', overflowY: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                          <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-primary)' }}>
+                            <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 650 }}>
+                              <th style={{ padding: '9px 8px', width: '32px', textAlign: 'center' }}>
+                                <input
+                                  type="checkbox"
+                                  onChange={e => {
+                                    const checked = e.target.checked;
+                                    const next = {};
+                                    visiblePlRows.forEach(r => {
+                                      next[r.rowKey] = checked;
+                                    });
+                                    setPlSelectedRowKeys(next);
                                   }}
-                                >
-                                  {/* Checkbox */}
-                                  <td style={{ padding: '8px', textAlign: 'center' }}>
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
-                                      onChange={() =>
-                                        setPlSelectedRowKeys(prev => ({
-                                          ...prev,
-                                          [row.rowKey]: !prev[row.rowKey],
-                                        }))
-                                      }
-                                    />
-                                  </td>
+                                />
+                              </th>
+                              <th onClick={() => handleTogglePlSort('one_one')} style={{ padding: '9px 10px', minWidth: '105px', cursor: 'pointer', userSelect: 'none' }}>
+                                One to One Code {renderPlSortIcon('one_one')}
+                              </th>
+                              <th onClick={() => handleTogglePlSort('plan')} style={{ padding: '9px 8px', width: '85px', textAlign: 'center', cursor: 'pointer', userSelect: 'none' }}>
+                                Plan Code {renderPlSortIcon('plan')}
+                              </th>
+                              <th onClick={() => handleTogglePlSort('sku')} style={{ padding: '9px 10px', minWidth: '105px', cursor: 'pointer', userSelect: 'none' }}>
+                                Supplier / SKU {renderPlSortIcon('sku')}
+                              </th>
+                              <th style={{ padding: '9px 10px' }}>Description & Spec</th>
+                              <th onClick={() => handleTogglePlSort('area')} style={{ padding: '9px 10px', minWidth: '130px', cursor: 'pointer', userSelect: 'none', color: plSortField === 'area' ? 'var(--text-info)' : 'inherit' }}>
+                                Area / Room {renderPlSortIcon('area')}
+                              </th>
+                              <th style={{ padding: '9px 8px', textAlign: 'center', width: '45px' }}>Ord</th>
+                              <th style={{ padding: '9px 8px', width: '80px', textAlign: 'center' }}>Packed</th>
+                              <th style={{ padding: '9px 8px', textAlign: 'center', width: '45px' }}>B/O</th>
+                              <th onClick={() => handleTogglePlSort('box')} style={{ padding: '9px 10px', width: '110px', cursor: 'pointer', userSelect: 'none', color: plSortField === 'box' ? '#a855f7' : 'inherit' }}>
+                                Box # {renderPlSortIcon('box')}
+                              </th>
+                              <th style={{ padding: '9px 8px', textAlign: 'right', width: '115px' }}>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {visiblePlRows.length === 0 ? (
+                              <tr>
+                                <td colSpan={11} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                                  {isLoadingPlItems ? 'Loading order items & product specifications...' : `No items found for area "${plFilterArea}".`}
+                                </td>
+                              </tr>
+                            ) : (
+                              visiblePlRows.map((row, idx) => {
+                                const totalPackedForItem = plRows
+                                  .filter(r => String(r.order_item_id) === String(row.order_item_id))
+                                  .reduce((s, r) => s + (Number(r.qty_packed) || 0), 0);
+                                const backorder = Math.max(0, Number(row.qty_ordered || 0) - totalPackedForItem);
+                                const isChecked = !!plSelectedRowKeys[row.rowKey];
+                                const isSubRow = !!(row.is_split_child || row.is_accessory);
+                                const showAttachBtn = true;
 
-                                  {/* 1. One to One Code */}
-                                  <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)', paddingLeft: row.is_accessory ? '20px' : '10px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                      {row.is_accessory && <span style={{ color: '#a855f7' }}>↳</span>}
-                                      {row.is_split_child && (
-                                        <span style={{ fontSize: '9.5px', background: 'rgba(59, 130, 246, 0.2)', color: 'var(--text-info)', padding: '1px 4px', borderRadius: '3px', fontWeight: 800 }}>
-                                          SPLIT
+                                return (
+                                  <tr
+                                    key={row.rowKey}
+                                    draggable
+                                    onDragStart={e => handleDragStart(e, row.rowKey)}
+                                    onDragOver={handleDragOver}
+                                    onDrop={e => handleDropOnRow(e, row.rowKey)}
+                                    style={{
+                                      borderBottom: '1px solid var(--border)',
+                                      cursor: 'grab',
+                                      background: draggedRowKey === row.rowKey
+                                        ? 'rgba(59, 130, 246, 0.15)'
+                                        : row.is_accessory
+                                        ? 'rgba(168, 85, 247, 0.08)'
+                                        : row.is_split_child
+                                        ? 'rgba(59, 130, 246, 0.06)'
+                                        : idx % 2 === 0
+                                        ? 'var(--bg-primary)'
+                                        : 'transparent',
+                                    }}
+                                  >
+                                    {/* Checkbox */}
+                                    <td style={{ padding: '8px', textAlign: 'center' }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() =>
+                                          setPlSelectedRowKeys(prev => ({
+                                            ...prev,
+                                            [row.rowKey]: !prev[row.rowKey],
+                                          }))
+                                        }
+                                      />
+                                    </td>
+
+                                    {/* 1. One to One Code */}
+                                    <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: 'var(--text-primary)', paddingLeft: row.is_accessory ? '20px' : '10px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        {row.is_accessory && <span style={{ color: '#a855f7' }}>↳</span>}
+                                        {row.is_split_child && (
+                                          <span style={{ fontSize: '9.5px', background: 'rgba(59, 130, 246, 0.2)', color: 'var(--text-info)', padding: '1px 4px', borderRadius: '3px', fontWeight: 800 }}>
+                                            SPLIT
+                                          </span>
+                                        )}
+                                        <span>{row.one_one_code || '—'}</span>
+                                      </div>
+                                    </td>
+
+                                    {/* 2. Plan Code */}
+                                    <td style={{ padding: '8px', textAlign: 'center' }}>
+                                      {row.plan_code ? (
+                                        <span style={{
+                                          display: 'inline-block',
+                                          fontSize: '11px',
+                                          fontWeight: 800,
+                                          padding: '2px 7px',
+                                          borderRadius: '4px',
+                                          background: 'rgba(59, 130, 246, 0.15)',
+                                          color: 'var(--text-info)',
+                                          fontFamily: 'monospace'
+                                        }}>
+                                          {row.plan_code}
                                         </span>
+                                      ) : (
+                                        <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>—</span>
                                       )}
-                                      <span>{row.one_one_code || '—'}</span>
-                                    </div>
-                                  </td>
+                                    </td>
 
-                                  {/* 2. Plan Code */}
-                                  <td style={{ padding: '8px', textAlign: 'center' }}>
-                                    {row.plan_code ? (
-                                      <span style={{
-                                        display: 'inline-block',
-                                        fontSize: '11px',
-                                        fontWeight: 800,
-                                        padding: '2px 7px',
-                                        borderRadius: '4px',
-                                        background: 'rgba(59, 130, 246, 0.15)',
-                                        color: 'var(--text-info)',
-                                        fontFamily: 'monospace'
-                                      }}>
-                                        {row.plan_code}
-                                      </span>
-                                    ) : (
-                                      <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>—</span>
-                                    )}
-                                  </td>
+                                    {/* 3. SKU / Supplier Code */}
+                                    <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                      {row.supplier_code || '—'}
+                                    </td>
 
-                                  {/* 3. SKU / Supplier Code */}
-                                  <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                    {row.supplier_code || '—'}
-                                  </td>
+                                    {/* Description & Spec Flags */}
+                                    <td style={{ padding: '8px 10px' }}>
+                                      <div style={{ fontWeight: 550, color: 'var(--text-primary)', lineHeight: '1.3' }}>{row.description}</div>
+                                      <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', display: 'flex', gap: '8px', marginTop: '2px' }}>
+                                        {row.material_colour && row.material_colour !== '—' && <span>Col: <strong>{row.material_colour}</strong></span>}
+                                        {row.first_fix === 'Yes' && <span style={{ color: 'var(--text-info)', fontWeight: 700 }}>1st Fix</span>}
+                                        {row.red_list === 'Yes' && <span style={{ color: 'var(--text-danger)', fontWeight: 700 }}>Red List</span>}
+                                        {row.parent_fitting_code && (
+                                          <span style={{ color: '#a855f7', fontWeight: 700 }}>
+                                            Attached to: {row.parent_fitting_code}
+                                          </span>
+                                        )}
+                                        {row.is_split_child && (
+                                          <span style={{ color: 'var(--text-info)', fontWeight: 700 }}>
+                                            Split Line (Total: {row.qty_ordered})
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
 
-                                  {/* Description & Spec Flags */}
-                                  <td style={{ padding: '8px 10px' }}>
-                                    <div style={{ fontWeight: 550, color: 'var(--text-primary)', lineHeight: '1.3' }}>{row.description}</div>
-                                    <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', display: 'flex', gap: '8px', marginTop: '2px' }}>
-                                      {row.material_colour && row.material_colour !== '—' && <span>Col: <strong>{row.material_colour}</strong></span>}
-                                      {row.first_fix === 'Yes' && <span style={{ color: 'var(--text-info)', fontWeight: 700 }}>1st Fix</span>}
-                                      {row.red_list === 'Yes' && <span style={{ color: 'var(--text-danger)', fontWeight: 700 }}>Red List</span>}
-                                      {row.parent_fitting_code && (
-                                        <span style={{ color: '#a855f7', fontWeight: 700 }}>
-                                          Attached to: {row.parent_fitting_code}
-                                        </span>
-                                      )}
-                                      {row.is_split_child && (
-                                        <span style={{ color: 'var(--text-info)', fontWeight: 700 }}>
-                                          Split Line (Total: {row.qty_ordered})
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
+                                    {/* Area / Room */}
+                                    <td style={{ padding: '8px 10px', color: 'var(--text-primary)', fontSize: '11.5px' }}>
+                                      <div style={{ fontWeight: 650 }}>{row.area || 'General / Unspecified'}</div>
+                                      {row.floor && <div style={{ color: 'var(--text-tertiary)', fontSize: '10px' }}>{row.floor}</div>}
+                                    </td>
 
-                                  {/* Area / Room */}
-                                  <td style={{ padding: '8px 10px', color: 'var(--text-primary)', fontSize: '11.5px' }}>
-                                    <div style={{ fontWeight: 650 }}>{row.area || 'General / Unspecified'}</div>
-                                    {row.floor && <div style={{ color: 'var(--text-tertiary)', fontSize: '10px' }}>{row.floor}</div>}
-                                  </td>
+                                    {/* Ord Qty */}
+                                    <td style={{ padding: '8px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, color: isSubRow ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>
+                                      {isSubRow ? `(${row.qty_ordered})` : row.qty_ordered}
+                                    </td>
 
-                                  {/* Ord Qty */}
-                                  <td style={{ padding: '8px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, color: isSubRow ? 'var(--text-tertiary)' : 'var(--text-primary)' }}>
-                                    {isSubRow ? `(${row.qty_ordered})` : row.qty_ordered}
-                                  </td>
+                                    {/* Packed Qty Input */}
+                                    <td style={{ padding: '8px' }}>
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        className="form-control"
+                                        style={{ height: '28px', padding: '2px 6px', fontSize: '12.5px', textAlign: 'center', fontWeight: 800, background: 'var(--bg-secondary)', width: '100%' }}
+                                        value={row.qty_packed}
+                                        onChange={e => {
+                                          const val = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                          setPlRows(prev =>
+                                            prev.map(r => (r.rowKey === row.rowKey ? { ...r, qty_packed: val } : r))
+                                          );
+                                        }}
+                                      />
+                                    </td>
 
-                                  {/* Packed Qty Input */}
-                                  <td style={{ padding: '8px' }}>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      className="form-control"
-                                      style={{ height: '28px', padding: '2px 6px', fontSize: '12.5px', textAlign: 'center', fontWeight: 800, background: 'var(--bg-secondary)', width: '100%' }}
-                                      value={row.qty_packed}
-                                      onChange={e => {
-                                        const val = Math.max(0, parseInt(e.target.value, 10) || 0);
-                                        setPlRows(prev =>
-                                          prev.map(r => (r.rowKey === row.rowKey ? { ...r, qty_packed: val } : r))
-                                        );
-                                      }}
-                                    />
-                                  </td>
+                                    {/* Backorder Qty */}
+                                    <td style={{ padding: '8px', textAlign: 'center', fontFamily: 'monospace', color: !isSubRow && backorder > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 700 }}>
+                                      {isSubRow ? '—' : backorder}
+                                    </td>
 
-                                  {/* Backorder Qty */}
-                                  <td style={{ padding: '8px', textAlign: 'center', fontFamily: 'monospace', color: !isSubRow && backorder > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 700 }}>
-                                    {isSubRow ? '—' : backorder}
-                                  </td>
-
-                                  {/* Box # Dropdown */}
-                                  <td style={{ padding: '8px 10px', minWidth: '120px' }}>
-                                    <select
-                                      className="form-control"
-                                      style={{ height: '28px', padding: '2px 6px', fontSize: '12px', fontWeight: 700, background: 'var(--bg-secondary)', color: 'var(--text-primary)', width: '100%', cursor: 'pointer' }}
-                                      value={plAvailableBoxes.includes(row.box_number) ? row.box_number : (row.box_number || 'Box 1')}
-                                      onChange={e => {
-                                        const val = e.target.value;
-                                        if (val === '__ADD_NEW__') {
-                                          const nextNum = plAvailableBoxes.length + 1;
-                                          const customName = prompt('Enter new Box Name / Identifier:', `Box ${nextNum}`);
-                                          if (customName && customName.trim()) {
-                                            const trimmed = customName.trim();
-                                            if (!plAvailableBoxes.includes(trimmed)) {
-                                              setPlAvailableBoxes(prev => [...prev, trimmed]);
+                                    {/* Box # Dropdown */}
+                                    <td style={{ padding: '8px 10px', minWidth: '120px' }}>
+                                      <select
+                                        className="form-control"
+                                        style={{ height: '28px', padding: '2px 6px', fontSize: '12px', fontWeight: 700, background: 'var(--bg-secondary)', color: 'var(--text-primary)', width: '100%', cursor: 'pointer' }}
+                                        value={plAvailableBoxes.includes(row.box_number) ? row.box_number : (row.box_number || 'Box 1')}
+                                        onChange={e => {
+                                          const val = e.target.value;
+                                          if (val === '__ADD_NEW__') {
+                                            const nextNum = plAvailableBoxes.length + 1;
+                                            const customName = prompt('Enter new Box Name / Identifier:', `Box ${nextNum}`);
+                                            if (customName && customName.trim()) {
+                                              const trimmed = customName.trim();
+                                              if (!plAvailableBoxes.includes(trimmed)) {
+                                                setPlAvailableBoxes(prev => [...prev, trimmed]);
+                                              }
+                                              setPlRows(prev =>
+                                                prev.map(r => (r.rowKey === row.rowKey ? { ...r, box_number: trimmed } : r))
+                                              );
                                             }
+                                          } else {
                                             setPlRows(prev =>
-                                              prev.map(r => (r.rowKey === row.rowKey ? { ...r, box_number: trimmed } : r))
+                                              prev.map(r => (r.rowKey === row.rowKey ? { ...r, box_number: val } : r))
                                             );
                                           }
-                                        } else {
-                                          setPlRows(prev =>
-                                            prev.map(r => (r.rowKey === row.rowKey ? { ...r, box_number: val } : r))
-                                          );
-                                        }
-                                      }}
-                                    >
-                                      {plAvailableBoxes.map(b => (
-                                        <option key={b} value={b}>{b}</option>
-                                      ))}
-                                      {row.box_number && !plAvailableBoxes.includes(row.box_number) && (
-                                        <option value={row.box_number}>{row.box_number}</option>
-                                      )}
-                                      <option value="__ADD_NEW__">+ New Box...</option>
-                                    </select>
-                                  </td>
+                                        }}
+                                      >
+                                        {plAvailableBoxes.map(b => (
+                                          <option key={b} value={b}>{b}</option>
+                                        ))}
+                                        {row.box_number && !plAvailableBoxes.includes(row.box_number) && (
+                                          <option value={row.box_number}>{row.box_number}</option>
+                                        )}
+                                        <option value="__ADD_NEW__">+ New Box...</option>
+                                      </select>
+                                    </td>
 
-                                  {/* Simplified Actions Column */}
-                                  <td style={{ padding: '8px', textAlign: 'right' }}>
-                                    <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', alignItems: 'center' }}>
-                                      {!row.is_accessory && (
-                                        <button
-                                          type="button"
-                                          className="btn btn-ghost btn-xs"
-                                          style={{ border: '1px solid var(--border)', fontSize: '10.5px', padding: '2px 6px', color: 'var(--text-info)' }}
-                                          title="Split quantity across another box"
-                                          onClick={() => handleSplitRowAcrossBoxes(row)}
-                                        >
-                                          <Split size={11} /> Split
-                                        </button>
-                                      )}
+                                    {/* Simplified Actions Column */}
+                                    <td style={{ padding: '8px', textAlign: 'right' }}>
+                                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                        {!row.is_accessory && (
+                                          <button
+                                            type="button"
+                                            className="btn btn-ghost btn-xs"
+                                            style={{ border: '1px solid var(--border)', fontSize: '10.5px', padding: '2px 6px', color: 'var(--text-info)' }}
+                                            title="Split quantity across another box"
+                                            onClick={() => handleSplitRowAcrossBoxes(row)}
+                                          >
+                                            <Split size={11} /> Split
+                                          </button>
+                                        )}
 
-                                      {showAttachBtn && !row.is_split_child && (
-                                        <button
-                                          type="button"
-                                          className="btn btn-ghost btn-xs"
-                                          style={{ border: '1px solid rgba(168, 85, 247, 0.4)', fontSize: '10.5px', padding: '2px 6px', color: '#a855f7' }}
-                                          title="Attach accessory to parent fitting"
-                                          onClick={() => setAttachModalTargetRow(row)}
-                                        >
-                                          <Link2 size={11} /> {row.is_accessory ? 'Re-Attach' : 'Attach'}
-                                        </button>
-                                      )}
+                                        {showAttachBtn && !row.is_split_child && (
+                                          <button
+                                            type="button"
+                                            className="btn btn-ghost btn-xs"
+                                            style={{ border: '1px solid rgba(168, 85, 247, 0.4)', fontSize: '10.5px', padding: '2px 6px', color: '#a855f7' }}
+                                            title="Attach accessory to parent fitting"
+                                            onClick={() => setAttachModalTargetRow(row)}
+                                          >
+                                            <Link2 size={11} /> {row.is_accessory ? 'Re-Attach' : 'Attach'}
+                                          </button>
+                                        )}
 
-                                      {isSubRow && (
-                                        <button
-                                          type="button"
-                                          className="btn btn-ghost btn-xs"
-                                          style={{ color: 'var(--text-danger)', padding: '2px 5px' }}
-                                          onClick={() => handleRemoveSubRow(row.rowKey)}
-                                          title="Remove split line and restore quantity"
-                                        >
-                                          <X size={12} />
-                                        </button>
-                                      )}
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                                        {isSubRow && (
+                                          <button
+                                            type="button"
+                                            className="btn btn-ghost btn-xs"
+                                            style={{ color: 'var(--text-danger)', padding: '2px 5px' }}
+                                            onClick={() => handleRemoveSubRow(row.rowKey)}
+                                            title="Remove split line and restore quantity"
+                                          >
+                                            <X size={12} />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </>
                 )}
 
