@@ -5,7 +5,8 @@ import {
   Truck, ClipboardList, FileText, Plus, Printer,
   ArrowLeft, Search, CheckCircle2, AlertCircle, Eye, Trash2,
   Package, Layers, Filter, Check, Clock, Box, Sparkles, X, ChevronDown, ChevronRight,
-  Tag, Settings, Link2, Split, MoreVertical, Upload, FileCheck, Ban, Edit3, MapPin, Phone, User
+  Tag, Settings, Link2, Split, MoreVertical, Upload, FileCheck, Ban, Edit3, MapPin, Phone, User,
+  ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import LabelTemplateModal from '../components/logistics/LabelTemplateModal';
 import PackingListLabelPrinterModal from '../components/logistics/PackingListLabelPrinterModal';
@@ -308,6 +309,9 @@ export default function LogisticsPage() {
   const [isLoadingPlItems, setIsLoadingPlItems] = useState(false);
   const [plFilterFloor, setPlFilterFloor] = useState('ALL');
   const [plFilterArea, setPlFilterArea] = useState('ALL');
+  const [plFilterBox, setPlFilterBox] = useState('ALL');
+  const [plSortField, setPlSortField] = useState('default'); // 'default', 'area', 'box', 'plan', 'code'
+  const [plSortDirection, setPlSortDirection] = useState('asc'); // 'asc', 'desc'
   const [plAvailableBoxes, setPlAvailableBoxes] = useState(['Box 1', 'Box 2', 'Box 3']);
   const [plActiveBox, setPlActiveBox] = useState('Box 1');
   const [plSelectedRowKeys, setPlSelectedRowKeys] = useState({});
@@ -319,6 +323,9 @@ export default function LogisticsPage() {
     setPlOrderDropdownOpen(false);
     setPlFilterFloor('ALL');
     setPlFilterArea('ALL');
+    setPlFilterBox('ALL');
+    setPlSortField('default');
+    setPlSortDirection('asc');
     setPlSelectedRowKeys({});
 
     if (!compositeKey) {
@@ -526,19 +533,59 @@ export default function LogisticsPage() {
     return counts;
   }, [plRows]);
 
-  // Filtered PL rows keeping attached accessories directly underneath their parent fitting
+  // Filtered & Sorted PL rows keeping attached accessories nested directly underneath parent fittings
   const visiblePlRows = useMemo(() => {
     const mainRows = plRows.filter(r => !r.parent_item_id && !r.is_hidden_by_attachment);
     const attachedRows = plRows.filter(r => !!r.parent_item_id);
 
-    const filteredMains = mainRows.filter(r => {
+    let filteredMains = mainRows.filter(r => {
       if (plFilterFloor !== 'ALL' && (r.floor || '').trim() !== plFilterFloor) return false;
       if (plFilterArea !== 'ALL') {
         const rowArea = (r.area || '').trim() || 'General / Unspecified';
         if (rowArea !== plFilterArea) return false;
       }
+      if (plFilterBox !== 'ALL') {
+        const rowBox = (r.box_number || '').trim() || 'Box 1';
+        if (plFilterBox === '__UNASSIGNED__') {
+          if (rowBox && rowBox !== '—') return false;
+        } else if (rowBox !== plFilterBox) {
+          // Check if any attached accessory or split has this box
+          const hasAttachedBox = attachedRows.some(
+            att => String(att.parent_item_id) === String(r.order_item_id) && att.box_number === plFilterBox
+          );
+          if (!hasAttachedBox) return false;
+        }
+      }
       return true;
     });
+
+    // Apply Column Sorting if requested
+    if (plSortField && plSortField !== 'default') {
+      filteredMains = [...filteredMains].sort((a, b) => {
+        let valA = '';
+        let valB = '';
+        if (plSortField === 'area') {
+          valA = (a.area || '').toLowerCase();
+          valB = (b.area || '').toLowerCase();
+        } else if (plSortField === 'box') {
+          const numA = parseInt((a.box_number || '1').replace(/\D/g, ''), 10) || 999;
+          const numB = parseInt((b.box_number || '1').replace(/\D/g, ''), 10) || 999;
+          return plSortDirection === 'asc' ? numA - numB : numB - numA;
+        } else if (plSortField === 'plan') {
+          valA = (a.plan_code || '').toLowerCase();
+          valB = (b.plan_code || '').toLowerCase();
+        } else if (plSortField === 'one_one') {
+          valA = (a.one_one_code || '').toLowerCase();
+          valB = (b.one_one_code || '').toLowerCase();
+        } else if (plSortField === 'sku') {
+          valA = (a.supplier_code || '').toLowerCase();
+          valB = (b.supplier_code || '').toLowerCase();
+        }
+        if (valA < valB) return plSortDirection === 'asc' ? -1 : 1;
+        if (valA > valB) return plSortDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
 
     const orderedResult = [];
     filteredMains.forEach(main => {
@@ -546,11 +593,168 @@ export default function LogisticsPage() {
       if (!main.is_split_child) {
         attachedRows
           .filter(att => String(att.parent_item_id) === String(main.order_item_id))
-          .forEach(att => orderedResult.push(att));
+          .forEach(att => {
+            if (plFilterBox === 'ALL' || att.box_number === plFilterBox || main.box_number === plFilterBox) {
+              orderedResult.push(att);
+            }
+          });
       }
     });
     return orderedResult;
-  }, [plRows, plFilterFloor, plFilterArea]);
+  }, [plRows, plFilterFloor, plFilterArea, plFilterBox, plSortField, plSortDirection]);
+
+  // Toggle column sorting
+  const handleTogglePlSort = (field) => {
+    if (plSortField === field) {
+      if (plSortDirection === 'asc') {
+        setPlSortDirection('desc');
+      } else {
+        setPlSortField('default');
+        setPlSortDirection('asc');
+      }
+    } else {
+      setPlSortField(field);
+      setPlSortDirection('asc');
+    }
+  };
+
+  // Helper for rendering interactive sort indicators in table headers
+  const renderPlSortIcon = (field) => {
+    if (plSortField !== field) {
+      return <ArrowUpDown size={11} style={{ opacity: 0.35, marginLeft: '4px', verticalAlign: 'middle' }} />;
+    }
+    return plSortDirection === 'asc'
+      ? <ArrowUp size={11} style={{ color: 'var(--text-info)', marginLeft: '4px', verticalAlign: 'middle' }} />
+      : <ArrowDown size={11} style={{ color: 'var(--text-info)', marginLeft: '4px', verticalAlign: 'middle' }} />;
+  };
+
+  // ─── 1-CLICK WAREHOUSE PICK & PACK SHEET PRINT GENERATOR ──────────────────
+  const handlePrintWarehouseWorksheet = () => {
+    if (!plOrderKey || plRows.length === 0) {
+      alert('Select an order with items first before printing a warehouse pack sheet.');
+      return;
+    }
+    const [pKey, oId] = plOrderKey.split(':::');
+    const orderObj = allOrders.find(o => o.projectKey === pKey && o.id === oId);
+    const orderTitle = orderObj?.quote_name ? `${orderObj.quote_name} (${orderObj.id})` : (oId || 'Order');
+    const projTitle = orderObj?.projectName || pKey;
+    const clientTitle = orderObj?.projectClient || '';
+
+    // Group items by Floor -> Area -> Fitting
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Please allow popups to open the warehouse pack sheet.');
+      return;
+    }
+
+    const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Warehouse Pick & Pack Sheet — ${orderTitle}</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm 10mm; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 11px; color: #1e293b; line-height: 1.4; margin: 0; padding: 15px; }
+    .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-end; }
+    .title { font-size: 18px; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; }
+    .meta { font-size: 11px; color: #475569; }
+    .meta strong { color: #0f172a; }
+    .instructions { background: #f1f5f9; border-left: 4px solid #3b82f6; padding: 6px 10px; font-size: 10.5px; margin-bottom: 14px; font-weight: 500; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; page-break-inside: auto; }
+    tr { page-break-inside: avoid; page-break-after: auto; }
+    thead { display: table-header-group; }
+    th { background: #0f172a; color: #ffffff; text-align: left; padding: 6px 8px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; border: 1px solid #0f172a; }
+    td { padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 10.5px; vertical-align: top; }
+    .row-accessory { background: #fdf4ff; }
+    .row-accessory td { color: #6b21a8; }
+    .badge { display: inline-block; padding: 2px 5px; font-size: 9.5px; font-weight: 700; border-radius: 3px; font-family: monospace; }
+    .badge-plan { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+    .badge-code { background: #f1f5f9; color: #334155; }
+    .box-blank { width: 85px; border: 1.5px dashed #64748b; background: #ffffff; text-align: center; height: 20px; font-weight: 800; }
+    .check-blank { width: 28px; text-align: center; font-size: 14px; }
+    .footer { font-size: 9px; color: #94a3b8; text-align: right; border-top: 1px solid #e2e8f0; padding-top: 6px; margin-top: 20px; }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="margin-bottom: 15px; background: #f8fafc; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+    <div><strong>Warehouse Pre-Packing Pick Sheet</strong> — Take this clipboard sheet to the floor, pick fittings by Area/Room, and mark boxes as you pack them.</div>
+    <button onclick="window.print()" style="background: #2563eb; color: #fff; border: none; padding: 6px 14px; font-weight: 700; border-radius: 4px; cursor: pointer;">🖨️ Print Sheet Now</button>
+  </div>
+
+  <div class="header">
+    <div>
+      <div class="title">Warehouse Pick & Pack Worksheet</div>
+      <div class="meta" style="margin-top: 4px;">
+        <strong>Project:</strong> ${projTitle} ${clientTitle ? `(${clientTitle})` : ''} &nbsp;|&nbsp; 
+        <strong>Order:</strong> ${orderTitle}
+      </div>
+    </div>
+    <div class="meta" style="text-align: right;">
+      <div><strong>Date:</strong> ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+      <div><strong>Total Lines:</strong> ${visiblePlRows.length} items</div>
+    </div>
+  </div>
+
+  <div class="instructions">
+    📋 <strong>Warehouse Instructions:</strong> Items are ordered by Floor & Room Area. Pack fittings together with their attached accessories. As each item is placed into a box, write the Box # (e.g. Box 1, Box 2) in the dashed box column, then enter those box numbers into the portal to finalize the Packing List and print thermal labels.
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 25px; text-align: center;">✓</th>
+        <th style="width: 75px;">Plan Code</th>
+        <th style="width: 100px;">1-to-1 Code</th>
+        <th style="width: 110px;">SKU / Supplier</th>
+        <th>Description & Finish</th>
+        <th style="width: 130px;">Floor & Room Area</th>
+        <th style="width: 45px; text-align: center;">Qty</th>
+        <th style="width: 95px; text-align: center; background: #1e3a8a;">Mark Box #</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${visiblePlRows.map(r => {
+        const isAtt = !!r.is_accessory;
+        return `
+        <tr class="${isAtt ? 'row-accessory' : ''}">
+          <td class="check-blank">☐</td>
+          <td><span class="badge badge-plan">${r.plan_code || '—'}</span></td>
+          <td><span class="badge badge-code">${r.one_one_code || '—'}</span></td>
+          <td style="font-family: monospace; font-size: 10px;">${r.supplier_code || '—'}</td>
+          <td>
+            ${isAtt ? '<strong style="color: #9333ea;">↳ Accessory / Component:</strong> ' : ''}
+            <strong>${r.description || ''}</strong>
+            ${r.material_colour && r.material_colour !== '—' ? `<div style="font-size: 9.5px; color: #64748b;">Colour/Finish: ${r.material_colour}</div>` : ''}
+            ${r.parent_fitting_code ? `<div style="font-size: 9.5px; color: #a855f7;">Pack with: ${r.parent_fitting_code}</div>` : ''}
+          </td>
+          <td>
+            <strong>${r.area || 'General Area'}</strong>
+            ${r.floor ? `<div style="font-size: 9.5px; color: #64748b;">${r.floor}</div>` : ''}
+          </td>
+          <td style="text-align: center; font-weight: 800; font-size: 12px;">${r.qty_packed || r.qty_ordered || 0}</td>
+          <td style="text-align: center;">
+            <div class="box-blank">${r.box_number && r.box_number !== 'Box 1' ? r.box_number : ''}</div>
+          </td>
+        </tr>
+        `;
+      }).join('')}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    One to One Logistics & Warehousing System • Warehouse Floor Pick Sheet • Generated ${new Date().toLocaleString()}
+  </div>
+</body>
+</html>`;
+
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
 
   // Add a new Box to the Active Box selector
   const handleAddBoxOption = () => {
@@ -1914,59 +2118,90 @@ export default function LogisticsPage() {
                 {/* Warehouse Packing Controls Toolbar */}
                 {plOrderKey && (
                   <>
-                    {/* AREA & ROOM SELECTOR TOOLBAR (Clean, compact dropdown) */}
+                    {/* AREA & ROOM SELECTOR + BOX FILTER + WAREHOUSE WORKSHEET TOOLBAR */}
                     <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '280px' }}>
-                        <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
-                          <Filter size={13} style={{ color: 'var(--text-info)' }} /> Pack Per Area / Room:
-                        </span>
-                        <select
-                          className="form-control"
-                          style={{ height: '32px', fontSize: '12.5px', fontWeight: 650, flex: 1, maxWidth: '380px', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
-                          value={plFilterArea}
-                          onChange={e => setPlFilterArea(e.target.value)}
-                        >
-                          <option value="ALL">All Areas / Rooms ({plRows.filter(r => !r.parent_item_id && !r.is_hidden_by_attachment).length} line items)</option>
-                          {plUniqueAreas.map(areaName => (
-                            <option key={areaName} value={areaName}>
-                              {areaName} ({plAreaItemCounts[areaName] || 0} items)
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', flex: 1 }}>
+                        {/* Filter by Area */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
+                            <Filter size={13} style={{ color: 'var(--text-info)' }} /> Area:
+                          </span>
+                          <select
+                            className="form-control"
+                            style={{ height: '32px', fontSize: '12px', fontWeight: 650, width: '220px', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                            value={plFilterArea}
+                            onChange={e => setPlFilterArea(e.target.value)}
+                          >
+                            <option value="ALL">All Rooms ({plRows.filter(r => !r.parent_item_id && !r.is_hidden_by_attachment).length})</option>
+                            {plUniqueAreas.map(areaName => (
+                              <option key={areaName} value={areaName}>
+                                {areaName} ({plAreaItemCounts[areaName] || 0})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {/* Filter by Box Dropdown */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
+                            <Box size={13} style={{ color: '#a855f7' }} /> Filter Box:
+                          </span>
+                          <select
+                            className="form-control"
+                            style={{ height: '32px', fontSize: '12px', fontWeight: 650, width: '150px', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+                            value={plFilterBox}
+                            onChange={e => setPlFilterBox(e.target.value)}
+                          >
+                            <option value="ALL">All Boxes ({plAvailableBoxes.length})</option>
+                            {plAvailableBoxes.map(b => (
+                              <option key={b} value={b}>{b}</option>
+                            ))}
+                          </select>
+                        </div>
+
                         {plFilterArea !== 'ALL' && (
-                          <>
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm"
-                              style={{ fontSize: '11.5px', fontWeight: 700, padding: '4px 12px' }}
-                              onClick={() => {
-                                setPlRows(prev =>
-                                  prev.map(r => {
-                                    const a = (r.area || '').trim() || 'General / Unspecified';
-                                    if (a === plFilterArea && !r.is_split_child && !r.is_accessory) {
-                                      return { ...r, qty_packed: Number(r.remaining_to_pack || r.qty_ordered || 0), is_hidden_by_attachment: false };
-                                    }
-                                    return r;
-                                  })
-                                );
-                              }}
-                            >
-                              ✓ Pack Only {plFilterArea}
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-sm"
-                              style={{ border: '1px solid var(--border)', fontSize: '11.5px', padding: '4px 10px', color: 'var(--text-secondary)' }}
-                              onClick={() => setPlFilterArea('ALL')}
-                            >
-                              Show All Areas
-                            </button>
-                          </>
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            style={{ fontSize: '11.5px', fontWeight: 700, padding: '4px 10px' }}
+                            onClick={() => {
+                              setPlRows(prev =>
+                                prev.map(r => {
+                                  const a = (r.area || '').trim() || 'General / Unspecified';
+                                  if (a === plFilterArea && !r.is_split_child && !r.is_accessory) {
+                                    return { ...r, qty_packed: Number(r.remaining_to_pack || r.qty_ordered || 0), is_hidden_by_attachment: false };
+                                  }
+                                  return r;
+                                })
+                              );
+                            }}
+                          >
+                            ✓ Pack {plFilterArea}
+                          </button>
+                        )}
+                        {(plFilterArea !== 'ALL' || plFilterBox !== 'ALL') && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ border: '1px solid var(--border)', fontSize: '11px', padding: '4px 8px', color: 'var(--text-secondary)' }}
+                            onClick={() => { setPlFilterArea('ALL'); setPlFilterBox('ALL'); }}
+                          >
+                            Clear Filters
+                          </button>
                         )}
                       </div>
+
+                      {/* 1-Click Print Warehouse Pick Sheet */}
+                      <button
+                        type="button"
+                        onClick={handlePrintWarehouseWorksheet}
+                        className="btn btn-ghost btn-sm"
+                        style={{ border: '1px solid var(--border)', background: 'var(--bg-secondary)', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}
+                        title="Print an A4 clipboard pick-and-pack worksheet ordered by Floor & Room with accessories attached, ready to mark box numbers by hand"
+                      >
+                        <Printer size={13} style={{ color: 'var(--text-info)' }} />
+                        Print Warehouse Pick Sheet
+                      </button>
                     </div>
                     {/* Secondary Action Toolbar: Box Assignment + Global Pack */}
                     <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
@@ -2051,15 +2286,25 @@ export default function LogisticsPage() {
                                 }}
                               />
                             </th>
-                            <th style={{ padding: '9px 10px', minWidth: '105px' }}>One to One Code</th>
-                            <th style={{ padding: '9px 8px', width: '70px', textAlign: 'center' }}>Plan Code</th>
-                            <th style={{ padding: '9px 10px', minWidth: '95px' }}>Supplier / SKU</th>
+                            <th onClick={() => handleTogglePlSort('one_one')} style={{ padding: '9px 10px', minWidth: '105px', cursor: 'pointer', userSelect: 'none' }}>
+                              One to One Code {renderPlSortIcon('one_one')}
+                            </th>
+                            <th onClick={() => handleTogglePlSort('plan')} style={{ padding: '9px 8px', width: '85px', textAlign: 'center', cursor: 'pointer', userSelect: 'none' }}>
+                              Plan Code {renderPlSortIcon('plan')}
+                            </th>
+                            <th onClick={() => handleTogglePlSort('sku')} style={{ padding: '9px 10px', minWidth: '105px', cursor: 'pointer', userSelect: 'none' }}>
+                              Supplier / SKU {renderPlSortIcon('sku')}
+                            </th>
                             <th style={{ padding: '9px 10px' }}>Description & Spec</th>
-                            <th style={{ padding: '9px 10px', minWidth: '120px' }}>Area / Room</th>
+                            <th onClick={() => handleTogglePlSort('area')} style={{ padding: '9px 10px', minWidth: '130px', cursor: 'pointer', userSelect: 'none', color: plSortField === 'area' ? 'var(--text-info)' : 'inherit' }}>
+                              Area / Room {renderPlSortIcon('area')}
+                            </th>
                             <th style={{ padding: '9px 8px', textAlign: 'center', width: '45px' }}>Ord</th>
                             <th style={{ padding: '9px 8px', width: '80px', textAlign: 'center' }}>Packed</th>
                             <th style={{ padding: '9px 8px', textAlign: 'center', width: '45px' }}>B/O</th>
-                            <th style={{ padding: '9px 10px', width: '95px' }}>Box #</th>
+                            <th onClick={() => handleTogglePlSort('box')} style={{ padding: '9px 10px', width: '110px', cursor: 'pointer', userSelect: 'none', color: plSortField === 'box' ? '#a855f7' : 'inherit' }}>
+                              Box # {renderPlSortIcon('box')}
+                            </th>
                             <th style={{ padding: '9px 8px', textAlign: 'right', width: '115px' }}>Actions</th>
                           </tr>
                         </thead>

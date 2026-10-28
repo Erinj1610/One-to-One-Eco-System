@@ -55,9 +55,19 @@ export default function AttachAccessoryModal({
   // Per-instance allocation state: { [order_item_id]: { checked: boolean, qty: number, box: string } }
   const [areaAllocations, setAreaAllocations] = useState({});
 
-  // Initialize when modal opens or target changes
+  // Initialize ONLY when modal opens for a new target accessory row
+  const activeTargetId = accessoryRow ? `${accessoryRow.order_item_id || accessoryRow.rowKey}` : null;
+  const lastTargetIdRef = React.useRef(null);
+
   useEffect(() => {
-    if (!isOpen || !accessoryRow) return;
+    if (!isOpen || !accessoryRow) {
+      lastTargetIdRef.current = null;
+      return;
+    }
+
+    // If already open and on the same target, do NOT reset user allocations!
+    if (lastTargetIdRef.current === activeTargetId) return;
+    lastTargetIdRef.current = activeTargetId;
 
     if (existingAttachments && existingAttachments.length > 0) {
       const firstParent = candidateParentRows.find(
@@ -84,7 +94,7 @@ export default function AttachAccessoryModal({
       setSelectedModelKey(groupedFittingModels[0]?.key || '');
       setAreaAllocations({});
     }
-  }, [isOpen, accessoryRow?.rowKey, accessoryRow?.order_item_id, groupedFittingModels]);
+  }, [isOpen, activeTargetId]);
 
   if (!isOpen || !accessoryRow) return null;
 
