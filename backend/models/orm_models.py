@@ -339,6 +339,7 @@ class OrderItem(Base):
     is_credit = Column(Boolean, default=False, nullable=True)
     item_type = Column(String, default="Hardware", nullable=True)
     sort_order = Column(Integer, default=0, nullable=True)
+    notes = Column(Text, nullable=True)
 
 
 

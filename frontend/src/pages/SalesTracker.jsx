@@ -1015,6 +1015,7 @@ export default function SalesTracker() {
   const [planBreakdownModalItem, setPlanBreakdownModalItem] = useState(null);
   const [activeItemLedgerModal, setActiveItemLedgerModal] = useState(null);
   const [showPaymentViewer, setShowPaymentViewer] = useState(false);
+  const [activeItemNoteView, setActiveItemNoteView] = useState(null);
 
 
 
@@ -5579,6 +5580,31 @@ export default function SalesTracker() {
 
                   return (
                     <>
+                      {/* ORDER-LEVEL IMPORTANT NOTES */}
+                      {currentSelectedOrder?.notes && (
+                        <div style={{
+                          background: 'rgba(59, 130, 246, 0.08)',
+                          border: '1.5px solid rgba(59, 130, 246, 0.35)',
+                          borderRadius: '8px',
+                          padding: '12px 16px',
+                          marginBottom: '16px',
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '12px',
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+                        }}>
+                          <span style={{ fontSize: '18px', lineHeight: 1 }}>📝</span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '11px', fontWeight: 800, color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '3px' }}>
+                              Order Notes & Special Instructions
+                            </div>
+                            <div style={{ fontSize: '12.5px', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
+                              {currentSelectedOrder.notes}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {/* ITEM-BY-ITEM TRACKING SHEET */}
                       <div className="card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '16px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '12px', flexWrap: 'wrap', gap: '12px' }}>
@@ -6036,7 +6062,41 @@ export default function SalesTracker() {
                                       )}
                                     </td>
                                     <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{item.code || 'CUSTOM'}</td>
-                                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{item.description}</td>
+                                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                        <span>{item.description}</span>
+                                        {item.notes && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setActiveItemNoteView({
+                                                code: item.oneOneCode || item.code || 'Fitting',
+                                                description: item.description,
+                                                notes: item.notes
+                                              });
+                                            }}
+                                            style={{
+                                              padding: '1px 6px',
+                                              fontSize: '10px',
+                                              borderRadius: '4px',
+                                              background: 'rgba(245, 158, 11, 0.18)',
+                                              border: '1px solid #f59e0b',
+                                              color: '#d97706',
+                                              cursor: 'pointer',
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '3px',
+                                              flexShrink: 0
+                                            }}
+                                            title={`Note: ${item.notes}`}
+                                          >
+                                            <span>📝</span>
+                                            <span style={{ fontWeight: 700 }}>Note</span>
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
                                     <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>R {Math.round(item.unitRetail || 0).toLocaleString()}</td>
                                     <td style={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>R {Math.round(item.qty * (item.unitRetail || 0)).toLocaleString()}</td>
                                     <td style={{ borderRight: '1px solid var(--border-strong)', padding: '4px 6px', verticalAlign: 'middle' }}>
@@ -7179,6 +7239,59 @@ export default function SalesTracker() {
         <option value="Client Supplied" />
       </datalist>
 
+
+      {/* MODAL: ITEM NOTE VIEWER (SALES TRACKER) */}
+      {activeItemNoteView && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1300
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '480px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 8px 30px rgba(0,0,0,0.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13.5px', fontWeight: 700 }}>
+                <span>📝 Item Note</span>
+                <span style={{ fontFamily: 'monospace', color: 'var(--text-info)', fontSize: '12px' }}>[{activeItemNoteView.code}]</span>
+              </div>
+              <button 
+                type="button" 
+                className="btn btn-ghost" 
+                style={{ padding: '4px' }} 
+                onClick={() => setActiveItemNoteView(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '8px 12px', borderRadius: '6px' }}>
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Description: </span>
+                {activeItemNoteView.description || 'No description'}
+              </div>
+
+              <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '6px', padding: '12px 14px' }}>
+                <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: '#d97706', marginBottom: '4px' }}>
+                  Notes Attached
+                </div>
+                <div style={{ fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
+                  {activeItemNoteView.notes}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 18px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setActiveItemNoteView(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* WAYBILL HISTORY MODAL */}
       {waybillHistoryModalItem && (

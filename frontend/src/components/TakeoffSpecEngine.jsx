@@ -63,7 +63,9 @@ export default function TakeoffSpecEngine({
   initialTakeoffData,
   onSaveTakeoffData,
   onGenerateBOQ,
-  onCancel
+  onCancel,
+  orderNotes = '',
+  onUpdateOrderNotes = null
 }) {
   // Navigation tabs: 'countup' | 'spec' | 'summary'
   const [activeTab, setActiveTab] = useState('countup');
@@ -222,9 +224,11 @@ export default function TakeoffSpecEngine({
     setHasUnsavedChanges(true);
   }, [countUpRows, specifications]);
 
-  // Debounced catalog search
+  // Debounced catalog search with in-flight cancellation to prevent search jumping
   useEffect(() => {
     if (!catalogModalOpen) return;
+    const controller = new AbortController();
+
     const fetchCatalog = async () => {
       setCatalogLoading(true);
       try {
@@ -236,20 +240,27 @@ export default function TakeoffSpecEngine({
           queryParams.push(`category=${encodeURIComponent(catalogCategory)}`);
         }
         const url = `${API_BASE}/api/products/${queryParams.length ? '?' + queryParams.join('&') : ''}`;
-        const res = await fetch(url);
+        const res = await fetch(url, { signal: controller.signal });
         if (res.ok) {
           const data = await res.json();
           setCatalogResults(Array.isArray(data) ? data : (data.items || []));
         }
       } catch (err) {
-        console.error("Failed to fetch catalog in Takeoff Engine:", err);
+        if (err.name !== 'AbortError') {
+          console.error("Failed to fetch catalog in Takeoff Engine:", err);
+        }
       } finally {
-        setCatalogLoading(false);
+        if (!controller.signal.aborted) {
+          setCatalogLoading(false);
+        }
       }
     };
 
-    const timer = setTimeout(fetchCatalog, 250);
-    return () => clearTimeout(timer);
+    const timer = setTimeout(fetchCatalog, 200);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [catalogModalOpen, catalogSearch, catalogCategory]);
 
   // Derived: Unique tags extracted from Count-Up
@@ -1800,6 +1811,7 @@ export default function TakeoffSpecEngine({
         oneOneCode: product.one_to_one_code || '',
         code: product.sku || '',
         description: (product.client_description || product.name || '') + (row.notes ? ` — ${row.notes}` : ''),
+        notes: row.notes || '',
         floor: row.floor || 'Ground',
         area: row.area || 'General Area',
         dimming: product.dimming_protocol || product.dimmable || 'Non-dim',
@@ -1896,6 +1908,7 @@ export default function TakeoffSpecEngine({
         oneOneCode: '',
         code: '',
         description: 'Unassigned Fixture' + (row.notes ? ` — ${row.notes}` : ''),
+        notes: row.notes || '',
         floor: row.floor || 'Ground',
         area: row.area || 'General Area',
         dimming: 'Non-dim',
@@ -2914,9 +2927,13 @@ export default function TakeoffSpecEngine({
                       const product = spec ? spec.product : null;
                       const accessories = (spec && spec.accessories) || [];
 
-                      const costPrice = spec?.customCost !== undefined ? spec.customCost : (product?.cost_price || 0);
-                      const tradePrice = spec?.customTrade !== undefined ? spec.customTrade : (product?.trade_price || 0);
-                      const retailPrice = spec?.customRetail !== undefined ? spec.customRetail : (product?.retail_price || 0);
+                      const rawCost = spec?.customCost !== undefined ? spec.customCost : (product?.cost_price || 0);
+                      const rawTrade = spec?.customTrade !== undefined ? spec.customTrade : (product?.trade_price || 0);
+                      const rawRetail = spec?.customRetail !== undefined ? spec.customRetail : (product?.retail_price || 0);
+
+                      const costPrice = typeof rawCost === 'number' ? Math.round(rawCost * 100) / 100 : (parseFloat(rawCost) ? Math.round(parseFloat(rawCost) * 100) / 100 : 0);
+                      const tradePrice = typeof rawTrade === 'number' ? Math.round(rawTrade * 100) / 100 : (parseFloat(rawTrade) ? Math.round(parseFloat(rawTrade) * 100) / 100 : 0);
+                      const retailPrice = typeof rawRetail === 'number' ? Math.round(rawRetail * 100) / 100 : (parseFloat(rawRetail) ? Math.round(parseFloat(rawRetail) * 100) / 100 : 0);
                       
                       const marginPct = retailPrice > 0 
                         ? Math.round(((retailPrice - costPrice) / retailPrice) * 100)
@@ -3068,7 +3085,7 @@ export default function TakeoffSpecEngine({
                                       {product.wattage && <span>⚡ {product.wattage}W</span>}
                                       {product.color_temperature && <span>🌡️ {product.color_temperature}</span>}
                                       {product.beam_angle && <span>📐 {product.beam_angle}</span>}
-                                      {product.ip_rating && <span>💧 IP{product.ip_rating}</span>}
+                                      {product.ip_rating && <span>💧 {String(product.ip_rating).toUpperCase().startsWith('IP') ? product.ip_rating : `IP${product.ip_rating}`}</span>}
                                     </div>
                                   </div>
 
@@ -3113,43 +3130,46 @@ export default function TakeoffSpecEngine({
                                   </div>
                                 </div>
 
-                                {/* EDITABLE PRICING BAR */}
+                                {/* EDITABLE PRICING BAR (CLEAN 3-COL MICRO-GRID) */}
                                 <div style={{ 
                                   borderTop: '1px solid var(--border)', 
                                   paddingTop: '8px', 
                                   display: 'flex', 
-                                  alignItems: 'center', 
-                                  justifyContent: 'space-between',
-                                  flexWrap: 'wrap',
+                                  flexDirection: 'column',
                                   gap: '8px'
                                 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  <div style={{ 
+                                    display: 'grid', 
+                                    gridTemplateColumns: 'repeat(3, 1fr)', 
+                                    gap: '6px', 
+                                    alignItems: 'center' 
+                                  }}>
                                     {/* COST PRICE */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Cost:</span>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                                      <span style={{ fontSize: '9.5px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Cost</span>
                                       <div style={{ 
-                                        display: 'inline-flex', 
+                                        display: 'flex', 
                                         alignItems: 'baseline', 
                                         borderBottom: '1.5px solid var(--border)', 
                                         paddingBottom: '1px',
                                         transition: 'border-color 0.15s'
                                       }}>
-                                        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>R</span>
+                                        <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', marginRight: '2px' }}>R</span>
                                         <input 
                                           type="number"
                                           step="0.01"
                                           value={costPrice}
                                           onChange={e => handleUpdateSpecPrice(tag, 'customCost', e.target.value)}
                                           style={{ 
-                                            minWidth: '70px', 
-                                            width: '85px', 
+                                            width: '100%',
+                                            minWidth: 0,
                                             background: 'transparent', 
                                             border: 'none', 
                                             outline: 'none', 
-                                            fontSize: '12.5px', 
+                                            fontSize: '12px', 
                                             fontWeight: 600, 
                                             color: 'var(--text-primary)',
-                                            padding: '0 2px'
+                                            padding: 0
                                           }}
                                           onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-info)'}
                                           onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
@@ -3158,31 +3178,31 @@ export default function TakeoffSpecEngine({
                                     </div>
 
                                     {/* TRADE PRICE */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Trade:</span>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                                      <span style={{ fontSize: '9.5px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Trade</span>
                                       <div style={{ 
-                                        display: 'inline-flex', 
+                                        display: 'flex', 
                                         alignItems: 'baseline', 
                                         borderBottom: '1.5px solid var(--border)', 
                                         paddingBottom: '1px',
                                         transition: 'border-color 0.15s'
                                       }}>
-                                        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>R</span>
+                                        <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', marginRight: '2px' }}>R</span>
                                         <input 
                                           type="number"
                                           step="0.01"
                                           value={tradePrice}
                                           onChange={e => handleUpdateSpecPrice(tag, 'customTrade', e.target.value)}
                                           style={{ 
-                                            minWidth: '70px', 
-                                            width: '85px', 
+                                            width: '100%',
+                                            minWidth: 0,
                                             background: 'transparent', 
                                             border: 'none', 
                                             outline: 'none', 
-                                            fontSize: '12.5px', 
+                                            fontSize: '12px', 
                                             fontWeight: 600, 
                                             color: 'var(--text-primary)',
-                                            padding: '0 2px'
+                                            padding: 0
                                           }}
                                           onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-info)'}
                                           onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
@@ -3191,31 +3211,31 @@ export default function TakeoffSpecEngine({
                                     </div>
 
                                     {/* RETAIL PRICE */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Retail:</span>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                                      <span style={{ fontSize: '9.5px', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase' }}>Retail</span>
                                       <div style={{ 
-                                        display: 'inline-flex', 
+                                        display: 'flex', 
                                         alignItems: 'baseline', 
                                         borderBottom: '1.5px solid var(--border)', 
                                         paddingBottom: '1px',
                                         transition: 'border-color 0.15s'
                                       }}>
-                                        <span style={{ fontSize: '11px', color: 'var(--text-success)' }}>R</span>
+                                        <span style={{ fontSize: '10.5px', color: 'var(--text-success)', marginRight: '2px' }}>R</span>
                                         <input 
                                           type="number"
                                           step="0.01"
                                           value={retailPrice}
                                           onChange={e => handleUpdateSpecPrice(tag, 'customRetail', e.target.value)}
                                           style={{ 
-                                            minWidth: '75px', 
-                                            width: '90px', 
+                                            width: '100%',
+                                            minWidth: 0,
                                             background: 'transparent', 
                                             border: 'none', 
                                             outline: 'none', 
-                                            fontSize: '13px', 
+                                            fontSize: '12px', 
                                             fontWeight: 700, 
                                             color: 'var(--text-success)',
-                                            padding: '0 2px'
+                                            padding: 0
                                           }}
                                           onFocus={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--text-success)'}
                                           onBlur={e => e.target.parentElement.style.borderBottom = '1.5px solid var(--border)'}
@@ -3224,11 +3244,12 @@ export default function TakeoffSpecEngine({
                                     </div>
                                   </div>
 
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  {/* MARGIN & RESET FOOTER */}
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px' }}>
                                     <span style={{ 
                                       fontSize: '10.5px', 
                                       fontWeight: 700, 
-                                      padding: '2px 6px', 
+                                      padding: '2px 8px', 
                                       borderRadius: '4px',
                                       background: marginPct >= 30 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
                                       color: marginPct >= 30 ? 'var(--text-success)' : 'var(--text-warning)'
@@ -3239,9 +3260,9 @@ export default function TakeoffSpecEngine({
                                       className="btn btn-ghost btn-xs" 
                                       onClick={() => handleResetSpecPrices(tag)}
                                       title="Reset prices back to master catalog defaults"
-                                      style={{ padding: '2px 4px', fontSize: '10px' }}
+                                      style={{ padding: '2px 6px', fontSize: '10px', display: 'flex', alignItems: 'center', gap: '3px' }}
                                     >
-                                      <RotateCcw size={11} />
+                                      <RotateCcw size={11} /> Reset
                                     </button>
                                   </div>
                                 </div>
@@ -3280,7 +3301,7 @@ export default function TakeoffSpecEngine({
                                   </span>
                                   <button 
                                     className="btn btn-ghost btn-xs"
-                                    onClick={() => openCatalogPicker(tag, 'accessory', 'Accessory')}
+                                    onClick={() => openCatalogPicker(tag, 'accessory', 'All')}
                                     style={{ fontSize: '11px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '3px' }}
                                   >
                                     <Plus size={12} /> Add Accessory
@@ -3935,7 +3956,7 @@ export default function TakeoffSpecEngine({
                                       <div style={{ display: 'flex', gap: '8px', fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '3px', flexWrap: 'wrap' }}>
                                         {(ledCfg.stripProduct.wattage || ledCfg.stripWattsPerMeter) && <span>⚡ {ledCfg.stripProduct.wattage || ledCfg.stripWattsPerMeter}W/m</span>}
                                         {(ledCfg.stripProduct.color_temperature || ledCfg.stripProduct.kelvin) && <span>🌡️ {ledCfg.stripProduct.color_temperature || ledCfg.stripProduct.kelvin}</span>}
-                                        {ledCfg.stripProduct.ip_rating && <span>💧 IP{ledCfg.stripProduct.ip_rating}</span>}
+                                        {ledCfg.stripProduct.ip_rating && <span>💧 {String(ledCfg.stripProduct.ip_rating).toUpperCase().startsWith('IP') ? ledCfg.stripProduct.ip_rating : `IP${ledCfg.stripProduct.ip_rating}`}</span>}
                                         {ledCfg.stripProduct.cri && <span>CRI {ledCfg.stripProduct.cri}</span>}
                                         <span>🔌 24V DC</span>
                                       </div>
@@ -4223,7 +4244,7 @@ export default function TakeoffSpecEngine({
                                 </span>
                                 <button 
                                   className="btn btn-ghost btn-xs"
-                                  onClick={() => openCatalogPicker(tag, 'accessory', 'Accessory')}
+                                  onClick={() => openCatalogPicker(tag, 'accessory', 'All')}
                                   style={{ fontSize: '11px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '3px' }}
                                 >
                                   <Plus size={12} /> Add Accessory
@@ -5079,7 +5100,7 @@ export default function TakeoffSpecEngine({
                                 </span>
                                 <button 
                                   className="btn btn-ghost btn-xs"
-                                  onClick={() => openCatalogPicker(tag, 'accessory', 'Accessory')}
+                                  onClick={() => openCatalogPicker(tag, 'accessory', 'All')}
                                   style={{ fontSize: '11px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '3px' }}
                                 >
                                   <Plus size={12} /> Add Accessory
@@ -6354,7 +6375,7 @@ export default function TakeoffSpecEngine({
                               <button
                                 type="button"
                                 className="btn btn-xs btn-ghost"
-                                onClick={() => openCatalogPicker(tag, 'accessory', 'Accessory')}
+                                onClick={() => openCatalogPicker(tag, 'accessory', 'All')}
                                 style={{ fontSize: '10.5px', color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '3px', padding: '1px 6px' }}
                               >
                                 <Plus size={11} /> + Add Accessory
@@ -6575,6 +6596,53 @@ export default function TakeoffSpecEngine({
           </div>
         </div>
       )}
+
+      {/* ORDER-LEVEL IMPORTANT NOTES (EXCEL BOQ NOTES SECTION) */}
+      <div className="card" style={{
+        marginTop: '24px',
+        marginBottom: '20px',
+        border: '2px solid #3b82f6',
+        borderRadius: '8px',
+        overflow: 'hidden',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+      }}>
+        <div style={{
+          background: '#3b82f6',
+          color: '#ffffff',
+          padding: '8px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          fontWeight: 800,
+          fontSize: '13px',
+          letterSpacing: '0.5px'
+        }}>
+          <span>📝 NOTES:</span>
+          <span style={{ fontSize: '11.5px', fontWeight: 500, opacity: 0.9 }}>
+            Please use this space to leave important notes :)
+          </span>
+        </div>
+        <div style={{ padding: '12px 16px', background: 'var(--bg-secondary)' }}>
+          <textarea
+            className="form-control"
+            rows={3}
+            placeholder="Type important order notes, instructions, project-specific requirements, or contractor notes here..."
+            value={orderNotes || ''}
+            onChange={(e) => onUpdateOrderNotes && onUpdateOrderNotes(e.target.value)}
+            readOnly={!onUpdateOrderNotes}
+            style={{
+              width: '100%',
+              fontSize: '13px',
+              lineHeight: '1.5',
+              background: 'var(--bg-primary)',
+              color: 'var(--text-primary)',
+              borderRadius: '6px',
+              border: '1px solid var(--border)',
+              padding: '10px 12px'
+            }}
+          />
+        </div>
+      </div>
 
       {/* ------------------------------------------------------------- */}
       {/* MODAL: IN-ORDER AD-HOC PRODUCT CREATION (TAKEOFF SPEC)       */}

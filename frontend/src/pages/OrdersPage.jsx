@@ -677,6 +677,8 @@ export default function OrdersPage() {
   const [quotationSentDate, setQuotationSentDate] = useState('');
   const [division, setDivision] = useState('');
   const [quoteName, setQuoteName] = useState('');
+  const [orderNotes, setOrderNotes] = useState('');
+  const [activeItemNoteModal, setActiveItemNoteModal] = useState(null);
 
   // Search & Filter state for the ledger list
   const [searchQuery, setSearchQuery] = useState('');
@@ -1794,6 +1796,7 @@ export default function OrdersPage() {
     setFileSource(order.fileSource || '');
     setProjectClass(order.projectClass || '');
     setQuotationSentDate(order.quotationSentDate || '');
+    setOrderNotes(order.notes || '');
 
     // Auto-resolve Division based on PM Name or Project if unassigned
     let resolvedDiv = order.division || proj.division || '';
@@ -2522,7 +2525,8 @@ export default function OrdersPage() {
       quotationSentDate,
       division,
       takeoffData: takeoffData,
-      takeoff_data: takeoffData
+      takeoff_data: takeoffData,
+      notes: orderNotes || null
     };
 
     // 1. Direct Cloud SQL order update
@@ -2584,7 +2588,8 @@ export default function OrdersPage() {
       stock_available: Number(item.stock_available ?? item.stockAvailable ?? 0),
       is_credit: !!(item.isCredit || item.is_credit),
       item_type: item.itemType || item.item_type || "Hardware",
-      sort_order: Math.round(Number(item.sortOrder !== undefined ? item.sortOrder : (item.sort_order !== undefined ? item.sort_order : 0)) || 0)
+      sort_order: Math.round(Number(item.sortOrder !== undefined ? item.sortOrder : (item.sort_order !== undefined ? item.sort_order : 0)) || 0),
+      notes: item.notes || null
     }));
 
     try {
@@ -3737,6 +3742,8 @@ export default function OrdersPage() {
                 projectKey={selectedProjectKey}
                 orderSupplier={orderSupplier}
                 initialTakeoffData={takeoffData}
+                orderNotes={orderNotes}
+                onUpdateOrderNotes={setOrderNotes}
                 onSaveTakeoffData={handleSaveTakeoffData}
                 onGenerateBOQ={handleGenerateBOQFromTakeoff}
               />
@@ -4673,17 +4680,47 @@ export default function OrdersPage() {
                                       />
                                     </td>
 
-                                    {/* DESCRIPTION */}
+                                    {/* DESCRIPTION & ITEM NOTE MARKING */}
                                     <td>
-                                      <input 
-                                        type="text"
-                                        className="boq-cell-input"
-                                        value={item.description || ''}
-                                        onChange={e => handleUpdateSpreadsheetCell(item.id, 'description', e.target.value)}
-                                        data-row={index}
-                                        data-col={4}
-                                        data-field="description"
-                                      />
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <input 
+                                          type="text"
+                                          className="boq-cell-input"
+                                          value={item.description || ''}
+                                          onChange={e => handleUpdateSpreadsheetCell(item.id, 'description', e.target.value)}
+                                          data-row={index}
+                                          data-col={4}
+                                          data-field="description"
+                                          style={{ flex: 1 }}
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => setActiveItemNoteModal({
+                                            itemId: item.id,
+                                            code: item.oneOneCode || item.code || 'Fitting',
+                                            description: item.description || '',
+                                            notes: item.notes || ''
+                                          })}
+                                          style={{
+                                            padding: '1px 5px',
+                                            fontSize: '11px',
+                                            borderRadius: '4px',
+                                            border: item.notes ? '1px solid #f59e0b' : '1px solid var(--border)',
+                                            background: item.notes ? 'rgba(245, 158, 11, 0.18)' : 'transparent',
+                                            color: item.notes ? '#d97706' : 'var(--text-tertiary)',
+                                            cursor: 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '2px',
+                                            flexShrink: 0,
+                                            transition: 'all 0.15s ease'
+                                          }}
+                                          title={item.notes ? `Note: ${item.notes}` : "Click to view or add notes for this item"}
+                                        >
+                                          <span>📝</span>
+                                          {item.notes && <span style={{ fontSize: '9.5px', fontWeight: 700 }}>Note</span>}
+                                        </button>
+                                      </div>
                                     </td>
 
                                     {/* FLOOR */}
@@ -5195,6 +5232,50 @@ export default function OrdersPage() {
                         
                         <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                           * Stock items highlight in <span style={{ color: 'var(--text-info)', fontWeight: 600 }}>blue</span>. Selections highlight in <span style={{ color: 'var(--text-success)', fontWeight: 600 }}>green</span>. Low-margins highlight in <span style={{ color: 'var(--text-danger)', fontWeight: 600 }}>red</span>.
+                        </div>
+                      </div>
+
+                      {/* ORDER-LEVEL IMPORTANT NOTES (IMAGE 3 SPREADSHEET STYLE) */}
+                      <div style={{ marginTop: '24px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+                        <div style={{ background: '#3b82f6', color: '#ffffff', padding: '9px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800, fontSize: '13px', letterSpacing: '0.4px' }}>
+                            <span>NOTES:</span>
+                            <span style={{ fontWeight: 500, fontSize: '12px', opacity: 0.95 }}>Please use this space to leave important notes :)</span>
+                          </div>
+                          {orderNotes && (
+                            <span style={{ fontSize: '10px', fontWeight: 700, background: 'rgba(255,255,255,0.25)', padding: '2px 8px', borderRadius: '4px' }}>
+                              Notes Attached
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ padding: '14px 16px' }}>
+                          <textarea
+                            className="form-control"
+                            rows={5}
+                            placeholder="Please use this space to leave important notes for the order (e.g. The 13 drivers are meant for Kenzo's inside Owners Villa and Hoseki. They were originally meant to be 1-10V Dim, not DALI. We are not charging the client)..."
+                            value={orderNotes}
+                            onChange={e => {
+                              setOrderNotes(e.target.value);
+                              setHasUnsavedChanges(true);
+                            }}
+                            style={{
+                              width: '100%',
+                              fontSize: '12.5px',
+                              lineHeight: '1.6',
+                              padding: '10px 12px',
+                              background: 'var(--bg-secondary)',
+                              border: '1px solid var(--border)',
+                              borderRadius: '6px',
+                              color: 'var(--text-primary)',
+                              resize: 'vertical',
+                              minHeight: '100px',
+                              fontFamily: 'inherit'
+                            }}
+                          />
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                            <span>Order notes are shared across Takeoff and Sales Tracker. Click 'Save & Update' above to commit changes.</span>
+                            <span>{orderNotes.length} characters</span>
+                          </div>
                         </div>
                       </div>
                     </>
@@ -7620,6 +7701,100 @@ export default function OrdersPage() {
       )}
 
       {/* ========================================================= */}
+      {/* MODAL: ITEM NOTES VIEWER & EDITOR */}
+      {activeItemNoteModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1300
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '520px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 8px 30px rgba(0,0,0,0.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13.5px', fontWeight: 700 }}>
+                <span>📝 Item Notes</span>
+                <span style={{ fontFamily: 'monospace', color: 'var(--text-info)', fontSize: '12px' }}>[{activeItemNoteModal.code}]</span>
+              </div>
+              <button 
+                type="button" 
+                className="btn btn-ghost" 
+                style={{ padding: '4px' }} 
+                onClick={() => setActiveItemNoteModal(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '8px 12px', borderRadius: '6px' }}>
+                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>Description: </span>
+                {activeItemNoteModal.description || 'No description'}
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                  Specific Item Instructions & Notes
+                </label>
+                <textarea
+                  className="form-control"
+                  rows={4}
+                  autoFocus
+                  placeholder="Leave specific instructions for this fixture (e.g. cut length, custom driver specs, special mounting, client requirements)..."
+                  value={activeItemNoteModal.notes}
+                  onChange={e => setActiveItemNoteModal(prev => ({ ...prev, notes: e.target.value }))}
+                  style={{
+                    width: '100%',
+                    fontSize: '12.5px',
+                    lineHeight: '1.5',
+                    padding: '8px 10px',
+                    background: 'var(--bg-primary)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)'
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+              {activeItemNoteModal.notes ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ color: 'var(--text-danger)', fontSize: '11.5px' }}
+                  onClick={() => {
+                    handleUpdateSpreadsheetCell(activeItemNoteModal.itemId, 'notes', '');
+                    setActiveItemNoteModal(null);
+                  }}
+                >
+                  Clear Note
+                </button>
+              ) : <div />}
+              
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setActiveItemNoteModal(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => {
+                    handleUpdateSpreadsheetCell(activeItemNoteModal.itemId, 'notes', activeItemNoteModal.notes);
+                    setActiveItemNoteModal(null);
+                  }}
+                >
+                  Save Note
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL: IN-ORDER AD-HOC PRODUCT CREATION (BOQ SPREADSHEET) */}
       {/* ========================================================= */}
       {showBoqCreateProductModal && (
