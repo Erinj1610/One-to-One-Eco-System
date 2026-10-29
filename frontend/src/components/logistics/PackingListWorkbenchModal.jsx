@@ -2,17 +2,17 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   X, ClipboardList, Tag, Box, Package, Sparkles, Filter, Printer,
   ChevronDown, Check, ArrowUpDown, ArrowUp, ArrowDown, Split, Link2,
-  CheckCircle2, AlertCircle, RefreshCw, Layers, ChevronRight
+  CheckCircle2, AlertCircle, RefreshCw, Layers, ChevronRight, Plus, Trash2, Unlink
 } from 'lucide-react';
-import AttachAccessoryModal from './AttachAccessoryModal';
 import PackingListLabelPrinterModal from './PackingListLabelPrinterModal';
 import { API_BASE } from '../../api_config';
 
 /**
- * 3-Stage Logistical Packing List Workbench:
- * Stage 1: Pick Sheet (Item & Accessory Organization, Clipboard Worksheet Print)
- * Stage 2: Fitting Labels (Argox Thermal Barcode Label Generation & Printing)
- * Stage 3: Boxing (Box Assignment, Box Manifests & Outer Carton Labels)
+ * 4-Step Logistical Packing List Workbench:
+ * Step 1: Summary & Kits (Consolidated Product Summary & 1-Click Kit Linking — No room noise)
+ * Step 2: Pick Sheet (Auto-Organized by Floor & Room with nested accessories, A4 Clipboard Print)
+ * Step 3: Fitting Labels (Argox Barcode Label Printing)
+ * Step 4: Boxing & Cartons (Box Assignment, Multi-Box Splitting & Outer Carton Labels)
  */
 export default function PackingListWorkbenchModal({
   isOpen,
@@ -27,100 +27,179 @@ export default function PackingListWorkbenchModal({
 }) {
   if (!isOpen) return null;
 
-  // ─── WORKBENCH STAGE STATE ────────────────────────────────────────────────
-  // Stage 1: Pick Sheet | Stage 2: Fitting Labels | Stage 3: Boxing
-  const [currentStage, setCurrentStage] = useState(() => {
+  // ─── WORKBENCH STEP STATE (1 to 4) ────────────────────────────────────────
+  const [currentStep, setCurrentStep] = useState(() => {
     if (initialDoc) {
       const st = (initialDoc.status || '').toLowerCase();
-      if (st.includes('box')) return 3;
-      if (st.includes('label')) return 2;
+      if (st.includes('box')) return 4;
+      if (st.includes('label')) return 3;
+      if (st.includes('pick') || st.includes('ready')) return 2;
       return 1;
     }
     return 1;
   });
 
-  const [savedDoc, setSavedDoc] = useState(initialDoc || null);
-  const [isSaving, setIsSaving] = useState(false);
-
-  // ─── STAGE 1: PICK SHEET & ORDER LINE STATE ───────────────────────────────
+  // Order selection state
   const [plOrderKey, setPlOrderKey] = useState(() => {
     if (initialDoc) return `${initialDoc.projectKey}:::${initialDoc.orderId}`;
-    return preselectedKey || '';
+    if (preselectedKey) return preselectedKey;
+    return '';
   });
   const [plOrderSearchQuery, setPlOrderSearchQuery] = useState('');
   const [plOrderDropdownOpen, setPlOrderDropdownOpen] = useState(false);
   const [plNotes, setPlNotes] = useState(initialDoc?.notes || '');
-  const [plRows, setPlRows] = useState([]);
-  const [isLoadingPlItems, setIsLoadingPlItems] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedDoc, setSavedDoc] = useState(initialDoc || null);
 
-  // Filters & Sorting in Stage 1
+  // Raw BOQ line items (original items across all rooms)
+  const [rawItems, setRawItems] = useState([]);
+  const [isLoadingItems, setIsLoadingItems] = useState(false);
+
+  // Step 1: Summary Model Kits state
+  // Array of { modelKey, plan_code, one_one_code, supplier_code, description, total_ordered, is_accessory, attachedAccessories: [{ accessoryKey, ratio, name }] }
+  const [summaryModels, setSummaryModels] = useState([]);
+  const [summarySearchQuery, setSummarySearchQuery] = useState('');
+  const [attachingToModelKey, setAttachingToModelKey] = useState(null); // modelKey being manually attached to
+  const [attachSelectedAccKey, setAttachSelectedAccKey] = useState('');
+  const [attachRatioInput, setAttachRatioInput] = useState(1);
+
+  // Step 2 & 4: Exploded Room Pick Sheet rows
+  const [plRows, setPlRows] = useState([]);
   const [plFilterArea, setPlFilterArea] = useState('ALL');
-  const [plSortField, setPlSortField] = useState('default');
-  const [plSortDirection, setPlSortDirection] = useState('asc');
   const [plSelectedRowKeys, setPlSelectedRowKeys] = useState({});
-  const [attachModalTargetRow, setAttachModalTargetRow] = useState(null);
   const [draggedRowKey, setDraggedRowKey] = useState(null);
 
-  // ─── STAGE 3: BOXING STATE ────────────────────────────────────────────────
+  // Step 4: Boxing state
   const [plAvailableBoxes, setPlAvailableBoxes] = useState(['Box 1', 'Box 2', 'Box 3']);
   const [plActiveBox, setPlActiveBox] = useState('Box 1');
   const [showOuterBoxLabelModal, setShowOuterBoxLabelModal] = useState(false);
 
-  // ─── RESOLVE CURRENT PROJECT & ORDER OBJECTS ──────────────────────────────
+  // Resolve active Project & Order metadata
+  const [activeProjectKey, activeOrderId] = (plOrderKey || '').split(':::');
+  const activeProjectObj = projects[activeProjectKey] || (savedDoc ? { name: savedDoc.projectName, client: savedDoc.projectClient } : null);
   const activeOrderObj = useMemo(() => {
-    if (!plOrderKey) return savedDoc?.orderObj || null;
-    const [pKey, oId] = plOrderKey.split(':::');
-    return allOrders.find(o => o.projectKey === pKey && String(o.id) === String(oId)) || savedDoc?.orderObj || null;
-  }, [plOrderKey, allOrders, savedDoc]);
+    if (!activeOrderId) return null;
+    return allOrders.find(o => String(o.id) === String(activeOrderId) && o.projectKey === activeProjectKey) || null;
+  }, [allOrders, activeOrderId, activeProjectKey]);
 
-  const activeProjectObj = useMemo(() => {
-    if (!plOrderKey) return projects[savedDoc?.projectKey] || null;
-    const [pKey] = plOrderKey.split(':::');
-    return projects[pKey] || { name: activeOrderObj?.projectName || savedDoc?.projectName || pKey, client: activeOrderObj?.projectClient || savedDoc?.projectClient || '' };
-  }, [plOrderKey, projects, activeOrderObj, savedDoc]);
-
-  // Filtered orders list for dropdown selector
+  // Filtered orders list for dropdown
   const filteredOrdersList = useMemo(() => {
-    if (!plOrderSearchQuery.trim()) return allOrders;
+    if (!plOrderSearchQuery.trim()) return allOrders.slice(0, 50);
     const q = plOrderSearchQuery.toLowerCase();
-    return allOrders.filter(o =>
-      (o.id && String(o.id).toLowerCase().includes(q)) ||
-      (o.quote_name && o.quote_name.toLowerCase().includes(q)) ||
-      (o.po_number && o.po_number.toLowerCase().includes(q)) ||
-      (o.projectName && o.projectName.toLowerCase().includes(q)) ||
-      (o.projectClient && o.projectClient.toLowerCase().includes(q))
-    );
+    return allOrders.filter(o => {
+      const qn = (o.quote_name || '').toLowerCase();
+      const oid = String(o.id).toLowerCase();
+      const pn = (o.projectName || '').toLowerCase();
+      const pc = (o.projectClient || '').toLowerCase();
+      return qn.includes(q) || oid.includes(q) || pn.includes(q) || pc.includes(q);
+    }).slice(0, 50);
   }, [allOrders, plOrderSearchQuery]);
 
-  // ─── LOAD ORDER ITEMS OR INITIAL SAVED ITEMS ──────────────────────────────
+  // Helper to detect if an item is likely an accessory/lamp/driver
+  const checkIsAccessory = (description = '', planCode = '') => {
+    const desc = (description || '').toLowerCase();
+    const pc = (planCode || '').toLowerCase();
+    if (pc === 'spacer') return false;
+    return (
+      desc.includes('lamp') ||
+      desc.includes('gu10') ||
+      desc.includes('driver') ||
+      desc.includes('power supply') ||
+      desc.includes('psu') ||
+      desc.includes('lampholder') ||
+      desc.includes('conversion kit') ||
+      desc.includes('bracket') ||
+      desc.includes('accessory') ||
+      desc.includes('connector') ||
+      desc.includes('profile') ||
+      desc.includes('diffuser') ||
+      desc.includes('cable') ||
+      desc.includes('bezel')
+    );
+  };
+
+  // Helper to generate unique model key
+  const getModelKey = (item) => {
+    const plan = (item.plan_code || '').trim();
+    const code = (item.supplier_code || item.one_one_code || '').trim();
+    const desc = (item.description || '').trim();
+    return `${plan}:::${code}:::${desc}`;
+  };
+
+  // ─── BUILD SUMMARY MODELS FROM RAW BOQ ITEMS ──────────────────────────────
+  const buildSummaryModelsFromItems = (itemsList) => {
+    const map = {};
+    itemsList.forEach(it => {
+      const key = getModelKey(it);
+      const isAcc = it.is_accessory || checkIsAccessory(it.description, it.plan_code);
+      if (!map[key]) {
+        map[key] = {
+          modelKey: key,
+          plan_code: it.plan_code || '',
+          one_one_code: it.one_one_code || '',
+          supplier_code: it.supplier_code || '',
+          description: it.description || '',
+          total_ordered: 0,
+          is_accessory: isAcc,
+          room_instances: [],
+          attachedAccessories: [],
+        };
+      }
+      map[key].total_ordered += Number(it.qty_ordered || it.qty_packed || 0);
+      map[key].room_instances.push(it);
+    });
+
+    const models = Object.values(map);
+
+    // Run auto-pairing heuristic on initial load
+    const fittings = models.filter(m => !m.is_accessory);
+    const accessories = models.filter(m => m.is_accessory);
+
+    fittings.forEach(f => {
+      accessories.forEach(a => {
+        // If they share the exact same plan_code (e.g. A1)
+        if (f.plan_code && a.plan_code && f.plan_code.trim().toUpperCase() === a.plan_code.trim().toUpperCase()) {
+          const ratio = f.total_ordered > 0 ? Math.max(1, Math.round(a.total_ordered / f.total_ordered)) : 1;
+          if (!f.attachedAccessories.some(att => att.accessoryKey === a.modelKey)) {
+            f.attachedAccessories.push({
+              accessoryKey: a.modelKey,
+              ratio: ratio,
+              name: a.description || a.supplier_code,
+              plan_code: a.plan_code,
+            });
+          }
+        }
+      });
+    });
+
+    return models;
+  };
+
+  // ─── LOAD RAW ORDER ITEMS ──────────────────────────────────────────────────
   const loadOrderItems = async (compositeKey, existingPlDoc = null) => {
     setPlOrderKey(compositeKey);
     setPlOrderDropdownOpen(false);
     setPlFilterArea('ALL');
-    setPlSortField('default');
-    setPlSortDirection('asc');
     setPlSelectedRowKeys({});
 
     if (!compositeKey) {
+      setRawItems([]);
+      setSummaryModels([]);
       setPlRows([]);
       return;
     }
 
     const [pKey, oId] = compositeKey.split(':::');
 
-    // 1. If editing an existing PL, load its saved rows immediately
+    // 1. If editing existing packing list
     if (existingPlDoc && Array.isArray(existingPlDoc.items) && existingPlDoc.items.length > 0) {
       const boxesSet = new Set(['Box 1', 'Box 2', 'Box 3']);
-      const itemIdCounts = {};
-      const editRows = existingPlDoc.items.map((it, idx) => {
+      const existingRows = existingPlDoc.items.map((it, idx) => {
         const b = it.box_number || it.boxNumber || 'Box 1';
         boxesSet.add(b);
-        const oiId = String(it.order_item_id || `item_${idx}`);
-        itemIdCounts[oiId] = (itemIdCounts[oiId] || 0) + 1;
-        const isSplit = !it.is_accessory && !it.parent_item_id && itemIdCounts[oiId] > 1;
         return {
-          rowKey: `row_${oiId}_${idx}`,
-          order_item_id: oiId,
+          rowKey: `row_${it.order_item_id || idx}_${idx}`,
+          order_item_id: String(it.order_item_id || `item_${idx}`),
           parent_item_id: it.parent_item_id ? String(it.parent_item_id) : null,
           parent_fitting_code: it.parent_fitting_code || null,
           one_one_code: it.one_one_code || '',
@@ -133,22 +212,21 @@ export default function PackingListWorkbenchModal({
           first_fix: it.first_fix || 'No',
           red_list: it.red_list || 'No',
           qty_ordered: Number(it.qty_ordered || it.qtyOrdered || 0),
-          qty_already_packed: 0,
-          remaining_to_pack: Number(it.qty_packed ?? it.qtyDelivered ?? 0),
           qty_packed: Number(it.qty_packed ?? it.qtyDelivered ?? 0),
           box_number: b,
           is_accessory: !!it.is_accessory || !!it.parent_item_id,
-          is_split_child: isSplit,
-          is_hidden_by_attachment: false,
+          is_split_child: false,
         };
       });
       setPlAvailableBoxes(Array.from(boxesSet));
-      setPlRows(editRows);
+      setPlRows(existingRows);
+      setRawItems(existingRows);
+      setSummaryModels(buildSummaryModelsFromItems(existingRows));
       return;
     }
 
-    // 2. Fetch enriched order items from backend
-    setIsLoadingPlItems(true);
+    // 2. Fetch fresh BOQ order items from backend
+    setIsLoadingItems(true);
     try {
       const res = await fetch(
         `${API_BASE}/api/logistics/order-items/${encodeURIComponent(oId)}?project_key=${encodeURIComponent(pKey)}`
@@ -158,48 +236,34 @@ export default function PackingListWorkbenchModal({
         const apiItems = (data.items || []).filter(
           it => (it.plan_code || '').trim() !== 'SPACER' && ((it.description || '').trim() !== '' || it.one_one_code || it.supplier_code)
         );
-        if (apiItems.length > 0) {
-          const allRemainingZero = apiItems.every(it => Number(it.remaining_to_pack || 0) <= 0);
-          const builtRows = apiItems.map((it, idx) => {
-            const oiId = String(it.order_item_id || `item_${idx}`);
-            const ordered = Number(it.qty_ordered || 0);
-            const rem = Number(it.remaining_to_pack ?? ordered);
-            const defaultPackQty = allRemainingZero ? ordered : rem;
-            return {
-              rowKey: `row_${oiId}_${idx}`,
-              order_item_id: oiId,
-              parent_item_id: null,
-              parent_fitting_code: null,
-              one_one_code: it.one_one_code || '',
-              plan_code: it.plan_code || '',
-              supplier_code: it.supplier_code || '',
-              description: it.description || '',
-              floor: it.floor || '',
-              area: it.area || '',
-              material_colour: it.material_colour || '',
-              first_fix: it.first_fix || 'No',
-              red_list: it.red_list || 'No',
-              qty_ordered: ordered,
-              qty_already_packed: Number(it.qty_already_packed || 0),
-              remaining_to_pack: defaultPackQty,
-              qty_packed: defaultPackQty,
-              box_number: 'Box 1',
-              is_accessory: false,
-              is_accessory_candidate: !!it.is_accessory_candidate,
-              is_split_child: false,
-              is_hidden_by_attachment: false,
-            };
-          });
-          setPlRows(builtRows);
-        }
+        const builtRaw = apiItems.map((it, idx) => ({
+          order_item_id: String(it.order_item_id || `item_${idx}`),
+          one_one_code: it.one_one_code || '',
+          plan_code: it.plan_code || '',
+          supplier_code: it.supplier_code || '',
+          description: it.description || '',
+          floor: it.floor || '',
+          area: it.area || '',
+          material_colour: it.material_colour || '',
+          first_fix: it.first_fix || 'No',
+          red_list: it.red_list || 'No',
+          qty_ordered: Number(it.qty_ordered || 0),
+          qty_packed: Number(it.remaining_to_pack ?? it.qty_ordered ?? 0),
+          box_number: 'Box 1',
+          is_accessory: checkIsAccessory(it.description, it.plan_code),
+        }));
+        setRawItems(builtRaw);
+        const initialModels = buildSummaryModelsFromItems(builtRaw);
+        setSummaryModels(initialModels);
       }
     } catch (err) {
-      console.error('Failed to load order items for PL:', err);
+      console.error('Failed to load order items:', err);
     } finally {
-      setIsLoadingPlItems(false);
+      setIsLoadingItems(false);
     }
   };
 
+  // On mount or when props change
   useEffect(() => {
     if (initialDoc) {
       setSavedDoc(initialDoc);
@@ -210,7 +274,201 @@ export default function PackingListWorkbenchModal({
     }
   }, [initialDoc, preselectedKey]);
 
-  // Unique Areas for filtering
+  // ─── STEP 1 ACTIONS: SUMMARY KIT LINKING ──────────────────────────────────
+  const handleAutoPairAccessories = () => {
+    setSummaryModels(prev => {
+      const fittings = prev.filter(m => !m.is_accessory);
+      const accessories = prev.filter(m => m.is_accessory);
+
+      return prev.map(model => {
+        if (model.is_accessory) return model;
+        // Find accessories sharing the same plan code
+        const matchingAccs = accessories.filter(a =>
+          a.plan_code && model.plan_code && a.plan_code.trim().toUpperCase() === model.plan_code.trim().toUpperCase()
+        );
+        const newAttachments = [...model.attachedAccessories];
+        matchingAccs.forEach(acc => {
+          if (!newAttachments.some(att => att.accessoryKey === acc.modelKey)) {
+            const ratio = model.total_ordered > 0 ? Math.max(1, Math.round(acc.total_ordered / model.total_ordered)) : 1;
+            newAttachments.push({
+              accessoryKey: acc.modelKey,
+              ratio: ratio,
+              name: acc.description || acc.supplier_code,
+              plan_code: acc.plan_code,
+            });
+          }
+        });
+        return { ...model, attachedAccessories: newAttachments };
+      });
+    });
+  };
+
+  const handleClearAllPairings = () => {
+    setSummaryModels(prev => prev.map(m => ({ ...m, attachedAccessories: [] })));
+  };
+
+  const handleRemoveAttachmentFromModel = (fittingModelKey, accessoryKey) => {
+    setSummaryModels(prev => prev.map(m => {
+      if (m.modelKey !== fittingModelKey) return m;
+      return {
+        ...m,
+        attachedAccessories: m.attachedAccessories.filter(a => a.accessoryKey !== accessoryKey),
+      };
+    }));
+  };
+
+  const handleConfirmManualAttach = () => {
+    if (!attachingToModelKey || !attachSelectedAccKey) return;
+    const accModel = summaryModels.find(m => m.modelKey === attachSelectedAccKey);
+    if (!accModel) return;
+
+    setSummaryModels(prev => prev.map(m => {
+      if (m.modelKey !== attachingToModelKey) return m;
+      const filtered = m.attachedAccessories.filter(a => a.accessoryKey !== attachSelectedAccKey);
+      return {
+        ...m,
+        attachedAccessories: [
+          ...filtered,
+          {
+            accessoryKey: accModel.modelKey,
+            ratio: Number(attachRatioInput) || 1,
+            name: accModel.description || accModel.supplier_code,
+            plan_code: accModel.plan_code,
+          }
+        ]
+      };
+    }));
+    setAttachingToModelKey(null);
+    setAttachSelectedAccKey('');
+    setAttachRatioInput(1);
+  };
+
+  // ─── EXPLODE SUMMARY KITS INTO AUTO-ORGANIZED ROOM PICK SHEET (STEP 2) ─────
+  const generatePickSheetRows = () => {
+    if (rawItems.length === 0) return;
+
+    // Track which accessories are attached to a parent fitting
+    const attachedAccKeys = new Set();
+    summaryModels.forEach(m => {
+      (m.attachedAccessories || []).forEach(att => attachedAccKeys.add(att.accessoryKey));
+    });
+
+    const explodedRows = [];
+    const fittings = summaryModels.filter(m => !m.is_accessory);
+
+    // 1. Group raw items by Area / Room
+    const roomsMap = {};
+    rawItems.forEach(it => {
+      const room = it.area || 'General';
+      if (!roomsMap[room]) roomsMap[room] = [];
+      roomsMap[room].push(it);
+    });
+
+    // 2. In each room, list primary fittings and nest their attached accessories
+    Object.keys(roomsMap).sort().forEach(roomName => {
+      const itemsInRoom = roomsMap[roomName];
+
+      itemsInRoom.forEach(it => {
+        const itModelKey = getModelKey(it);
+        const modelDef = summaryModels.find(m => m.modelKey === itModelKey);
+        const isAttachedAcc = attachedAccKeys.has(itModelKey);
+
+        // If this item is an attached accessory in its raw position, skip its standalone line
+        if (isAttachedAcc) return;
+
+        // Parent fitting row
+        const parentRowKey = `row_${it.order_item_id}_${roomName}_${Math.random().toString(36).slice(2, 6)}`;
+        explodedRows.push({
+          rowKey: parentRowKey,
+          order_item_id: it.order_item_id,
+          parent_item_id: null,
+          parent_fitting_code: null,
+          one_one_code: it.one_one_code || '',
+          plan_code: it.plan_code || '',
+          supplier_code: it.supplier_code || '',
+          description: it.description || '',
+          floor: it.floor || '',
+          area: it.area || '',
+          material_colour: it.material_colour || '',
+          first_fix: it.first_fix || 'No',
+          red_list: it.red_list || 'No',
+          qty_ordered: Number(it.qty_ordered || 0),
+          qty_packed: Number(it.qty_packed ?? it.qty_ordered ?? 0),
+          box_number: 'Box 1',
+          is_accessory: false,
+          is_split_child: false,
+        });
+
+        // Nest its attached accessories underneath
+        if (modelDef && Array.isArray(modelDef.attachedAccessories)) {
+          modelDef.attachedAccessories.forEach((att, attIdx) => {
+            const accModel = summaryModels.find(m => m.modelKey === att.accessoryKey);
+            if (!accModel) return;
+            const parentQty = Number(it.qty_ordered || 0);
+            const nestedQty = parentQty * (Number(att.ratio) || 1);
+
+            explodedRows.push({
+              rowKey: `att_${parentRowKey}_${attIdx}_${Math.random().toString(36).slice(2, 6)}`,
+              order_item_id: `acc_${it.order_item_id}_${attIdx}`,
+              parent_item_id: String(it.order_item_id),
+              parent_fitting_code: it.plan_code || it.description || 'Parent Fitting',
+              one_one_code: accModel.one_one_code || '',
+              plan_code: accModel.plan_code || it.plan_code || '',
+              supplier_code: accModel.supplier_code || '',
+              description: accModel.description || '',
+              floor: it.floor || '',
+              area: it.area || '',
+              material_colour: '',
+              first_fix: 'No',
+              red_list: 'No',
+              qty_ordered: nestedQty,
+              qty_packed: nestedQty,
+              box_number: 'Box 1',
+              is_accessory: true,
+              is_split_child: false,
+            });
+          });
+        }
+      });
+    });
+
+    // 3. Add any standalone accessories that were NOT kitted to any fitting
+    rawItems.forEach(it => {
+      const itModelKey = getModelKey(it);
+      if (checkIsAccessory(it.description, it.plan_code) && !attachedAccKeys.has(itModelKey)) {
+        explodedRows.push({
+          rowKey: `unattached_${it.order_item_id}_${Math.random().toString(36).slice(2, 6)}`,
+          order_item_id: it.order_item_id,
+          parent_item_id: null,
+          parent_fitting_code: null,
+          one_one_code: it.one_one_code || '',
+          plan_code: it.plan_code || '',
+          supplier_code: it.supplier_code || '',
+          description: it.description || '',
+          floor: it.floor || '',
+          area: it.area || '',
+          material_colour: it.material_colour || '',
+          first_fix: it.first_fix || 'No',
+          red_list: it.red_list || 'No',
+          qty_ordered: Number(it.qty_ordered || 0),
+          qty_packed: Number(it.qty_packed ?? it.qty_ordered ?? 0),
+          box_number: 'Box 1',
+          is_accessory: true,
+          is_split_child: false,
+        });
+      }
+    });
+
+    setPlRows(explodedRows);
+  };
+
+  // Helper to transition from Step 1 to Step 2
+  const handleProceedToStep2PickSheet = () => {
+    generatePickSheetRows();
+    setCurrentStep(2);
+  };
+
+  // ─── STEP 2 FILTERS & ACTIONS ─────────────────────────────────────────────
   const plUniqueAreas = useMemo(() => {
     const s = new Set();
     plRows.forEach(r => {
@@ -220,399 +478,126 @@ export default function PackingListWorkbenchModal({
     return Array.from(s).sort();
   }, [plRows]);
 
-  // ─── AUTO-NEST ACCESSORIES UNDER MATCHING FITTINGS ────────────────────────
-  const handleAutoNestAccessories = () => {
-    setPlRows(prev => {
-      const accessoryRows = prev.filter(
-        r => !r.is_accessory && (r.is_accessory_candidate || r.description?.toLowerCase().includes('lamp') || r.description?.toLowerCase().includes('driver') || r.description?.toLowerCase().includes('gu10'))
-      );
-
-      if (accessoryRows.length === 0) {
-        alert('No unattached accessory or lamp lines detected to auto-nest.');
-        return prev;
-      }
-
-      let newRows = [...prev];
-      let nestedCount = 0;
-
-      accessoryRows.forEach(acc => {
-        const accPlan = (acc.plan_code || '').trim().toLowerCase();
-        const accDesc = (acc.description || '').toLowerCase();
-
-        // 1. Match by room & plan code
-        let matchingParents = prev.filter(p => {
-          if (p.rowKey === acc.rowKey || p.is_accessory || p.parent_item_id) return false;
-          const pPlan = (p.plan_code || '').trim().toLowerCase();
-          const pArea = (p.area || '').trim().toLowerCase();
-          const accArea = (acc.area || '').trim().toLowerCase();
-          const areaMatches = pArea && accArea && pArea === accArea;
-          const planMatches = accPlan && pPlan && (accPlan === pPlan || accDesc.includes(pPlan));
-          return areaMatches || planMatches;
-        });
-
-        // 2. Fallback: match by Plan Code anywhere
-        if (matchingParents.length === 0 && accPlan) {
-          matchingParents = prev.filter(p => !p.is_accessory && !p.parent_item_id && p.rowKey !== acc.rowKey && (p.plan_code || '').trim().toLowerCase() === accPlan);
-        }
-
-        // 3. Fallback: match lamps to pendants/downlights
-        if (matchingParents.length === 0 && (accDesc.includes('gu10') || accDesc.includes('lamp') || accDesc.includes('bulb'))) {
-          matchingParents = prev.filter(p => !p.is_accessory && !p.parent_item_id && p.rowKey !== acc.rowKey && ((p.description || '').toLowerCase().includes('pendant') || (p.description || '').toLowerCase().includes('downlight') || (p.description || '').toLowerCase().includes('spot')));
-        }
-
-        if (matchingParents.length > 0) {
-          let remainingUnits = Number(acc.qty_packed || acc.remaining_to_pack || acc.qty_ordered || 0);
-          const builtAttachments = [];
-
-          matchingParents.forEach((parent, pIdx) => {
-            if (remainingUnits <= 0) return;
-            const neededQty = Math.min(Number(parent.qty_ordered || 1), remainingUnits);
-            if (neededQty > 0) {
-              builtAttachments.push({
-                rowKey: `auto_att_${acc.order_item_id}_${parent.order_item_id}_${pIdx}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
-                order_item_id: String(acc.order_item_id),
-                parent_item_id: String(parent.order_item_id),
-                parent_fitting_code: `${parent.plan_code ? `[${parent.plan_code}] ` : ''}${parent.one_one_code || parent.supplier_code} (${parent.area || 'Site'})`,
-                one_one_code: acc.one_one_code,
-                plan_code: parent.plan_code || acc.plan_code || '',
-                supplier_code: acc.supplier_code,
-                description: acc.description,
-                floor: parent.floor || acc.floor || '',
-                area: parent.area || acc.area || '',
-                material_colour: acc.material_colour || '',
-                first_fix: acc.first_fix || 'No',
-                red_list: acc.red_list || 'No',
-                qty_ordered: neededQty,
-                qty_packed: neededQty,
-                box_number: parent.box_number || 'Box 1',
-                is_accessory: true,
-                is_split_child: false,
-                is_hidden_by_attachment: false,
-              });
-              remainingUnits -= neededQty;
-              nestedCount++;
-            }
-          });
-
-          if (builtAttachments.length > 0) {
-            newRows = newRows.map(r => (r.rowKey === acc.rowKey ? { ...r, is_hidden_by_attachment: true, qty_packed: 0 } : r));
-            newRows = [...newRows, ...builtAttachments];
-          }
-        }
-      });
-
-      alert(`Auto-nested ${nestedCount} accessory items directly under matching room fittings!`);
-      return newRows;
-    });
-  };
-
-  // ─── ATTACH ACCESSORY HANDLER ─────────────────────────────────────────────
-  const handleConfirmAccessoryAttachments = (accessoryOrderItemId, builtAttachments, unallocatedRemainder) => {
-    setPlRows(prev => {
-      // Remove any previous attachments from this same accessory order_item_id
-      const withoutOld = prev.filter(
-        r => !(r.is_accessory && String(r.order_item_id) === String(accessoryOrderItemId))
-      );
-      // Update the standalone accessory row's packed qty to whatever remains unattached,
-      // and hide the standalone row if 100% of its units are now attached underneath parent fittings
-      const remQty = Math.max(0, Number(unallocatedRemainder) || 0);
-      const updatedMains = withoutOld.map(r => {
-        if (!r.is_accessory && String(r.order_item_id) === String(accessoryOrderItemId)) {
-          return {
-            ...r,
-            qty_packed: remQty,
-            is_hidden_by_attachment: remQty === 0 && builtAttachments.length > 0,
-          };
-        }
-        return r;
-      });
-      return [...updatedMains, ...builtAttachments];
-    });
-    setAttachModalTargetRow(null);
-  };
-
-  // ─── SPLIT ROW HANDLER ────────────────────────────────────────────────────
-  const handleSplitRow = (row) => {
-    const currentPacked = Number(row.qty_packed || 0);
-    if (currentPacked <= 1) {
-      alert('Packed quantity must be at least 2 to split into multiple lines.');
-      return;
-    }
-    const splitQty = Math.floor(currentPacked / 2);
-    const remainingQty = currentPacked - splitQty;
-
-    setPlRows(prev => {
-      const copy = [...prev];
-      const targetIdx = copy.findIndex(r => r.rowKey === row.rowKey);
-      if (targetIdx === -1) return prev;
-
-      copy[targetIdx] = { ...copy[targetIdx], qty_packed: remainingQty };
-      const newChild = {
-        ...copy[targetIdx],
-        rowKey: `split_${row.order_item_id}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
-        qty_packed: splitQty,
-        qty_ordered: splitQty,
-        is_split_child: true,
-      };
-      copy.splice(targetIdx + 1, 0, newChild);
-      return copy;
-    });
-  };
-
-  const handleRemoveSubRow = (rowKey) => {
-    setPlRows(prev => {
-      const target = prev.find(r => r.rowKey === rowKey);
-      if (!target) return prev;
-      const filtered = prev.filter(r => r.rowKey !== rowKey);
-      if (target.is_accessory) {
-        const remainingAtts = filtered.filter(r => r.is_accessory && String(r.order_item_id) === String(target.order_item_id));
-        if (remainingAtts.length === 0) {
-          return filtered.map(r =>
-            String(r.order_item_id) === String(target.order_item_id) && !r.is_accessory
-              ? { ...r, is_hidden_by_attachment: false, qty_packed: Number(r.remaining_to_pack || r.qty_ordered || 0) }
-              : r
-          );
-        }
-      }
-      return filtered;
-    });
-  };
-
-  // ─── DRAG AND DROP REORDERING ─────────────────────────────────────────────
-  const handleDragStart = (e, rowKey) => {
-    setDraggedRowKey(rowKey);
-    e.dataTransfer.setData('text/plain', rowKey);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  };
-  const handleDropOnRow = (e, targetRowKey) => {
-    e.preventDefault();
-    if (!draggedRowKey || draggedRowKey === targetRowKey) return;
-    setPlRows(prev => {
-      const copy = [...prev];
-      const fromIdx = copy.findIndex(r => r.rowKey === draggedRowKey);
-      const toIdx = copy.findIndex(r => r.rowKey === targetRowKey);
-      if (fromIdx === -1 || toIdx === -1) return prev;
-      const [moved] = copy.splice(fromIdx, 1);
-      const targetItem = copy[toIdx];
-      moved.area = targetItem.area;
-      moved.floor = targetItem.floor;
-      copy.splice(toIdx, 0, moved);
-      return copy;
-    });
-    setDraggedRowKey(null);
-  };
-
-  // ─── FILTERED & SORTED ROWS (VISIBLE IN TABLE) ────────────────────────────
   const visiblePlRows = useMemo(() => {
-    const mainRows = plRows.filter(r => !r.parent_item_id && !r.is_hidden_by_attachment);
-    const attachedRows = plRows.filter(r => !!r.parent_item_id);
-
-    let filteredMains = mainRows.filter(r => {
-      if (plFilterArea !== 'ALL') {
-        const rowArea = (r.area || '').trim() || 'General / Unspecified';
-        if (rowArea !== plFilterArea) return false;
-      }
-      return true;
-    });
-
-    if (plSortField && plSortField !== 'default') {
-      filteredMains = [...filteredMains].sort((a, b) => {
-        let valA = '';
-        let valB = '';
-        if (plSortField === 'area') {
-          valA = (a.area || '').toLowerCase();
-          valB = (b.area || '').toLowerCase();
-        } else if (plSortField === 'plan') {
-          valA = (a.plan_code || '').toLowerCase();
-          valB = (b.plan_code || '').toLowerCase();
-        } else if (plSortField === 'one_one') {
-          valA = (a.one_one_code || '').toLowerCase();
-          valB = (b.one_one_code || '').toLowerCase();
-        } else if (plSortField === 'sku') {
-          valA = (a.supplier_code || '').toLowerCase();
-          valB = (b.supplier_code || '').toLowerCase();
-        }
-        if (valA < valB) return plSortDirection === 'asc' ? -1 : 1;
-        if (valA > valB) return plSortDirection === 'asc' ? 1 : -1;
-        return 0;
-      });
+    let rows = [...plRows];
+    if (plFilterArea !== 'ALL') {
+      rows = rows.filter(r => (r.area || '').trim().toLowerCase() === plFilterArea.trim().toLowerCase());
     }
+    return rows;
+  }, [plRows, plFilterArea]);
 
-    const orderedResult = [];
-    filteredMains.forEach(main => {
-      orderedResult.push(main);
-      if (!main.is_split_child) {
-        attachedRows
-          .filter(att => String(att.parent_item_id) === String(main.order_item_id))
-          .forEach(att => orderedResult.push(att));
-      }
-    });
-    return orderedResult;
-  }, [plRows, plFilterArea, plSortField, plSortDirection]);
-
-  // Toggle sort
-  const handleTogglePlSort = (field) => {
-    if (plSortField === field) {
-      if (plSortDirection === 'asc') setPlSortDirection('desc');
-      else { setPlSortField('default'); setPlSortDirection('asc'); }
-    } else {
-      setPlSortField(field);
-      setPlSortDirection('asc');
-    }
+  const handlePackAll = () => {
+    setPlRows(prev => prev.map(r => ({ ...r, qty_packed: Number(r.qty_ordered || 0) })));
   };
 
-  const renderPlSortIcon = (field) => {
-    if (plSortField !== field) {
-      return <ArrowUpDown size={11} style={{ opacity: 0.35, marginLeft: '4px', verticalAlign: 'middle' }} />;
-    }
-    return plSortDirection === 'asc'
-      ? <ArrowUp size={11} style={{ color: 'var(--text-info)', marginLeft: '4px', verticalAlign: 'middle' }} />
-      : <ArrowDown size={11} style={{ color: 'var(--text-info)', marginLeft: '4px', verticalAlign: 'middle' }} />;
+  const handleZeroAll = () => {
+    setPlRows(prev => prev.map(r => ({ ...r, qty_packed: 0 })));
   };
 
-  // ─── PRINT WAREHOUSE PICK SHEET (A4 CLIPBOARD SHEET) ─────────────────────
+  // Print warehouse pick sheet
   const handlePrintWarehouseWorksheet = () => {
-    if (!plOrderKey || plRows.length === 0) {
-      alert('Select an order with items first before printing a warehouse pack sheet.');
-      return;
-    }
-    const [pKey, oId] = plOrderKey.split(':::');
-    const orderTitle = activeOrderObj?.quote_name ? `${activeOrderObj.quote_name} (${activeOrderObj.id})` : (oId || 'Order');
-    const projTitle = activeOrderObj?.projectName || pKey;
-    const clientTitle = activeOrderObj?.projectClient || '';
-
-    const printWindow = window.open('', '_blank');
+    const printWindow = window.open('', '_blank', 'width=950,height=800');
     if (!printWindow) {
-      alert('Please allow popups to open the warehouse pack sheet.');
+      alert('Please allow popups to print the Warehouse Pick Sheet.');
       return;
     }
 
-    const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Warehouse Pick & Pack Sheet - ${orderTitle}</title>
-  <style>
-    @page { size: A4 portrait; margin: 12mm 10mm; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 11px; color: #1e293b; line-height: 1.4; margin: 0; padding: 15px; }
-    .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-end; }
-    .title { font-size: 18px; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; }
-    .meta { font-size: 11px; color: #475569; }
-    .meta strong { color: #0f172a; }
-    .instructions { background: #f1f5f9; border-left: 4px solid #3b82f6; padding: 6px 10px; font-size: 10.5px; margin-bottom: 14px; font-weight: 500; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; page-break-inside: auto; }
-    tr { page-break-inside: avoid; page-break-after: auto; }
-    thead { display: table-header-group; }
-    th { background: #0f172a; color: #ffffff; text-align: left; padding: 6px 8px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; border: 1px solid #0f172a; }
-    td { padding: 6px 8px; border: 1px solid #cbd5e1; font-size: 10.5px; vertical-align: top; }
-    .row-accessory { background: #fdf4ff; }
-    .row-accessory td { color: #6b21a8; }
-    .badge { display: inline-block; padding: 2px 5px; font-size: 9.5px; font-weight: 700; border-radius: 3px; font-family: monospace; }
-    .badge-plan { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
-    .badge-code { background: #f1f5f9; color: #334155; }
-    .box-blank { width: 85px; border: 1.5px dashed #64748b; background: #ffffff; text-align: center; height: 20px; font-weight: 800; }
-    .check-blank { width: 28px; text-align: center; font-size: 14px; }
-    .footer { font-size: 9px; color: #94a3b8; text-align: right; border-top: 1px solid #e2e8f0; padding-top: 6px; margin-top: 20px; }
-    @media print {
-      body { padding: 0; }
-      .no-print { display: none; }
-    }
-  </style>
-</head>
-<body>
-  <div class="no-print" style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 6px;">
-    <span><strong>Tip:</strong> Print on clipboard for warehouse floor picking. Mark Box # by hand as items are packed.</span>
-    <button onclick="window.print()" style="background: #2563eb; color: #ffffff; border: none; padding: 6px 14px; border-radius: 4px; font-weight: 700; cursor: pointer;">Print Pick Sheet</button>
-  </div>
+    const rowsByRoom = {};
+    visiblePlRows.forEach(r => {
+      const room = r.area || 'General / Unspecified';
+      if (!rowsByRoom[room]) rowsByRoom[room] = [];
+      rowsByRoom[room].push(r);
+    });
 
-  <div class="header">
-    <div>
-      <div class="title">Warehouse Pick & Pack Sheet</div>
-      <div class="meta" style="margin-top: 4px;">
-        Project: <strong>${projTitle}</strong> ${clientTitle ? `&bull; Client: <strong>${clientTitle}</strong>` : ''}
-      </div>
-      <div class="meta">
-        Order: <strong>${orderTitle}</strong> &bull; Printed: <strong>${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</strong>
-      </div>
-    </div>
-    <div style="text-align: right;">
-      <div style="font-size: 13px; font-weight: 800; font-family: monospace; border: 1px solid #94a3b8; padding: 4px 8px; border-radius: 4px; display: inline-block;">
-        STAGE 1: PICK SHEET
-      </div>
-      <div style="font-size: 10px; color: #64748b; margin-top: 4px;">Total Items: <strong>${visiblePlRows.length}</strong></div>
-    </div>
-  </div>
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Warehouse Pick Sheet - ${activeOrderObj?.quote_name || activeOrderId || 'Order'}</title>
+        <style>
+          @page { size: A4 portrait; margin: 12mm 10mm; }
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 0; }
+          .header { border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-start; }
+          .title { font-size: 18px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; }
+          .meta { font-size: 11px; color: #444; line-height: 1.4; }
+          .room-section { margin-bottom: 14px; page-break-inside: avoid; }
+          .room-title { font-size: 12px; font-weight: 800; background: #e2e8f0; padding: 4px 8px; border-radius: 4px; border-left: 4px solid #0f172a; margin-bottom: 6px; text-transform: uppercase; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+          th { border-bottom: 1.5px solid #333; font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 4px 6px; text-align: left; }
+          td { border-bottom: 1px solid #e2e8f0; padding: 5px 6px; font-size: 10.5px; vertical-align: middle; }
+          .acc-row { background: #f8fafc; color: #475569; }
+          .acc-indent { padding-left: 14px; }
+          .chk-box { width: 14px; height: 14px; border: 1.5px solid #111; display: inline-block; vertical-align: middle; border-radius: 2px; }
+          .code-badge { font-weight: 800; font-family: monospace; }
+          .signoff { margin-top: 20px; border-top: 1px dashed #94a3b8; padding-top: 10px; display: flex; justify-content: space-between; font-size: 11px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <div class="title">Warehouse Pick & Pack Sheet</div>
+            <div class="meta">
+              <strong>Project:</strong> ${activeProjectObj?.name || '—'} &bull;
+              <strong>Client:</strong> ${activeProjectObj?.client || '—'}<br/>
+              <strong>Order / BOQ:</strong> ${activeOrderObj?.quote_name || activeOrderId || '—'}
+            </div>
+          </div>
+          <div style="text-align: right;" class="meta">
+            <strong>Date:</strong> ${new Date().toLocaleDateString('en-GB')}<br/>
+            <strong>Status:</strong> Floor Picking Ready
+          </div>
+        </div>
 
-  <div class="instructions">
-    <strong>INSTRUCTIONS FOR WAREHOUSE PACKERS:</strong>
-    1. Verify each fitting and nested accessory. Check [ ✓ ] when picked from shelf.<br/>
-    2. Write the designated Box # (e.g. Box 1, Box 2) into the dashed box column.<br/>
-    3. Return this sheet to enter box numbers into the system and print thermal carton labels.
-  </div>
+        ${Object.keys(rowsByRoom).map(room => `
+          <div class="room-section">
+            <div class="room-title">Room: ${room}</div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 25px; text-align: center;">Pick</th>
+                  <th style="width: 80px;">Plan Code</th>
+                  <th style="width: 100px;">SKU / Code</th>
+                  <th>Description & Specification</th>
+                  <th style="width: 50px; text-align: center;">Ord</th>
+                  <th style="width: 50px; text-align: center;">Picked</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsByRoom[room].map(r => `
+                  <tr class="${r.is_accessory ? 'acc-row' : ''}">
+                    <td style="text-align: center;"><div class="chk-box"></div></td>
+                    <td class="code-badge">${r.plan_code || '—'}</td>
+                    <td>${r.supplier_code || r.one_one_code || '—'}</td>
+                    <td class="${r.is_accessory ? 'acc-indent' : ''}">
+                      ${r.is_accessory ? '↳ [Attached] ' : ''}${r.description}
+                    </td>
+                    <td style="text-align: center; font-weight: 700;">${r.qty_ordered}</td>
+                    <td style="text-align: center;">______</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `).join('')}
 
-  <table>
-    <thead>
-      <tr>
-        <th class="check-blank">✓</th>
-        <th style="width: 110px;">1-to-1 Code</th>
-        <th style="width: 75px; text-align: center;">Plan Code</th>
-        <th style="width: 105px;">SKU / Supplier</th>
-        <th>Description & Specification</th>
-        <th style="width: 130px;">Floor & Room</th>
-        <th style="width: 55px; text-align: center;">Qty</th>
-        <th class="box-blank">Box # (Write)</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${visiblePlRows.map(r => {
-        const isAcc = r.is_accessory || r.parent_item_id;
-        return `
-          <tr class="${isAcc ? 'row-accessory' : ''}">
-            <td class="check-blank" style="text-align: center; vertical-align: middle;">[ &nbsp; ]</td>
-            <td style="font-family: monospace; font-weight: 700;">
-              ${isAcc ? '&nbsp;&nbsp;↳ ' : ''}${r.one_one_code || '—'}
-            </td>
-            <td style="text-align: center;">
-              ${r.plan_code ? `<span class="badge badge-plan">${r.plan_code}</span>` : '—'}
-            </td>
-            <td style="font-family: monospace; font-size: 10px; color: #475569;">
-              ${r.supplier_code || '—'}
-            </td>
-            <td>
-              <div style="font-weight: ${isAcc ? '600' : '700'};">${r.description || ''}</div>
-              ${r.parent_fitting_code ? `<div style="font-size: 9px; color: #7e22ce;">Attached to fitting: ${r.parent_fitting_code}</div>` : ''}
-              ${r.material_colour ? `<span style="font-size: 9.5px; color: #64748b;">Col: ${r.material_colour}</span>` : ''}
-            </td>
-            <td>
-              <strong>${r.area || 'General / Unspecified'}</strong>
-              ${r.floor ? `<div style="font-size: 9px; color: #64748b;">${r.floor}</div>` : ''}
-            </td>
-            <td style="text-align: center; font-size: 13px; font-weight: 800;">
-              ${r.qty_packed || r.qty_ordered || 0}
-            </td>
-            <td class="box-blank"></td>
-          </tr>
-        `;
-      }).join('')}
-    </tbody>
-  </table>
+        <div class="signoff">
+          <div>Picked By: ___________________________ &nbsp;&nbsp; Date: _____________</div>
+          <div>Checked By: ___________________________ &nbsp;&nbsp; Date: _____________</div>
+        </div>
 
-  <div class="footer">
-    One to One Logistics Pick & Pack Engine &bull; Document Reference: ${savedDoc?.id || 'NEW'}
-  </div>
-</body>
-</html>`;
+        <script>
+          window.onload = function() { window.print(); };
+        </script>
+      </body>
+      </html>
+    `;
 
     printWindow.document.open();
     printWindow.document.write(htmlContent);
     printWindow.document.close();
   };
 
-  // ─── SAVE PACKING LIST (USED IN STAGE 1 & STAGE 3) ─────────────────────────
+  // ─── SAVE PACKING LIST TO BACKEND ─────────────────────────────────────────
   const savePackingListToBackend = async (targetStageName = 'Pick Sheet Ready') => {
     if (!plOrderKey) {
       alert('Please select a destination order first.');
@@ -692,35 +677,31 @@ export default function PackingListWorkbenchModal({
     }
   };
 
-  // ─── STAGE 1 TRANSITIONS ──────────────────────────────────────────────────
-  const handleStage1SaveAndProceed = async () => {
+  // Step 2 Proceed
+  const handleStep2SaveAndProceed = async () => {
     const doc = await savePackingListToBackend('Pick Sheet Ready');
-    if (doc) {
-      setCurrentStage(2); // Advance to Stage 2: Fitting Labels
-    }
+    if (doc) setCurrentStep(3); // Advance to Step 3: Fitting Labels
   };
 
-  // ─── STAGE 2 TRANSITIONS ──────────────────────────────────────────────────
-  const handleStage2AdvanceToBoxing = async () => {
-    if (!savedDoc?.id) {
-      setCurrentStage(3);
-      return;
+  // Step 3 Proceed
+  const handleStep3AdvanceToBoxing = async () => {
+    if (savedDoc?.id) {
+      try {
+        await fetch(`${API_BASE}/api/logistics/packing-list/${encodeURIComponent(savedDoc.id)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'Labels Printed' }),
+        });
+        setSavedDoc(prev => (prev ? { ...prev, status: 'Labels Printed' } : prev));
+        if (onSaved) onSaved({ ...savedDoc, status: 'Labels Printed' });
+      } catch (e) {
+        console.warn('Could not update stage status:', e);
+      }
     }
-    try {
-      await fetch(`${API_BASE}/api/logistics/packing-list/${encodeURIComponent(savedDoc.id)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'Labels Printed' }),
-      });
-      setSavedDoc(prev => (prev ? { ...prev, status: 'Labels Printed' } : prev));
-      if (onSaved) onSaved({ ...savedDoc, status: 'Labels Printed' });
-    } catch (e) {
-      console.warn('Could not update stage status:', e);
-    }
-    setCurrentStage(3); // Advance to Stage 3: Boxing
+    setCurrentStep(4); // Advance to Step 4: Boxing
   };
 
-  // ─── STAGE 3: BOXING ACTIONS ──────────────────────────────────────────────
+  // ─── STEP 4 ACTIONS: BOXING & MULTI-BOX SPLITTING ─────────────────────────
   const handleAddBox = () => {
     const nextNum = plAvailableBoxes.length + 1;
     const name = `Box ${nextNum}`;
@@ -731,7 +712,7 @@ export default function PackingListWorkbenchModal({
   const handleAssignSelectedToActiveBox = () => {
     const selectedKeys = Object.keys(plSelectedRowKeys).filter(k => plSelectedRowKeys[k]);
     if (selectedKeys.length === 0) {
-      alert('Check at least one item in the table to assign to ' + plActiveBox);
+      alert(`Check at least one item in the table to assign to ${plActiveBox}`);
       return;
     }
     setPlRows(prev =>
@@ -740,7 +721,41 @@ export default function PackingListWorkbenchModal({
     setPlSelectedRowKeys({});
   };
 
-  // Summary counts per box
+  // Split quantity across multiple boxes in Step 4
+  const handleSplitBoxRow = (row) => {
+    const currentPacked = Number(row.qty_packed || 0);
+    if (currentPacked <= 1) {
+      alert('Packed quantity must be at least 2 to split into another box.');
+      return;
+    }
+    const splitQty = Math.floor(currentPacked / 2);
+    const remQty = currentPacked - splitQty;
+
+    setPlRows(prev => {
+      const copy = [...prev];
+      const targetIdx = copy.findIndex(r => r.rowKey === row.rowKey);
+      if (targetIdx === -1) return prev;
+
+      copy[targetIdx] = { ...copy[targetIdx], qty_packed: remQty };
+      const nextBoxNum = plAvailableBoxes.length + 1;
+      const nextBoxName = `Box ${nextBoxNum}`;
+      if (!plAvailableBoxes.includes(nextBoxName)) {
+        setPlAvailableBoxes(b => [...b, nextBoxName]);
+      }
+
+      const newChild = {
+        ...copy[targetIdx],
+        rowKey: `split_box_${row.order_item_id}_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+        qty_packed: splitQty,
+        qty_ordered: splitQty,
+        box_number: nextBoxName,
+        is_split_child: true,
+      };
+      copy.splice(targetIdx + 1, 0, newChild);
+      return copy;
+    });
+  };
+
   const boxSummaryCounts = useMemo(() => {
     const map = {};
     plRows.forEach(r => {
@@ -758,13 +773,24 @@ export default function PackingListWorkbenchModal({
     }
   };
 
+  // Filtered summary models for search in Step 1
+  const visibleSummaryModels = useMemo(() => {
+    if (!summarySearchQuery.trim()) return summaryModels;
+    const q = summarySearchQuery.toLowerCase();
+    return summaryModels.filter(m =>
+      (m.plan_code || '').toLowerCase().includes(q) ||
+      (m.supplier_code || '').toLowerCase().includes(q) ||
+      (m.description || '').toLowerCase().includes(q)
+    );
+  }, [summaryModels, summarySearchQuery]);
+
   return (
     <div
       style={{
         position: 'fixed',
         inset: 0,
         zIndex: 1200,
-        background: 'rgba(0,0,0,0.82)',
+        background: 'rgba(0,0,0,0.84)',
         backdropFilter: 'blur(5px)',
         display: 'flex',
         alignItems: 'center',
@@ -780,10 +806,10 @@ export default function PackingListWorkbenchModal({
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border)',
           borderRadius: '14px',
-          width: '96vw',
-          maxWidth: '1480px',
-          height: '94vh',
-          maxHeight: '920px',
+          width: '97vw',
+          maxWidth: '1520px',
+          height: '95vh',
+          maxHeight: '940px',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -791,7 +817,7 @@ export default function PackingListWorkbenchModal({
         }}
         onClick={e => e.stopPropagation()}
       >
-        {/* ─── WORKBENCH HEADER WITH 3-STAGE PIPELINE STEPPER ────────────────── */}
+        {/* ─── WORKBENCH HEADER WITH 4-STEP PIPELINE STEPPER ──────────────────── */}
         <div
           style={{
             padding: '12px 20px',
@@ -810,20 +836,21 @@ export default function PackingListWorkbenchModal({
                 width: '36px',
                 height: '36px',
                 borderRadius: '8px',
-                background: 'rgba(59, 130, 246, 0.15)',
-                color: 'var(--text-info)',
+                background: 'rgba(59, 130, 246, 0.1)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                color: 'var(--text-info)',
+                border: '1px solid rgba(59, 130, 246, 0.25)',
               }}
             >
               <Package size={20} />
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h2 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
-                  {savedDoc?.id || initialDoc?.id || 'NEW PACKING LIST'}
-                </h2>
+                <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                  {initialDoc ? `PACKING LIST — ${initialDoc.id}` : 'NEW PACKING LIST'}
+                </span>
                 <span
                   style={{
                     fontSize: '11px',
@@ -831,21 +858,25 @@ export default function PackingListWorkbenchModal({
                     padding: '2px 8px',
                     borderRadius: '4px',
                     background:
-                      currentStage === 3
+                      currentStep === 4
                         ? 'rgba(16, 185, 129, 0.15)'
-                        : currentStage === 2
+                        : currentStep === 3
+                        ? 'rgba(168, 85, 247, 0.15)'
+                        : currentStep === 2
                         ? 'rgba(59, 130, 246, 0.15)'
                         : 'rgba(245, 158, 11, 0.15)',
                     color:
-                      currentStage === 3
+                      currentStep === 4
                         ? '#10b981'
-                        : currentStage === 2
+                        : currentStep === 3
+                        ? '#a855f7'
+                        : currentStep === 2
                         ? 'var(--text-info)'
                         : '#f59e0b',
                     border: '1px solid currentColor',
                   }}
                 >
-                  Stage {currentStage}: {currentStage === 1 ? 'Pick Sheet' : currentStage === 2 ? 'Labels' : 'Boxing'}
+                  Step {currentStep}: {currentStep === 1 ? 'Summary & Kits' : currentStep === 2 ? 'Pick Sheet' : currentStep === 3 ? 'Labels' : 'Boxing'}
                 </span>
               </div>
               <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
@@ -854,102 +885,133 @@ export default function PackingListWorkbenchModal({
             </div>
           </div>
 
-          {/* Center: 3-Stage Stepper Buttons */}
+          {/* Center: 4-Step Stepper Buttons */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-secondary)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+            {/* Step 1 */}
             <button
               type="button"
               className="btn btn-ghost btn-xs"
               style={{
                 borderRadius: '6px',
-                padding: '6px 14px',
+                padding: '6px 12px',
                 fontSize: '12px',
-                fontWeight: currentStage === 1 ? 800 : 600,
-                background: currentStage === 1 ? 'var(--bg-primary)' : 'transparent',
-                color: currentStage === 1 ? 'var(--text-info)' : 'var(--text-secondary)',
-                border: currentStage === 1 ? '1px solid var(--border)' : '1px solid transparent',
-                boxShadow: currentStage === 1 ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                fontWeight: currentStep === 1 ? 800 : 600,
+                background: currentStep === 1 ? 'var(--bg-primary)' : 'transparent',
+                color: currentStep === 1 ? 'var(--text-info)' : 'var(--text-secondary)',
+                border: currentStep === 1 ? '1px solid var(--border)' : '1px solid transparent',
+                boxShadow: currentStep === 1 ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
               }}
-              onClick={() => setCurrentStage(1)}
+              onClick={() => setCurrentStep(1)}
             >
-              <ClipboardList size={14} /> 1. Pick Sheet
+              <Layers size={14} /> 1. Summary & Kits
             </button>
 
             <ChevronRight size={13} style={{ color: 'var(--text-tertiary)', opacity: 0.6 }} />
 
+            {/* Step 2 */}
             <button
               type="button"
               className="btn btn-ghost btn-xs"
               style={{
                 borderRadius: '6px',
-                padding: '6px 14px',
+                padding: '6px 12px',
                 fontSize: '12px',
-                fontWeight: currentStage === 2 ? 800 : 600,
-                background: currentStage === 2 ? 'var(--bg-primary)' : 'transparent',
-                color: currentStage === 2 ? 'var(--text-info)' : 'var(--text-secondary)',
-                border: currentStage === 2 ? '1px solid var(--border)' : '1px solid transparent',
-                boxShadow: currentStage === 2 ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                fontWeight: currentStep === 2 ? 800 : 600,
+                background: currentStep === 2 ? 'var(--bg-primary)' : 'transparent',
+                color: currentStep === 2 ? 'var(--text-info)' : 'var(--text-secondary)',
+                border: currentStep === 2 ? '1px solid var(--border)' : '1px solid transparent',
+                boxShadow: currentStep === 2 ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+              onClick={() => {
+                if (plRows.length === 0) generatePickSheetRows();
+                setCurrentStep(2);
+              }}
+            >
+              <ClipboardList size={14} /> 2. Pick Sheet
+            </button>
+
+            <ChevronRight size={13} style={{ color: 'var(--text-tertiary)', opacity: 0.6 }} />
+
+            {/* Step 3 */}
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs"
+              style={{
+                borderRadius: '6px',
+                padding: '6px 12px',
+                fontSize: '12px',
+                fontWeight: currentStep === 3 ? 800 : 600,
+                background: currentStep === 3 ? 'var(--bg-primary)' : 'transparent',
+                color: currentStep === 3 ? 'var(--text-info)' : 'var(--text-secondary)',
+                border: currentStep === 3 ? '1px solid var(--border)' : '1px solid transparent',
+                boxShadow: currentStep === 3 ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
               }}
               onClick={() => {
                 if (!savedDoc?.id && plRows.length === 0) {
-                  alert('Please select an order and save your Pick Sheet first before advancing to Labels.');
+                  alert('Please generate and save your Pick Sheet first.');
                   return;
                 }
-                setCurrentStage(2);
+                setCurrentStep(3);
               }}
             >
-              <Tag size={14} /> 2. Fitting Labels
+              <Tag size={14} /> 3. Fitting Labels
             </button>
 
             <ChevronRight size={13} style={{ color: 'var(--text-tertiary)', opacity: 0.6 }} />
 
+            {/* Step 4 */}
             <button
               type="button"
               className="btn btn-ghost btn-xs"
               style={{
                 borderRadius: '6px',
-                padding: '6px 14px',
+                padding: '6px 12px',
                 fontSize: '12px',
-                fontWeight: currentStage === 3 ? 800 : 600,
-                background: currentStage === 3 ? 'var(--bg-primary)' : 'transparent',
-                color: currentStage === 3 ? 'var(--text-info)' : 'var(--text-secondary)',
-                border: currentStage === 3 ? '1px solid var(--border)' : '1px solid transparent',
-                boxShadow: currentStage === 3 ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                fontWeight: currentStep === 4 ? 800 : 600,
+                background: currentStep === 4 ? 'var(--bg-primary)' : 'transparent',
+                color: currentStep === 4 ? '#10b981' : 'var(--text-secondary)',
+                border: currentStep === 4 ? '1px solid var(--border)' : '1px solid transparent',
+                boxShadow: currentStep === 4 ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
               }}
               onClick={() => {
-                if (!savedDoc?.id && plRows.length === 0) {
-                  alert('Please select an order and save your Pick Sheet first before advancing to Boxing.');
-                  return;
-                }
-                setCurrentStage(3);
+                if (plRows.length === 0) generatePickSheetRows();
+                setCurrentStep(4);
               }}
             >
-              <Box size={14} /> 3. Boxing & Carton Labels
+              <Box size={14} /> 4. Boxing & Cartons
             </button>
           </div>
 
           {/* Right: Close */}
           <div>
-            <button onClick={onClose} className="btn btn-ghost btn-sm" title="Close Workbench">
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={onClose}
+              style={{ color: 'var(--text-secondary)' }}
+            >
               <X size={18} />
             </button>
           </div>
         </div>
 
-        {/* ─── STAGE 1 VIEW: PICK SHEET & ITEM ORGANIZATION ─────────────────── */}
-        {currentStage === 1 && (
+        {/* ─── STEP 1 VIEW: PRODUCT SUMMARY & KIT LINKING ─────────────────────── */}
+        {currentStep === 1 && (
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-            {/* Top Toolbar: Order Selector & Pick Actions */}
+            {/* Top Toolbar: Order Selector & Kit Controls */}
             <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {/* Order Dropdown if creating new */}
               {!initialDoc && (
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '4px' }}>
@@ -1006,158 +1068,410 @@ export default function PackingListWorkbenchModal({
                 </div>
               )}
 
-              {/* Action Toolbar: Area Filter, Auto-Nest & Worksheet Print */}
+              {/* Action Toolbar */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                  {/* Filter by Area */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Filter size={12} style={{ color: 'var(--text-info)' }} /> Area:
-                    </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <input
+                    type="text"
+                    placeholder="Search models..."
+                    className="form-control"
+                    style={{ height: '30px', fontSize: '12px', width: '220px', background: 'var(--bg-secondary)' }}
+                    value={summarySearchQuery}
+                    onChange={e => setSummarySearchQuery(e.target.value)}
+                  />
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    {summaryModels.length} unique products on order
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    style={{ fontWeight: 700, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', background: 'linear-gradient(135deg, #3b82f6, #6366f1)' }}
+                    onClick={handleAutoPairAccessories}
+                    title="Automatically pair GU10 lamps, drivers, and conversion kits to matching fittings by Plan Code"
+                  >
+                    <Sparkles size={14} /> ⚡ Auto-Pair Matching Accessories
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ border: '1px solid var(--border)', fontSize: '12px' }}
+                    onClick={handleClearAllPairings}
+                    title="Clear all attached kit rules"
+                  >
+                    Clear Pairings
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Summary Models Table */}
+            <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-primary)' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-primary)', boxShadow: '0 1px 0 var(--border)' }}>
+                  <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 650 }}>
+                    <th style={{ padding: '9px 12px', width: '90px' }}>Role</th>
+                    <th style={{ padding: '9px 10px', width: '90px', textAlign: 'center' }}>Plan Code</th>
+                    <th style={{ padding: '9px 12px', minWidth: '120px' }}>Supplier / SKU</th>
+                    <th style={{ padding: '9px 12px', minWidth: '260px' }}>Description & Model Spec</th>
+                    <th style={{ padding: '9px 10px', width: '100px', textAlign: 'center' }}>Total Order</th>
+                    <th style={{ padding: '9px 12px' }}>Kitted Accessories & Ratios</th>
+                    <th style={{ padding: '9px 12px', width: '140px', textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleSummaryModels.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} style={{ padding: '50px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                        {isLoadingItems ? 'Loading order models...' : 'No products found. Select an order to begin.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    visibleSummaryModels.map(model => {
+                      const isFitting = !model.is_accessory;
+                      const hasAttachments = model.attachedAccessories && model.attachedAccessories.length > 0;
+
+                      return (
+                        <tr
+                          key={model.modelKey}
+                          style={{
+                            borderBottom: '1px solid var(--border)',
+                            background: !isFitting ? 'rgba(168, 85, 247, 0.03)' : 'transparent',
+                          }}
+                        >
+                          {/* Role Badge */}
+                          <td style={{ padding: '10px 12px' }}>
+                            <span
+                              style={{
+                                fontSize: '10.5px',
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                background: isFitting ? 'rgba(59, 130, 246, 0.12)' : 'rgba(168, 85, 247, 0.12)',
+                                color: isFitting ? 'var(--text-info)' : '#a855f7',
+                                border: '1px solid currentColor',
+                              }}
+                            >
+                              {isFitting ? 'Fitting' : 'Accessory'}
+                            </span>
+                          </td>
+
+                          {/* Plan Code */}
+                          <td style={{ padding: '10px', textAlign: 'center' }}>
+                            {model.plan_code ? (
+                              <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, fontFamily: 'monospace', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                                {model.plan_code}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+                            )}
+                          </td>
+
+                          {/* Supplier / SKU */}
+                          <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                            {model.supplier_code || model.one_one_code || '—'}
+                          </td>
+
+                          {/* Description */}
+                          <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {model.description}
+                          </td>
+
+                          {/* Total Order */}
+                          <td style={{ padding: '10px', textAlign: 'center', fontWeight: 800, fontSize: '14px', color: 'var(--text-primary)' }}>
+                            {model.total_ordered}
+                          </td>
+
+                          {/* Kitted Accessories Column */}
+                          <td style={{ padding: '10px 12px' }}>
+                            {isFitting ? (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                                {hasAttachments ? (
+                                  model.attachedAccessories.map(att => (
+                                    <span
+                                      key={att.accessoryKey}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        background: 'rgba(168, 85, 247, 0.12)',
+                                        color: '#a855f7',
+                                        border: '1px solid rgba(168, 85, 247, 0.35)',
+                                        borderRadius: '6px',
+                                        padding: '3px 8px',
+                                        fontSize: '11.5px',
+                                        fontWeight: 650,
+                                      }}
+                                    >
+                                      <strong style={{ background: '#a855f7', color: '#fff', borderRadius: '3px', padding: '1px 4px', fontSize: '10.5px' }}>
+                                        {att.ratio}x
+                                      </strong>
+                                      <span>{att.name}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveAttachmentFromModel(model.modelKey, att.accessoryKey)}
+                                        style={{ background: 'transparent', border: 'none', color: '#a855f7', cursor: 'pointer', padding: '0 2px' }}
+                                        title="Remove kit attachment"
+                                      >
+                                        <X size={12} />
+                                      </button>
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span style={{ fontSize: '11.5px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                                    No accessories attached (standalone)
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                                {(() => {
+                                  const parentFitting = summaryModels.find(m =>
+                                    !m.is_accessory && (m.attachedAccessories || []).some(att => att.accessoryKey === model.modelKey)
+                                  );
+                                  if (parentFitting) {
+                                    const match = parentFitting.attachedAccessories.find(att => att.accessoryKey === model.modelKey);
+                                    return (
+                                      <span style={{ color: '#a855f7', fontWeight: 650 }}>
+                                        ↳ Linked to [{parentFitting.plan_code || 'Fitting'}] {parentFitting.description} ({match?.ratio}x per fitting)
+                                      </span>
+                                    );
+                                  }
+                                  return <span style={{ color: 'var(--text-tertiary)' }}>Unattached (will be picked as standalone item)</span>;
+                                })()}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Actions Column */}
+                          <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                            {isFitting && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs"
+                                style={{ border: '1px solid rgba(168, 85, 247, 0.4)', color: '#a855f7', fontSize: '11px', padding: '3px 8px' }}
+                                onClick={() => {
+                                  setAttachingToModelKey(model.modelKey);
+                                  const candidateAccs = summaryModels.filter(m => m.is_accessory && !model.attachedAccessories?.some(att => att.accessoryKey === m.modelKey));
+                                  if (candidateAccs.length > 0) setAttachSelectedAccKey(candidateAccs[0].modelKey);
+                                }}
+                              >
+                                <Plus size={12} /> Attach Accessory
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Manual Attach Modal / Popover */}
+            {attachingToModelKey && (
+              <div
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  zIndex: 1300,
+                  background: 'rgba(0,0,0,0.65)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px',
+                }}
+                onClick={() => setAttachingToModelKey(null)}
+              >
+                <div
+                  style={{
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '12px',
+                    width: '460px',
+                    padding: '20px',
+                    boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+                  }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    Attach Accessory to Fitting Model
+                  </h4>
+                  <div style={{ marginBottom: '12px' }}>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                      Select Accessory / Lamp / Driver:
+                    </label>
                     <select
                       className="form-control"
-                      style={{ height: '30px', fontSize: '12px', fontWeight: 650, width: '200px', background: 'var(--bg-secondary)' }}
-                      value={plFilterArea}
-                      onChange={e => setPlFilterArea(e.target.value)}
+                      style={{ width: '100%', height: '34px', fontSize: '12px', background: 'var(--bg-primary)' }}
+                      value={attachSelectedAccKey}
+                      onChange={e => setAttachSelectedAccKey(e.target.value)}
                     >
-                      <option value="ALL">All Rooms ({plRows.filter(r => !r.parent_item_id && !r.is_hidden_by_attachment).length})</option>
-                      {plUniqueAreas.map(a => (
-                        <option key={a} value={a}>{a}</option>
+                      {summaryModels.filter(m => m.is_accessory).map(acc => (
+                        <option key={acc.modelKey} value={acc.modelKey}>
+                          {acc.plan_code ? `[${acc.plan_code}] ` : ''}{acc.description} ({acc.total_ordered} pcs available)
+                        </option>
                       ))}
                     </select>
                   </div>
 
-                  {/* 1-Click Auto-Nest */}
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-xs"
-                    style={{ border: '1px solid rgba(168, 85, 247, 0.4)', background: 'rgba(168, 85, 247, 0.08)', color: '#a855f7', fontSize: '11.5px', fontWeight: 700, padding: '4px 10px' }}
-                    title="Automatically group & nest accessories/lamps under matching fittings"
-                    onClick={handleAutoNestAccessories}
-                  >
-                    <Sparkles size={13} /> Auto-Nest Accessories
-                  </button>
+                  <div style={{ marginBottom: '18px' }}>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                      Quantity per Fitting (Ratio):
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      className="form-control"
+                      style={{ width: '100px', height: '34px', fontSize: '13px', fontWeight: 700, textAlign: 'center', background: 'var(--bg-primary)' }}
+                      value={attachRatioInput}
+                      onChange={e => setAttachRatioInput(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    />
+                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginLeft: '8px' }}>
+                      e.g. 2 lamps per 1 pendant
+                    </span>
+                  </div>
 
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => setAttachingToModelKey(null)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      style={{ fontWeight: 700 }}
+                      onClick={handleConfirmManualAttach}
+                    >
+                      Attach to Model ✓
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Step 1 Footer */}
+            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Tip: Attach accessories here once at the summary level, and the system automatically calculates rooms!
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                style={{ fontWeight: 800, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                onClick={handleProceedToStep2PickSheet}
+                disabled={summaryModels.length === 0}
+              >
+                Generate & Proceed to Step 2: Auto-Organized Pick Sheet →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ─── STEP 2 VIEW: AUTO-ORGANIZED ROOM PICK SHEET ─────────────────────── */}
+        {currentStep === 2 && (
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+            {/* Top Toolbar: Area Filter & Worksheet Print */}
+            <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                {/* Filter by Area */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Filter size={12} style={{ color: 'var(--text-info)' }} /> Area:
+                  </span>
+                  <select
+                    className="form-control"
+                    style={{ height: '30px', fontSize: '12px', fontWeight: 650, width: '200px', background: 'var(--bg-secondary)' }}
+                    value={plFilterArea}
+                    onChange={e => setPlFilterArea(e.target.value)}
+                  >
+                    <option value="ALL">All Rooms ({plRows.length} items)</option>
+                    {plUniqueAreas.map(a => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', gap: '6px' }}>
                   <button
                     type="button"
                     className="btn btn-ghost btn-xs"
-                    style={{ border: '1px solid var(--border)', fontSize: '11px', padding: '4px 8px' }}
-                    onClick={() =>
-                      setPlRows(prev =>
-                        prev
-                          .filter(r => !r.is_split_child && !r.is_accessory)
-                          .map(r => ({ ...r, qty_packed: Number(r.remaining_to_pack || r.qty_ordered || 0), is_hidden_by_attachment: false }))
-                      )
-                    }
+                    style={{ border: '1px solid var(--border)', fontSize: '11px' }}
+                    onClick={handlePackAll}
                   >
                     Pack All
                   </button>
                   <button
                     type="button"
                     className="btn btn-ghost btn-xs"
-                    style={{ border: '1px solid var(--border)', fontSize: '11px', padding: '4px 8px' }}
-                    onClick={() => setPlRows(prev => prev.map(r => ({ ...r, qty_packed: 0 })))}
+                    style={{ border: '1px solid var(--border)', fontSize: '11px' }}
+                    onClick={handleZeroAll}
                   >
                     Zero All
                   </button>
                 </div>
 
-                {/* 1-Click Print Warehouse Pick Sheet */}
+                <span style={{ fontSize: '11.5px', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.25)', fontWeight: 650 }}>
+                  ✓ Auto-Organized: Accessories are proportionally distributed across rooms
+                </span>
+              </div>
+
+              {/* Print Pick Sheet Button */}
+              <div>
                 <button
                   type="button"
-                  onClick={handlePrintWarehouseWorksheet}
                   className="btn btn-ghost btn-sm"
-                  style={{ border: '1px solid var(--border)', background: 'var(--bg-secondary)', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  title="Print an A4 clipboard pick-and-pack worksheet ordered by Floor & Room"
+                  style={{ border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 650 }}
+                  onClick={handlePrintWarehouseWorksheet}
+                  title="Print official A4 clipboard pick sheet for warehouse packers"
                 >
-                  <Printer size={14} style={{ color: 'var(--text-info)' }} /> Print Warehouse Pick Sheet
+                  <Printer size={14} /> Print Warehouse Pick Sheet
                 </button>
               </div>
             </div>
 
-            {/* Scrollable Items Workbench Table */}
+            {/* Room Pick Sheet Table */}
             <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-primary)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-primary)', boxShadow: '0 1px 0 var(--border)' }}>
                   <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 650 }}>
-                    <th style={{ padding: '9px 8px', width: '32px', textAlign: 'center' }}>
-                      <input
-                        type="checkbox"
-                        onChange={e => {
-                          const checked = e.target.checked;
-                          const next = {};
-                          visiblePlRows.forEach(r => { next[r.rowKey] = checked; });
-                          setPlSelectedRowKeys(next);
-                        }}
-                      />
-                    </th>
-                    <th onClick={() => handleTogglePlSort('one_one')} style={{ padding: '9px 10px', minWidth: '115px', cursor: 'pointer', userSelect: 'none' }}>
-                      One to One Code {renderPlSortIcon('one_one')}
-                    </th>
-                    <th onClick={() => handleTogglePlSort('plan')} style={{ padding: '9px 8px', width: '90px', textAlign: 'center', cursor: 'pointer', userSelect: 'none' }}>
-                      Plan Code {renderPlSortIcon('plan')}
-                    </th>
-                    <th onClick={() => handleTogglePlSort('sku')} style={{ padding: '9px 10px', minWidth: '115px', cursor: 'pointer', userSelect: 'none' }}>
-                      Supplier / SKU {renderPlSortIcon('sku')}
-                    </th>
-                    <th style={{ padding: '9px 10px' }}>Description & Spec</th>
-                    <th onClick={() => handleTogglePlSort('area')} style={{ padding: '9px 10px', minWidth: '140px', cursor: 'pointer', userSelect: 'none', color: plSortField === 'area' ? 'var(--text-info)' : 'inherit' }}>
-                      Area / Room {renderPlSortIcon('area')}
-                    </th>
-                    <th style={{ padding: '9px 8px', textAlign: 'center', width: '50px' }}>Ord</th>
-                    <th style={{ padding: '9px 8px', width: '85px', textAlign: 'center' }}>Packed</th>
-                    <th style={{ padding: '9px 8px', textAlign: 'center', width: '50px' }}>B/O</th>
-                    <th style={{ padding: '9px 8px', textAlign: 'right', width: '130px' }}>Actions</th>
+                    <th style={{ padding: '9px 10px', minWidth: '115px' }}>One to One Code</th>
+                    <th style={{ padding: '9px 8px', width: '90px', textAlign: 'center' }}>Plan Code</th>
+                    <th style={{ padding: '9px 10px', minWidth: '115px' }}>Supplier / SKU</th>
+                    <th style={{ padding: '9px 10px', minWidth: '260px' }}>Description & Spec</th>
+                    <th style={{ padding: '9px 10px', minWidth: '130px' }}>Area / Room</th>
+                    <th style={{ padding: '9px 8px', width: '55px', textAlign: 'center' }}>Ord</th>
+                    <th style={{ padding: '9px 8px', width: '75px', textAlign: 'center' }}>Packed</th>
+                    <th style={{ padding: '9px 8px', width: '55px', textAlign: 'center' }}>B/O</th>
                   </tr>
                 </thead>
                 <tbody>
                   {visiblePlRows.length === 0 ? (
                     <tr>
-                      <td colSpan={10} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                        {isLoadingPlItems ? 'Loading order items & product specifications...' : `No items found for area "${plFilterArea}".`}
+                      <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                        No items found for area "{plFilterArea}".
                       </td>
                     </tr>
                   ) : (
                     visiblePlRows.map(row => {
-                      const totalPackedForItem = plRows
-                        .filter(r => String(r.order_item_id) === String(row.order_item_id))
-                        .reduce((s, r) => s + (Number(r.qty_packed) || 0), 0);
-                      const backorder = Math.max(0, Number(row.qty_ordered || 0) - totalPackedForItem);
-                      const isChecked = !!plSelectedRowKeys[row.rowKey];
-                      const isSubRow = !!(row.is_split_child || row.is_accessory);
+                      const backorder = Math.max(0, Number(row.qty_ordered || 0) - Number(row.qty_packed || 0));
 
                       return (
                         <tr
                           key={row.rowKey}
-                          draggable
-                          onDragStart={e => handleDragStart(e, row.rowKey)}
-                          onDragOver={handleDragOver}
-                          onDrop={e => handleDropOnRow(e, row.rowKey)}
                           style={{
                             borderBottom: '1px solid var(--border)',
-                            cursor: 'grab',
-                            background: draggedRowKey === row.rowKey
-                              ? 'rgba(59, 130, 246, 0.15)'
-                              : row.is_accessory
-                              ? 'rgba(168, 85, 247, 0.08)'
-                              : row.is_split_child
-                              ? 'rgba(59, 130, 246, 0.06)'
-                              : isChecked
-                              ? 'rgba(59, 130, 246, 0.04)'
-                              : 'transparent',
+                            background: row.is_accessory ? 'rgba(168, 85, 247, 0.04)' : 'transparent',
                           }}
                         >
-                          <td style={{ padding: '8px', textAlign: 'center' }}>
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={e => {
-                                const checked = e.target.checked;
-                                setPlSelectedRowKeys(prev => ({ ...prev, [row.rowKey]: checked }));
-                              }}
-                            />
-                          </td>
-
                           {/* One to One Code */}
                           <td style={{ padding: '8px 10px', fontWeight: 700, fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-primary)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1184,45 +1498,21 @@ export default function PackingListWorkbenchModal({
                             {row.supplier_code || '—'}
                           </td>
 
-                          {/* Description & Spec */}
+                          {/* Description */}
                           <td style={{ padding: '8px 10px' }}>
-                            <div style={{ fontWeight: row.is_accessory ? 500 : 650, color: row.is_accessory ? 'var(--text-secondary)' : 'var(--text-primary)', fontSize: '12px', lineHeight: 1.3 }}>
+                            <div style={{ fontWeight: row.is_accessory ? 500 : 650, color: row.is_accessory ? '#a855f7' : 'var(--text-primary)' }}>
                               {row.description}
                             </div>
-                            <div style={{ display: 'flex', gap: '6px', marginTop: '3px', flexWrap: 'wrap', alignItems: 'center' }}>
-                              {row.parent_fitting_code && (
-                                <span style={{ fontSize: '10px', color: '#a855f7', fontWeight: 700, background: 'rgba(168, 85, 247, 0.12)', padding: '1px 6px', borderRadius: '4px' }}>
-                                  Attached to: {row.parent_fitting_code}
-                                </span>
-                              )}
-                              {row.material_colour && row.material_colour !== '—' && (
-                                <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Col: <strong>{row.material_colour}</strong></span>
-                              )}
-                              {row.first_fix === 'Yes' && (
-                                <span style={{ fontSize: '10px', color: 'var(--text-info)', background: 'rgba(59, 130, 246, 0.1)', padding: '1px 5px', borderRadius: '3px', fontWeight: 700 }}>1st Fix</span>
-                              )}
-                            </div>
+                            {row.is_accessory && row.parent_fitting_code && (
+                              <span style={{ fontSize: '10.5px', color: '#a855f7', opacity: 0.85 }}>
+                                ↳ Attached to {row.parent_fitting_code}
+                              </span>
+                            )}
                           </td>
 
-                          {/* Area / Room Dropdown */}
-                          <td style={{ padding: '8px 10px' }}>
-                            <select
-                              className="form-control"
-                              style={{ height: '28px', fontSize: '11.5px', padding: '2px 6px', width: '135px', fontWeight: 600, background: 'var(--bg-secondary)' }}
-                              value={row.area || 'General / Unspecified'}
-                              onChange={e => {
-                                const newArea = e.target.value;
-                                setPlRows(prev => prev.map(r => (r.rowKey === row.rowKey ? { ...r, area: newArea } : r)));
-                              }}
-                            >
-                              {plUniqueAreas.map(a => (
-                                <option key={a} value={a}>{a}</option>
-                              ))}
-                              {row.area && !plUniqueAreas.includes(row.area) && (
-                                <option value={row.area}>{row.area}</option>
-                              )}
-                            </select>
-                            {row.floor && <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', display: 'block', marginTop: '2px' }}>{row.floor}</span>}
+                          {/* Area / Room */}
+                          <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {row.area || 'General / Unspecified'}
                           </td>
 
                           {/* Ord */}
@@ -1250,45 +1540,6 @@ export default function PackingListWorkbenchModal({
                           <td style={{ padding: '8px', textAlign: 'center', fontSize: '11.5px', fontWeight: backorder > 0 ? 800 : 400, color: backorder > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
                             {backorder}
                           </td>
-
-                          {/* Actions */}
-                          <td style={{ padding: '8px', textAlign: 'right' }}>
-                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', alignItems: 'center' }}>
-                              {!row.is_accessory && (
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost btn-xs"
-                                  style={{ border: '1px solid var(--border)', fontSize: '10.5px', padding: '2px 6px', color: 'var(--text-info)' }}
-                                  title="Split quantity across multiple rooms/lines"
-                                  onClick={() => handleSplitRow(row)}
-                                >
-                                  <Split size={11} /> Split
-                                </button>
-                              )}
-                              {!row.is_split_child && (
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost btn-xs"
-                                  style={{ border: '1px solid rgba(168, 85, 247, 0.4)', fontSize: '10.5px', padding: '2px 6px', color: '#a855f7' }}
-                                  title="Attach accessory to parent fitting"
-                                  onClick={() => setAttachModalTargetRow(row)}
-                                >
-                                  <Link2 size={11} /> {row.is_accessory ? 'Re-Attach' : 'Attach'}
-                                </button>
-                              )}
-                              {isSubRow && (
-                                <button
-                                  type="button"
-                                  className="btn btn-ghost btn-xs"
-                                  style={{ color: 'var(--text-danger)', padding: '2px 5px' }}
-                                  onClick={() => handleRemoveSubRow(row.rowKey)}
-                                  title="Remove split line"
-                                >
-                                  <X size={12} />
-                                </button>
-                              )}
-                            </div>
-                          </td>
                         </tr>
                       );
                     })
@@ -1297,18 +1548,16 @@ export default function PackingListWorkbenchModal({
               </table>
             </div>
 
-            {/* Stage 1 Footer: Notes & Transitions */}
+            {/* Step 2 Footer */}
             <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-              <div style={{ flex: 1, maxWidth: '480px' }}>
-                <input
-                  type="text"
-                  placeholder="Packing instructions or warehouse notes..."
-                  className="form-control"
-                  style={{ height: '32px', fontSize: '12px' }}
-                  value={plNotes}
-                  onChange={e => setPlNotes(e.target.value)}
-                />
-              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setCurrentStep(1)}
+                style={{ border: '1px solid var(--border)', fontSize: '12px' }}
+              >
+                ← Back to Step 1: Summary & Kits
+              </button>
 
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <button
@@ -1325,18 +1574,18 @@ export default function PackingListWorkbenchModal({
                   type="button"
                   className="btn btn-primary btn-sm"
                   style={{ fontWeight: 700, fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                  onClick={handleStage1SaveAndProceed}
+                  onClick={handleStep2SaveAndProceed}
                   disabled={isSaving || !plOrderKey}
                 >
-                  Save & Proceed to Stage 2: Labels →
+                  Save & Proceed to Step 3: Labels →
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* ─── STAGE 2 VIEW: FITTING & ACCESSORY THERMAL LABELS ─────────────── */}
-        {currentStage === 2 && (
+        {/* ─── STEP 3 VIEW: FITTING & ACCESSORY THERMAL LABELS ───────────────── */}
+        {currentStep === 3 && (
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
             <PackingListLabelPrinterModal
               isOpen={true}
@@ -1347,15 +1596,15 @@ export default function PackingListWorkbenchModal({
               order={activeOrderObj}
               templates={labelTemplates}
               onOpenTemplateManager={onOpenTemplateManager}
-              onNextStage={handleStage2AdvanceToBoxing}
+              onNextStage={handleStep3AdvanceToBoxing}
               nextStageLabel="Mark Labels Printed & Next: Boxing →"
-              onClose={() => setCurrentStage(1)}
+              onClose={() => setCurrentStep(2)}
             />
           </div>
         )}
 
-        {/* ─── STAGE 3 VIEW: BOXING & CARTON LABELS ─────────────────────────── */}
-        {currentStage === 3 && (
+        {/* ─── STEP 4 VIEW: BOXING & CARTON LABELS (WHERE SPLIT LIVES) ───────── */}
+        {currentStep === 4 && (
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
             {/* Top Toolbar: Box Management & Buckets */}
             <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
@@ -1448,7 +1697,7 @@ export default function PackingListWorkbenchModal({
                     <th style={{ padding: '9px 10px', minWidth: '130px' }}>Area / Room</th>
                     <th style={{ padding: '9px 8px', width: '70px', textAlign: 'center' }}>Packed</th>
                     <th style={{ padding: '9px 10px', width: '140px', color: '#a855f7', fontWeight: 800 }}>Assigned Box #</th>
-                    <th style={{ padding: '9px 8px', textAlign: 'right', width: '100px' }}>Actions</th>
+                    <th style={{ padding: '9px 8px', textAlign: 'right', width: '110px' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1473,23 +1722,31 @@ export default function PackingListWorkbenchModal({
                           />
                         </td>
                         <td style={{ padding: '8px 10px', fontWeight: 700, fontFamily: 'monospace', fontSize: '12px' }}>
-                          {row.one_one_code || '—'}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {row.is_accessory && (
+                              <span style={{ color: '#a855f7', fontWeight: 800, fontSize: '13px' }}>↳</span>
+                            )}
+                            <span>{row.one_one_code || '—'}</span>
+                          </div>
                         </td>
                         <td style={{ padding: '8px', textAlign: 'center' }}>
                           {row.plan_code ? (
-                            <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, fontFamily: 'monospace', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--text-info)' }}>
+                            <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, fontFamily: 'monospace', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
                               {row.plan_code}
                             </span>
-                          ) : '—'}
+                          ) : (
+                            <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>—</span>
+                          )}
                         </td>
                         <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
                           {row.supplier_code || '—'}
                         </td>
                         <td style={{ padding: '8px 10px' }}>
-                          <div style={{ fontWeight: 650, color: 'var(--text-primary)', fontSize: '12px' }}>{row.description}</div>
-                          {row.parent_fitting_code && <div style={{ fontSize: '10px', color: '#a855f7', fontWeight: 700 }}>Attached to: {row.parent_fitting_code}</div>}
+                          <div style={{ fontWeight: row.is_accessory ? 500 : 650, color: row.is_accessory ? '#a855f7' : 'var(--text-primary)' }}>
+                            {row.description}
+                          </div>
                         </td>
-                        <td style={{ padding: '8px 10px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                        <td style={{ padding: '8px 10px', fontWeight: 600 }}>
                           {row.area || 'General / Unspecified'}
                         </td>
                         <td style={{ padding: '8px', textAlign: 'center', fontWeight: 800, fontSize: '12.5px', color: 'var(--text-info)' }}>
@@ -1531,7 +1788,7 @@ export default function PackingListWorkbenchModal({
                             className="btn btn-ghost btn-xs"
                             style={{ border: '1px solid var(--border)', fontSize: '10.5px', padding: '2px 6px', color: 'var(--text-info)' }}
                             title="Split quantity into another box"
-                            onClick={() => handleSplitRow(row)}
+                            onClick={() => handleSplitBoxRow(row)}
                           >
                             <Split size={11} /> Split Box
                           </button>
@@ -1543,15 +1800,15 @@ export default function PackingListWorkbenchModal({
               </table>
             </div>
 
-            {/* Stage 3 Footer: Save & Finalize */}
+            {/* Step 4 Footer: Save & Finalize */}
             <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
-                onClick={() => setCurrentStage(2)}
+                onClick={() => setCurrentStep(3)}
                 style={{ border: '1px solid var(--border)', fontSize: '12px' }}
               >
-                ← Back to Stage 2: Labels
+                ← Back to Step 3: Labels
               </button>
 
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -1577,23 +1834,6 @@ export default function PackingListWorkbenchModal({
               </div>
             </div>
           </div>
-        )}
-
-        {/* ─── ATTACH ACCESSORY SUB-MODAL ────────────────────────────────────── */}
-        {attachModalTargetRow && (
-          <AttachAccessoryModal
-            isOpen={!!attachModalTargetRow}
-            onClose={() => setAttachModalTargetRow(null)}
-            accessoryRow={attachModalTargetRow}
-            availableBoxes={plAvailableBoxes}
-            candidateParentRows={plRows.filter(
-              r => !r.is_accessory && !r.is_split_child && String(r.order_item_id) !== String(attachModalTargetRow?.order_item_id)
-            )}
-            existingAttachments={plRows.filter(
-              r => r.is_accessory && String(r.order_item_id) === String(attachModalTargetRow?.order_item_id)
-            )}
-            onConfirmAttachments={handleConfirmAccessoryAttachments}
-          />
         )}
 
         {/* ─── OUTER BOX CARTON LABELS MODAL ─────────────────────────────────── */}
