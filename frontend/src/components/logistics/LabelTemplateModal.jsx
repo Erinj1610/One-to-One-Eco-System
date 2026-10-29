@@ -185,7 +185,13 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
       console.warn("Failed to cache templates in localStorage:", e);
     }
 
-    // Direct background cloud sync
+    // Direct background cloud sync to both dedicated table and settings table
+    fetch(`${API_BASE}/api/logistics/label-templates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ templates: updated })
+    }).catch(err => console.error('Cloud save logistics/label-templates error:', err));
+
     fetch(`${API_BASE}/api/settings/label_templates`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -653,7 +659,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                     background: '#ffffff',
                     position: 'relative',
                     boxShadow: '0 15px 40px rgba(0,0,0,0.6)',
-                    borderRadius: '2px',
+                    borderRadius: '6px',
                     overflow: 'hidden',
                     // Raster Grid Dots
                     backgroundImage: isEditing && snapToGrid 
@@ -679,10 +685,24 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                         left: `${(activeObj.marginMm?.left ?? 2.0) * PIXELS_PER_MM}px`,
                         right: `${(activeObj.marginMm?.right ?? 2.0) * PIXELS_PER_MM}px`,
                         border: '1px dashed rgba(59, 130, 246, 0.45)',
+                        borderRadius: '4px',
                         pointerEvents: 'none',
                         zIndex: 1
                       }}
-                    />
+                    >
+                      <span style={{
+                        position: 'absolute',
+                        top: '2px',
+                        right: '4px',
+                        fontSize: '9px',
+                        color: 'rgba(59, 130, 246, 0.65)',
+                        fontFamily: 'monospace',
+                        pointerEvents: 'none',
+                        userSelect: 'none'
+                      }}>
+                        Safe Printable Area
+                      </span>
+                    </div>
                   )}
 
                   {/* ELEMENT RENDERING */}
@@ -734,7 +754,8 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                         {field.type === 'text' && (
                           <div
                             style={{
-                              fontSize: `${(field.fontSize || 8) * 1.3 * (zoomLevel / 1.5)}px`,
+                              fontSize: `${(Number(field.fontSize) || 8) * 0.3528 * PIXELS_PER_MM}px`,
+                              textUnderlineOffset: field.underline ? '2px' : 'auto',
                               fontWeight: field.fontWeight || (field.bold ? 700 : 600),
                               fontStyle: field.italic ? 'italic' : 'normal',
                               textDecoration: field.underline ? 'underline' : 'none',

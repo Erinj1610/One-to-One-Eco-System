@@ -80,11 +80,11 @@ export async function printDirectLabels(printerName, dataUrls, options = {}) {
     size: { width: widthMm, height: heightMm },
     units: 'mm',
     density: 203,
-    colorType: 'grayscale',
-    interpolation: 'nearest-neighbor',
+    colorType: 'black-and-white',
+    interpolation: 'bicubic',
     margins: { top: 0, right: 0, bottom: 0, left: 0 },
     scaleContent: true,
-    rasterize: false
+    rasterize: true
   });
 
   // Prepare each label data object

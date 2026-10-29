@@ -263,20 +263,22 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
       const isUnderline = !!field.underline;
       const fontStyleStr = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : 'normal '}`;
 
-      // 1:1 EXACT MATCH WITH DESIGNER STUDIO:
-      // In the designer studio: fontSize = (field.fontSize || 8) * 1.3 px on a 6.5 px/mm canvas (1pt = 0.2mm).
-      // On the 8 dots/mm thermal canvas: 0.2mm * 8 dots/mm = (field.fontSize || 8) * 1.6 px.
-      // However, font metrics on HTML canvas have larger glyph ascenders/descenders than web CSS fonts.
-      // Scaling by (field.fontSize || 8) * 1.3 matches the visible pixel width and height of the designer precisely!
-      let baseFontSize = (field.fontSize || 8) * 1.3;
+      // TRUE PHYSICAL TYPOGRAPHIC SCALE (203.2 DPI):
+      // 1 pt = 1/72 inch = 0.3528mm.
+      // At 203.2 DPI (8 dots/mm): 1 pt = 203.2 / 72 ≈ 2.822 dots.
+      const DOTS_PER_PT = 2.822;
+      const rawFs = Number(field.fontSize) || 8;
+      let baseFontSize = rawFs * DOTS_PER_PT;
       ctx.font = `${fontStyleStr}${Math.round(baseFontSize)}px Arial, Helvetica, sans-serif`;
       ctx.fillStyle = '#000000';
       ctx.textBaseline = 'top';
 
-      // Auto Shrink-to-Fit: If text overflows the box width, iteratively decrease font size
+      // Safe Thermal Legibility Floor: Minimum font height ~11 dots (~1.4mm)
+      // Never shrink text below 11 dots where thermal heat bleeding destroys legibility!
+      const MIN_THERMAL_FONT_DOTS = 11;
       if (field.shrinkToFit && !field.wrap) {
         let measuredW = ctx.measureText(text).width;
-        while (measuredW > (elemW - 4) && baseFontSize > 6) {
+        while (measuredW > (elemW - 4) && baseFontSize > MIN_THERMAL_FONT_DOTS) {
           baseFontSize -= 0.5;
           ctx.font = `${fontStyleStr}${Math.round(baseFontSize)}px Arial, Helvetica, sans-serif`;
           measuredW = ctx.measureText(text).width;
@@ -342,11 +344,13 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
             if (field.align === 'center') uX = elemX + (elemW - lineTextW) / 2;
             else if (field.align === 'right') uX = elemX + elemW - padX - lineTextW;
 
+            // Dedicated thermal clearance gap (3 dots) so underline never fuses into text
+            const underlineGap = Math.max(3, Math.round(fontSizePx * 0.15));
             ctx.strokeStyle = '#000000';
-            ctx.lineWidth = Math.max(1, fontSizePx * 0.08);
+            ctx.lineWidth = Math.max(1, Math.round(fontSizePx * 0.08));
             ctx.beginPath();
-            ctx.moveTo(uX, lineY + fontSizePx + 1);
-            ctx.lineTo(uX + lineTextW, lineY + fontSizePx + 1);
+            ctx.moveTo(uX, lineY + fontSizePx + underlineGap);
+            ctx.lineTo(uX + lineTextW, lineY + fontSizePx + underlineGap);
             ctx.stroke();
           }
         });
@@ -361,6 +365,15 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
           startY = curY + Math.max(0, boxH - fontSizePx - 2);
         }
 
+        // Clean truncation with ellipsis if text still exceeds usable width at minimum font floor
+        let drawText = text;
+        if (ctx.measureText(drawText).width > usableW) {
+          while (drawText.length > 2 && ctx.measureText(drawText + '…').width > usableW) {
+            drawText = drawText.slice(0, -1);
+          }
+          drawText = drawText + '…';
+        }
+
         let drawX = elemX + padX;
         if (field.align === 'center') {
           ctx.textAlign = 'center';
@@ -373,7 +386,7 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
           drawX = elemX + padX;
         }
 
-        ctx.fillText(text, drawX, startY);
+        ctx.fillText(drawText, drawX, startY);
 
         if (isUnderline) {
           const textW = Math.min(usableW, ctx.measureText(text).width);
@@ -381,11 +394,13 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
           if (field.align === 'center') uX = elemX + (elemW - textW) / 2;
           else if (field.align === 'right') uX = elemX + elemW - padX - textW;
 
+          // Dedicated thermal clearance gap (3 dots) so underline never fuses into text
+          const underlineGap = Math.max(3, Math.round(fontSizePx * 0.15));
           ctx.strokeStyle = '#000000';
-          ctx.lineWidth = Math.max(1, fontSizePx * 0.08);
+          ctx.lineWidth = Math.max(1, Math.round(fontSizePx * 0.08));
           ctx.beginPath();
-          ctx.moveTo(uX, startY + fontSizePx + 1);
-          ctx.lineTo(uX + textW, startY + fontSizePx + 1);
+          ctx.moveTo(uX, startY + fontSizePx + underlineGap);
+          ctx.lineTo(uX + textW, startY + fontSizePx + underlineGap);
           ctx.stroke();
         }
 
@@ -747,28 +762,28 @@ export const DEFAULT_LABEL_TEMPLATES = [
     heightMm: 30,
     orientation: 'landscape',
     rotation: 0,
-    marginMm: { top: 0, bottom: 0, left: 0, right: 0 },
+    marginMm: { top: 2, bottom: 2, left: 2.5, right: 2.5 },
     type: 'item',
     fields: [
       // Top-Left: Plan Code
-      { id: 'f_lbl_plancode', type: 'text', content: 'Plan Code', fontSize: 6.5, fontWeight: 700, underline: true, align: 'left', xMm: 1, yMm: 1, wMm: 23, hMm: 3.5 },
-      { id: 'f_val_plancode', type: 'text', content: '{{item.plan_code}}', fontSize: 13, fontWeight: 900, align: 'center', shrinkToFit: true, xMm: 1, yMm: 4.5, wMm: 23, hMm: 9.5 },
+      { id: 'f_lbl_plancode', type: 'text', content: 'PLAN CODE', fontSize: 6, fontWeight: 800, underline: false, align: 'left', xMm: 2.5, yMm: 2.5, wMm: 17, hMm: 3.5 },
+      { id: 'f_val_plancode', type: 'text', content: '{{item.plan_code}}', fontSize: 13, fontWeight: 900, align: 'center', shrinkToFit: true, xMm: 2.5, yMm: 6, wMm: 17, hMm: 8.5 },
       
-      // Top-Right: 1-TO-1 Code
-      { id: 'f_lbl_code', type: 'text', content: '1-TO-1 Code', fontSize: 6.5, fontWeight: 700, underline: true, align: 'left', xMm: 26, yMm: 1, wMm: 23, hMm: 3.5 },
-      { id: 'f_val_code', type: 'text', content: '{{item.code}}', fontSize: 9.5, fontWeight: 800, align: 'center', shrinkToFit: true, xMm: 26, yMm: 4.5, wMm: 23, hMm: 9.5 },
+      // Top-Right: 1-TO-1 Code (give 60% width so long codes don't truncate)
+      { id: 'f_lbl_code', type: 'text', content: '1-TO-1 CODE', fontSize: 6, fontWeight: 800, underline: false, align: 'left', xMm: 20.5, yMm: 2.5, wMm: 27, hMm: 3.5 },
+      { id: 'f_val_code', type: 'text', content: '{{item.code}}', fontSize: 9.5, fontWeight: 800, align: 'center', shrinkToFit: true, xMm: 20.5, yMm: 6, wMm: 27, hMm: 8.5 },
 
-      // Center Divider Lines
-      { id: 'f_div_h', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', xMm: 0, yMm: 14.5, wMm: 50, hMm: 0.5 },
-      { id: 'f_div_v', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'vertical', xMm: 24.75, yMm: 0, wMm: 0.5, hMm: 30 },
+      // Center Divider Lines (confined neatly inside safe margins so they don't run into rounded corners)
+      { id: 'f_div_h', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', xMm: 2.5, yMm: 15, wMm: 45, hMm: 0.5 },
+      { id: 'f_div_v', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'vertical', xMm: 20, yMm: 2.5, wMm: 0.5, hMm: 25 },
 
       // Bottom-Left: Floor
-      { id: 'f_lbl_floor', type: 'text', content: 'Floor', fontSize: 6.5, fontWeight: 700, underline: true, align: 'left', xMm: 1, yMm: 15.5, wMm: 23, hMm: 3.5 },
-      { id: 'f_val_floor', type: 'text', content: '{{item.floor}}', fontSize: 9, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 1, yMm: 19, wMm: 23, hMm: 10 },
+      { id: 'f_lbl_floor', type: 'text', content: 'FLOOR', fontSize: 6, fontWeight: 800, underline: false, align: 'left', xMm: 2.5, yMm: 16, wMm: 17, hMm: 3.5 },
+      { id: 'f_val_floor', type: 'text', content: '{{item.floor}}', fontSize: 8.5, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 2.5, yMm: 19.5, wMm: 17, hMm: 8.5 },
 
       // Bottom-Right: Area
-      { id: 'f_lbl_area', type: 'text', content: 'Area', fontSize: 6.5, fontWeight: 700, underline: true, align: 'left', xMm: 26, yMm: 15.5, wMm: 23, hMm: 3.5 },
-      { id: 'f_val_area', type: 'text', content: '{{item.area}}', fontSize: 9, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 26, yMm: 19, wMm: 23, hMm: 10 }
+      { id: 'f_lbl_area', type: 'text', content: 'AREA', fontSize: 6, fontWeight: 800, underline: false, align: 'left', xMm: 20.5, yMm: 16, wMm: 27, hMm: 3.5 },
+      { id: 'f_val_area', type: 'text', content: '{{item.area}}', fontSize: 8.5, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 20.5, yMm: 19.5, wMm: 27, hMm: 8.5 }
     ]
   },
   {
