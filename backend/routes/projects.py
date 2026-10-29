@@ -335,7 +335,8 @@ def reconcile_single_project_bulk(payload: ReconcileProjectSchema, db: Session =
                 deposit_invoice_sent=order.get("depositInvoiceSent"),
                 deposit_payment_date=order.get("depositPaymentDate"),
                 balance_value=float(order.get("balanceValue")) if order.get("balanceValue") is not None else None,
-                balance_payment_date=order.get("balancePaymentDate")
+                balance_payment_date=order.get("balancePaymentDate"),
+                notes=order.get("notes")
             )
             db.add(db_order)
             
@@ -385,7 +386,8 @@ def reconcile_single_project_bulk(payload: ReconcileProjectSchema, db: Session =
                     invoice_history=item.get("invoiceHistory", []),
                     stock_on_hand=safe_int(item.get("stockOnHand", 0)),
                     is_credit=False,
-                    item_type=item.get("itemType", "Hardware")
+                    item_type=item.get("itemType", "Hardware"),
+                    notes=item.get("notes")
                 )
                 db.add(db_item)
                 
@@ -1173,7 +1175,8 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "stock_available": live_avail,
                 "stockAvailable": live_avail,
                 "stock_on_hand": live_on_hand,
-                "stockOnHand": live_on_hand
+                "stockOnHand": live_on_hand,
+                "notes": getattr(item, 'notes', None) or ""
             })
 
 
@@ -1489,7 +1492,8 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "discount": order.discount or 0.0,
                 "expected_deposit_month": order.expected_deposit_month,
                 "expectedDepositMonth": order.expected_deposit_month,
-                "takeoffData": enrich_takeoff_stock(order.takeoff_data)
+                "takeoffData": enrich_takeoff_stock(order.takeoff_data),
+                "notes": order.notes or ""
             }
             orders_by_project[order.project_key].append(order_dict)
 

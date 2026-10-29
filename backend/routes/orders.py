@@ -288,6 +288,7 @@ class OrderItemSchema(BaseModel):
     is_credit: Optional[bool] = False
     item_type: Optional[str] = "Hardware"
     sort_order: Optional[int] = 0
+    notes: Optional[str] = None
 
 
 class OrderSchema(BaseModel):
@@ -430,6 +431,8 @@ def apply_order_fields(order, order_data: dict, project_id=None, project_key=Non
         order.discount = float(order_data.get("discount", 0.0))
     if "expected_deposit_month" in order_data or "expectedDepositMonth" in order_data:
         order.expected_deposit_month = order_data.get("expected_deposit_month") or order_data.get("expectedDepositMonth")
+    if "notes" in order_data:
+        order.notes = order_data.get("notes")
 
 @router.post("/")
 def create_order(order_data: dict, db: Session = Depends(get_db)):
@@ -1009,6 +1012,7 @@ def create_order_items_batch(po_number: str, items_data: List[OrderItemSchema], 
             existing.is_credit = item_data.is_credit
             existing.item_type = item_data.item_type
             existing.sort_order = item_data.sort_order
+            existing.notes = item_data.notes
         else:
             allow_inv = has_active_allocs or has_legacy_inv
             inv_qty_to_set = item_data.invoice_qty if allow_inv else 0
@@ -1058,7 +1062,8 @@ def create_order_items_batch(po_number: str, items_data: List[OrderItemSchema], 
                 stock_available=item_data.stock_available,
                 is_credit=item_data.is_credit,
                 item_type=item_data.item_type,
-                sort_order=item_data.sort_order
+                sort_order=item_data.sort_order,
+                notes=item_data.notes
             )
             db.add(new_item)
 
@@ -1130,6 +1135,7 @@ def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = 
         existing.is_credit = item_data.is_credit
         existing.item_type = item_data.item_type
         existing.sort_order = item_data.sort_order
+        existing.notes = item_data.notes
         db.commit()
         db.refresh(existing)
         return existing
@@ -1175,7 +1181,8 @@ def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = 
         stock_available=item_data.stock_available,
         is_credit=item_data.is_credit,
         item_type=item_data.item_type,
-        sort_order=item_data.sort_order
+        sort_order=item_data.sort_order,
+        notes=item_data.notes
     )
     db.add(new_item)
     db.commit()
@@ -1245,6 +1252,7 @@ def update_order_item(item_id: str, item_data: OrderItemSchema, db: Session = De
     item.is_credit = item_data.is_credit
     item.item_type = item_data.item_type
     item.sort_order = item_data.sort_order
+    item.notes = item_data.notes
 
     
     db.commit()
