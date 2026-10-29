@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X, ClipboardList, Tag, Box, Package, Sparkles, Filter, Printer,
   ChevronDown, Check, ArrowUpDown, ArrowUp, ArrowDown, Split, Link2,
@@ -8,8 +8,8 @@ import PackingListLabelPrinterModal from './PackingListLabelPrinterModal';
 import { API_BASE } from '../../api_config';
 
 /**
- * 4-Step Logistical Packing List Workbench:
- * Step 1: Summary & Kits (Consolidated Product Summary & 1-Click Kit Linking — No room noise)
+ * Clean & Refined 4-Step Logistical Packing List Workbench:
+ * Step 1: Summary & Kits (Consolidated Product Summary & Manual/Auto Kit Linker — No room noise, No AI guessing)
  * Step 2: Pick Sheet (Auto-Organized by Floor & Room with nested accessories, A4 Clipboard Print)
  * Step 3: Fitting Labels (Argox Barcode Label Printing)
  * Step 4: Boxing & Cartons (Box Assignment, Multi-Box Splitting & Outer Carton Labels)
@@ -55,19 +55,18 @@ export default function PackingListWorkbenchModal({
   const [rawItems, setRawItems] = useState([]);
   const [isLoadingItems, setIsLoadingItems] = useState(false);
 
-  // Step 1: Summary Model Kits state
-  // Array of { modelKey, plan_code, one_one_code, supplier_code, description, total_ordered, is_accessory, attachedAccessories: [{ accessoryKey, ratio, name }] }
+  // Step 1: Consolidated Summary Models state
+  // Each model: { modelKey, plan_code, one_one_code, supplier_code, description, total_ordered, room_instances: [], attachedItems: [{ itemKey, ratio, name, plan_code }] }
   const [summaryModels, setSummaryModels] = useState([]);
   const [summarySearchQuery, setSummarySearchQuery] = useState('');
-  const [attachingToModelKey, setAttachingToModelKey] = useState(null); // modelKey being manually attached to
-  const [attachSelectedAccKey, setAttachSelectedAccKey] = useState('');
+  const [attachingToModelKey, setAttachingToModelKey] = useState(null); // modelKey receiving an attachment
+  const [attachSelectedItemKey, setAttachSelectedItemKey] = useState('');
   const [attachRatioInput, setAttachRatioInput] = useState(1);
 
   // Step 2 & 4: Exploded Room Pick Sheet rows
   const [plRows, setPlRows] = useState([]);
   const [plFilterArea, setPlFilterArea] = useState('ALL');
   const [plSelectedRowKeys, setPlSelectedRowKeys] = useState({});
-  const [draggedRowKey, setDraggedRowKey] = useState(null);
 
   // Step 4: Boxing state
   const [plAvailableBoxes, setPlAvailableBoxes] = useState(['Box 1', 'Box 2', 'Box 3']);
@@ -95,84 +94,47 @@ export default function PackingListWorkbenchModal({
     }).slice(0, 50);
   }, [allOrders, plOrderSearchQuery]);
 
-  // Helper to detect if an item is likely an accessory/lamp/driver
-  const checkIsAccessory = (description = '', planCode = '') => {
-    const desc = (description || '').toLowerCase();
-    const pc = (planCode || '').toLowerCase();
-    if (pc === 'spacer') return false;
-    return (
-      desc.includes('lamp') ||
-      desc.includes('gu10') ||
-      desc.includes('driver') ||
-      desc.includes('power supply') ||
-      desc.includes('psu') ||
-      desc.includes('lampholder') ||
-      desc.includes('conversion kit') ||
-      desc.includes('bracket') ||
-      desc.includes('accessory') ||
-      desc.includes('connector') ||
-      desc.includes('profile') ||
-      desc.includes('diffuser') ||
-      desc.includes('cable') ||
-      desc.includes('bezel')
-    );
+  // Helper: clean description by stripping room quantity suffixes like " — 5 units", " - 1 units"
+  const cleanDescription = (desc) => {
+    if (!desc) return '';
+    return desc.replace(/\s*[\u2013\u2014\-–]\s*\d+\s*(?:units?|pcs?|m?|fixtures?)\s*$/i, '').trim();
   };
 
-  // Helper to generate unique model key
+  // Helper: generate unique model key based on (plan_code, supplier_code, one_one_code, clean_desc)
   const getModelKey = (item) => {
-    const plan = (item.plan_code || '').trim();
-    const code = (item.supplier_code || item.one_one_code || '').trim();
-    const desc = (item.description || '').trim();
-    return `${plan}:::${code}:::${desc}`;
+    const plan = (item.plan_code || '').trim().toUpperCase();
+    const sup = (item.supplier_code || '').trim().toUpperCase();
+    const oto = (item.one_one_code || '').trim().toUpperCase();
+    const desc = cleanDescription(item.description || item.name || '').toUpperCase();
+    return `${plan}:::${sup}:::${oto}:::${desc}`;
   };
 
-  // ─── BUILD SUMMARY MODELS FROM RAW BOQ ITEMS ──────────────────────────────
+  // ─── BUILD CONSOLIDATED SUMMARY MODELS FROM RAW ITEMS ─────────────────────
   const buildSummaryModelsFromItems = (itemsList) => {
     const map = {};
     itemsList.forEach(it => {
       const key = getModelKey(it);
-      const isAcc = it.is_accessory || checkIsAccessory(it.description, it.plan_code);
+      const cleanedDesc = cleanDescription(it.description || it.name || '');
       if (!map[key]) {
         map[key] = {
           modelKey: key,
-          plan_code: it.plan_code || '',
-          one_one_code: it.one_one_code || '',
-          supplier_code: it.supplier_code || '',
-          description: it.description || '',
+          plan_code: (it.plan_code || '').trim(),
+          one_one_code: (it.one_one_code || '').trim(),
+          supplier_code: (it.supplier_code || '').trim(),
+          description: cleanedDesc,
           total_ordered: 0,
-          is_accessory: isAcc,
           room_instances: [],
-          attachedAccessories: [],
+          attachedItems: [], // user-defined attachments
         };
       }
       map[key].total_ordered += Number(it.qty_ordered || it.qty_packed || 0);
-      map[key].room_instances.push(it);
-    });
-
-    const models = Object.values(map);
-
-    // Run auto-pairing heuristic on initial load
-    const fittings = models.filter(m => !m.is_accessory);
-    const accessories = models.filter(m => m.is_accessory);
-
-    fittings.forEach(f => {
-      accessories.forEach(a => {
-        // If they share the exact same plan_code (e.g. A1)
-        if (f.plan_code && a.plan_code && f.plan_code.trim().toUpperCase() === a.plan_code.trim().toUpperCase()) {
-          const ratio = f.total_ordered > 0 ? Math.max(1, Math.round(a.total_ordered / f.total_ordered)) : 1;
-          if (!f.attachedAccessories.some(att => att.accessoryKey === a.modelKey)) {
-            f.attachedAccessories.push({
-              accessoryKey: a.modelKey,
-              ratio: ratio,
-              name: a.description || a.supplier_code,
-              plan_code: a.plan_code,
-            });
-          }
-        }
+      map[key].room_instances.push({
+        ...it,
+        description: cleanedDesc,
       });
     });
 
-    return models;
+    return Object.values(map);
   };
 
   // ─── LOAD RAW ORDER ITEMS ──────────────────────────────────────────────────
@@ -250,7 +212,6 @@ export default function PackingListWorkbenchModal({
           qty_ordered: Number(it.qty_ordered || 0),
           qty_packed: Number(it.remaining_to_pack ?? it.qty_ordered ?? 0),
           box_number: 'Box 1',
-          is_accessory: checkIsAccessory(it.description, it.plan_code),
         }));
         setRawItems(builtRaw);
         const initialModels = buildSummaryModelsFromItems(builtRaw);
@@ -274,89 +235,117 @@ export default function PackingListWorkbenchModal({
     }
   }, [initialDoc, preselectedKey]);
 
-  // ─── STEP 1 ACTIONS: SUMMARY KIT LINKING ──────────────────────────────────
-  const handleAutoPairAccessories = () => {
+  // ─── STEP 1 ACTIONS: MANUAL & PLAN CODE LINKING ────────────────────────────
+  // Auto-link items that share the exact same Plan Code (optional user-triggered shortcut)
+  const handleAutoLinkByPlanCode = () => {
     setSummaryModels(prev => {
-      const fittings = prev.filter(m => !m.is_accessory);
-      const accessories = prev.filter(m => m.is_accessory);
-
-      return prev.map(model => {
-        if (model.is_accessory) return model;
-        // Find accessories sharing the same plan code
-        const matchingAccs = accessories.filter(a =>
-          a.plan_code && model.plan_code && a.plan_code.trim().toUpperCase() === model.plan_code.trim().toUpperCase()
-        );
-        const newAttachments = [...model.attachedAccessories];
-        matchingAccs.forEach(acc => {
-          if (!newAttachments.some(att => att.accessoryKey === acc.modelKey)) {
-            const ratio = model.total_ordered > 0 ? Math.max(1, Math.round(acc.total_ordered / model.total_ordered)) : 1;
-            newAttachments.push({
-              accessoryKey: acc.modelKey,
-              ratio: ratio,
-              name: acc.description || acc.supplier_code,
-              plan_code: acc.plan_code,
-            });
-          }
-        });
-        return { ...model, attachedAccessories: newAttachments };
+      const planGroups = {};
+      prev.forEach(m => {
+        const pc = (m.plan_code || '').trim().toUpperCase();
+        if (pc && pc !== 'SPACER') {
+          if (!planGroups[pc]) planGroups[pc] = [];
+          planGroups[pc].push(m);
+        }
       });
+
+      const updated = prev.map(m => ({ ...m, attachedItems: [...(m.attachedItems || [])] }));
+
+      Object.values(planGroups).forEach(group => {
+        if (group.length > 1) {
+          // The primary fixture is the first item or the one with the highest count of room instances
+          const sorted = [...group].sort((a, b) => (b.room_instances?.length || 0) - (a.room_instances?.length || 0));
+          const primary = sorted[0];
+          const secondaries = sorted.slice(1);
+
+          const targetModel = updated.find(m => m.modelKey === primary.modelKey);
+          if (targetModel) {
+            const newAtts = [...targetModel.attachedItems];
+            secondaries.forEach(sec => {
+              if (!newAtts.some(att => att.itemKey === sec.modelKey)) {
+                const ratio = targetModel.total_ordered > 0
+                  ? Math.max(1, Math.round(sec.total_ordered / targetModel.total_ordered))
+                  : 1;
+                newAtts.push({
+                  itemKey: sec.modelKey,
+                  ratio,
+                  name: sec.description || sec.supplier_code || sec.plan_code,
+                  plan_code: sec.plan_code,
+                });
+              }
+            });
+            targetModel.attachedItems = newAtts;
+          }
+        }
+      });
+      return updated;
     });
   };
 
   const handleClearAllPairings = () => {
-    setSummaryModels(prev => prev.map(m => ({ ...m, attachedAccessories: [] })));
+    setSummaryModels(prev => prev.map(m => ({ ...m, attachedItems: [] })));
   };
 
-  const handleRemoveAttachmentFromModel = (fittingModelKey, accessoryKey) => {
+  const handleRemoveAttachmentFromModel = (parentModelKey, attachedItemKey) => {
     setSummaryModels(prev => prev.map(m => {
-      if (m.modelKey !== fittingModelKey) return m;
+      if (m.modelKey !== parentModelKey) return m;
       return {
         ...m,
-        attachedAccessories: m.attachedAccessories.filter(a => a.accessoryKey !== accessoryKey),
+        attachedItems: (m.attachedItems || []).filter(a => a.itemKey !== attachedItemKey),
       };
     }));
   };
 
   const handleConfirmManualAttach = () => {
-    if (!attachingToModelKey || !attachSelectedAccKey) return;
-    const accModel = summaryModels.find(m => m.modelKey === attachSelectedAccKey);
-    if (!accModel) return;
+    if (!attachingToModelKey || !attachSelectedItemKey) return;
+    const targetItemModel = summaryModels.find(m => m.modelKey === attachSelectedItemKey);
+    if (!targetItemModel) return;
 
     setSummaryModels(prev => prev.map(m => {
       if (m.modelKey !== attachingToModelKey) return m;
-      const filtered = m.attachedAccessories.filter(a => a.accessoryKey !== attachSelectedAccKey);
+      const filtered = (m.attachedItems || []).filter(a => a.itemKey !== attachSelectedItemKey);
       return {
         ...m,
-        attachedAccessories: [
+        attachedItems: [
           ...filtered,
           {
-            accessoryKey: accModel.modelKey,
+            itemKey: targetItemModel.modelKey,
             ratio: Number(attachRatioInput) || 1,
-            name: accModel.description || accModel.supplier_code,
-            plan_code: accModel.plan_code,
+            name: targetItemModel.description || targetItemModel.supplier_code || targetItemModel.plan_code,
+            plan_code: targetItemModel.plan_code,
           }
         ]
       };
     }));
     setAttachingToModelKey(null);
-    setAttachSelectedAccKey('');
+    setAttachSelectedItemKey('');
     setAttachRatioInput(1);
   };
+
+  // Helper: map of which items have been attached underneath a parent
+  const attachedItemKeyToParentMap = useMemo(() => {
+    const map = {};
+    summaryModels.forEach(parent => {
+      (parent.attachedItems || []).forEach(att => {
+        map[att.itemKey] = {
+          parentKey: parent.modelKey,
+          parentDesc: parent.description,
+          parentPlan: parent.plan_code,
+          ratio: att.ratio,
+        };
+      });
+    });
+    return map;
+  }, [summaryModels]);
 
   // ─── EXPLODE SUMMARY KITS INTO AUTO-ORGANIZED ROOM PICK SHEET (STEP 2) ─────
   const generatePickSheetRows = () => {
     if (rawItems.length === 0) return;
 
-    // Track which accessories are attached to a parent fitting
-    const attachedAccKeys = new Set();
-    summaryModels.forEach(m => {
-      (m.attachedAccessories || []).forEach(att => attachedAccKeys.add(att.accessoryKey));
-    });
-
+    // Set of itemKeys that are attached to another item
+    const attachedKeysSet = new Set(Object.keys(attachedItemKeyToParentMap));
     const explodedRows = [];
-    const fittings = summaryModels.filter(m => !m.is_accessory);
 
-    // 1. Group raw items by Area / Room
+    // Group raw BOQ items by area / room
     const roomsMap = {};
     rawItems.forEach(it => {
       const room = it.area || 'General';
@@ -364,19 +353,20 @@ export default function PackingListWorkbenchModal({
       roomsMap[room].push(it);
     });
 
-    // 2. In each room, list primary fittings and nest their attached accessories
+    // In each room, list primary items and nest their attached accessories
     Object.keys(roomsMap).sort().forEach(roomName => {
       const itemsInRoom = roomsMap[roomName];
 
       itemsInRoom.forEach(it => {
         const itModelKey = getModelKey(it);
         const modelDef = summaryModels.find(m => m.modelKey === itModelKey);
-        const isAttachedAcc = attachedAccKeys.has(itModelKey);
+        const isAttachedToOther = attachedKeysSet.has(itModelKey);
 
-        // If this item is an attached accessory in its raw position, skip its standalone line
-        if (isAttachedAcc) return;
+        // If this item was designated as an attachment to another fitting,
+        // it will be nested directly underneath its parent fitting per room!
+        if (isAttachedToOther) return;
 
-        // Parent fitting row
+        // Primary Item Row
         const parentRowKey = `row_${it.order_item_id}_${roomName}_${Math.random().toString(36).slice(2, 6)}`;
         explodedRows.push({
           rowKey: parentRowKey,
@@ -386,7 +376,7 @@ export default function PackingListWorkbenchModal({
           one_one_code: it.one_one_code || '',
           plan_code: it.plan_code || '',
           supplier_code: it.supplier_code || '',
-          description: it.description || '',
+          description: cleanDescription(it.description),
           floor: it.floor || '',
           area: it.area || '',
           material_colour: it.material_colour || '',
@@ -399,11 +389,11 @@ export default function PackingListWorkbenchModal({
           is_split_child: false,
         });
 
-        // Nest its attached accessories underneath
-        if (modelDef && Array.isArray(modelDef.attachedAccessories)) {
-          modelDef.attachedAccessories.forEach((att, attIdx) => {
-            const accModel = summaryModels.find(m => m.modelKey === att.accessoryKey);
-            if (!accModel) return;
+        // Nest any attached items proportionally in this room
+        if (modelDef && Array.isArray(modelDef.attachedItems)) {
+          modelDef.attachedItems.forEach((att, attIdx) => {
+            const attModel = summaryModels.find(m => m.modelKey === att.itemKey);
+            if (!attModel) return;
             const parentQty = Number(it.qty_ordered || 0);
             const nestedQty = parentQty * (Number(att.ratio) || 1);
 
@@ -412,10 +402,10 @@ export default function PackingListWorkbenchModal({
               order_item_id: `acc_${it.order_item_id}_${attIdx}`,
               parent_item_id: String(it.order_item_id),
               parent_fitting_code: it.plan_code || it.description || 'Parent Fitting',
-              one_one_code: accModel.one_one_code || '',
-              plan_code: accModel.plan_code || it.plan_code || '',
-              supplier_code: accModel.supplier_code || '',
-              description: accModel.description || '',
+              one_one_code: attModel.one_one_code || '',
+              plan_code: attModel.plan_code || it.plan_code || '',
+              supplier_code: attModel.supplier_code || '',
+              description: attModel.description || '',
               floor: it.floor || '',
               area: it.area || '',
               material_colour: '',
@@ -432,37 +422,17 @@ export default function PackingListWorkbenchModal({
       });
     });
 
-    // 3. Add any standalone accessories that were NOT kitted to any fitting
+    // Add any standalone items that were NOT attached to any other item
     rawItems.forEach(it => {
       const itModelKey = getModelKey(it);
-      if (checkIsAccessory(it.description, it.plan_code) && !attachedAccKeys.has(itModelKey)) {
-        explodedRows.push({
-          rowKey: `unattached_${it.order_item_id}_${Math.random().toString(36).slice(2, 6)}`,
-          order_item_id: it.order_item_id,
-          parent_item_id: null,
-          parent_fitting_code: null,
-          one_one_code: it.one_one_code || '',
-          plan_code: it.plan_code || '',
-          supplier_code: it.supplier_code || '',
-          description: it.description || '',
-          floor: it.floor || '',
-          area: it.area || '',
-          material_colour: it.material_colour || '',
-          first_fix: it.first_fix || 'No',
-          red_list: it.red_list || 'No',
-          qty_ordered: Number(it.qty_ordered || 0),
-          qty_packed: Number(it.qty_packed ?? it.qty_ordered ?? 0),
-          box_number: 'Box 1',
-          is_accessory: true,
-          is_split_child: false,
-        });
+      if (!attachedKeysSet.has(itModelKey)) {
+        // Already processed above in roomsMap
       }
     });
 
     setPlRows(explodedRows);
   };
 
-  // Helper to transition from Step 1 to Step 2
   const handleProceedToStep2PickSheet = () => {
     generatePickSheetRows();
     setCurrentStep(2);
@@ -494,7 +464,7 @@ export default function PackingListWorkbenchModal({
     setPlRows(prev => prev.map(r => ({ ...r, qty_packed: 0 })));
   };
 
-  // Print warehouse pick sheet
+  // Print warehouse pick sheet (A4 clipboard layout)
   const handlePrintWarehouseWorksheet = () => {
     const printWindow = window.open('', '_blank', 'width=950,height=800');
     if (!printWindow) {
@@ -876,7 +846,7 @@ export default function PackingListWorkbenchModal({
                     border: '1px solid currentColor',
                   }}
                 >
-                  Step {currentStep}: {currentStep === 1 ? 'Summary & Kits' : currentStep === 2 ? 'Pick Sheet' : currentStep === 3 ? 'Labels' : 'Boxing'}
+                  Step {currentStep}: {currentStep === 1 ? 'Product Summary' : currentStep === 2 ? 'Pick Sheet' : currentStep === 3 ? 'Labels' : 'Boxing'}
                 </span>
               </div>
               <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
@@ -887,7 +857,6 @@ export default function PackingListWorkbenchModal({
 
           {/* Center: 4-Step Stepper Buttons */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-secondary)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-            {/* Step 1 */}
             <button
               type="button"
               className="btn btn-ghost btn-xs"
@@ -906,12 +875,11 @@ export default function PackingListWorkbenchModal({
               }}
               onClick={() => setCurrentStep(1)}
             >
-              <Layers size={14} /> 1. Summary & Kits
+              <Layers size={14} /> 1. Product Summary
             </button>
 
             <ChevronRight size={13} style={{ color: 'var(--text-tertiary)', opacity: 0.6 }} />
 
-            {/* Step 2 */}
             <button
               type="button"
               className="btn btn-ghost btn-xs"
@@ -938,7 +906,6 @@ export default function PackingListWorkbenchModal({
 
             <ChevronRight size={13} style={{ color: 'var(--text-tertiary)', opacity: 0.6 }} />
 
-            {/* Step 3 */}
             <button
               type="button"
               className="btn btn-ghost btn-xs"
@@ -968,7 +935,6 @@ export default function PackingListWorkbenchModal({
 
             <ChevronRight size={13} style={{ color: 'var(--text-tertiary)', opacity: 0.6 }} />
 
-            {/* Step 4 */}
             <button
               type="button"
               className="btn btn-ghost btn-xs"
@@ -1007,10 +973,10 @@ export default function PackingListWorkbenchModal({
           </div>
         </div>
 
-        {/* ─── STEP 1 VIEW: PRODUCT SUMMARY & KIT LINKING ─────────────────────── */}
+        {/* ─── STEP 1 VIEW: CONSOLIDATED PRODUCT SUMMARY & ATTACHMENTS ─────────── */}
         {currentStep === 1 && (
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-            {/* Top Toolbar: Order Selector & Kit Controls */}
+            {/* Top Toolbar */}
             <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {!initialDoc && (
                 <div>
@@ -1073,51 +1039,51 @@ export default function PackingListWorkbenchModal({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <input
                     type="text"
-                    placeholder="Search models..."
+                    placeholder="Search summarized products..."
                     className="form-control"
-                    style={{ height: '30px', fontSize: '12px', width: '220px', background: 'var(--bg-secondary)' }}
+                    style={{ height: '30px', fontSize: '12px', width: '240px', background: 'var(--bg-secondary)' }}
                     value={summarySearchQuery}
                     onChange={e => setSummarySearchQuery(e.target.value)}
                   />
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    {summaryModels.length} unique products on order
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                    {summaryModels.length} unique summarized products
                   </span>
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <button
                     type="button"
-                    className="btn btn-primary btn-sm"
-                    style={{ fontWeight: 700, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', background: 'linear-gradient(135deg, #3b82f6, #6366f1)' }}
-                    onClick={handleAutoPairAccessories}
-                    title="Automatically pair GU10 lamps, drivers, and conversion kits to matching fittings by Plan Code"
+                    className="btn btn-ghost btn-sm"
+                    style={{ border: '1px solid rgba(59, 130, 246, 0.4)', color: 'var(--text-info)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                    onClick={handleAutoLinkByPlanCode}
+                    title="Automatically link secondary items sharing the exact same Plan Code"
                   >
-                    <Sparkles size={14} /> ⚡ Auto-Pair Matching Accessories
+                    <Sparkles size={14} /> ⚡ Auto-Link Shared Plan Codes
                   </button>
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
                     style={{ border: '1px solid var(--border)', fontSize: '12px' }}
                     onClick={handleClearAllPairings}
-                    title="Clear all attached kit rules"
+                    title="Clear all attached items"
                   >
-                    Clear Pairings
+                    Clear All Links
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Summary Models Table */}
+            {/* Consolidated Summary Table (NO ARTIFICIAL ROLE COLUMN) */}
             <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-primary)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-primary)', boxShadow: '0 1px 0 var(--border)' }}>
                   <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 650 }}>
-                    <th style={{ padding: '9px 12px', width: '90px' }}>Role</th>
-                    <th style={{ padding: '9px 10px', width: '90px', textAlign: 'center' }}>Plan Code</th>
+                    <th style={{ padding: '9px 12px', width: '90px', textAlign: 'center' }}>Plan Code</th>
+                    <th style={{ padding: '9px 12px', minWidth: '120px' }}>One to One Code</th>
                     <th style={{ padding: '9px 12px', minWidth: '120px' }}>Supplier / SKU</th>
-                    <th style={{ padding: '9px 12px', minWidth: '260px' }}>Description & Model Spec</th>
+                    <th style={{ padding: '9px 12px', minWidth: '260px' }}>Description & Specification</th>
                     <th style={{ padding: '9px 10px', width: '100px', textAlign: 'center' }}>Total Order</th>
-                    <th style={{ padding: '9px 12px' }}>Kitted Accessories & Ratios</th>
+                    <th style={{ padding: '9px 12px' }}>Attached Items / Accessories</th>
                     <th style={{ padding: '9px 12px', width: '140px', textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
@@ -1125,42 +1091,24 @@ export default function PackingListWorkbenchModal({
                   {visibleSummaryModels.length === 0 ? (
                     <tr>
                       <td colSpan={7} style={{ padding: '50px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                        {isLoadingItems ? 'Loading order models...' : 'No products found. Select an order to begin.'}
+                        {isLoadingItems ? 'Loading & summarizing order items...' : 'No products found. Select an order to begin.'}
                       </td>
                     </tr>
                   ) : (
                     visibleSummaryModels.map(model => {
-                      const isFitting = !model.is_accessory;
-                      const hasAttachments = model.attachedAccessories && model.attachedAccessories.length > 0;
+                      const hasAttachments = model.attachedItems && model.attachedItems.length > 0;
+                      const attachedInfo = attachedItemKeyToParentMap[model.modelKey];
 
                       return (
                         <tr
                           key={model.modelKey}
                           style={{
                             borderBottom: '1px solid var(--border)',
-                            background: !isFitting ? 'rgba(168, 85, 247, 0.03)' : 'transparent',
+                            background: attachedInfo ? 'rgba(168, 85, 247, 0.03)' : 'transparent',
                           }}
                         >
-                          {/* Role Badge */}
-                          <td style={{ padding: '10px 12px' }}>
-                            <span
-                              style={{
-                                fontSize: '10.5px',
-                                fontWeight: 700,
-                                textTransform: 'uppercase',
-                                padding: '2px 8px',
-                                borderRadius: '4px',
-                                background: isFitting ? 'rgba(59, 130, 246, 0.12)' : 'rgba(168, 85, 247, 0.12)',
-                                color: isFitting ? 'var(--text-info)' : '#a855f7',
-                                border: '1px solid currentColor',
-                              }}
-                            >
-                              {isFitting ? 'Fitting' : 'Accessory'}
-                            </span>
-                          </td>
-
                           {/* Plan Code */}
-                          <td style={{ padding: '10px', textAlign: 'center' }}>
+                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                             {model.plan_code ? (
                               <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, fontFamily: 'monospace', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
                                 {model.plan_code}
@@ -1170,9 +1118,14 @@ export default function PackingListWorkbenchModal({
                             )}
                           </td>
 
+                          {/* One to One Code */}
+                          <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '12px', fontWeight: 650, color: 'var(--text-primary)' }}>
+                            {model.one_one_code || '—'}
+                          </td>
+
                           {/* Supplier / SKU */}
                           <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                            {model.supplier_code || model.one_one_code || '—'}
+                            {model.supplier_code || '—'}
                           </td>
 
                           {/* Description */}
@@ -1180,88 +1133,71 @@ export default function PackingListWorkbenchModal({
                             {model.description}
                           </td>
 
-                          {/* Total Order */}
+                          {/* Total Order Qty */}
                           <td style={{ padding: '10px', textAlign: 'center', fontWeight: 800, fontSize: '14px', color: 'var(--text-primary)' }}>
                             {model.total_ordered}
                           </td>
 
-                          {/* Kitted Accessories Column */}
+                          {/* Attached Items / Accessories Column */}
                           <td style={{ padding: '10px 12px' }}>
-                            {isFitting ? (
+                            {hasAttachments ? (
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-                                {hasAttachments ? (
-                                  model.attachedAccessories.map(att => (
-                                    <span
-                                      key={att.accessoryKey}
-                                      style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '5px',
-                                        background: 'rgba(168, 85, 247, 0.12)',
-                                        color: '#a855f7',
-                                        border: '1px solid rgba(168, 85, 247, 0.35)',
-                                        borderRadius: '6px',
-                                        padding: '3px 8px',
-                                        fontSize: '11.5px',
-                                        fontWeight: 650,
-                                      }}
+                                {model.attachedItems.map(att => (
+                                  <span
+                                    key={att.itemKey}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '5px',
+                                      background: 'rgba(168, 85, 247, 0.12)',
+                                      color: '#a855f7',
+                                      border: '1px solid rgba(168, 85, 247, 0.35)',
+                                      borderRadius: '6px',
+                                      padding: '3px 8px',
+                                      fontSize: '11.5px',
+                                      fontWeight: 650,
+                                    }}
+                                  >
+                                    <strong style={{ background: '#a855f7', color: '#fff', borderRadius: '3px', padding: '1px 4px', fontSize: '10.5px' }}>
+                                      {att.ratio}x
+                                    </strong>
+                                    <span>{att.name}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveAttachmentFromModel(model.modelKey, att.itemKey)}
+                                      style={{ background: 'transparent', border: 'none', color: '#a855f7', cursor: 'pointer', padding: '0 2px' }}
+                                      title="Remove attachment"
                                     >
-                                      <strong style={{ background: '#a855f7', color: '#fff', borderRadius: '3px', padding: '1px 4px', fontSize: '10.5px' }}>
-                                        {att.ratio}x
-                                      </strong>
-                                      <span>{att.name}</span>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleRemoveAttachmentFromModel(model.modelKey, att.accessoryKey)}
-                                        style={{ background: 'transparent', border: 'none', color: '#a855f7', cursor: 'pointer', padding: '0 2px' }}
-                                        title="Remove kit attachment"
-                                      >
-                                        <X size={12} />
-                                      </button>
-                                    </span>
-                                  ))
-                                ) : (
-                                  <span style={{ fontSize: '11.5px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
-                                    No accessories attached (standalone)
+                                      <X size={12} />
+                                    </button>
                                   </span>
-                                )}
+                                ))}
+                              </div>
+                            ) : attachedInfo ? (
+                              <div style={{ fontSize: '11.5px', color: '#a855f7', fontWeight: 650 }}>
+                                ↳ Attached to [{attachedInfo.parentPlan || 'Item'}] {attachedInfo.parentDesc} ({attachedInfo.ratio}x per unit)
                               </div>
                             ) : (
-                              <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                                {(() => {
-                                  const parentFitting = summaryModels.find(m =>
-                                    !m.is_accessory && (m.attachedAccessories || []).some(att => att.accessoryKey === model.modelKey)
-                                  );
-                                  if (parentFitting) {
-                                    const match = parentFitting.attachedAccessories.find(att => att.accessoryKey === model.modelKey);
-                                    return (
-                                      <span style={{ color: '#a855f7', fontWeight: 650 }}>
-                                        ↳ Linked to [{parentFitting.plan_code || 'Fitting'}] {parentFitting.description} ({match?.ratio}x per fitting)
-                                      </span>
-                                    );
-                                  }
-                                  return <span style={{ color: 'var(--text-tertiary)' }}>Unattached (will be picked as standalone item)</span>;
-                                })()}
-                              </div>
+                              <span style={{ fontSize: '11.5px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                                Standalone item
+                              </span>
                             )}
                           </td>
 
                           {/* Actions Column */}
                           <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                            {isFitting && (
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-xs"
-                                style={{ border: '1px solid rgba(168, 85, 247, 0.4)', color: '#a855f7', fontSize: '11px', padding: '3px 8px' }}
-                                onClick={() => {
-                                  setAttachingToModelKey(model.modelKey);
-                                  const candidateAccs = summaryModels.filter(m => m.is_accessory && !model.attachedAccessories?.some(att => att.accessoryKey === m.modelKey));
-                                  if (candidateAccs.length > 0) setAttachSelectedAccKey(candidateAccs[0].modelKey);
-                                }}
-                              >
-                                <Plus size={12} /> Attach Accessory
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-xs"
+                              style={{ border: '1px solid rgba(59, 130, 246, 0.4)', color: 'var(--text-info)', fontSize: '11px', padding: '3px 8px' }}
+                              onClick={() => {
+                                setAttachingToModelKey(model.modelKey);
+                                const candidates = summaryModels.filter(m => m.modelKey !== model.modelKey && !model.attachedItems?.some(att => att.itemKey === m.modelKey));
+                                if (candidates.length > 0) setAttachSelectedItemKey(candidates[0].modelKey);
+                              }}
+                            >
+                              <Plus size={12} /> Attach Item
+                            </button>
                           </td>
                         </tr>
                       );
@@ -1291,28 +1227,28 @@ export default function PackingListWorkbenchModal({
                     background: 'var(--bg-secondary)',
                     border: '1px solid var(--border)',
                     borderRadius: '12px',
-                    width: '460px',
+                    width: '480px',
                     padding: '20px',
                     boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
                   }}
                   onClick={e => e.stopPropagation()}
                 >
                   <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 800, color: 'var(--text-primary)' }}>
-                    Attach Accessory to Fitting Model
+                    Attach Accessory / Component to Product
                   </h4>
                   <div style={{ marginBottom: '12px' }}>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                      Select Accessory / Lamp / Driver:
+                      Select Item to Attach:
                     </label>
                     <select
                       className="form-control"
                       style={{ width: '100%', height: '34px', fontSize: '12px', background: 'var(--bg-primary)' }}
-                      value={attachSelectedAccKey}
-                      onChange={e => setAttachSelectedAccKey(e.target.value)}
+                      value={attachSelectedItemKey}
+                      onChange={e => setAttachSelectedItemKey(e.target.value)}
                     >
-                      {summaryModels.filter(m => m.is_accessory).map(acc => (
-                        <option key={acc.modelKey} value={acc.modelKey}>
-                          {acc.plan_code ? `[${acc.plan_code}] ` : ''}{acc.description} ({acc.total_ordered} pcs available)
+                      {summaryModels.filter(m => m.modelKey !== attachingToModelKey).map(item => (
+                        <option key={item.modelKey} value={item.modelKey}>
+                          {item.plan_code ? `[${item.plan_code}] ` : ''}{item.description} ({item.total_ordered} pcs available)
                         </option>
                       ))}
                     </select>
@@ -1320,7 +1256,7 @@ export default function PackingListWorkbenchModal({
 
                   <div style={{ marginBottom: '18px' }}>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                      Quantity per Fitting (Ratio):
+                      Quantity Ratio (Units of this item per 1 unit of parent):
                     </label>
                     <input
                       type="number"
@@ -1332,7 +1268,7 @@ export default function PackingListWorkbenchModal({
                       onChange={e => setAttachRatioInput(Math.max(1, parseInt(e.target.value, 10) || 1))}
                     />
                     <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginLeft: '8px' }}>
-                      e.g. 2 lamps per 1 pendant
+                      e.g. 2 for 2 lamps per pendant, or 1 for 1 driver per fitting
                     </span>
                   </div>
 
@@ -1350,7 +1286,7 @@ export default function PackingListWorkbenchModal({
                       style={{ fontWeight: 700 }}
                       onClick={handleConfirmManualAttach}
                     >
-                      Attach to Model ✓
+                      Attach Item ✓
                     </button>
                   </div>
                 </div>
@@ -1360,7 +1296,7 @@ export default function PackingListWorkbenchModal({
             {/* Step 1 Footer */}
             <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                Tip: Attach accessories here once at the summary level, and the system automatically calculates rooms!
+                Organize attachments here at the summary level, and the system automatically calculates rooms in Step 2!
               </div>
 
               <button
@@ -1370,7 +1306,7 @@ export default function PackingListWorkbenchModal({
                 onClick={handleProceedToStep2PickSheet}
                 disabled={summaryModels.length === 0}
               >
-                Generate & Proceed to Step 2: Auto-Organized Pick Sheet →
+                Proceed to Step 2: Auto-Organized Pick Sheet →
               </button>
             </div>
           </div>
@@ -1379,7 +1315,7 @@ export default function PackingListWorkbenchModal({
         {/* ─── STEP 2 VIEW: AUTO-ORGANIZED ROOM PICK SHEET ─────────────────────── */}
         {currentStep === 2 && (
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-            {/* Top Toolbar: Area Filter & Worksheet Print */}
+            {/* Top Toolbar */}
             <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                 {/* Filter by Area */}
@@ -1420,7 +1356,7 @@ export default function PackingListWorkbenchModal({
                 </div>
 
                 <span style={{ fontSize: '11.5px', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.25)', fontWeight: 650 }}>
-                  ✓ Auto-Organized: Accessories are proportionally distributed across rooms
+                  ✓ Auto-Organized: Attached items are proportionally nested per room
                 </span>
               </div>
 
@@ -1438,7 +1374,7 @@ export default function PackingListWorkbenchModal({
               </div>
             </div>
 
-            {/* Room Pick Sheet Table */}
+            {/* Room Pick Sheet Table (NO SPLIT BUTTON HERE) */}
             <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-primary)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-primary)', boxShadow: '0 1px 0 var(--border)' }}>
@@ -1556,7 +1492,7 @@ export default function PackingListWorkbenchModal({
                 onClick={() => setCurrentStep(1)}
                 style={{ border: '1px solid var(--border)', fontSize: '12px' }}
               >
-                ← Back to Step 1: Summary & Kits
+                ← Back to Step 1: Product Summary
               </button>
 
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
