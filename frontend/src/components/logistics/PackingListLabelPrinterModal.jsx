@@ -15,18 +15,33 @@ import {
 import { listPrinters, printDirectLabels, printRawDirect, connectQz } from '../../services/qzPrintService';
 
 export default function PackingListLabelPrinterModal({
-  isOpen,
+  isOpen = true,
   onClose,
   packingList,
   project,
   order,
   templates = DEFAULT_LABEL_TEMPLATES,
-  onOpenTemplateManager
+  onOpenTemplateManager,
+  initialMode = 'item',
+  inline = false,
+  onNextStage = null,
+  nextStageLabel = 'Proceed to Boxing →'
 }) {
   if (!isOpen || !packingList) return null;
 
   // Active print mode: 'item' (individual fittings) or 'box' (outer box manifest)
-  const [mode, setMode] = useState('item'); 
+  const [mode, setMode] = useState(initialMode || 'item');
+
+  React.useEffect(() => {
+    if (initialMode) {
+      setMode(initialMode);
+      const matching = availableTemplates.filter(t => t.type === initialMode);
+      if (matching.length > 0) {
+        setSelectedTemplateId(matching[0].id);
+        setPrintRotation(matching[0].rotation ?? 0);
+      }
+    }
+  }, [initialMode]); 
   
   // Available templates matching current mode (or allow user to pick any)
   const availableTemplates = templates && templates.length > 0 ? templates : DEFAULT_LABEL_TEMPLATES;
@@ -49,10 +64,11 @@ export default function PackingListLabelPrinterModal({
   const [isDirectPrinting, setIsDirectPrinting] = useState(false);
   const [showSetupBanner, setShowSetupBanner] = useState(true);
   
-  // Printing mode: 'pplb' (Argox native EPL2 raw commands - recommended for perfect gap tracking) or 'raster' (PNG graphics)
+  // Printing mode: 'raster' (exact 203-DPI WYSIWYG template graphic via configured Windows driver - default)
+  // or 'pplb' (Argox native EPL2 raw commands)
   const [usePplbRaw, setUsePplbRaw] = useState(() => {
-    const saved = localStorage.getItem('oto_label_print_mode');
-    return saved !== 'raster'; // Default to true (Native Argox PPLB)
+    const saved = localStorage.getItem('oto_label_print_mode_v2');
+    return saved === 'pplb';
   });
 
   // Auto-discover Windows printers via QZ Tray on modal open or user click
@@ -101,8 +117,27 @@ export default function PackingListLabelPrinterModal({
     }
   };
 
-  // Raw items from the packing list
-  const plItems = packingList.items || [];
+  // Raw items from the packing list, normalized so every item has a guaranteed unique id and packed qty
+  const plItems = useMemo(() => {
+    return (packingList.items || []).map((item, idx) => {
+      const packedQty = Math.max(1, Number(item.qty_packed ?? item.qtyDelivered ?? item.qty ?? 1));
+      const boxVal = item.box_number || item.box || item.boxNumber || 'Box 1';
+      return {
+        ...item,
+        id: item.id !== undefined && item.id !== null ? String(item.id) : `pl_item_${idx}`,
+        code: item.code || item.one_one_code || item.oneOneCode || item.supplier_code || 'ITEM',
+        oneOneCode: item.one_one_code || item.oneOneCode || item.code || '',
+        planCode: item.plan_code || item.planCode || '',
+        supplierCode: item.supplier_code || item.supplierCode || item.code || '',
+        materialColour: item.material_colour || item.materialColour || '',
+        firstFix: item.first_fix || item.firstFix || 'No',
+        redList: item.red_list || item.redList || 'No',
+        qtyDelivered: packedQty,
+        qty: packedQty,
+        boxNumber: boxVal,
+      };
+    });
+  }, [packingList]);
 
   // Item mode selection state: { [itemId]: { selected: boolean, qtyToPrint: number } }
   const [itemSelections, setItemSelections] = useState(() => {
@@ -113,6 +148,21 @@ export default function PackingListLabelPrinterModal({
     });
     return init;
   });
+
+  // Quick helper to switch between 1 label per physical unit vs 1 label per line
+  const handleSetCopyPreset = (preset) => {
+    setItemSelections(prev => {
+      const next = { ...prev };
+      plItems.forEach(it => {
+        const packedQty = Math.max(1, Number(it.qtyDelivered ?? it.qty) || 1);
+        next[it.id] = {
+          selected: prev[it.id]?.selected ?? true,
+          qtyToPrint: preset === 'per_unit' ? packedQty : 1
+        };
+      });
+      return next;
+    });
+  };
 
   // Box mode selection state: { [boxName]: boolean }
   const boxGroups = useMemo(() => {
@@ -317,12 +367,15 @@ export default function PackingListLabelPrinterModal({
       }
     }
 
-    // 2. Fallback: Open browser print window
+    // 2. Fallback: Open exact-millimeter zero-margin browser print / PDF window
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     if (!printWindow) {
       alert("Please allow pop-ups to open the thermal print dialog.");
       return;
     }
+
+    // Subtract 0.5mm sub-pixel guard in @media print so Chromium never overflows a 30mm page box onto a 2nd label
+    const safePrintHeightMm = Math.max(10, Number((printHeightMm - 0.5).toFixed(2)));
 
     const imagesHtml = dataUrls.map((dataUrl, idx) => `
       <div class="thermal-label-page">
@@ -337,8 +390,8 @@ export default function PackingListLabelPrinterModal({
         <title>Argox O4-250 Thermal Print - ${packingList.id}</title>
         <style>
           @page {
-            size: ${widthMm}mm ${heightMm}mm;
-            margin: 0mm;
+            size: ${printWidthMm}mm ${printHeightMm}mm;
+            margin: 0mm !important;
           }
           * {
             box-sizing: border-box;
@@ -346,30 +399,36 @@ export default function PackingListLabelPrinterModal({
             padding: 0;
           }
           html, body {
-            width: ${widthMm}mm;
-            height: 100%;
-            margin: 0;
-            padding: 0;
+            width: ${printWidthMm}mm;
+            margin: 0 !important;
+            padding: 0 !important;
             background: #ffffff;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
           .thermal-label-page {
-            width: ${widthMm}mm;
-            height: ${heightMm}mm;
+            width: ${printWidthMm}mm;
+            height: ${safePrintHeightMm}mm;
+            max-width: ${printWidthMm}mm;
+            max-height: ${safePrintHeightMm}mm;
             page-break-before: auto;
-            page-break-inside: avoid;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
             page-break-after: always;
             break-after: page;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
+            display: block;
+            overflow: hidden !important;
             background: #ffffff;
           }
+          .thermal-label-page:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
+          }
           .thermal-img {
-            width: 100%;
-            height: 100%;
+            width: ${printWidthMm}mm;
+            height: ${safePrintHeightMm}mm;
+            max-width: ${printWidthMm}mm;
+            max-height: ${safePrintHeightMm}mm;
             object-fit: fill;
             display: block;
             image-rendering: -webkit-optimize-contrast;
@@ -377,17 +436,25 @@ export default function PackingListLabelPrinterModal({
             image-rendering: pixelated;
           }
           @media screen {
-            body {
+            html, body {
+              width: 100%;
               background: #f1f5f9;
-              padding: 20px;
+              padding: 20px !important;
               display: flex;
               flex-direction: column;
               align-items: center;
               gap: 16px;
             }
             .thermal-label-page {
+              width: ${printWidthMm}mm;
+              height: ${printHeightMm}mm;
+              max-height: ${printHeightMm}mm;
               box-shadow: 0 4px 12px rgba(0,0,0,0.15);
               border: 1px solid #cbd5e1;
+            }
+            .thermal-img {
+              width: 100%;
+              height: 100%;
             }
           }
         </style>
@@ -396,10 +463,15 @@ export default function PackingListLabelPrinterModal({
         ${imagesHtml}
         <script>
           window.onload = function() {
-            setTimeout(function() {
-              window.focus();
-              window.print();
-            }, 300);
+            var imgs = Array.prototype.slice.call(document.images || []);
+            Promise.all(imgs.map(function(img) {
+              return img.decode ? img.decode().catch(function(){}) : Promise.resolve();
+            })).then(function() {
+              setTimeout(function() {
+                window.focus();
+                window.print();
+              }, 150);
+            });
           };
         </script>
       </body>
@@ -411,39 +483,23 @@ export default function PackingListLabelPrinterModal({
     printWindow.document.close();
   };
 
-  return (
-    <div 
+    const modalInner = (
+    <div
       style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1200,
-        background: 'rgba(0, 0, 0, 0.75)',
-        backdropFilter: 'blur(5px)',
+        background: 'var(--bg-secondary)',
+        border: inline ? 'none' : '1px solid var(--border)',
+        borderRadius: inline ? '0px' : '14px',
+        width: '100%',
+        maxWidth: inline ? '100%' : '1200px',
+        height: inline ? '100%' : '92vh',
+        maxHeight: inline ? '100%' : '880px',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '16px'
+        flexDirection: 'column',
+        overflow: 'hidden',
+        boxShadow: inline ? 'none' : '0 25px 60px -15px rgba(0,0,0,0.7)'
       }}
-      onClick={e => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      onClick={e => e.stopPropagation()}
     >
-      <div 
-        style={{
-          background: 'var(--bg-secondary)',
-          border: '1px solid var(--border)',
-          borderRadius: '14px',
-          width: '100%',
-          maxWidth: '1200px',
-          height: '92vh',
-          maxHeight: '880px',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          boxShadow: '0 25px 60px -15px rgba(0,0,0,0.7)'
-        }}
-        onClick={e => e.stopPropagation()}
-      >
         {/* MODAL HEADER */}
         <div style={{
           padding: '16px 22px',
@@ -491,6 +547,16 @@ export default function PackingListLabelPrinterModal({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {onNextStage && (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                style={{ fontWeight: 700, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                onClick={onNextStage}
+              >
+                {nextStageLabel}
+              </button>
+            )}
             <button
               className="btn btn-ghost btn-sm"
               onClick={onOpenTemplateManager}
@@ -499,13 +565,15 @@ export default function PackingListLabelPrinterModal({
             >
               <Settings size={14} /> Template Designer
             </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={onClose}
-              style={{ color: 'var(--text-secondary)' }}
-            >
-              <X size={18} />
-            </button>
+            {!inline && onClose && (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={onClose}
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <X size={18} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -751,7 +819,7 @@ export default function PackingListLabelPrinterModal({
                 onClick={() => {
                   const next = !usePplbRaw;
                   setUsePplbRaw(next);
-                  localStorage.setItem('oto_label_print_mode', next ? 'pplb' : 'raster');
+                  localStorage.setItem('oto_label_print_mode_v2', next ? 'pplb' : 'raster');
                 }}
                 className="btn btn-ghost btn-xs"
                 style={{
@@ -826,7 +894,27 @@ export default function PackingListLabelPrinterModal({
                 </span>
               </div>
 
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {mode === 'item' && (
+                  <>
+                    <button
+                      className="btn btn-ghost btn-xs"
+                      onClick={() => handleSetCopyPreset('per_unit')}
+                      style={{ fontSize: '11px', border: '1px solid var(--border)', padding: '3px 8px' }}
+                      title="Set copies equal to Packed Qty (1 sticker per physical fitting)"
+                    >
+                      1 per Packed Unit
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-xs"
+                      onClick={() => handleSetCopyPreset('per_line')}
+                      style={{ fontSize: '11px', border: '1px solid var(--border)', padding: '3px 8px' }}
+                      title="Set 1 copy per line item"
+                    >
+                      1 per Line
+                    </button>
+                  </>
+                )}
                 <button
                   className="btn btn-ghost btn-xs"
                   onClick={() => mode === 'item' ? handleSelectAllItems(true) : handleSelectAllBoxes(true)}
@@ -1085,8 +1173,31 @@ export default function PackingListLabelPrinterModal({
           </div>
 
         </div>
-
       </div>
+  );
+
+  if (inline) {
+    return modalInner;
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1200,
+        background: 'rgba(0, 0, 0, 0.75)',
+        backdropFilter: 'blur(5px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px'
+      }}
+      onClick={e => {
+        if (e.target === e.currentTarget && onClose) onClose();
+      }}
+    >
+      {modalInner}
     </div>
   );
 }

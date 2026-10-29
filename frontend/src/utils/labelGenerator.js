@@ -241,7 +241,7 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
   const contentWidth = Math.max(10, stickerPixelW - padLeft - padRight);
   let flowY = padTop;
 
-  (template.fields || []).forEach(field => {
+  (template.fields || template.elements || []).forEach(field => {
     // Coordinate origin is the top-left of the peel-off sticker
     const isExplicit = field.xMm !== undefined && field.yMm !== undefined;
     const elemX = isExplicit 
@@ -547,81 +547,136 @@ export function generatePplbCommands(template, context, copies = 1) {
   const DOTS_PER_MM = 8;
   const stickerW = Number(template.widthMm ?? 50);
   const stickerH = Number(template.heightMm ?? 30);
+  const gapMm = Number(template.gapMm ?? 1.5);
 
-  const widthDots = Math.round(stickerW * DOTS_PER_MM);  // 400 dots
-  const heightDots = Math.round(stickerH * DOTS_PER_MM); // 240 dots
-  const gapDots = 12; // 1.5mm gap * 8 dots/mm = 12 dots
+  const widthDots = Math.round(stickerW * DOTS_PER_MM);  // 400 dots for 50mm
+  const heightDots = Math.round(stickerH * DOTS_PER_MM); // 240 dots for 30mm
+  const gapDots = Math.max(8, Math.round(gapMm * DOTS_PER_MM)); // 12 dots for 1.5mm gap
 
   const cmds = [];
 
-  // Reset and set label dimensions
+  // Reset and set label dimensions strictly within single sticker
   cmds.push('N'); // Clear image buffer
-  cmds.push(`q${widthDots}`); // Set label width (400)
-  cmds.push(`Q${heightDots},${gapDots}`); // Set form length (240) and gap (12)
-  cmds.push('D11'); // Darkness / density (11 is sharp thermal transfer/direct)
+  cmds.push(`q${widthDots}`); // Set label width
+  cmds.push(`Q${heightDots},${gapDots}`); // Set form length and gap sensor height
+  cmds.push('D11'); // Darkness / density
   cmds.push('S3');  // Speed (3 inches/sec)
 
-  (template.fields || []).forEach(field => {
+  let flowY = 8;
+  const maxSafeY = heightDots - 4;
+
+  (template.fields || template.elements || []).forEach(field => {
     const isExplicit = field.xMm !== undefined && field.yMm !== undefined;
-    const xDots = Math.round((isExplicit ? Number(field.xMm) : 0) * DOTS_PER_MM);
-    const yDots = Math.round((isExplicit ? Number(field.yMm) : 0) * DOTS_PER_MM);
-    const wDots = Math.round((field.wMm !== undefined ? Number(field.wMm) : (stickerW - 4)) * DOTS_PER_MM);
+    const xDots = Math.max(0, Math.min(widthDots - 4, Math.round((isExplicit ? Number(field.xMm) : 1) * DOTS_PER_MM)));
+    const yDots = Math.max(0, Math.min(maxSafeY, isExplicit ? Math.round(Number(field.yMm) * DOTS_PER_MM) : flowY));
+    const wDots = Math.max(16, Math.min(widthDots - xDots, Math.round((field.wMm !== undefined ? Number(field.wMm) : (stickerW - 2)) * DOTS_PER_MM)));
 
     if (field.type === 'line') {
       const thickness = Math.max(1, Math.round((field.thicknessMm || 0.5) * DOTS_PER_MM));
       if (field.orientation === 'vertical') {
-        const hDots = Math.round((field.hMm || stickerH) * DOTS_PER_MM);
+        const rawH = Math.round((field.hMm || stickerH) * DOTS_PER_MM);
+        const hDots = Math.max(4, Math.min(rawH, maxSafeY - yDots));
         cmds.push(`LO${xDots},${yDots},${thickness},${hDots}`);
       } else {
-        cmds.push(`LO${xDots},${yDots},${wDots},${thickness}`);
+        const safeW = Math.max(4, Math.min(wDots, widthDots - xDots - 2));
+        cmds.push(`LO${xDots},${yDots},${safeW},${thickness}`);
+        if (!isExplicit) flowY = Math.min(maxSafeY, yDots + thickness + 6);
       }
+    } else if (field.type === 'box_frame') {
+      const rawH = Math.round((field.hMm || 10) * DOTS_PER_MM);
+      const hDots = Math.max(4, Math.min(rawH, maxSafeY - yDots));
+      const borderDots = Math.max(1, Math.round((field.borderThicknessMm || 0.5) * DOTS_PER_MM));
+      if (field.filled) {
+        cmds.push(`LO${xDots},${yDots},${wDots},${hDots}`);
+      } else {
+        cmds.push(`X${xDots},${yDots},${borderDots},${xDots + wDots},${yDots + hDots}`);
+      }
+      if (!isExplicit) flowY = Math.min(maxSafeY, yDots + hDots + 6);
     } else if (field.type === 'text') {
       const text = evaluateTokens(field.content, context).replace(/"/g, "'");
       if (!text) return;
 
-      // Select resident Argox/EPL2 font and multipliers based on template fontSize
-      // Font 1 = 8x12, Font 2 = 10x16, Font 3 = 12x20, Font 4 = 14x24, Font 5 = 32x48
       const fs = field.fontSize || 8;
       let fontNum = 2;
       let hMul = 1;
       let vMul = 1;
 
       if (fs <= 7) {
-        fontNum = 2; // ~8-10pt
-        hMul = 1;
-        vMul = 1;
-      } else if (fs <= 10) {
-        fontNum = 3; // ~10-12pt
-        hMul = 1;
-        vMul = 1;
+        fontNum = 1; // 8x12 dots (compact label headers)
+      } else if (fs <= 9.5) {
+        fontNum = 2; // 10x16 dots
       } else if (fs <= 12) {
-        fontNum = 4;
-        hMul = 1;
-        vMul = 1;
+        fontNum = 3; // 12x20 dots
       } else {
-        // Large headers like GS1a
-        fontNum = 4;
-        hMul = 2;
-        vMul = 2;
+        fontNum = 4; // 14x24 dots
       }
 
-      // Center alignment offset calculation if align is center
-      let drawX = xDots;
-      if (field.align === 'center') {
-        // Approximate character width in dots
-        const charW = (fontNum === 2 ? 10 : fontNum === 3 ? 12 : 14) * hMul;
-        const totalTextW = text.length * charW;
-        drawX = Math.max(xDots, Math.round(xDots + (wDots - totalTextW) / 2));
+      // Shrink font if text is wider than box
+      const getCharW = (fn, hm) => (fn === 1 ? 10 : fn === 2 ? 12 : fn === 3 ? 14 : 16) * hm;
+      const getCharH = (fn, vm) => (fn === 1 ? 12 : fn === 2 ? 16 : fn === 3 ? 20 : 24) * vm;
+
+      if (!field.wrap) {
+        while (fontNum > 1 && text.length * getCharW(fontNum, hMul) > wDots) {
+          fontNum -= 1;
+        }
       }
 
-      cmds.push(`A${drawX},${yDots},0,${fontNum},${hMul},${vMul},N,"${text}"`);
+      const charW = getCharW(fontNum, hMul);
+      const charH = getCharH(fontNum, vMul);
+      const maxCharsPerLine = Math.max(4, Math.floor(wDots / charW));
+
+      const lines = [];
+      if (field.wrap && text.length > maxCharsPerLine) {
+        const words = text.split(' ');
+        let cur = '';
+        words.forEach(w => {
+          const test = cur ? `${cur} ${w}` : w;
+          if (test.length > maxCharsPerLine && cur) {
+            lines.push(cur);
+            cur = w;
+          } else {
+            cur = test;
+          }
+        });
+        if (cur) lines.push(cur);
+      } else {
+        lines.push(text.length > maxCharsPerLine ? text.slice(0, maxCharsPerLine) : text);
+      }
+
+      lines.slice(0, 2).forEach((lnText, idx) => {
+        const lnY = yDots + idx * (charH + 2);
+        if (lnY + charH > maxSafeY) return; // Never overflow bottom of label buffer!
+        let drawX = xDots;
+        if (field.align === 'center') {
+          const totalTextW = lnText.length * charW;
+          drawX = Math.max(xDots, Math.round(xDots + (wDots - totalTextW) / 2));
+        } else if (field.align === 'right') {
+          const totalTextW = lnText.length * charW;
+          drawX = Math.max(xDots, Math.round(xDots + wDots - totalTextW));
+        }
+        cmds.push(`A${drawX},${lnY},0,${fontNum},${hMul},${vMul},N,"${lnText}"`);
+      });
+
+      if (!isExplicit) flowY = Math.min(maxSafeY, yDots + lines.slice(0, 2).length * (charH + 2) + 4);
     } else if (field.type === 'barcode') {
       const barVal = evaluateTokens(field.barcodeValue || '{{item.code}}', context).replace(/"/g, '');
       if (barVal) {
-        const barH = Math.round((field.barcodeHeight || 20) * DOTS_PER_MM * 0.35);
-        // B x, y, rot, type(1=code128), narrow, wide, height, readable(B or N), data
+        const rawBarH = Math.round((field.barcodeHeight || 20) * DOTS_PER_MM * 0.35);
+        const barH = Math.max(12, Math.min(rawBarH, maxSafeY - yDots - 16));
         cmds.push(`B${xDots},${yDots},0,1,2,4,${barH},${field.showBarcodeText !== false ? 'B' : 'N'},"${barVal}"`);
+        if (!isExplicit) flowY = Math.min(maxSafeY, yDots + barH + 20);
       }
+    } else if (field.type === 'box_manifest') {
+      const items = context.box?.manifestItems || [];
+      const maxRows = field.maxLines || 8;
+      const displayItems = items.slice(0, maxRows);
+      displayItems.forEach((it, idx) => {
+        const rowY = yDots + idx * 20;
+        if (rowY + 16 > maxSafeY) return;
+        const rowTxt = `${it.qtyDelivered || it.qty_packed || it.qty || 1}x ${it.code || it.one_one_code || 'Item'} (${it.area || it.floor || 'Site'})`.replace(/"/g, "'");
+        cmds.push(`A${xDots + 6},${rowY},0,2,1,1,N,"${rowTxt.slice(0, 36)}"`);
+      });
+      if (!isExplicit) flowY = Math.min(maxSafeY, yDots + displayItems.length * 20 + 8);
     }
   });
 
@@ -643,10 +698,14 @@ function escapeXml(unsafe) {
 
 // Available Variable Dictionary for Template Designer
 export const VARIABLE_DICTIONARY = [
-  { group: 'Item Details', token: '{{item.code}}', label: 'Item Code', example: 'DL-2223/31' },
+  { group: 'Item Details', token: '{{item.code}}', label: 'Item Code / 1-TO-1 Code', example: 'DL-2223/31' },
   { group: 'Item Details', token: '{{item.one_one_code}}', label: '1-to-1 SKU / System Code', example: '2223/31' },
   { group: 'Item Details', token: '{{item.plan_code}}', label: 'Plan Code / Fitting Mark', example: 'GS1a' },
+  { group: 'Item Details', token: '{{item.supplier_code}}', label: 'Supplier Code', example: 'SPZ-2223-W' },
   { group: 'Item Details', token: '{{item.description}}', label: 'Item Description', example: 'Downlight 2223 Anti-Glare GU10 White' },
+  { group: 'Item Details', token: '{{item.material_colour}}', label: 'Material / Colour Finish', example: 'Matte White / Aluminium' },
+  { group: 'Item Details', token: '{{item.first_fix}}', label: 'First Fix (Yes / No)', example: 'Yes' },
+  { group: 'Item Details', token: '{{item.red_list}}', label: 'Red List (Yes / No)', example: 'No' },
   { group: 'Item Details', token: '{{item.brand}}', label: 'Brand / Material', example: 'Spazio' },
   { group: 'Item Details', token: '{{item.floor}}', label: 'Floor', example: 'First Floor' },
   { group: 'Item Details', token: '{{item.area}}', label: 'Area / Room', example: 'Kitchen' },
@@ -797,18 +856,22 @@ export function evaluateTokens(templateString, context) {
   const planCodeVal = item.planCode || item.plan_code || item.fittingCode || item.code || 'GS1a';
 
   const replacements = {
-    '{{item.code}}': item.code || item.oneOneCode || 'N/A',
+    '{{item.code}}': item.code || item.oneOneCode || item.one_one_code || 'N/A',
     '{{item.one_one_code}}': item.oneOneCode || item.one_one_code || item.sku || item.code || 'N/A',
     '{{item.plan_code}}': planCodeVal,
     '{{item.planCode}}': planCodeVal,
+    '{{item.supplier_code}}': item.supplierCode || item.supplier_code || item.code || 'N/A',
     '{{item.description}}': item.description || item.name || 'Hardware Fitting',
+    '{{item.material_colour}}': item.materialColour || item.material_colour || item.color || '—',
+    '{{item.first_fix}}': item.firstFix || item.first_fix || 'No',
+    '{{item.red_list}}': item.redList || item.red_list || 'No',
     '{{item.brand}}': item.brand || item.supplier || '—',
     '{{item.floor}}': item.floor || 'General',
     '{{item.area}}': item.area || 'All Areas',
     '{{item.type}}': item.type || item.itemType || 'Hardware',
     '{{item.dimming}}': item.dimming || 'Standard',
-    '{{item.boxNumber}}': item.boxNumber || box.number || 'Box 1',
-    '{{item.qty}}': item.qtyDelivered ?? item.qty ?? '1',
+    '{{item.boxNumber}}': item.boxNumber || item.box_number || box.number || 'Box 1',
+    '{{item.qty}}': item.qtyDelivered ?? item.qty_packed ?? item.qty ?? '1',
     '{{item.serial}}': item.serial || '1 of 1',
 
     '{{project.name}}': project.name || project.projectName || 'One to One Project',

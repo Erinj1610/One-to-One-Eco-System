@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
-import { 
-  Truck, ClipboardList, FileText, Plus, Printer, 
-  ArrowLeft, Search, CheckCircle2, AlertCircle, Eye, Trash2, 
+import {
+  Truck, ClipboardList, FileText, Plus, Printer,
+  ArrowLeft, Search, CheckCircle2, AlertCircle, Eye, Trash2,
   Package, Layers, Filter, Check, Clock, Box, Sparkles, X, ChevronDown, ChevronRight,
-  Tag, Settings
+  Tag, Settings, Link2, Split, MoreVertical, Upload, FileCheck, Ban, Edit3, MapPin, Phone, User,
+  ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import LabelTemplateModal from '../components/logistics/LabelTemplateModal';
 import PackingListLabelPrinterModal from '../components/logistics/PackingListLabelPrinterModal';
+import PackingListWorkbenchModal from '../components/logistics/PackingListWorkbenchModal';
 import { DEFAULT_LABEL_TEMPLATES } from '../utils/labelGenerator';
 import { API_BASE } from '../api_config';
 
@@ -17,51 +19,28 @@ const LABEL_TEMPLATES_STORAGE_KEY = 'oto_custom_label_templates';
 export default function LogisticsPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { projects, updateProject, getModuleName } = useStore();
-  
+  const { projects, updateProject, refreshProjects, getModuleName } = useStore();
+
   // Search & ledger navigation state
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedDocId, setSelectedDocId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
-  
+
   // Grouping and Filtering states
   const [activeFilterTab, setActiveFilterTab] = useState('ALL'); // 'ALL' | 'PL' | 'DN' | 'PENDING'
   const [groupingMode, setGroupingMode] = useState('none'); // 'none' | 'project'
   const [filterPm, setFilterPm] = useState('All');
-  const [collapsedProjects, setCollapsedProjects] = useState({}); // { projectKey: boolean }
-
-  // 250ms search debounce
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(searchQuery);
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  // Read filter routing parameter state on mount
-  useEffect(() => {
-    if (location.state?.filterOrderId) {
-      setSearchQuery(location.state.filterOrderId);
-    }
-    if (location.state?.openDocId) {
-      setSelectedDocId(location.state.openDocId);
-      if (location.state?.projectKey) {
-        setSelectedProjectKey(location.state.projectKey);
-      }
-    }
-    if (location.state) {
-      window.history.replaceState({}, document.title);
-    }
-  }, [location.state]);
+  const [collapsedProjects, setCollapsedProjects] = useState({});
 
   // Modal display states
-  const [showPlModal, setShowPlModal] = useState(false);
+  const [showPlWorkbench, setShowPlWorkbench] = useState(false);
+  const [workbenchInitialDoc, setWorkbenchInitialDoc] = useState(null);
+  const [workbenchPreselectedKey, setWorkbenchPreselectedKey] = useState('');
   const [showDnModal, setShowDnModal] = useState(false);
-  const [plOrderSearchQuery, setPlOrderSearchQuery] = useState('');
-  const [plOrderDropdownOpen, setPlOrderDropdownOpen] = useState(false);
   const [dnOrderSearchQuery, setDnOrderSearchQuery] = useState('');
   const [dnOrderDropdownOpen, setDnOrderDropdownOpen] = useState(false);
+  const [isSavingLogistics, setIsSavingLogistics] = useState(false);
 
   // Label Printing Engine States
   const [showLabelPrinterModal, setShowLabelPrinterModal] = useState(false);
@@ -72,32 +51,33 @@ export default function LogisticsPage() {
       const cached = localStorage.getItem(LABEL_TEMPLATES_STORAGE_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed.some(t => Array.isArray(t.fields) && t.fields.length > 0)) {
+          return parsed;
+        }
       }
-    } catch (e) {
-      console.warn("Failed reading localStorage label templates:", e);
-    }
+    } catch (e) {}
     return DEFAULT_LABEL_TEMPLATES;
   });
 
   // Load custom label templates from Cloud SQL on mount
   useEffect(() => {
-    fetch(`${API_BASE}/api/settings/label_templates`)
-      .then(res => {
-        if (!res.ok) throw new Error('No custom templates');
-        return res.json();
-      })
+    fetch(`${API_BASE}/api/logistics/label-templates`)
+      .then(res => (res.ok ? res.json() : null))
       .then(data => {
-        if (data && data.value && Array.isArray(data.value) && data.value.length > 0) {
-          setLabelTemplates(data.value);
-          try {
-            localStorage.setItem(LABEL_TEMPLATES_STORAGE_KEY, JSON.stringify(data.value));
-          } catch (e) {}
+        if (data && Array.isArray(data.templates) && data.templates.length > 0) {
+          const valid = data.templates.filter(t => Array.isArray(t.fields || t.elements) && (t.fields || t.elements).length > 0).map(t => ({
+            ...t,
+            fields: t.fields || t.elements || [],
+          }));
+          if (valid.length > 0) {
+            setLabelTemplates(valid);
+            try {
+              localStorage.setItem(LABEL_TEMPLATES_STORAGE_KEY, JSON.stringify(valid));
+            } catch (e) {}
+          }
         }
       })
-      .catch((err) => {
-        console.warn("Using local label templates:", err);
-      });
+      .catch(() => {});
   }, []);
 
   const handleSaveTemplates = (newTemplates) => {
@@ -105,10 +85,10 @@ export default function LogisticsPage() {
     try {
       localStorage.setItem(LABEL_TEMPLATES_STORAGE_KEY, JSON.stringify(newTemplates));
     } catch (e) {}
-    fetch(`${API_BASE}/api/settings/label_templates`, {
+    fetch(`${API_BASE}/api/logistics/label-templates`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ value: newTemplates })
+      body: JSON.stringify({ templates: newTemplates }),
     }).catch(err => console.error('Failed to save label templates to Cloud SQL:', err));
   };
 
@@ -118,60 +98,129 @@ export default function LogisticsPage() {
     setShowLabelPrinterModal(true);
   };
 
-  // Form states for creating a Packing List
-  const [plOrderKey, setPlOrderKey] = useState(''); // "projectKey_orderId"
-  const [plNotes, setPlNotes] = useState('');
-  const [plItemInputs, setPlItemInputs] = useState({}); // { itemId: { qty, boxNumber, materialColour, redList, firstFix } }
+  // 250ms search debounce
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
-  // Form states for creating a Delivery Note
-  const [dnOrderKey, setDnOrderKey] = useState(''); // "projectKey_orderId"
-  const [dnNotes, setDnNotes] = useState('');
-  const [dnSelectedPlIds, setDnSelectedPlIds] = useState({}); // { plId: boolean }
-  const [dnItemEtas, setDnItemEtas] = useState({}); // { itemId: etaText }
-
-  // Gather all orders
+  // Gather all orders with clean, human-readable Project Names and Clients
   const allOrders = useMemo(() => {
-    return Object.values(projects || {}).flatMap(p => 
-      (p.orders || []).map(o => ({
+    return Object.entries(projects || {}).flatMap(([pKey, p]) => {
+      const rawName = (p?.name || '').trim();
+      const client = (p?.client || p?.client_name || p?.clientCompany || '').trim();
+      let cleanProjName = rawName;
+      if (!rawName || /^\d+$/.test(rawName)) {
+        cleanProjName = client ? `${client} (Project #${rawName || pKey})` : `Project #${rawName || pKey}`;
+      }
+      return ((p && p.orders) || []).map(o => ({
         ...o,
-        projectKey: p.key,
-        projectName: p.name,
-        projectClient: p.client,
-        projectPm: p.pm || o.pmName || '',
-      }))
-    );
+        projectKey: p.key || p.project_key || pKey,
+        projectName: cleanProjName,
+        projectClient: client,
+        projectPm: p.pm || p.pm_name || o.pmName || '',
+        projectLocation: p.location || p.deliveryAddress || '',
+        projectPhone: p.phone || p.clientPhone || '',
+      }));
+    });
   }, [projects]);
+
+  // Read filter routing parameter state on mount (including quick create actions from OrdersPage)
+  useEffect(() => {
+    if (location.state?.filterOrderId) {
+      setSearchQuery(location.state.filterOrderId);
+    }
+    if (location.state?.openDocId) {
+      setSelectedDocId(location.state.openDocId);
+      if (location.state?.projectKey) {
+        setSelectedProjectKey(location.state.projectKey);
+      }
+    }
+    if (location.state?.createPlForOrder && location.state?.projectKey) {
+      const key = `${location.state.projectKey}:::${location.state.createPlForOrder}`;
+      handleOpenPlModal(key);
+    } else if (location.state?.createDnForOrder && location.state?.projectKey) {
+      const key = `${location.state.projectKey}:::${location.state.createDnForOrder}`;
+      handleOpenDnModal(key);
+    }
+    if (location.state) {
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   // Gather all issued documents (Packing Lists and Delivery Notes) across all orders
   const allDocs = useMemo(() => {
     const docs = [];
     allOrders.forEach(order => {
-      // Collect Packing Lists
       (order.packingLists || []).forEach(pl => {
+        const linkedDn = pl.delivery_note_number || pl.deliveryNoteId || '';
+        const normalizedItems = (pl.items || []).map(it => ({
+          ...it,
+          one_one_code: it.one_one_code || '',
+          code: it.code || it.one_one_code || '',
+          plan_code: it.plan_code || it.type || '',
+          supplier_code: it.supplier_code || it.code || '',
+          material_colour: it.material_colour || it.materialColour || it.brand || '—',
+          first_fix: it.first_fix || it.firstFix || 'No',
+          red_list: it.red_list || it.redList || 'No',
+          box_number: it.box_number || it.box || it.boxNumber || 'Box 1',
+          boxNumber: it.box_number || it.box || it.boxNumber || 'Box 1',
+          qty_packed: Number(it.qty_packed ?? it.qtyDelivered ?? it.qty ?? 0),
+          qtyDelivered: Number(it.qty_packed ?? it.qtyDelivered ?? it.qty ?? 0),
+          qty_ordered: Number(it.qty_ordered ?? it.qtyOrdered ?? 0),
+          qty_backorder: Number(it.qty_backorder ?? Math.max(0, Number(it.qty_ordered ?? it.qtyOrdered ?? 0) - Number(it.qty_packed ?? it.qtyDelivered ?? 0))),
+        }));
         docs.push({
           ...pl,
+          id: pl.id || pl.document_number,
           type: 'packing_list',
+          deliveryNoteId: linkedDn,
+          status: pl.status || (linkedDn ? 'Dispatched' : 'Pending Dispatch'),
           orderId: order.id,
           projectKey: order.projectKey,
           projectName: order.projectName,
           projectClient: order.projectClient,
           supplier: order.supplier,
           projectPm: order.projectPm,
-          orderObj: order
+          orderObj: order,
+          items: normalizedItems,
         });
       });
-      // Collect Delivery Notes
+
       (order.deliveryNotes || []).forEach(dn => {
+        const normalizedItems = (dn.items || []).map(it => ({
+          ...it,
+          one_one_code: it.one_one_code || '',
+          code: it.code || it.one_one_code || '',
+          plan_code: it.plan_code || it.type || '',
+          supplier_code: it.supplier_code || it.code || '',
+          material_colour: it.material_colour || it.materialColour || it.brand || '—',
+          first_fix: it.first_fix || it.firstFix || 'No',
+          red_list: it.red_list || it.redList || 'No',
+          box_number: it.box_number || it.box || it.boxNumber || 'Box 1',
+          boxNumber: it.box_number || it.box || it.boxNumber || 'Box 1',
+          qty_delivered: Number(it.qty_delivered ?? it.qtyDelivered ?? it.qty ?? 0),
+          qtyDelivered: Number(it.qty_delivered ?? it.qtyDelivered ?? it.qty ?? 0),
+          qty_ordered: Number(it.qty_ordered ?? it.qtyOrdered ?? 0),
+          qty_remaining: Number(it.qty_remaining ?? 0),
+          backorder_eta: it.backorder_eta || it.etaBackOrder || '',
+        }));
         docs.push({
           ...dn,
+          id: dn.id || dn.document_number,
           type: 'delivery_note',
+          status: dn.status || 'Dispatched',
+          packingListIds: dn.source_packing_lists || dn.packingListIds || [],
           orderId: order.id,
           projectKey: order.projectKey,
           projectName: order.projectName,
           projectClient: order.projectClient,
           supplier: order.supplier,
           projectPm: order.projectPm,
-          orderObj: order
+          orderObj: order,
+          items: normalizedItems,
         });
       });
     });
@@ -181,14 +230,14 @@ export default function LogisticsPage() {
 
   // KPI calculations
   const kpiStats = useMemo(() => {
-    const plDocs = allDocs.filter(d => d.type === 'packing_list');
-    const dnDocs = allDocs.filter(d => d.type === 'delivery_note');
-    const pendingPls = plDocs.filter(d => !d.deliveryNoteId);
-    
+    const plDocs = allDocs.filter(d => d.type === 'packing_list' && d.status !== 'Cancelled');
+    const dnDocs = allDocs.filter(d => d.type === 'delivery_note' && d.status !== 'Cancelled');
+    const pendingPls = plDocs.filter(d => !d.deliveryNoteId && d.status === 'Pending Dispatch');
+
     let totalDispatchedUnits = 0;
     dnDocs.forEach(dn => {
       (dn.items || []).forEach(it => {
-        totalDispatchedUnits += (Number(it.qtyDelivered) || 0);
+        totalDispatchedUnits += Number(it.qtyDelivered) || 0;
       });
     });
 
@@ -199,11 +248,11 @@ export default function LogisticsPage() {
       totalDnCount: dnDocs.length,
       pendingPlCount: pendingPls.length,
       totalDispatchedUnits,
-      activeProjectsCount: activeProjectKeys.size
+      activeProjectsCount: activeProjectKeys.size,
     };
   }, [allDocs]);
 
-  // Extract unique PMs list for filter dropdown
+  // Unique PMs
   const uniquePms = useMemo(() => {
     const set = new Set();
     Object.values(projects || {}).forEach(p => {
@@ -218,17 +267,14 @@ export default function LogisticsPage() {
   // Filtered documents for ledger
   const filteredDocs = useMemo(() => {
     return allDocs.filter(doc => {
-      // Tab filter
       if (activeFilterTab === 'PL' && doc.type !== 'packing_list') return false;
       if (activeFilterTab === 'DN' && doc.type !== 'delivery_note') return false;
-      if (activeFilterTab === 'PENDING' && (doc.type !== 'packing_list' || doc.deliveryNoteId)) return false;
+      if (activeFilterTab === 'PENDING' && (doc.type !== 'packing_list' || doc.deliveryNoteId || doc.status === 'Cancelled')) return false;
 
-      // PM filter
       if (filterPm !== 'All' && (!doc.projectPm || doc.projectPm.trim().toLowerCase() !== filterPm.trim().toLowerCase())) {
         return false;
       }
 
-      // Search query filter
       const q = debouncedSearch.trim().toLowerCase();
       if (!q) return true;
 
@@ -237,389 +283,351 @@ export default function LogisticsPage() {
         const idMatch = (doc.id || '').toLowerCase().includes(token);
         const projectMatch = (doc.projectName || '').toLowerCase().includes(token);
         const orderMatch = (doc.orderId || '').toLowerCase().includes(token);
-        const supplierMatch = (doc.supplier || '').toLowerCase().includes(token);
         const clientMatch = (doc.projectClient || '').toLowerCase().includes(token);
-        
-        const itemMatch = (doc.items || []).some(item => 
-          (item.code || '').toLowerCase().includes(token) ||
-          (item.type || '').toLowerCase().includes(token) ||
-          (item.description || '').toLowerCase().includes(token)
+        const itemMatch = (doc.items || []).some(
+          item =>
+            (item.code || '').toLowerCase().includes(token) ||
+            (item.plan_code || '').toLowerCase().includes(token) ||
+            (item.supplier_code || '').toLowerCase().includes(token) ||
+            (item.description || '').toLowerCase().includes(token)
         );
-
-        return idMatch || projectMatch || orderMatch || supplierMatch || clientMatch || itemMatch;
+        return idMatch || projectMatch || orderMatch || clientMatch || itemMatch;
       });
     });
   }, [allDocs, activeFilterTab, filterPm, debouncedSearch]);
 
-  // Selected document to preview
   const activeDoc = useMemo(() => {
     return allDocs.find(d => d.id === selectedDocId) || null;
   }, [allDocs, selectedDocId]);
 
-  // Helper: Count total documents created globally to generate serial numbers
-  const getTotalDocCount = (type) => {
-    return allDocs.filter(d => d.type === type).length;
+  // ─── 3-STAGE PACKING LIST WORKBENCH STATE & OPEN HANDLER ─────────────────
+  const handleOpenPlModal = (preselectedKey = '', docToEdit = null) => {
+    setWorkbenchInitialDoc(docToEdit || null);
+    setWorkbenchPreselectedKey(preselectedKey || '');
+    setShowPlWorkbench(true);
   };
 
-  // Helper: Calculate previously packed quantities for an order
-  const getOrderPackedQtys = (order, excludePlId = null) => {
-    const map = {};
-    (order?.itemsList || []).forEach(item => {
-      map[item.id] = 0;
-    });
-    (order?.packingLists || []).forEach(pl => {
-      if (excludePlId && pl.id === excludePlId) return;
-      (pl.items || []).forEach(pi => {
-        if (map[pi.id] !== undefined) {
-          map[pi.id] += Number(pi.qtyDelivered) || 0;
-        }
-      });
-    });
-    return map;
-  };
+  // ─── DELIVERY NOTE CREATION, POD UPLOAD & VOID HANDLERS ──────────────────
 
-  // Initialize Packing List Form
-  const handleOpenPlModal = () => {
-    setPlOrderKey('');
-    setPlNotes('');
-    setPlItemInputs({});
-    setPlOrderSearchQuery('');
-    setShowPlModal(true);
-  };
+  const [dnOrderKey, setDnOrderKey] = useState(''); // "projectKey:::orderId"
+  const [dnMode, setDnMode] = useState('from_pl'); // 'from_pl' (95% standard) | 'quick_direct' (5% emergency)
+  const [dnSelectedPlIds, setDnSelectedPlIds] = useState({});
+  const [dnDirectItems, setDnDirectItems] = useState([]);
+  const [dnItemEtas, setDnItemEtas] = useState({});
+  const [dnDispatchMethod, setDnDispatchMethod] = useState('Internal Driver');
+  const [dnCarrierDriver, setDnCarrierDriver] = useState('');
+  const [dnVehicleReg, setDnVehicleReg] = useState('');
+  const [dnTrackingNumber, setDnTrackingNumber] = useState('');
+  const [dnDeliveryAddress, setDnDeliveryAddress] = useState('');
+  const [dnSiteContactName, setDnSiteContactName] = useState('');
+  const [dnSiteContactPhone, setDnSiteContactPhone] = useState('');
+  const [dnSiteInstructions, setDnSiteInstructions] = useState('');
+  const [dnNotes, setDnNotes] = useState('');
 
-  // Triggered when an order is selected in the PL creator
-  const handlePlOrderChange = (orderKey) => {
-    setPlOrderKey(orderKey);
-    setPlOrderDropdownOpen(false);
-    if (!orderKey) {
-      setPlItemInputs({});
-      return;
-    }
-    const [pKey, oId] = orderKey.split('_');
-    const order = allOrders.find(o => o.projectKey === pKey && o.id === oId);
-    if (!order) return;
+  // POD Upload modal state
+  const [showPodModal, setShowPodModal] = useState(false);
+  const [podTargetDoc, setPodTargetDoc] = useState(null);
+  const [podReceivedBy, setPodReceivedBy] = useState('');
+  const [podFileUrl, setPodFileUrl] = useState('');
+  const [podFileName, setPodFileName] = useState('');
 
-    const packedMap = getOrderPackedQtys(order);
-    const initialInputs = {};
-    (order.itemsList || []).filter(item => (item.itemType || item.item_type) !== 'Service').forEach(item => {
-      const ordered = Number(item.qty || item.quantity) || 0;
-      const packed = packedMap[item.id] || 0;
-      const outstanding = Math.max(0, ordered - packed);
-      
-      initialInputs[item.id] = {
-        qty: outstanding,
-        boxNumber: 'Box 1',
-        materialColour: item.brand || '—',
-        redList: false,
-        firstFix: false
-      };
-    });
-    setPlItemInputs(initialInputs);
-  };
-
-  // Quick helper: Pack All Remaining or Reset All
-  const handlePackAllRemaining = (order) => {
-    if (!order) return;
-    const packedMap = getOrderPackedQtys(order);
-    const updated = { ...plItemInputs };
-    (order.itemsList || []).filter(item => (item.itemType || item.item_type) !== 'Service').forEach(item => {
-      const ordered = Number(item.qty || item.quantity) || 0;
-      const packed = packedMap[item.id] || 0;
-      const outstanding = Math.max(0, ordered - packed);
-      updated[item.id] = {
-        ...(updated[item.id] || { boxNumber: 'Box 1', materialColour: item.brand || '—', redList: false, firstFix: false }),
-        qty: outstanding
-      };
-    });
-    setPlItemInputs(updated);
-  };
-
-  const handleResetPackingQtys = (order) => {
-    if (!order) return;
-    const updated = { ...plItemInputs };
-    (order.itemsList || []).forEach(item => {
-      if (updated[item.id]) {
-        updated[item.id] = { ...updated[item.id], qty: 0 };
-      }
-    });
-    setPlItemInputs(updated);
-  };
-
-  // Save Packing List
-  const handleSavePackingList = (e) => {
-    e.preventDefault();
-    if (!plOrderKey) return;
-    const [pKey, oId] = plOrderKey.split('_');
-    const project = projects[pKey];
-    const order = (project?.orders || []).find(o => o.id === oId);
-    if (!order) return;
-
-    const packedMap = getOrderPackedQtys(order);
-    const plItems = [];
-    let hasItems = false;
-
-    (order.itemsList || []).filter(item => (item.itemType || item.item_type) !== 'Service').forEach(item => {
-      const ordered = Number(item.qty || item.quantity) || 0;
-      const packed = packedMap[item.id] || 0;
-      const outstanding = Math.max(0, ordered - packed);
-      
-      const inputs = plItemInputs[item.id] || {};
-      const qtyToPack = Math.min(outstanding, Math.max(0, Number(inputs.qty) || 0));
-
-      if (qtyToPack > 0) {
-        hasItems = true;
-        plItems.push({
-          id: item.id,
-          type: item.type || item.item_type,
-          code: item.code || item.oneOneCode || 'NA',
-          description: item.description || item.name,
-          brand: item.brand,
-          floor: item.floor,
-          area: item.area,
-          qtyDelivered: qtyToPack,
-          qtyOrdered: ordered,
-          boxNumber: inputs.boxNumber || '—',
-          materialColour: inputs.materialColour || '—',
-          redList: inputs.redList ? 'Yes' : 'No',
-          firstFix: inputs.firstFix ? 'Yes' : 'No'
-        });
-      }
-    });
-
-    if (!hasItems) {
-      alert('Please specify a packing quantity greater than 0 for at least one item.');
-      return;
-    }
-
-    const docIndex = getTotalDocCount('packing_list') + 1;
-    const dateStr = new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-    const newPl = {
-      id: `PL-2026-${String(docIndex).padStart(3, '0')}`,
-      date: dateStr,
-      notes: plNotes,
-      items: plItems,
-      deliveryNoteId: ''
-    };
-
-    const updatedOrders = (project.orders || []).map(o => {
-      if (o.id === oId) {
-        return {
-          ...o,
-          packingLists: [...(o.packingLists || []), newPl]
-        };
-      }
-      return o;
-    });
-
-    updateProject(pKey, 'orders', updatedOrders);
-    setShowPlModal(false);
-    setSelectedDocId(newPl.id);
-    setSelectedProjectKey(pKey);
-  };
-
-  // Initialize Delivery Note Form
-  const handleOpenDnModal = () => {
-    setDnOrderKey('');
-    setDnNotes('');
-    setDnSelectedPlIds({});
-    setDnItemEtas({});
-    setDnOrderSearchQuery('');
-    setShowDnModal(true);
-  };
-
-  // Triggered when an order is selected in the DN creator
-  const handleDnOrderChange = (orderKey) => {
-    setDnOrderKey(orderKey);
+  const handleDnOrderChange = async (compositeKey) => {
+    setDnOrderKey(compositeKey);
     setDnOrderDropdownOpen(false);
     setDnSelectedPlIds({});
     setDnItemEtas({});
+    setDnDirectItems([]);
+
+    if (!compositeKey) return;
+    const [pKey, oId] = compositeKey.split(':::');
+    const order = allOrders.find(o => o.projectKey === pKey && o.id === oId);
+
+    // Pre-fill site contact & address from order/project
+    if (order) {
+      setDnDeliveryAddress(order.deliveryAddress || order.projectLocation || '');
+      setDnSiteContactName(order.clientContact || order.projectClient || '');
+      setDnSiteContactPhone(order.clientPhone || order.projectPhone || '');
+      // Auto-select all pending Packing Lists for convenience
+      const pendingPls = (order.packingLists || []).filter(
+        pl => !pl.delivery_note_number && !pl.deliveryNoteId && pl.status !== 'Cancelled'
+      );
+      const autoCheck = {};
+      pendingPls.forEach(pl => {
+        autoCheck[pl.id || pl.document_number] = true;
+      });
+      setDnSelectedPlIds(autoCheck);
+    }
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/logistics/order-items/${encodeURIComponent(oId)}?project_key=${encodeURIComponent(pKey)}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data.site_address) setDnDeliveryAddress(prev => prev || data.site_address);
+        if (data.site_contact_name) setDnSiteContactName(prev => prev || data.site_contact_name);
+        if (data.site_contact_phone) setDnSiteContactPhone(prev => prev || data.site_contact_phone);
+        setDnDirectItems(
+          (data.items || []).map(it => ({
+            ...it,
+            qty_to_deliver: Number(it.remaining_to_deliver || 0),
+            box_number: 'Direct Dispatch',
+          }))
+        );
+      }
+    } catch (e) {}
   };
 
-  // Get un-delivered packing lists for selected order
+  const handleOpenDnModal = (preselectedKey = '') => {
+    setDnMode('from_pl');
+    setDnNotes('');
+    setDnDispatchMethod('Internal Driver');
+    setDnCarrierDriver('');
+    setDnVehicleReg('');
+    setDnTrackingNumber('');
+    setDnDeliveryAddress('');
+    setDnSiteContactName('');
+    setDnSiteContactPhone('');
+    setDnSiteInstructions('');
+    setDnOrderSearchQuery('');
+    setShowDnModal(true);
+
+    if (preselectedKey) {
+      handleDnOrderChange(preselectedKey);
+    } else {
+      setDnOrderKey('');
+      setDnSelectedPlIds({});
+      setDnDirectItems([]);
+    }
+  };
+
   const getAvailablePls = () => {
     if (!dnOrderKey) return [];
-    const [pKey, oId] = dnOrderKey.split('_');
+    const [pKey, oId] = dnOrderKey.split(':::');
     const order = allOrders.find(o => o.projectKey === pKey && o.id === oId);
     if (!order) return [];
-    return (order.packingLists || []).filter(pl => !pl.deliveryNoteId);
+    return (order.packingLists || []).filter(
+      pl => !pl.deliveryNoteId && !pl.delivery_note_number && pl.status !== 'Cancelled'
+    );
   };
 
-  // Aggregated items from checked Packing Lists
   const getAggregatedDnItems = () => {
-    const itemsMap = {};
     const availablePls = getAvailablePls();
-    
+    const list = [];
     availablePls.forEach(pl => {
-      if (dnSelectedPlIds[pl.id]) {
+      const plId = pl.id || pl.document_number;
+      if (dnSelectedPlIds[plId]) {
         (pl.items || []).forEach(pi => {
-          if (!itemsMap[pi.id]) {
-            itemsMap[pi.id] = {
-              id: pi.id,
-              type: pi.type,
-              code: pi.code,
-              description: pi.description,
-              brand: pi.brand,
-              floor: pi.floor,
-              area: pi.area,
-              qtyDelivered: 0,
-              qtyOrdered: pi.qtyOrdered,
-              boxNumbers: [],
-              redList: pi.redList,
-              firstFix: pi.firstFix
-            };
-          }
-          itemsMap[pi.id].qtyDelivered += Number(pi.qtyDelivered) || 0;
-          if (pi.boxNumber && !itemsMap[pi.id].boxNumbers.includes(pi.boxNumber)) {
-            itemsMap[pi.id].boxNumbers.push(pi.boxNumber);
-          }
-          if (pi.redList === 'Yes') itemsMap[pi.id].redList = 'Yes';
-          if (pi.firstFix === 'Yes') itemsMap[pi.id].firstFix = 'Yes';
+          list.push({
+            ...pi,
+            packing_list_number: plId,
+            one_one_code: pi.one_one_code || pi.code || '',
+            plan_code: pi.plan_code || pi.type || '',
+            supplier_code: pi.supplier_code || pi.code || '',
+            qtyDelivered: Number(pi.qty_packed ?? pi.qtyDelivered ?? 0),
+            boxNumber: pi.box_number || pi.boxNumber || 'Box 1',
+          });
         });
       }
     });
-
-    return Object.values(itemsMap);
+    return list;
   };
 
-  // Save Delivery Note
-  const handleSaveDeliveryNote = (e) => {
+  // Quick Stage Progression: Pick Sheet Ready -> Labeled -> Boxed & Packed
+  const handleUpdatePlStage = async (doc, newStage) => {
+    if (!doc) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/logistics/packing-list/${encodeURIComponent(doc.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: newStage,
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to update packing stage');
+      }
+      await refreshProjects();
+    } catch (err) {
+      alert(`Error updating packing stage: ${err.message}`);
+    }
+  };
+
+  const handleSaveDeliveryNote = async (e) => {
     e.preventDefault();
     if (!dnOrderKey) return;
-    const [pKey, oId] = dnOrderKey.split('_');
-    const project = projects[pKey];
-    const order = (project?.orders || []).find(o => o.id === oId);
-    if (!order) return;
+    const [pKey, oId] = dnOrderKey.split(':::');
 
-    const dnItems = getAggregatedDnItems();
-    if (dnItems.length === 0) {
-      alert('Please check at least one Packing List to generate the Delivery Note.');
+    const selectedPlNumbers = Object.keys(dnSelectedPlIds).filter(k => dnSelectedPlIds[k]);
+    if (dnMode === 'from_pl' && selectedPlNumbers.length === 0) {
+      alert('Please select at least one Packing List to generate the Delivery Note.');
       return;
     }
 
-    const docIndex = getTotalDocCount('delivery_note') + 1;
-    const dateStr = new Date().toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-    const newDnId = `DN-2026-${String(docIndex).padStart(3, '0')}`;
-
-    const finalDnItems = dnItems.map(item => ({
-      ...item,
-      boxNumber: item.boxNumbers.join(', '),
-      etaBackOrder: dnItemEtas[item.id] || 'TBD'
-    }));
-
-    const newDn = {
-      id: newDnId,
-      date: dateStr,
-      notes: dnNotes,
-      packingListIds: Object.keys(dnSelectedPlIds).filter(id => dnSelectedPlIds[id]),
-      items: finalDnItems
-    };
-
-    const formattedDate = new Date().toISOString().split('T')[0];
-    const updatedOrders = (project.orders || []).map(o => {
-      if (o.id === oId) {
-        const linkedPls = (o.packingLists || []).map(pl => {
-          if (dnSelectedPlIds[pl.id]) {
-            return { ...pl, deliveryNoteId: newDnId };
-          }
-          return pl;
-        });
-
-        // Sync with Sales Tracker deliveryHistory for items
-        const updatedItemsList = (o.itemsList || []).map(item => {
-          const dnItem = finalDnItems.find(di => di.id === item.id);
-          if (dnItem) {
-            const history = Array.isArray(item.deliveryHistory) ? item.deliveryHistory : [];
-            const syncTransaction = {
-              qty: dnItem.qtyDelivered,
-              ref: newDnId,
-              date: formattedDate
-            };
-            return {
-              ...item,
-              deliveryQty: (Number(item.deliveryQty) || 0) + dnItem.qtyDelivered,
-              deliveryHistory: [...history, syncTransaction]
-            };
-          }
-          return item;
-        });
-
-        return {
-          ...o,
-          packingLists: linkedPls,
-          deliveryNotes: [...(o.deliveryNotes || []), newDn],
-          itemsList: updatedItemsList
-        };
+    let directPayloadItems = null;
+    if (dnMode === 'quick_direct') {
+      const activeDirect = dnDirectItems.filter(it => Number(it.qty_to_deliver) > 0);
+      if (activeDirect.length === 0) {
+        alert('Please enter a quantity > 0 for at least one item in Quick Direct Delivery mode.');
+        return;
       }
-      return o;
-    });
+      directPayloadItems = activeDirect.map(it => ({
+        order_item_id: it.order_item_id,
+        one_one_code: it.one_one_code,
+        plan_code: it.plan_code,
+        supplier_code: it.supplier_code,
+        description: it.description,
+        floor: it.floor,
+        area: it.area,
+        material_colour: it.material_colour,
+        first_fix: it.first_fix,
+        red_list: it.red_list,
+        box_number: it.box_number || 'Direct Dispatch',
+        qty_ordered: Number(it.qty_ordered || 0),
+        qty_delivered: Number(it.qty_to_deliver || 0),
+        qty_remaining: Math.max(0, Number(it.remaining_to_deliver || 0) - Number(it.qty_to_deliver || 0)),
+        backorder_eta: dnItemEtas[it.order_item_id] || it.eta || '',
+      }));
+    }
 
-    updateProject(pKey, 'orders', updatedOrders);
-    setShowDnModal(false);
-    setSelectedDocId(newDn.id);
-    setSelectedProjectKey(pKey);
+    setIsSavingLogistics(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/logistics/delivery-note`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_key: pKey,
+          order_id: oId,
+          source_packing_lists: dnMode === 'from_pl' ? selectedPlNumbers : [],
+          dispatch_method: dnDispatchMethod,
+          carrier_driver: dnCarrierDriver,
+          vehicle_reg: dnVehicleReg,
+          tracking_number: dnTrackingNumber,
+          delivery_address: dnDeliveryAddress,
+          site_contact_name: dnSiteContactName,
+          site_contact_phone: dnSiteContactPhone,
+          site_instructions: dnSiteInstructions,
+          notes: dnNotes,
+          backorder_etas: dnItemEtas,
+          items: directPayloadItems,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to generate Delivery Note');
+      }
+
+      const data = await res.json();
+      await refreshProjects();
+      setShowDnModal(false);
+      if (data.delivery_note?.id) {
+        setSelectedDocId(data.delivery_note.id);
+        setSelectedProjectKey(pKey);
+      }
+    } catch (err) {
+      alert(`Error creating Delivery Note: ${err.message}`);
+    } finally {
+      setIsSavingLogistics(false);
+    }
   };
 
-  // Delete document
-  const handleDeleteDoc = (doc) => {
-    if (!window.confirm(`Are you sure you want to delete ${doc.id}? This will reverse its quantities.`)) return;
-    const project = projects[doc.projectKey];
-    if (!project) return;
+  // Void / Cancel a Delivery Note or Delete a Pending Packing List
+  const handleVoidOrDeleteDoc = async (doc) => {
+    if (!doc) return;
 
-    const updatedOrders = (project.orders || []).map(o => {
-      if (o.id === doc.orderId) {
-        if (doc.type === 'packing_list') {
-          if (doc.deliveryNoteId) {
-            alert(`This Packing List is already delivered on ${doc.deliveryNoteId}. Please delete that Delivery Note first.`);
-            return o;
-          }
-          return {
-            ...o,
-            packingLists: (o.packingLists || []).filter(pl => pl.id !== doc.id)
-          };
-        } else {
-          // It's a Delivery Note. Unlink corresponding Packing Lists.
-          const unlinkedPls = (o.packingLists || []).map(pl => {
-            if (pl.deliveryNoteId === doc.id) {
-              return { ...pl, deliveryNoteId: '' };
-            }
-            return pl;
-          });
-
-          // Reverse Sales Tracker deliveryHistory quantities for items
-          const updatedItemsList = (o.itemsList || []).map(item => {
-            const dnItem = (doc.items || []).find(di => di.id === item.id);
-            if (dnItem) {
-              const history = Array.isArray(item.deliveryHistory) ? item.deliveryHistory : [];
-              const cleanedHistory = history.filter(h => h.ref !== doc.id);
-              return {
-                ...item,
-                deliveryQty: Math.max(0, (Number(item.deliveryQty) || 0) - dnItem.qtyDelivered),
-                deliveryHistory: cleanedHistory
-              };
-            }
-            return item;
-          });
-
-          return {
-            ...o,
-            packingLists: unlinkedPls,
-            deliveryNotes: (o.deliveryNotes || []).filter(dn => dn.id !== doc.id),
-            itemsList: updatedItemsList
-          };
-        }
+    if (doc.type === 'packing_list') {
+      if (doc.deliveryNoteId && doc.status !== 'Pending Dispatch') {
+        alert(`Packing List ${doc.id} is linked to Delivery Note ${doc.deliveryNoteId}. Void the Delivery Note first to release this Packing List.`);
+        return;
       }
-      return o;
-    });
+      if (!window.confirm(`Delete Packing List ${doc.id}?`)) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/logistics/packing-list/${encodeURIComponent(doc.id)}`, {
+          method: 'DELETE',
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'Delete failed');
+        }
+        await refreshProjects();
+        if (selectedDocId === doc.id) setSelectedDocId(null);
+      } catch (err) {
+        alert(err.message);
+      }
+    } else {
+      // Delivery Note -> Full Reversal Void
+      const reason = window.prompt(
+        `VOID / CANCEL DELIVERY NOTE ${doc.id}\n\nThis will:\n1. Mark ${doc.id} as Cancelled\n2. Release linked Packing Lists (${(doc.packingListIds || []).join(', ') || 'if any'}) back to Pending Dispatch\n3. Reverse delivered quantities on the Order & recalculate Sales Tracker metrics.\n\nEnter reason for voiding:`,
+        'Dispatch cancelled / reversed'
+      );
+      if (reason === null) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/logistics/delivery-note/${encodeURIComponent(doc.id)}/void`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ void_reason: reason }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'Void failed');
+        }
+        await refreshProjects();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+  };
 
-    updateProject(doc.projectKey, 'orders', updatedOrders);
-    if (selectedDocId === doc.id) {
-      setSelectedDocId(null);
+  // Upload Signed POD handler
+  const handleOpenPodModal = (doc) => {
+    setPodTargetDoc(doc);
+    setPodReceivedBy(doc.received_by || doc.site_contact_name || '');
+    setPodFileUrl(doc.pod_file_url || '');
+    setPodFileName(doc.pod_file_name || '');
+    setShowPodModal(true);
+  };
+
+  const handlePodFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPodFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPodFileUrl(String(reader.result || ''));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmitPod = async (e) => {
+    e.preventDefault();
+    if (!podTargetDoc) return;
+    if (!podFileUrl) {
+      alert('Please select a scanned image or PDF of the signed Delivery Note.');
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/logistics/delivery-note/${encodeURIComponent(podTargetDoc.id)}/pod`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pod_file_url: podFileUrl,
+          pod_file_name: podFileName || 'Signed_POD',
+          received_by: podReceivedBy,
+          mark_delivered: true,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to save POD');
+      await refreshProjects();
+      setShowPodModal(false);
+    } catch (err) {
+      alert(err.message);
     }
   };
 
   return (
     <div className="animation-fade-in" style={{ width: '100%', maxWidth: '1680px', margin: '0 auto', padding: '0 8px 40px 8px' }}>
-      
       {/* PRINT STYLES */}
       <style>{`
         @media print {
@@ -651,29 +659,28 @@ export default function LogisticsPage() {
             {getModuleName('logistics', 'Logistics')} & Warehousing Workspace
           </h1>
           <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
-            Track Packing Lists (PL) & Delivery Notes (DN) issued for client quotation orders
+            Manage Packing Lists (PL), Argox O4-250 Thermal Labels, Official Delivery Notes (DN), Dispatch Transport & Signed PODs
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <button 
-            className="btn btn-ghost btn-sm" 
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-ghost btn-sm"
             style={{ border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 600 }}
             onClick={() => setShowLabelTemplateModal(true)}
-            title="Configure thermal label sizes, layouts and custom variables"
           >
             <Tag size={15} style={{ color: 'var(--text-info)' }} /> Label Templates & Designer
           </button>
-          <button 
-            className="btn btn-ghost btn-sm" 
+          <button
+            className="btn btn-ghost btn-sm"
             style={{ border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 600 }}
-            onClick={handleOpenPlModal}
+            onClick={() => handleOpenPlModal()}
           >
             <Plus size={15} /> New Packing List
           </button>
-          <button 
-            className="btn btn-primary btn-sm" 
+          <button
+            className="btn btn-primary btn-sm"
             style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 600 }}
-            onClick={handleOpenDnModal}
+            onClick={() => handleOpenDnModal()}
           >
             <Plus size={15} /> New Delivery Note
           </button>
@@ -682,8 +689,6 @@ export default function LogisticsPage() {
 
       {/* EXECUTIVE KPI SUMMARY CARDS */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '14px', marginBottom: '20px' }}>
-        
-        {/* Card 1: Total Packing Lists */}
         <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
@@ -693,7 +698,7 @@ export default function LogisticsPage() {
               {kpiStats.totalPlCount}
             </div>
             <span style={{ fontSize: '11px', color: 'var(--text-warning)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-              <Clock size={11} /> {kpiStats.pendingPlCount} pending delivery
+              <Clock size={11} /> {kpiStats.pendingPlCount} ready for dispatch
             </span>
           </div>
           <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-info)' }}>
@@ -701,7 +706,6 @@ export default function LogisticsPage() {
           </div>
         </div>
 
-        {/* Card 2: Total Delivery Notes */}
         <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
@@ -711,7 +715,7 @@ export default function LogisticsPage() {
               {kpiStats.totalDnCount}
             </div>
             <span style={{ fontSize: '11px', color: 'var(--text-success)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
-              <CheckCircle2 size={11} /> Official Dispatches
+              <CheckCircle2 size={11} /> Active Dispatches
             </span>
           </div>
           <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(34, 197, 94, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-success)' }}>
@@ -719,7 +723,6 @@ export default function LogisticsPage() {
           </div>
         </div>
 
-        {/* Card 3: Total Dispatched Units */}
         <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
@@ -729,7 +732,7 @@ export default function LogisticsPage() {
               {kpiStats.totalDispatchedUnits.toLocaleString()}
             </div>
             <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
-              Across all client orders
+              Synced to Sales Tracker & Orders
             </span>
           </div>
           <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(168, 85, 247, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a855f7' }}>
@@ -737,7 +740,6 @@ export default function LogisticsPage() {
           </div>
         </div>
 
-        {/* Card 4: Active Projects */}
         <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
@@ -754,16 +756,12 @@ export default function LogisticsPage() {
             <Layers size={20} />
           </div>
         </div>
-
       </div>
 
       {/* FILTER TABS & CONTROL BAR */}
       <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px', marginBottom: '18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        
-        {/* Top Filter Tabs */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
-            
             <button
               type="button"
               onClick={() => setActiveFilterTab('ALL')}
@@ -772,7 +770,6 @@ export default function LogisticsPage() {
             >
               All Documents ({allDocs.length})
             </button>
-
             <button
               type="button"
               onClick={() => setActiveFilterTab('PL')}
@@ -781,7 +778,6 @@ export default function LogisticsPage() {
             >
               📦 Packing Lists ({kpiStats.totalPlCount})
             </button>
-
             <button
               type="button"
               onClick={() => setActiveFilterTab('DN')}
@@ -790,47 +786,30 @@ export default function LogisticsPage() {
             >
               🚚 Delivery Notes ({kpiStats.totalDnCount})
             </button>
-
             <button
               type="button"
               onClick={() => setActiveFilterTab('PENDING')}
               className={`btn btn-sm ${activeFilterTab === 'PENDING' ? 'btn-primary' : 'btn-ghost'}`}
               style={{ fontSize: '12px', fontWeight: 600, borderRadius: '6px', color: activeFilterTab === 'PENDING' ? '#fff' : 'var(--text-warning)' }}
             >
-              ⏳ Undelivered Lists ({kpiStats.pendingPlCount})
+              ⏳ Ready for Dispatch ({kpiStats.pendingPlCount})
             </button>
-
           </div>
-
-          {selectedDocId && (
-            <button 
-              className="btn btn-ghost btn-sm"
-              onClick={() => {
-                setSelectedDocId(null);
-                setSelectedProjectKey(null);
-              }}
-              style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-info)', border: '1px solid var(--border)' }}
-            >
-              <ArrowLeft size={13} /> Return to Full Ledger View
-            </button>
-          )}
         </div>
 
-        {/* Search & Filter Row */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '10px', alignItems: 'center' }}>
-          
           <div style={{ position: 'relative' }}>
             <Search size={14} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-tertiary)' }} />
-            <input 
-              type="text" 
-              placeholder="Search by Document # (e.g. DN-2026-001), Project, Order PO, Client, or SKU..." 
+            <input
+              type="text"
+              placeholder="Search by Document # (e.g. PL-2026-0001, DN-2026-0001), Project, Order, Client, or SKU..."
               className="form-control"
               style={{ paddingLeft: '32px', height: '32px', fontSize: '12.5px', background: 'var(--bg-primary)', width: '100%' }}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
-              <button 
+              <button
                 onClick={() => setSearchQuery('')}
                 style={{ position: 'absolute', right: '8px', top: '7px', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer' }}
               >
@@ -841,7 +820,7 @@ export default function LogisticsPage() {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Group:</span>
-            <select 
+            <select
               className="form-control"
               style={{ height: '32px', padding: '2px 8px', fontSize: '12px', background: 'var(--bg-primary)' }}
               value={groupingMode}
@@ -854,7 +833,7 @@ export default function LogisticsPage() {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>PM:</span>
-            <select 
+            <select
               className="form-control"
               style={{ height: '32px', padding: '2px 8px', fontSize: '12px', background: 'var(--bg-primary)' }}
               value={filterPm}
@@ -866,317 +845,269 @@ export default function LogisticsPage() {
               ))}
             </select>
           </div>
-
         </div>
-
       </div>
 
-      {/* MAIN DOCUMENT WORKSPACE (Full Width Ledger Table) */}
-      <div style={{ width: '100%' }}>
-        
-        {/* ISSUED DOCUMENTS LEDGER */}
-        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
-          
-          <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <FileText size={15} style={{ color: 'var(--text-info)' }} />
-              Logistics Documents Ledger ({filteredDocs.length})
-            </span>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-              Click any document to inspect, print or download PDF
-            </span>
+      {/* MAIN DOCUMENT LEDGER */}
+      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+        <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <FileText size={15} style={{ color: 'var(--text-info)' }} />
+            Logistics Documents Ledger ({filteredDocs.length})
+          </span>
+          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+            Click any document to inspect, print thermal labels, upload signed POD, or download PDF
+          </span>
+        </div>
+
+        {filteredDocs.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-tertiary)', fontSize: '13px' }}>
+            <Package size={36} style={{ margin: '0 auto 12px auto', opacity: 0.4 }} />
+            <div>No issued packing lists or delivery notes found.</div>
+            <span style={{ fontSize: '11px', marginTop: '4px', display: 'block' }}>Click "New Packing List" or "New Delivery Note" above to issue one.</span>
           </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
+                  <th style={{ padding: '10px 14px' }}>Document ID</th>
+                  <th style={{ padding: '10px 14px' }}>Type</th>
+                  <th style={{ padding: '10px 14px' }}>Project & Order</th>
+                  <th style={{ padding: '10px 14px' }}>Client / Method</th>
+                  <th style={{ padding: '10px 14px' }}>Date</th>
+                  <th style={{ padding: '10px 14px' }}>Items & Units</th>
+                  <th style={{ padding: '10px 14px' }}>Status & POD</th>
+                  <th style={{ padding: '10px 14px', textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDocs.map(doc => {
+                  const isSelected = doc.id === selectedDocId;
+                  const isPL = doc.type === 'packing_list';
+                  const isVoided = (doc.status || '').toLowerCase() === 'cancelled';
+                  const totalQty = (doc.items || []).reduce((s, i) => s + (Number(i.qtyDelivered) || 0), 0);
 
-          {filteredDocs.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-tertiary)', fontSize: '13px' }}>
-              <Package size={36} style={{ margin: '0 auto 12px auto', opacity: 0.4 }} />
-              <div>No issued packing lists or delivery notes found.</div>
-              <span style={{ fontSize: '11px', marginTop: '4px', display: 'block' }}>Click "New Packing List" or "New Delivery Note" above to issue one.</span>
-            </div>
-          ) : groupingMode === 'project' ? (
-            // Grouped By Project View
-            <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '780px', overflowY: 'auto' }}>
-              {(() => {
-                const groups = {};
-                filteredDocs.forEach(doc => {
-                  const key = doc.projectKey || 'unassigned';
-                  if (!groups[key]) {
-                    groups[key] = {
-                      projectName: doc.projectName || 'Direct Client / Other',
-                      projectClient: doc.projectClient || '',
-                      docs: []
-                    };
-                  }
-                  groups[key].docs.push(doc);
-                });
-
-                return Object.entries(groups).map(([projKey, group]) => {
-                  const isCollapsed = collapsedProjects[projKey] ?? false;
                   return (
-                    <div key={projKey} style={{ border: '1px solid var(--border)', borderRadius: '8px', background: 'var(--bg-primary)', overflow: 'hidden' }}>
-                      <div 
-                        style={{ padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', background: 'var(--bg-tertiary)' }}
-                        onClick={() => {
-                          setCollapsedProjects(prev => ({
-                            ...prev,
-                            [projKey]: !prev[projKey]
-                          }));
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                            {group.projectName} {group.projectClient && <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>({group.projectClient})</span>}
-                          </span>
-                        </div>
-                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-primary)', padding: '2px 8px', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                          {group.docs.length} docs
+                    <tr
+                      key={`${doc.type}_${doc.id}`}
+                      onClick={() => {
+                        setSelectedDocId(doc.id);
+                        setSelectedProjectKey(doc.projectKey);
+                      }}
+                      className="hover-row"
+                      style={{
+                        borderBottom: '1px solid var(--border)',
+                        background: isSelected ? 'rgba(59, 130, 246, 0.10)' : 'transparent',
+                        cursor: 'pointer',
+                        opacity: isVoided ? 0.55 : 1,
+                      }}
+                    >
+                      <td style={{ padding: '10px 14px', fontWeight: 800, fontFamily: 'monospace', color: isVoided ? 'var(--text-tertiary)' : 'var(--text-info)', textDecoration: isVoided ? 'line-through' : 'none' }}>
+                        {doc.id}
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <span style={{
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          textTransform: 'uppercase',
+                          background: isPL ? 'rgba(59, 130, 246, 0.12)' : 'rgba(34, 197, 94, 0.12)',
+                          color: isPL ? 'var(--text-info)' : 'var(--text-success)',
+                        }}>
+                          {isPL ? '📦 Packing List' : `🚚 DN (${doc.delivery_type || 'Full'})`}
                         </span>
-                      </div>
-                      
-                      {!isCollapsed && (
-                        <div style={{ padding: '10px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '8px' }}>
-                          {group.docs.map(doc => {
-                            const isSelected = doc.id === selectedDocId;
-                            const isPL = doc.type === 'packing_list';
-                            const totalQty = (doc.items || []).reduce((s, i) => s + (Number(i.qtyDelivered) || 0), 0);
-                            return (
-                              <div
-                                key={doc.id}
-                                onClick={() => {
-                                  setSelectedDocId(doc.id);
-                                  setSelectedProjectKey(doc.projectKey);
-                                }}
-                                className="hover-row"
-                                style={{
-                                  background: isSelected ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-secondary)',
-                                  border: isSelected ? '1.5px solid var(--text-info)' : '1px solid var(--border)',
-                                  borderRadius: '8px',
-                                  padding: '12px 14px',
-                                  cursor: 'pointer',
-                                  fontSize: '12px',
-                                  transition: 'all 0.15s ease'
-                                }}
-                              >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-info)', fontSize: '13px' }}>{doc.id}</span>
-                                  <span style={{
-                                    fontSize: '9.5px',
-                                    fontWeight: 700,
-                                    padding: '2px 6px',
-                                    borderRadius: '4px',
-                                    textTransform: 'uppercase',
-                                    background: isPL ? 'rgba(59, 130, 246, 0.15)' : 'rgba(34, 197, 94, 0.15)',
-                                    color: isPL ? 'var(--text-info)' : 'var(--text-success)'
-                                  }}>
-                                    {isPL ? 'Packing List' : 'Delivery Note'}
-                                  </span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)', marginTop: '6px', fontSize: '11.5px' }}>
-                                  <span>Order: {doc.orderId}</span>
-                                  <span>{doc.items?.length || 0} items ({totalQty} units)</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                                  <span>Issued: {doc.date}</span>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    {isPL && (
-                                      <button
-                                        className="btn btn-ghost btn-xs"
-                                        title="Print Thermal Labels"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleOpenLabelPrinter(doc);
-                                        }}
-                                        style={{ padding: '2px 5px', color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)' }}
-                                      >
-                                        <Tag size={11} /> Labels
-                                      </button>
-                                    )}
-                                    {isPL && (
-                                      <span style={{ color: doc.deliveryNoteId ? 'var(--text-success)' : 'var(--text-warning)', fontWeight: 600 }}>
-                                        {doc.deliveryNoteId ? `Delivered (${doc.deliveryNoteId})` : 'Packed (Ready)'}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-          ) : (
-            // Full Flat Table Ledger
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
-                    <th style={{ padding: '10px 14px' }}>Document ID</th>
-                    <th style={{ padding: '10px 14px' }}>Type</th>
-                    <th style={{ padding: '10px 14px' }}>Project & Order</th>
-                    <th style={{ padding: '10px 14px' }}>Client</th>
-                    <th style={{ padding: '10px 14px' }}>Date</th>
-                    <th style={{ padding: '10px 14px' }}>Items & Units</th>
-                    <th style={{ padding: '10px 14px' }}>Status</th>
-                    <th style={{ padding: '10px 14px', textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredDocs.map((doc, idx) => {
-                    const isSelected = doc.id === selectedDocId;
-                    const isPL = doc.type === 'packing_list';
-                    const totalQty = (doc.items || []).reduce((s, i) => s + (Number(i.qtyDelivered) || 0), 0);
-
-                    return (
-                      <tr 
-                        key={doc.id}
-                        onClick={() => {
-                          setSelectedDocId(doc.id);
-                          setSelectedProjectKey(doc.projectKey);
-                        }}
-                        className="hover-row"
-                        style={{
-                          borderBottom: '1px solid var(--border)',
-                          background: isSelected ? 'rgba(59, 130, 246, 0.10)' : 'transparent',
-                          cursor: 'pointer',
-                          transition: 'background 0.15s'
-                        }}
-                      >
-                        <td style={{ padding: '10px 14px', fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-info)' }}>
-                          {doc.id}
-                        </td>
-                        <td style={{ padding: '10px 14px' }}>
-                          <span style={{
-                            fontSize: '10px',
-                            fontWeight: 700,
-                            padding: '2px 8px',
-                            borderRadius: '4px',
-                            textTransform: 'uppercase',
-                            background: isPL ? 'rgba(59, 130, 246, 0.12)' : 'rgba(34, 197, 94, 0.12)',
-                            color: isPL ? 'var(--text-info)' : 'var(--text-success)'
-                          }}>
-                            {isPL ? '📦 PL' : '🚚 DN'}
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{doc.projectName}</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{doc.orderId}</div>
+                      </td>
+                      <td style={{ padding: '10px 14px', color: 'var(--text-secondary)' }}>
+                        <div>{doc.projectClient || '—'}</div>
+                        {!isPL && doc.dispatch_method && (
+                          <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>
+                            {doc.dispatch_method} {doc.carrier_driver ? `• ${doc.carrier_driver}` : ''}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                        {doc.date}
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{doc.items?.length || 0} lines</span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '4px' }}>({totalQty} pcs)</span>
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        {isVoided ? (
+                          <span style={{ color: 'var(--text-danger)', fontWeight: 700, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Ban size={12} /> Cancelled / Voided
                           </span>
-                        </td>
-                        <td style={{ padding: '10px 14px' }}>
-                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{doc.projectName}</div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{doc.orderId}</div>
-                        </td>
-                        <td style={{ padding: '10px 14px', color: 'var(--text-secondary)' }}>
-                          {doc.projectClient || '—'}
-                        </td>
-                        <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
-                          {doc.date}
-                        </td>
-                        <td style={{ padding: '10px 14px' }}>
-                          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{doc.items?.length || 0} lines</span>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '4px' }}>({totalQty} pcs)</span>
-                        </td>
-                        <td style={{ padding: '10px 14px' }}>
-                          {isPL ? (
-                            doc.deliveryNoteId ? (
-                              <span style={{ color: 'var(--text-success)', fontWeight: 600, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <CheckCircle2 size={12} /> {doc.deliveryNoteId}
-                              </span>
-                            ) : (
-                              <span style={{ color: 'var(--text-warning)', fontWeight: 600, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <Clock size={12} /> Packed (Ready)
-                              </span>
-                            )
-                          ) : (
-                            <span style={{ color: 'var(--text-success)', fontWeight: 600, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <Truck size={12} /> Dispatched
+                        ) : isPL ? (
+                          doc.deliveryNoteId ? (
+                            <span style={{ color: 'var(--text-success)', fontWeight: 700, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <CheckCircle2 size={12} /> Dispatched ({doc.deliveryNoteId})
                             </span>
-                          )}
-                        </td>
-                        <td style={{ padding: '10px 14px', textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                            {isPL && (
+                          ) : doc.status === 'Boxed' || doc.status === 'Boxed & Packed' ? (
+                            <span style={{ color: '#10b981', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Package size={12} /> Stage 3: Boxed
+                            </span>
+                          ) : doc.status === 'Labels Printed' || doc.status === 'Labeled' ? (
+                            <span style={{ color: 'var(--text-info)', background: 'rgba(59, 130, 246, 0.12)', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Tag size={12} /> Stage 2: Labeled
+                            </span>
+                          ) : (
+                            <span style={{ color: '#f59e0b', background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <ClipboardList size={12} /> Stage 1: Pick Sheet
+                            </span>
+                          )
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ color: 'var(--text-success)', fontWeight: 600, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Truck size={12} /> {doc.status || 'Dispatched'}
+                            </span>
+                            {doc.pod_received && (
+                              <span style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                POD ✓
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '10px 14px', textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                          {/* Stage Quick Advance */}
+                          {isPL && !doc.deliveryNoteId && !isVoided && (
+                            doc.status === 'Boxed' || doc.status === 'Boxed & Packed' ? (
                               <button
                                 className="btn btn-ghost btn-xs"
-                                title="Print Thermal Labels (Argox O4-250)"
-                                style={{ color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)' }}
-                                onClick={() => handleOpenLabelPrinter(doc)}
+                                title="Stage 3 Complete: Boxed & Packed"
+                                style={{ color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.4)', fontSize: '10.5px', padding: '2px 6px', fontWeight: 700 }}
+                                onClick={() => handleUpdatePlStage(doc, 'Pick Sheet Ready')}
                               >
-                                <Tag size={13} />
+                                ? Boxed
                               </button>
-                            )}
+                            ) : doc.status === 'Labels Printed' || doc.status === 'Labeled' ? (
+                              <button
+                                className="btn btn-ghost btn-xs"
+                                title="Click to Advance to Stage 3: Boxed"
+                                style={{ color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.4)', fontSize: '10.5px', padding: '2px 6px', fontWeight: 700 }}
+                                onClick={() => handleUpdatePlStage(doc, 'Boxed')}
+                              >
+                                ? Mark Boxed
+                              </button>
+                            ) : (
+                              <button
+                                className="btn btn-ghost btn-xs"
+                                title="Click to Advance to Stage 2: Labels Printed"
+                                style={{ color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.4)', fontSize: '10.5px', padding: '2px 6px', fontWeight: 700 }}
+                                onClick={() => {
+                                  handleOpenLabelPrinter(doc);
+                                  handleUpdatePlStage(doc, 'Labels Printed');
+                                }}
+                              >
+                                ? Print Labels
+                              </button>
+                            )
+                          )}
+                          <button
+                            className="btn btn-ghost btn-xs"
+                            title="Print Thermal Labels (Argox O4-250)"
+                            style={{ color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)' }}
+                            onClick={() => handleOpenLabelPrinter(doc)}
+                          >
+                            <Tag size={13} />
+                          </button>
+                          {isPL && !doc.deliveryNoteId && !isVoided && (
                             <button
                               className="btn btn-ghost btn-xs"
-                              title="Inspect & Print"
-                              style={{ color: 'var(--text-info)' }}
-                              onClick={() => {
-                                setSelectedDocId(doc.id);
-                                setSelectedProjectKey(doc.projectKey);
-                              }}
+                              title="Edit Packing List"
+                              style={{ color: 'var(--text-primary)' }}
+                              onClick={() => handleOpenPlModal('', doc)}
                             >
-                              <Eye size={13} />
+                              <Edit3 size={13} />
                             </button>
+                          )}
+                          {!isPL && !isVoided && (
                             <button
                               className="btn btn-ghost btn-xs"
-                              title="Delete Document"
+                              title="Upload / View Signed Proof of Delivery (POD)"
+                              style={{ color: doc.pod_received ? '#10b981' : 'var(--text-warning)' }}
+                              onClick={() => handleOpenPodModal(doc)}
+                            >
+                              <FileCheck size={13} />
+                            </button>
+                          )}
+                          <button
+                            className="btn btn-ghost btn-xs"
+                            title="Inspect & Print PDF"
+                            style={{ color: 'var(--text-info)' }}
+                            onClick={() => {
+                              setSelectedDocId(doc.id);
+                              setSelectedProjectKey(doc.projectKey);
+                            }}
+                          >
+                            <Eye size={13} />
+                          </button>
+                          {!isVoided && (
+                            <button
+                              className="btn btn-ghost btn-xs"
+                              title={isPL ? 'Delete Packing List' : 'Void / Cancel Delivery Note & Reverse Quantities'}
                               style={{ color: 'var(--text-danger)' }}
-                              onClick={() => handleDeleteDoc(doc)}
+                              onClick={() => handleVoidOrDeleteDoc(doc)}
                             >
-                              <Trash2 size={13} />
+                              {isPL ? <Trash2 size={13} /> : <Ban size={13} />}
                             </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-        </div>
-
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* CENTERED MODAL: HIGH-FIDELITY PRINTABLE DOCUMENT PREVIEW */}
+      {/* ─── CENTERED MODAL: HIGH-FIDELITY PRINTABLE DOCUMENT PREVIEW ────────── */}
       {activeDoc && (
-        <div 
-          style={{ 
-            position: 'fixed', 
-            inset: 0, 
-            zIndex: 1100, 
-            background: 'rgba(0, 0, 0, 0.75)', 
-            backdropFilter: 'blur(4px)', 
-            display: 'flex', 
-            alignItems: 'flex-start', 
-            justifyContent: 'center', 
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1100,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
             overflowY: 'auto',
-            padding: '24px 16px' 
+            padding: '24px 16px',
           }}
-          onClick={(e) => {
+          onClick={e => {
             if (e.target === e.currentTarget) {
               setSelectedDocId(null);
               setSelectedProjectKey(null);
             }
           }}
         >
-          <div 
-            style={{ 
+          <div
+            style={{
               margin: 'auto',
-              background: 'var(--bg-secondary)', 
-              border: '1px solid var(--border)', 
-              borderRadius: '12px', 
-              width: '100%', 
-              maxWidth: '960px', 
-              maxHeight: 'calc(100vh - 48px)', 
-              display: 'flex', 
-              flexDirection: 'column', 
-              overflow: 'hidden', 
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)' 
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: '12px',
+              width: '100%',
+              maxWidth: '1020px',
+              maxHeight: 'calc(100vh - 48px)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
             }}
             onClick={e => e.stopPropagation()}
           >
-            
             {/* Top Workspace Action Bar */}
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1187,40 +1118,91 @@ export default function LogisticsPage() {
                   borderRadius: '4px',
                   textTransform: 'uppercase',
                   background: activeDoc.type === 'packing_list' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(34, 197, 94, 0.15)',
-                  color: activeDoc.type === 'packing_list' ? 'var(--text-info)' : 'var(--text-success)'
+                  color: activeDoc.type === 'packing_list' ? 'var(--text-info)' : 'var(--text-success)',
                 }}>
-                  {activeDoc.type === 'packing_list' ? 'Packing List' : 'Delivery Note'}
+                  {activeDoc.type === 'packing_list' ? 'Packing List' : `Delivery Note (${activeDoc.delivery_type || 'Full'})`}
                 </span>
                 <h3 style={{ margin: 0, fontSize: '16px', color: 'var(--text-primary)', fontWeight: 800, fontFamily: 'monospace' }}>
                   {activeDoc.id}
                 </h3>
+{activeDoc.status === 'Cancelled' ? (
+                  <span style={{ fontSize: '11px', background: 'rgba(239, 68, 68, 0.2)', color: 'var(--text-danger)', padding: '2px 8px', borderRadius: '4px', fontWeight: 800 }}>
+                    VOIDED / CANCELLED
+                  </span>
+                ) : activeDoc.type === 'packing_list' ? (
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      background: activeDoc.status === 'Boxed' || activeDoc.status === 'Boxed & Packed'
+                        ? 'rgba(16, 185, 129, 0.15)'
+                        : activeDoc.status === 'Labels Printed' || activeDoc.status === 'Labeled'
+                        ? 'rgba(59, 130, 246, 0.15)'
+                        : 'rgba(245, 158, 11, 0.15)',
+                      color: activeDoc.status === 'Boxed' || activeDoc.status === 'Boxed & Packed'
+                        ? '#10b981'
+                        : activeDoc.status === 'Labels Printed' || activeDoc.status === 'Labeled'
+                        ? 'var(--text-info)'
+                        : '#f59e0b',
+                      border: '1px solid currentColor'
+                    }}>
+                      {activeDoc.status === 'Boxed' || activeDoc.status === 'Boxed & Packed'
+                        ? 'STAGE 3: BOXED'
+                        : activeDoc.status === 'Labels Printed' || activeDoc.status === 'Labeled'
+                        ? 'STAGE 2: LABELS PRINTED'
+                        : 'STAGE 1: PICK SHEET READY'}
+                    </span>
+                    {!activeDoc.deliveryNoteId && (
+                      <select
+                        style={{ height: '26px', fontSize: '11px', fontWeight: 700, borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', padding: '2px 6px' }}
+                        value={activeDoc.status || 'Pick Sheet Ready'}
+                        onChange={e => handleUpdatePlStage(activeDoc, e.target.value)}
+                      >
+                        <option value="Pick Sheet Ready">Stage 1: Pick Sheet</option>
+                        <option value="Labels Printed">Stage 2: Labels</option>
+                        <option value="Boxed">Stage 3: Boxing</option>
+                      </select>
+                    )}
+                  </div>
+                ) : null}
               </div>
 
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                {activeDoc.type === 'packing_list' && (
-                  <button 
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, border: '1px solid var(--border)', color: 'var(--text-info)' }}
+                  onClick={() => handleOpenLabelPrinter(activeDoc)}
+                >
+                  <Tag size={14} /> Print Thermal Labels (Argox)
+                </button>
+                {activeDoc.type === 'delivery_note' && activeDoc.status !== 'Cancelled' && (
+                  <button
                     className="btn btn-ghost btn-sm"
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, border: '1px solid var(--border)', color: 'var(--text-info)' }}
-                    onClick={() => handleOpenLabelPrinter(activeDoc)}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, border: '1px solid var(--border)', color: activeDoc.pod_received ? '#10b981' : 'var(--text-warning)' }}
+                    onClick={() => handleOpenPodModal(activeDoc)}
                   >
-                    <Tag size={14} /> Print Thermal Labels (Argox)
+                    <Upload size={14} /> {activeDoc.pod_received ? 'View / Replace Signed POD' : 'Upload Signed POD'}
                   </button>
                 )}
-                <button 
+                <button
                   className="btn btn-primary btn-sm"
                   style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600 }}
                   onClick={() => window.print()}
                 >
                   <Printer size={14} /> Print / Save PDF
                 </button>
-                <button 
-                  className="btn btn-ghost btn-sm"
-                  style={{ color: 'var(--text-danger)', border: '1px solid var(--border)', fontSize: '12px' }}
-                  onClick={() => handleDeleteDoc(activeDoc)}
-                >
-                  <Trash2 size={13} /> Delete
-                </button>
-                <button 
+                {activeDoc.status !== 'Cancelled' && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ color: 'var(--text-danger)', border: '1px solid var(--border)', fontSize: '12px' }}
+                    onClick={() => handleVoidOrDeleteDoc(activeDoc)}
+                  >
+                    {activeDoc.type === 'packing_list' ? <><Trash2 size={13} /> Delete</> : <><Ban size={13} /> Void / Cancel DN</>}
+                  </button>
+                )}
+                <button
                   className="btn btn-ghost btn-sm"
                   style={{ border: '1px solid var(--border)', fontSize: '12px' }}
                   onClick={() => {
@@ -1235,17 +1217,17 @@ export default function LogisticsPage() {
 
             {/* LIVE DOCUMENT SHEET */}
             <div style={{ padding: '24px', overflowY: 'auto', flex: 1, display: 'flex', justifyContent: 'center', background: 'var(--bg-primary)' }}>
-              <div 
-                id="print-shipment-canvas" 
-                style={{ 
-                  width: '100%', 
-                  maxWidth: '860px', 
-                  background: 'white', 
-                  color: '#0f172a', 
-                  padding: '36px 44px', 
-                  borderRadius: '6px', 
+              <div
+                id="print-shipment-canvas"
+                style={{
+                  width: '100%',
+                  maxWidth: '900px',
+                  background: 'white',
+                  color: '#0f172a',
+                  padding: '36px 44px',
+                  borderRadius: '6px',
                   boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-                  fontFamily: 'system-ui, -apple-system, sans-serif'
+                  fontFamily: 'system-ui, -apple-system, sans-serif',
                 }}
               >
                 {/* Letterhead Header */}
@@ -1263,17 +1245,17 @@ export default function LogisticsPage() {
                   </div>
 
                   <div style={{ textAlign: 'right' }}>
-                    <span style={{ 
-                      fontSize: '10px', 
-                      textTransform: 'uppercase', 
-                      letterSpacing: '1px', 
-                      background: '#f1f5f9', 
-                      color: '#0f172a', 
-                      padding: '3px 8px', 
-                      borderRadius: '4px', 
-                      fontWeight: 700 
+                    <span style={{
+                      fontSize: '10px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '1px',
+                      background: '#f1f5f9',
+                      color: '#0f172a',
+                      padding: '3px 8px',
+                      borderRadius: '4px',
+                      fontWeight: 700,
                     }}>
-                      {activeDoc.type === 'packing_list' ? 'Logistical Packing List' : 'Official Delivery Note'}
+                      {activeDoc.type === 'packing_list' ? 'Logistical Packing List' : `Official Delivery Note (${activeDoc.delivery_type || 'Full'})`}
                     </span>
                     <h3 style={{ margin: '6px 0 0 0', fontSize: '17px', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace' }}>
                       {activeDoc.id}
@@ -1283,831 +1265,734 @@ export default function LogisticsPage() {
                   </div>
                 </div>
 
-                {/* Recipient & Project Vitals */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', fontSize: '11.5px', color: '#334155', marginBottom: '20px', background: '#f8fafc', padding: '14px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                {/* Recipient, Site Delivery & Transport Vitals */}
+                <div style={{ display: 'grid', gridTemplateColumns: activeDoc.type === 'delivery_note' ? '1fr 1fr 1fr' : '1fr 1fr', gap: '14px', fontSize: '11.5px', color: '#334155', marginBottom: '20px', background: '#f8fafc', padding: '14px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                   <div>
-                    <span style={{ fontSize: '9.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>Client Details</span>
+                    <span style={{ fontSize: '9.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>Client & Contact</span>
                     <strong style={{ fontSize: '12px' }}>{activeDoc.orderObj?.clientCompany || activeDoc.projectClient || '—'}</strong>
-                    <span style={{ display: 'block', marginTop: '2px' }}>Attn: {activeDoc.orderObj?.clientContact || '—'}</span>
-                    <span style={{ display: 'block' }}>Phone: {activeDoc.orderObj?.clientPhone || '—'}</span>
-                    <span style={{ display: 'block' }}>Email: {activeDoc.orderObj?.clientEmail || '—'}</span>
+                    <span style={{ display: 'block', marginTop: '2px' }}>Site Contact: {activeDoc.site_contact_name || activeDoc.orderObj?.clientContact || '—'}</span>
+                    <span style={{ display: 'block' }}>Phone: {activeDoc.site_contact_phone || activeDoc.orderObj?.clientPhone || '—'}</span>
                   </div>
                   <div>
-                    <span style={{ fontSize: '9.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>Project Vitals & Destination</span>
+                    <span style={{ fontSize: '9.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>Project & Site Address</span>
                     <strong style={{ fontSize: '12px' }}>{activeDoc.projectName}</strong>
                     <span style={{ display: 'block', whiteSpace: 'pre-line', marginTop: '2px' }}>
-                      {activeDoc.orderObj?.deliveryAddress || 'Site Delivery Address specified on project file.'}
+                      {activeDoc.delivery_address || activeDoc.orderObj?.deliveryAddress || 'Site Delivery Address on file'}
                     </span>
-                    {activeDoc.projectPm && (
-                      <span style={{ display: 'block', marginTop: '3px', fontSize: '10.5px', color: '#64748b' }}>Project Manager: {activeDoc.projectPm}</span>
+                    {activeDoc.site_instructions && (
+                      <span style={{ display: 'block', marginTop: '3px', fontSize: '10.5px', color: '#475569' }}>
+                        <strong>Gate/Site Note:</strong> {activeDoc.site_instructions}
+                      </span>
                     )}
                   </div>
+                  {activeDoc.type === 'delivery_note' && (
+                    <div>
+                      <span style={{ fontSize: '9.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>Transport & Dispatch</span>
+                      <strong style={{ fontSize: '12px' }}>{activeDoc.dispatch_method || 'Internal Driver'}</strong>
+                      {activeDoc.carrier_driver && <span style={{ display: 'block', marginTop: '2px' }}>Driver / Courier: {activeDoc.carrier_driver}</span>}
+                      {activeDoc.vehicle_reg && <span style={{ display: 'block' }}>Vehicle Reg: {activeDoc.vehicle_reg}</span>}
+                      {activeDoc.tracking_number && <span style={{ display: 'block' }}>Waybill / Tracking: {activeDoc.tracking_number}</span>}
+                    </div>
+                  )}
                 </div>
 
                 {activeDoc.type === 'packing_list' ? (
-                  // PACKING LIST TABLE
+                  /* PACKING LIST TABLE */
                   <div>
-                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '8px 12px', marginBottom: '14px', fontSize: '11px', color: '#475569' }}>
-                      <strong>PACKING LOCATION REFERENCE:</strong> Verify items packed in specified boxes for transit.
-                    </div>
-
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', marginBottom: '24px' }}>
                       <thead>
                         <tr style={{ background: '#0f172a', color: 'white', textAlign: 'left', fontWeight: 700 }}>
-                          <th style={{ padding: '7px 8px', textAlign: 'center', width: '40px' }}>Qty</th>
-                          <th style={{ padding: '7px 8px', width: '85px' }}>Made Code</th>
-                          <th style={{ padding: '7px 8px', width: '85px' }}>Plan Code</th>
+                          <th style={{ padding: '7px 8px', width: '85px' }}>1-TO-1 Code</th>
+                          <th style={{ padding: '7px 8px', width: '70px' }}>Plan Code</th>
+                          <th style={{ padding: '7px 8px', width: '85px' }}>Supplier Code</th>
                           <th style={{ padding: '7px 8px' }}>Description</th>
                           <th style={{ padding: '7px 8px', width: '65px' }}>Floor</th>
                           <th style={{ padding: '7px 8px', width: '75px' }}>Area</th>
-                          <th style={{ padding: '7px 8px', width: '90px' }}>Brand / Finish</th>
-                          <th style={{ padding: '7px 8px', width: '75px', textAlign: 'center' }}>Box #</th>
-                          <th style={{ padding: '7px 8px', width: '60px', textAlign: 'center' }}>Red List</th>
-                          <th style={{ padding: '7px 8px', width: '60px', textAlign: 'center' }}>1st Fix</th>
+                          <th style={{ padding: '7px 8px', width: '85px' }}>Material/Col</th>
+                          <th style={{ padding: '7px 8px', width: '48px', textAlign: 'center' }}>1st Fix</th>
+                          <th style={{ padding: '7px 8px', width: '48px', textAlign: 'center' }}>Red List</th>
+                          <th style={{ padding: '7px 8px', width: '50px', textAlign: 'center' }}>Packed</th>
+                          <th style={{ padding: '7px 8px', width: '50px', textAlign: 'center' }}>B/Ord</th>
+                          <th style={{ padding: '7px 8px', width: '65px', textAlign: 'center' }}>Box #</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(activeDoc.items || []).map((item, idx) => (
-                          <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? 'white' : '#f8fafc' }}>
-                            <td style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 800, color: '#0f172a' }}>{item.qtyDelivered}</td>
-                            <td style={{ padding: '7px 8px', fontWeight: 700, fontFamily: 'monospace' }}>{item.type || '—'}</td>
-                            <td style={{ padding: '7px 8px', fontFamily: 'monospace', color: '#475569' }}>{item.code || '—'}</td>
-                            <td style={{ padding: '7px 8px' }}>{item.description}</td>
+                          <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: item.is_accessory ? '#faf5ff' : (idx % 2 === 0 ? 'white' : '#f8fafc') }}>
+                            <td style={{ padding: '7px 8px', fontWeight: 700, fontFamily: 'monospace', paddingLeft: item.is_accessory ? '18px' : '8px' }}>
+                              {item.is_accessory ? `↳ ${item.one_one_code}` : item.one_one_code || '—'}
+                            </td>
+                            <td style={{ padding: '7px 8px', fontWeight: 700, fontFamily: 'monospace', color: '#334155' }}>{item.plan_code || '—'}</td>
+                            <td style={{ padding: '7px 8px', fontFamily: 'monospace', color: '#64748b' }}>{item.supplier_code || '—'}</td>
+                            <td style={{ padding: '7px 8px' }}>
+                              {item.description}
+                              {item.parent_fitting_code && (
+                                <div style={{ fontSize: '9.5px', color: '#7e22ce', fontWeight: 600 }}>Attached to: {item.parent_fitting_code}</div>
+                              )}
+                            </td>
                             <td style={{ padding: '7px 8px', color: '#64748b' }}>{item.floor || '—'}</td>
                             <td style={{ padding: '7px 8px', color: '#64748b' }}>{item.area || '—'}</td>
-                            <td style={{ padding: '7px 8px', color: '#64748b' }}>{item.materialColour || item.brand || '—'}</td>
-                            <td style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 700, background: '#f1f5f9', borderRadius: '3px' }}>{item.boxNumber || '—'}</td>
-                            <td style={{ padding: '7px 8px', textAlign: 'center', color: item.redList === 'Yes' ? '#dc2626' : '#94a3b8', fontWeight: item.redList === 'Yes' ? 700 : 400 }}>{item.redList || 'No'}</td>
-                            <td style={{ padding: '7px 8px', textAlign: 'center', color: item.firstFix === 'Yes' ? '#2563eb' : '#94a3b8', fontWeight: item.firstFix === 'Yes' ? 700 : 400 }}>{item.firstFix || 'No'}</td>
+                            <td style={{ padding: '7px 8px', color: '#64748b' }}>{item.material_colour || '—'}</td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', fontWeight: item.first_fix === 'Yes' ? 700 : 400, color: item.first_fix === 'Yes' ? '#2563eb' : '#94a3b8' }}>{item.first_fix || 'No'}</td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', fontWeight: item.red_list === 'Yes' ? 700 : 400, color: item.red_list === 'Yes' ? '#dc2626' : '#94a3b8' }}>{item.red_list || 'No'}</td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 800, color: '#0f172a' }}>{item.qtyDelivered}</td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', color: item.qty_backorder > 0 ? '#d97706' : '#94a3b8' }}>{item.qty_backorder || 0}</td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 700, background: '#f1f5f9', borderRadius: '3px' }}>{item.boxNumber || 'Box 1'}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-
-                    {activeDoc.notes && (
-                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '10px 12px', fontSize: '11px', color: '#334155', marginBottom: '24px' }}>
-                        <strong>Packing Instructions & Notes:</strong>
-                        <div style={{ marginTop: '2px', whiteSpace: 'pre-line' }}>{activeDoc.notes}</div>
-                      </div>
-                    )}
                   </div>
                 ) : (
-                  // DELIVERY NOTE TABLE
+                  /* TWO-TIER DELIVERY NOTE DOCUMENT */
                   <div>
-                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '8px 12px', marginBottom: '14px', fontSize: '11px', color: '#475569' }}>
-                      <strong>DELIVERY DISPATCH:</strong> The goods listed below have been dispatched for delivery to site.
+                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '4px', padding: '8px 12px', marginBottom: '12px', fontSize: '11px', color: '#166534', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>
+                        <strong>SECTION 1 — GOODS DISPATCHED ON THIS VEHICLE:</strong> Please verify box count and item quantities upon offloading.
+                      </span>
                       {activeDoc.packingListIds?.length > 0 && (
-                        <div style={{ marginTop: '2px', fontSize: '10.5px', color: '#64748b' }}>
-                          Originating Packing Lists: {activeDoc.packingListIds.join(', ')}
-                        </div>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>
+                          Packing Lists: {activeDoc.packingListIds.join(', ')}
+                        </span>
                       )}
                     </div>
 
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', marginBottom: '24px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', marginBottom: '22px' }}>
                       <thead>
                         <tr style={{ background: '#0f172a', color: 'white', textAlign: 'left', fontWeight: 700 }}>
-                          <th style={{ padding: '7px 8px', textAlign: 'center', width: '40px' }}>Qty</th>
-                          <th style={{ padding: '7px 8px', width: '85px' }}>Made Code</th>
-                          <th style={{ padding: '7px 8px', width: '85px' }}>Plan Code</th>
+                          <th style={{ padding: '7px 8px', width: '90px' }}>1-TO-1 Code</th>
+                          <th style={{ padding: '7px 8px', width: '75px' }}>Plan Code</th>
                           <th style={{ padding: '7px 8px' }}>Description</th>
-                          <th style={{ padding: '7px 8px', width: '65px' }}>Floor</th>
-                          <th style={{ padding: '7px 8px', width: '75px' }}>Area</th>
-                          <th style={{ padding: '7px 8px', width: '90px' }}>Brand / Finish</th>
-                          <th style={{ padding: '7px 8px', width: '90px', textAlign: 'center' }}>Boxes</th>
-                          <th style={{ padding: '7px 8px', width: '75px', textAlign: 'center' }}>ETA B/Order</th>
+                          <th style={{ padding: '7px 8px', width: '75px' }}>Floor</th>
+                          <th style={{ padding: '7px 8px', width: '85px' }}>Area</th>
+                          <th style={{ padding: '7px 8px', width: '80px', textAlign: 'center' }}>Box #</th>
+                          <th style={{ padding: '7px 8px', width: '65px', textAlign: 'center' }}>Ord Qty</th>
+                          <th style={{ padding: '7px 8px', width: '75px', textAlign: 'center' }}>Delivered</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(activeDoc.items || []).map((item, idx) => (
                           <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? 'white' : '#f8fafc' }}>
-                            <td style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 800, color: '#0f172a' }}>{item.qtyDelivered}</td>
-                            <td style={{ padding: '7px 8px', fontWeight: 700, fontFamily: 'monospace' }}>{item.type || '—'}</td>
-                            <td style={{ padding: '7px 8px', fontFamily: 'monospace', color: '#475569' }}>{item.code || '—'}</td>
+                            <td style={{ padding: '7px 8px', fontWeight: 700, fontFamily: 'monospace' }}>
+                              {item.is_accessory ? `↳ ${item.one_one_code}` : item.one_one_code || '—'}
+                            </td>
+                            <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontWeight: 700, color: '#334155' }}>{item.plan_code || '—'}</td>
                             <td style={{ padding: '7px 8px' }}>{item.description}</td>
                             <td style={{ padding: '7px 8px', color: '#64748b' }}>{item.floor || '—'}</td>
                             <td style={{ padding: '7px 8px', color: '#64748b' }}>{item.area || '—'}</td>
-                            <td style={{ padding: '7px 8px', color: '#64748b' }}>{item.brand || '—'}</td>
-                            <td style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 700, background: '#f1f5f9', borderRadius: '3px' }}>{item.boxNumber || '—'}</td>
-                            <td style={{ padding: '7px 8px', textAlign: 'center', color: '#64748b' }}>{item.etaBackOrder || '—'}</td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 700, background: '#f1f5f9' }}>{item.boxNumber || 'Box 1'}</td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', color: '#64748b' }}>{item.qty_ordered || '—'}</td>
+                            <td style={{ padding: '7px 8px', textAlign: 'center', fontWeight: 800, color: '#15803d', fontSize: '12px' }}>{item.qtyDelivered}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
 
-                    {activeDoc.notes && (
-                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '10px 12px', fontSize: '11px', color: '#334155', marginBottom: '24px' }}>
-                        <strong>Delivery Notes & Site Access:</strong>
-                        <div style={{ marginTop: '2px', whiteSpace: 'pre-line' }}>{activeDoc.notes}</div>
+                    {/* SECTION 2: OUTSTANDING / BACKORDERED ITEMS */}
+                    {Array.isArray(activeDoc.outstanding_snapshot) && activeDoc.outstanding_snapshot.length > 0 && (
+                      <div style={{ marginBottom: '24px' }}>
+                        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '4px', padding: '7px 12px', marginBottom: '8px', fontSize: '11px', color: '#92400e', fontWeight: 700 }}>
+                          SECTION 2 — OUTSTANDING / BACKORDERED ITEMS (TO FOLLOW ON SUBSEQUENT DELIVERY)
+                        </div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10.5px' }}>
+                          <thead>
+                            <tr style={{ background: '#334155', color: 'white', textAlign: 'left', fontWeight: 700 }}>
+                              <th style={{ padding: '6px 8px', width: '90px' }}>1-TO-1 Code</th>
+                              <th style={{ padding: '6px 8px', width: '75px' }}>Plan Code</th>
+                              <th style={{ padding: '6px 8px' }}>Description</th>
+                              <th style={{ padding: '6px 8px', width: '110px' }}>Floor / Area</th>
+                              <th style={{ padding: '6px 8px', width: '65px', textAlign: 'center' }}>Ordered</th>
+                              <th style={{ padding: '6px 8px', width: '75px', textAlign: 'center' }}>Remaining</th>
+                              <th style={{ padding: '6px 8px', width: '95px', textAlign: 'center' }}>Backorder ETA</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {activeDoc.outstanding_snapshot.map((bo, bIdx) => (
+                              <tr key={bIdx} style={{ borderBottom: '1px solid #e2e8f0', background: bIdx % 2 === 0 ? '#fffbeb' : 'white' }}>
+                                <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontWeight: 700 }}>{bo.one_one_code || bo.code}</td>
+                                <td style={{ padding: '6px 8px', fontFamily: 'monospace' }}>{bo.plan_code || '—'}</td>
+                                <td style={{ padding: '6px 8px' }}>{bo.description}</td>
+                                <td style={{ padding: '6px 8px', color: '#64748b' }}>{[bo.floor, bo.area].filter(Boolean).join(' / ') || '—'}</td>
+                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>{bo.qty_ordered}</td>
+                                <td style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 800, color: '#b45309' }}>{bo.qty_remaining}</td>
+                                <td style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 600 }}>{bo.backorder_eta || 'TBA'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {activeDoc.notes && (
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '10px 12px', fontSize: '11px', color: '#334155', marginBottom: '24px' }}>
+                    <strong>Logistics & Handling Notes:</strong>
+                    <div style={{ marginTop: '2px', whiteSpace: 'pre-line' }}>{activeDoc.notes}</div>
                   </div>
                 )}
 
                 {/* SIGNATURE HANDOVER SECTION */}
                 <div style={{ borderTop: '1.5px solid #cbd5e1', paddingTop: '16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px', fontSize: '11px', color: '#334155' }}>
                   <div>
-                    <span style={{ fontSize: '9.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '20px' }}>Dispatched By (Warehouse)</span>
+                    <span style={{ fontSize: '9.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '20px' }}>
+                      Dispatched By ({activeDoc.carrier_driver || 'One to One Warehouse'})
+                    </span>
                     <div style={{ borderBottom: '1px solid #0f172a', marginBottom: '6px' }}></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: '10px' }}>
-                      <span>Signature & Name</span>
+                      <span>Driver / Warehouse Signature</span>
                       <span>Date: {activeDoc.date}</span>
                     </div>
                   </div>
 
                   <div>
-                    <span style={{ fontSize: '9.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '20px' }}>Received In Good Condition (Client / Site)</span>
+                    <span style={{ fontSize: '9.5px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', display: 'block', marginBottom: '20px' }}>
+                      Received In Good Order (Site Representative: {activeDoc.received_by || '____________________'})
+                    </span>
                     <div style={{ borderBottom: '1px solid #0f172a', marginBottom: '6px' }}></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: '10px' }}>
-                      <span>Signature & Full Name</span>
+                      <span>Recipient Signature & Full Name</span>
                       <span>Date: _____ / _____ / 2026</span>
                     </div>
                   </div>
                 </div>
-
               </div>
             </div>
-
           </div>
         </div>
       )}
 
-      {/* ------------------------------------------------------------- */}
-      {/* MODAL 1: NEW PACKING LIST                                     */}
-      {/* ------------------------------------------------------------- */}
-      {showPlModal && (
-        <div 
-          style={{ 
-            position: 'fixed', 
-            inset: 0, 
-            zIndex: 1200, 
-            background: 'rgba(0,0,0,0.75)', 
-            backdropFilter: 'blur(4px)', 
-            display: 'flex', 
-            alignItems: 'flex-start', 
-            justifyContent: 'center', 
-            overflowY: 'auto',
-            padding: '24px 16px' 
+      {/* ─── 3-STAGE LOGISTICAL PACKING LIST WORKBENCH MODAL ───────────── */}
+      {showPlWorkbench && (
+        <PackingListWorkbenchModal
+          isOpen={showPlWorkbench}
+          onClose={() => {
+            setShowPlWorkbench(false);
+            setWorkbenchInitialDoc(null);
+            setWorkbenchPreselectedKey('');
           }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowPlModal(false); }}
-        >
-          <div 
-            style={{ 
-              margin: 'auto',
-              background: 'var(--bg-secondary)', 
-              border: '1px solid var(--border)', 
-              borderRadius: '12px', 
-              width: '100%', 
-              maxWidth: '1000px', 
-              maxHeight: 'calc(100vh - 48px)', 
-              display: 'flex', 
-              flexDirection: 'column', 
-              overflow: 'hidden', 
-              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.7)' 
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            
-            {/* Modal Header */}
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <ClipboardList size={18} style={{ color: 'var(--text-info)' }} />
-                  Create Logistical Packing List (PL)
-                </h3>
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Select a project order and specify packed quantities & box numbers from the BOQ</span>
-              </div>
-              <button 
-                onClick={() => setShowPlModal(false)}
-                className="btn btn-ghost btn-sm"
-                style={{ color: 'var(--text-tertiary)' }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <form onSubmit={handleSavePackingList} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-              
-              <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                
-                {/* Order Selector */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                    Select Destination Project & Quotation Order <span style={{ color: 'var(--text-danger)' }}>*</span>
-                  </label>
-                  
-                  <div style={{ position: 'relative' }}>
-                    <div 
-                      onClick={() => setPlOrderDropdownOpen(!plOrderDropdownOpen)}
-                      className="form-control"
-                      style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center', 
-                        cursor: 'pointer', 
-                        height: '36px', 
-                        background: 'var(--bg-primary)' 
-                      }}
-                    >
-                      <span style={{ fontSize: '12.5px', color: plOrderKey ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
-                        {plOrderKey ? (() => {
-                          const [pKey, oId] = plOrderKey.split('_');
-                          const ord = allOrders.find(o => o.projectKey === pKey && o.id === oId);
-                          return ord ? `${ord.projectName} ➔ ${ord.quote_name ? `${ord.quote_name} (${ord.id})` : ord.id} [${ord.projectClient || 'Direct'}]` : 'Select Project Order...';
-                        })() : 'Select Project Order...'}
-                      </span>
-                      <ChevronDown size={14} style={{ color: 'var(--text-secondary)' }} />
-                    </div>
-
-                    {plOrderDropdownOpen && (
-                      <div style={{ 
-                        position: 'absolute', 
-                        top: '100%', 
-                        left: 0, 
-                        right: 0, 
-                        zIndex: 20, 
-                        background: 'var(--bg-primary)', 
-                        border: '1px solid var(--border)', 
-                        borderRadius: '8px', 
-                        boxShadow: '0 10px 25px rgba(0,0,0,0.4)', 
-                        marginTop: '4px',
-                        maxHeight: '280px',
-                        overflowY: 'auto'
-                      }}>
-                        <div style={{ padding: '8px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg-primary)' }}>
-                          <input 
-                            type="text" 
-                            placeholder="Type to filter projects / orders..." 
-                            className="form-control"
-                            style={{ height: '30px', fontSize: '12px' }}
-                            value={plOrderSearchQuery}
-                            onChange={e => setPlOrderSearchQuery(e.target.value)}
-                            onClick={e => e.stopPropagation()}
-                            autoFocus
-                          />
-                        </div>
-                        {allOrders.filter(o => {
-                          const q = plOrderSearchQuery.toLowerCase();
-                          return !q || (o.projectName || '').toLowerCase().includes(q) || (o.id || '').toLowerCase().includes(q) || (o.projectClient || '').toLowerCase().includes(q);
-                        }).map(o => (
-                          <div 
-                            key={`${o.projectKey}_${o.id}`}
-                            onClick={() => handlePlOrderChange(`${o.projectKey}_${o.id}`)}
-                            className="hover-row"
-                            style={{ 
-                              padding: '10px 12px', 
-                              borderBottom: '1px solid var(--border)', 
-                              cursor: 'pointer', 
-                              fontSize: '12px',
-                              background: plOrderKey === `${o.projectKey}_${o.id}` ? 'rgba(59, 130, 246, 0.12)' : 'transparent'
-                            }}
-                          >
-                            <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{o.projectName}</div>
-                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-                              <span>Order: {o.quote_name ? `${o.quote_name} (${o.id})` : o.id}</span>
-                              <span>Client: {o.projectClient || '—'}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Items Table when an Order is Selected */}
-                {plOrderKey && (() => {
-                  const [pKey, oId] = plOrderKey.split('_');
-                  const selectedOrder = allOrders.find(o => o.projectKey === pKey && o.id === oId);
-                  if (!selectedOrder) return null;
-
-                  const packedMap = getOrderPackedQtys(selectedOrder);
-                  const validItems = (selectedOrder.itemsList || []).filter(item => (item.itemType || item.item_type) !== 'Service');
-
-                  return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                            BOQ Items to Pack ({validItems.length} items)
-                          </span>
-                          <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block' }}>
-                            Specify how many units go into which box number
-                          </span>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-xs"
-                            style={{ border: '1px solid var(--border)', fontSize: '11px' }}
-                            onClick={() => handlePackAllRemaining(selectedOrder)}
-                          >
-                            <Sparkles size={12} style={{ color: 'var(--text-info)' }} /> Pack All Remaining
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-xs"
-                            style={{ border: '1px solid var(--border)', fontSize: '11px' }}
-                            onClick={() => handleResetPackingQtys(selectedOrder)}
-                          >
-                            Reset All to 0
-                          </button>
-                        </div>
-                      </div>
-
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '360px', overflowY: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px', textAlign: 'left' }}>
-                          <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-primary)' }}>
-                            <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                              <th style={{ padding: '8px 10px' }}>Code / Type</th>
-                              <th style={{ padding: '8px 10px' }}>Description</th>
-                              <th style={{ padding: '8px 10px', textAlign: 'center' }}>Ordered</th>
-                              <th style={{ padding: '8px 10px', textAlign: 'center' }}>Packed</th>
-                              <th style={{ padding: '8px 10px', textAlign: 'center' }}>Remain</th>
-                              <th style={{ padding: '8px 10px', width: '90px' }}>Qty to Pack</th>
-                              <th style={{ padding: '8px 10px', width: '110px' }}>Box Number</th>
-                              <th style={{ padding: '8px 10px', textAlign: 'center', width: '70px' }}>Red List</th>
-                              <th style={{ padding: '8px 10px', textAlign: 'center', width: '70px' }}>1st Fix</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {validItems.map((item, idx) => {
-                              const ordered = Number(item.qty || item.quantity) || 0;
-                              const packed = packedMap[item.id] || 0;
-                              const remaining = Math.max(0, ordered - packed);
-                              const inputs = plItemInputs[item.id] || { qty: remaining, boxNumber: 'Box 1', redList: false, firstFix: false };
-                              const isComplete = remaining === 0;
-
-                              return (
-                                <tr 
-                                  key={item.id}
-                                  style={{ 
-                                    borderBottom: '1px solid var(--border)',
-                                    background: isComplete ? 'rgba(34, 197, 94, 0.04)' : (idx % 2 === 0 ? 'var(--bg-primary)' : 'transparent'),
-                                    opacity: isComplete ? 0.6 : 1
-                                  }}
-                                >
-                                  <td style={{ padding: '8px 10px' }}>
-                                    <span style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)', display: 'block' }}>{item.type || '—'}</span>
-                                    <span style={{ fontSize: '10px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{item.code || item.oneOneCode || '—'}</span>
-                                  </td>
-                                  <td style={{ padding: '8px 10px' }}>
-                                    <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{item.description || item.name}</div>
-                                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{item.brand || '—'} • {item.area || 'General Area'}</span>
-                                  </td>
-                                  <td style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 600 }}>{ordered}</td>
-                                  <td style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{packed}</td>
-                                  <td style={{ padding: '8px 10px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, color: remaining > 0 ? 'var(--text-warning)' : 'var(--text-success)' }}>
-                                    {remaining}
-                                  </td>
-                                  <td style={{ padding: '8px 10px' }}>
-                                    <input 
-                                      type="number"
-                                      min="0"
-                                      max={remaining}
-                                      disabled={isComplete}
-                                      className="form-control"
-                                      style={{ height: '28px', padding: '2px 6px', fontSize: '12px', textAlign: 'center', background: 'var(--bg-secondary)', fontWeight: 700 }}
-                                      value={inputs.qty ?? ''}
-                                      onChange={e => {
-                                        const val = Number(e.target.value);
-                                        setPlItemInputs(prev => ({
-                                          ...prev,
-                                          [item.id]: {
-                                            ...(prev[item.id] || { boxNumber: 'Box 1', redList: false, firstFix: false }),
-                                            qty: val
-                                          }
-                                        }));
-                                      }}
-                                    />
-                                  </td>
-                                  <td style={{ padding: '8px 10px' }}>
-                                    <input 
-                                      type="text"
-                                      disabled={isComplete}
-                                      placeholder="e.g. Box 1"
-                                      className="form-control"
-                                      style={{ height: '28px', padding: '2px 6px', fontSize: '11px', background: 'var(--bg-secondary)' }}
-                                      value={inputs.boxNumber || ''}
-                                      onChange={e => {
-                                        const val = e.target.value;
-                                        setPlItemInputs(prev => ({
-                                          ...prev,
-                                          [item.id]: {
-                                            ...(prev[item.id] || { qty: remaining, redList: false, firstFix: false }),
-                                            boxNumber: val
-                                          }
-                                        }));
-                                      }}
-                                    />
-                                  </td>
-                                  <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                                    <button
-                                      type="button"
-                                      disabled={isComplete}
-                                      onClick={() => {
-                                        setPlItemInputs(prev => ({
-                                          ...prev,
-                                          [item.id]: {
-                                            ...(prev[item.id] || { qty: remaining, boxNumber: 'Box 1', firstFix: false }),
-                                            redList: !inputs.redList
-                                          }
-                                        }));
-                                      }}
-                                      style={{
-                                        border: 'none',
-                                        background: inputs.redList ? 'rgba(239, 68, 68, 0.2)' : 'var(--bg-secondary)',
-                                        color: inputs.redList ? 'var(--text-danger)' : 'var(--text-tertiary)',
-                                        fontWeight: 700,
-                                        fontSize: '10px',
-                                        padding: '2px 6px',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer'
-                                      }}
-                                    >
-                                      {inputs.redList ? 'YES' : 'NO'}
-                                    </button>
-                                  </td>
-                                  <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                                    <button
-                                      type="button"
-                                      disabled={isComplete}
-                                      onClick={() => {
-                                        setPlItemInputs(prev => ({
-                                          ...prev,
-                                          [item.id]: {
-                                            ...(prev[item.id] || { qty: remaining, boxNumber: 'Box 1', redList: false }),
-                                            firstFix: !inputs.firstFix
-                                          }
-                                        }));
-                                      }}
-                                      style={{
-                                        border: 'none',
-                                        background: inputs.firstFix ? 'rgba(59, 130, 246, 0.2)' : 'var(--bg-secondary)',
-                                        color: inputs.firstFix ? 'var(--text-info)' : 'var(--text-tertiary)',
-                                        fontWeight: 700,
-                                        fontSize: '10px',
-                                        padding: '2px 6px',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer'
-                                      }}
-                                    >
-                                      {inputs.firstFix ? 'YES' : 'NO'}
-                                    </button>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Notes Input */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                    Packing Notes / Box Labeling Instructions
-                  </label>
-                  <textarea 
-                    rows={2}
-                    placeholder="Enter any special packing instructions, fragile handling notes, or box details..."
-                    className="form-control"
-                    style={{ fontSize: '12px', background: 'var(--bg-primary)' }}
-                    value={plNotes}
-                    onChange={e => setPlNotes(e.target.value)}
-                  />
-                </div>
-
-              </div>
-
-              {/* Modal Footer */}
-              <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button 
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setShowPlModal(false)}
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  disabled={!plOrderKey}
-                  className="btn btn-primary btn-sm"
-                  style={{ fontWeight: 700 }}
-                >
-                  Generate Packing List 📦
-                </button>
-              </div>
-
-            </form>
-
-          </div>
-        </div>
+          initialDoc={workbenchInitialDoc}
+          preselectedKey={workbenchPreselectedKey}
+          projects={projects}
+          allOrders={allOrders}
+          labelTemplates={labelTemplates}
+          onOpenTemplateManager={() => setShowLabelTemplateModal(true)}
+          onSaved={async (savedDoc) => {
+            await refreshProjects();
+            if (savedDoc?.id) {
+              setSelectedDocId(savedDoc.id);
+              setSelectedProjectKey(savedDoc.projectKey);
+            }
+          }}
+        />
       )}
 
-      {/* ------------------------------------------------------------- */}
-      {/* MODAL 2: NEW DELIVERY NOTE                                    */}
-      {/* ------------------------------------------------------------- */}
+      {/* ─── MODAL 2: CREATE OFFICIAL DELIVERY NOTE (DN) WITH DISPATCH METADATA ─── */}
       {showDnModal && (
-        <div 
-          style={{ 
-            position: 'fixed', 
-            inset: 0, 
-            zIndex: 1200, 
-            background: 'rgba(0,0,0,0.75)', 
-            backdropFilter: 'blur(4px)', 
-            display: 'flex', 
-            alignItems: 'flex-start', 
-            justifyContent: 'center', 
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1200,
+            background: 'rgba(0,0,0,0.78)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
             overflowY: 'auto',
-            padding: '24px 16px' 
+            padding: '20px 12px',
           }}
-          onClick={(e) => { if (e.target === e.currentTarget) setShowDnModal(false); }}
+          onClick={e => {
+            if (e.target === e.currentTarget) setShowDnModal(false);
+          }}
         >
-          <div 
-            style={{ 
+          <div
+            style={{
               margin: 'auto',
-              background: 'var(--bg-secondary)', 
-              border: '1px solid var(--border)', 
-              borderRadius: '12px', 
-              width: '100%', 
-              maxWidth: '900px', 
-              maxHeight: 'calc(100vh - 48px)', 
-              display: 'flex', 
-              flexDirection: 'column', 
-              overflow: 'hidden', 
-              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.7)' 
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: '12px',
+              width: '100%',
+              maxWidth: '1040px',
+              maxHeight: 'calc(100vh - 40px)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)',
             }}
             onClick={e => e.stopPropagation()}
           >
-            
-            {/* Modal Header */}
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Truck size={18} style={{ color: 'var(--text-success)' }} />
-                  Create Official Delivery Note (DN)
+                  Generate Official Delivery Note (DN)
                 </h3>
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Select an order and check which available Packing Lists to dispatch for delivery</span>
+                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Dispatch existing Packing Lists (or emergency Quick Direct DN) and automatically update Order & Sales Tracker delivery metrics
+                </span>
               </div>
-              <button 
-                onClick={() => setShowDnModal(false)}
-                className="btn btn-ghost btn-sm"
-                style={{ color: 'var(--text-tertiary)' }}
-              >
+              <button onClick={() => setShowDnModal(false)} className="btn btn-ghost btn-sm">
                 <X size={18} />
               </button>
             </div>
 
-            {/* Modal Body */}
             <form onSubmit={handleSaveDeliveryNote} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-              
-              <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                
-                {/* Order Selector */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                    Select Project & Quotation Order <span style={{ color: 'var(--text-danger)' }}>*</span>
-                  </label>
-                  
-                  <div style={{ position: 'relative' }}>
-                    <div 
-                      onClick={() => setDnOrderDropdownOpen(!dnOrderDropdownOpen)}
-                      className="form-control"
-                      style={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center', 
-                        cursor: 'pointer', 
-                        height: '36px', 
-                        background: 'var(--bg-primary)' 
+              <div style={{ padding: '18px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
+                {/* Order Selector & Mode Toggle */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', alignItems: 'end' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '5px' }}>
+                      Select Project & Quotation Order <span style={{ color: 'var(--text-danger)' }}>*</span>
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <div
+                        onClick={() => setDnOrderDropdownOpen(!dnOrderDropdownOpen)}
+                        className="form-control"
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', height: '36px', background: 'var(--bg-primary)' }}
+                      >
+                        <span style={{ fontSize: '12.5px', color: dnOrderKey ? 'var(--text-primary)' : 'var(--text-tertiary)', fontWeight: dnOrderKey ? 700 : 400 }}>
+                          {dnOrderKey
+                            ? (() => {
+                                const [pKey, oId] = dnOrderKey.split(':::');
+                                const ord = allOrders.find(o => o.projectKey === pKey && o.id === oId);
+                                return ord
+                                  ? `${ord.projectName} ➔ ${ord.quote_name ? `${ord.quote_name} (${ord.id})` : ord.id}`
+                                  : `${pKey} ➔ ${oId}`;
+                              })()
+                            : 'Select Project Order...'}
+                        </span>
+                        <ChevronDown size={14} />
+                      </div>
+
+                      {dnOrderDropdownOpen && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.45)', marginTop: '4px', maxHeight: '260px', overflowY: 'auto' }}>
+                          <div style={{ padding: '8px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg-primary)' }}>
+                            <input
+                              type="text"
+                              placeholder="Type to filter projects / orders..."
+                              className="form-control"
+                              style={{ height: '30px', fontSize: '12px' }}
+                              value={dnOrderSearchQuery}
+                              onChange={e => setDnOrderSearchQuery(e.target.value)}
+                              onClick={e => e.stopPropagation()}
+                              autoFocus
+                            />
+                          </div>
+                          {allOrders
+                            .filter(o => {
+                              const q = dnOrderSearchQuery.toLowerCase();
+                              return !q || (o.projectName || '').toLowerCase().includes(q) || (o.id || '').toLowerCase().includes(q) || (o.projectClient || '').toLowerCase().includes(q);
+                            })
+                            .map(o => (
+                              <div
+                                key={`${o.projectKey}:::${o.id}`}
+                                onClick={() => handleDnOrderChange(`${o.projectKey}:::${o.id}`)}
+                                className="hover-row"
+                                style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: '12px' }}
+                              >
+                                <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{o.projectName}</div>
+                                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
+                                  <span>Order: {o.quote_name ? `${o.quote_name} (${o.id})` : o.id}</span>
+                                  <span>Client: {o.projectClient || '—'}</span>
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '3px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setDnMode('from_pl')}
+                      style={{
+                        border: 'none',
+                        background: dnMode === 'from_pl' ? 'var(--text-success)' : 'transparent',
+                        color: dnMode === 'from_pl' ? '#fff' : 'var(--text-secondary)',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
                       }}
                     >
-                      <span style={{ fontSize: '12.5px', color: dnOrderKey ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
-                        {dnOrderKey ? (() => {
-                          const [pKey, oId] = dnOrderKey.split('_');
-                          const ord = allOrders.find(o => o.projectKey === pKey && o.id === oId);
-                          return ord ? `${ord.projectName} ➔ ${ord.quote_name ? `${ord.quote_name} (${ord.id})` : ord.id} [${ord.projectClient || 'Direct'}]` : 'Select Project Order...';
-                        })() : 'Select Project Order...'}
-                      </span>
-                      <ChevronDown size={14} style={{ color: 'var(--text-secondary)' }} />
-                    </div>
-
-                    {dnOrderDropdownOpen && (
-                      <div style={{ 
-                        position: 'absolute', 
-                        top: '100%', 
-                        left: 0, 
-                        right: 0, 
-                        zIndex: 20, 
-                        background: 'var(--bg-primary)', 
-                        border: '1px solid var(--border)', 
-                        borderRadius: '8px', 
-                        boxShadow: '0 10px 25px rgba(0,0,0,0.4)', 
-                        marginTop: '4px',
-                        maxHeight: '280px',
-                        overflowY: 'auto'
-                      }}>
-                        <div style={{ padding: '8px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg-primary)' }}>
-                          <input 
-                            type="text" 
-                            placeholder="Type to filter projects / orders..." 
-                            className="form-control"
-                            style={{ height: '30px', fontSize: '12px' }}
-                            value={dnOrderSearchQuery}
-                            onChange={e => setDnOrderSearchQuery(e.target.value)}
-                            onClick={e => e.stopPropagation()}
-                            autoFocus
-                          />
-                        </div>
-                        {allOrders.filter(o => {
-                          const q = dnOrderSearchQuery.toLowerCase();
-                          return !q || (o.projectName || '').toLowerCase().includes(q) || (o.id || '').toLowerCase().includes(q) || (o.projectClient || '').toLowerCase().includes(q);
-                        }).map(o => (
-                          <div 
-                            key={`${o.projectKey}_${o.id}`}
-                            onClick={() => handleDnOrderChange(`${o.projectKey}_${o.id}`)}
-                            className="hover-row"
-                            style={{ 
-                              padding: '10px 12px', 
-                              borderBottom: '1px solid var(--border)', 
-                              cursor: 'pointer', 
-                              fontSize: '12px',
-                              background: dnOrderKey === `${o.projectKey}_${o.id}` ? 'rgba(34, 197, 94, 0.12)' : 'transparent'
-                            }}
-                          >
-                            <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{o.projectName}</div>
-                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-                              <span>Order: {o.quote_name ? `${o.quote_name} (${o.id})` : o.id}</span>
-                              <span>Client: {o.projectClient || '—'}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                      📦 From Packing List (Standard)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDnMode('quick_direct')}
+                      style={{
+                        border: 'none',
+                        background: dnMode === 'quick_direct' ? 'var(--text-warning)' : 'transparent',
+                        color: dnMode === 'quick_direct' ? '#fff' : 'var(--text-secondary)',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ⚡ Quick Direct DN (Emergency)
+                    </button>
                   </div>
                 </div>
 
-                {/* Available Packing Lists Checklist */}
-                {dnOrderKey && (() => {
+                {/* DISPATCH & TRANSPORT METADATA SECTION */}
+                {dnOrderKey && (
+                  <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                      Site Contact & Transport Dispatch Metadata
+                    </span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '10px' }}>
+                      <div>
+                        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Dispatch Method</label>
+                        <select
+                          className="form-control"
+                          style={{ height: '32px', fontSize: '12px', marginTop: '3px' }}
+                          value={dnDispatchMethod}
+                          onChange={e => setDnDispatchMethod(e.target.value)}
+                        >
+                          <option value="Internal Driver">Internal Driver</option>
+                          <option value="Third-Party Courier">Third-Party Courier</option>
+                          <option value="Client Collection">Client Collection</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Driver / Courier Name</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          style={{ height: '32px', fontSize: '12px', marginTop: '3px' }}
+                          placeholder="e.g. Sipho / DHL Express"
+                          value={dnCarrierDriver}
+                          onChange={e => setDnCarrierDriver(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Vehicle Registration</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          style={{ height: '32px', fontSize: '12px', marginTop: '3px' }}
+                          placeholder="e.g. CAA 458-921"
+                          value={dnVehicleReg}
+                          onChange={e => setDnVehicleReg(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Waybill / Tracking #</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          style={{ height: '32px', fontSize: '12px', marginTop: '3px' }}
+                          placeholder="Optional tracking ref"
+                          value={dnTrackingNumber}
+                          onChange={e => setDnTrackingNumber(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Site Contact Person</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          style={{ height: '32px', fontSize: '12px', marginTop: '3px' }}
+                          placeholder="Site Manager / Foreman"
+                          value={dnSiteContactName}
+                          onChange={e => setDnSiteContactName(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Site Contact Phone</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          style={{ height: '32px', fontSize: '12px', marginTop: '3px' }}
+                          placeholder="e.g. 082 555 1234"
+                          value={dnSiteContactPhone}
+                          onChange={e => setDnSiteContactPhone(e.target.value)}
+                        />
+                      </div>
+                      <div style={{ gridColumn: 'span 2' }}>
+                        <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Site Delivery Address</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          style={{ height: '32px', fontSize: '12px', marginTop: '3px' }}
+                          placeholder="Full street address for delivery"
+                          value={dnDeliveryAddress}
+                          onChange={e => setDnDeliveryAddress(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* MODE A: SELECT EXISTING PACKING LISTS */}
+                {dnOrderKey && dnMode === 'from_pl' && (() => {
                   const availablePls = getAvailablePls();
+                  const dnItems = getAggregatedDnItems();
 
                   return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        Available Un-Delivered Packing Lists ({availablePls.length})
+                        Available Packing Lists Ready for Dispatch ({availablePls.length})
                       </span>
 
                       {availablePls.length === 0 ? (
-                        <div style={{ padding: '24px', textAlign: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-tertiary)', fontSize: '12px' }}>
-                          No pending Packing Lists available for this order. Please create a Packing List first.
+                        <div style={{ padding: '20px', textAlign: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-tertiary)', fontSize: '12px' }}>
+                          No pending Packing Lists found for this order. Create a Packing List first, or switch to "Quick Direct DN" mode above.
                         </div>
                       ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '8px' }}>
                           {availablePls.map(pl => {
-                            const isChecked = !!dnSelectedPlIds[pl.id];
-                            const totalUnits = (pl.items || []).reduce((s, i) => s + (Number(i.qtyDelivered) || 0), 0);
+                            const plId = pl.id || pl.document_number;
+                            const isChecked = !!dnSelectedPlIds[plId];
+                            const totalUnits = (pl.items || []).reduce((s, i) => s + (Number(i.qty_packed ?? i.qtyDelivered) || 0), 0);
 
                             return (
                               <div
-                                key={pl.id}
-                                onClick={() => {
-                                  setDnSelectedPlIds(prev => ({
-                                    ...prev,
-                                    [pl.id]: !prev[pl.id]
-                                  }));
-                                }}
+                                key={plId}
+                                onClick={() => setDnSelectedPlIds(prev => ({ ...prev, [plId]: !prev[plId] }))}
                                 style={{
-                                  border: isChecked ? '1px solid var(--text-success)' : '1px solid var(--border)',
+                                  border: isChecked ? '1.5px solid var(--text-success)' : '1px solid var(--border)',
                                   background: isChecked ? 'rgba(34, 197, 94, 0.08)' : 'var(--bg-primary)',
                                   borderRadius: '8px',
-                                  padding: '12px 14px',
+                                  padding: '10px 12px',
                                   cursor: 'pointer',
                                   display: 'flex',
                                   justifyContent: 'space-between',
                                   alignItems: 'center',
-                                  transition: 'all 0.15s'
                                 }}
                               >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                  <input 
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={() => {}}
-                                    style={{ cursor: 'pointer' }}
-                                  />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <input type="checkbox" checked={isChecked} onChange={() => {}} />
                                   <div>
-                                    <span style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-primary)', fontSize: '13px' }}>
-                                      {pl.id}
-                                    </span>
-                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '8px' }}>
-                                      Issued: {pl.date}
-                                    </span>
+                                    <div style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-primary)', fontSize: '13px' }}>{plId}</div>
+                                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Issued: {pl.date}</div>
                                   </div>
                                 </div>
-
-                                <div style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                                  {pl.items?.length || 0} line items ({totalUnits} total units)
+                                <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                  {pl.items?.length || 0} lines ({totalUnits} pcs)
                                 </div>
                               </div>
                             );
                           })}
                         </div>
                       )}
-                    </div>
-                  );
-                })()}
 
-                {/* Aggregated Items Preview */}
-                {dnOrderKey && Object.values(dnSelectedPlIds).some(Boolean) && (() => {
-                  const dnItems = getAggregatedDnItems();
-
-                  return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        Delivery Dispatch Summary ({dnItems.length} unique items)
-                      </span>
-                      <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '200px', overflowY: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
-                          <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-primary)' }}>
-                            <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
-                              <th style={{ padding: '6px 10px' }}>Qty</th>
-                              <th style={{ padding: '6px 10px' }}>Code / Type</th>
-                              <th style={{ padding: '6px 10px' }}>Description</th>
-                              <th style={{ padding: '6px 10px' }}>Boxes Included</th>
-                              <th style={{ padding: '6px 10px', width: '120px' }}>Backorder ETA</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {dnItems.map((item, idx) => (
-                              <tr key={idx} style={{ borderBottom: '1px solid var(--border)', background: idx % 2 === 0 ? 'var(--bg-primary)' : 'transparent' }}>
-                                <td style={{ padding: '6px 10px', fontWeight: 800, color: 'var(--text-primary)', textAlign: 'center' }}>{item.qtyDelivered}</td>
-                                <td style={{ padding: '6px 10px', fontWeight: 700, fontFamily: 'monospace' }}>{item.type || item.code}</td>
-                                <td style={{ padding: '6px 10px' }}>{item.description}</td>
-                                <td style={{ padding: '6px 10px', fontWeight: 600, color: 'var(--text-secondary)' }}>{item.boxNumbers.join(', ') || '—'}</td>
-                                <td style={{ padding: '6px 10px' }}>
-                                  <input 
-                                    type="text"
-                                    placeholder="e.g. 2 weeks"
-                                    className="form-control"
-                                    style={{ height: '24px', padding: '2px 6px', fontSize: '10.5px', background: 'var(--bg-secondary)' }}
-                                    value={dnItemEtas[item.id] || ''}
-                                    onChange={e => {
-                                      const val = e.target.value;
-                                      setDnItemEtas(prev => ({ ...prev, [item.id]: val }));
-                                    }}
-                                  />
-                                </td>
+                      {dnItems.length > 0 && (
+                        <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '220px', overflowY: 'auto' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
+                            <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-primary)' }}>
+                              <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+                                <th style={{ padding: '6px 10px' }}>PL #</th>
+                                <th style={{ padding: '6px 10px' }}>1-TO-1 Code</th>
+                                <th style={{ padding: '6px 10px' }}>Plan Code</th>
+                                <th style={{ padding: '6px 10px' }}>Description</th>
+                                <th style={{ padding: '6px 10px' }}>Box #</th>
+                                <th style={{ padding: '6px 10px', textAlign: 'center' }}>Dispatch Qty</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                            </thead>
+                            <tbody>
+                              {dnItems.map((it, idx) => (
+                                <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                                  <td style={{ padding: '6px 10px', fontFamily: 'monospace' }}>{it.packing_list_number}</td>
+                                  <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 700 }}>{it.one_one_code}</td>
+                                  <td style={{ padding: '6px 10px', fontFamily: 'monospace' }}>{it.plan_code || '—'}</td>
+                                  <td style={{ padding: '6px 10px' }}>{it.description}</td>
+                                  <td style={{ padding: '6px 10px', fontWeight: 700 }}>{it.boxNumber}</td>
+                                  <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 800, color: 'var(--text-success)' }}>{it.qtyDelivered}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
 
-                {/* Delivery Notes Input */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                    Delivery & Site Access Notes
-                  </label>
-                  <textarea 
-                    rows={2}
-                    placeholder="Enter site contact details, delivery driver instructions, gate codes, etc..."
-                    className="form-control"
-                    style={{ fontSize: '12px', background: 'var(--bg-primary)' }}
-                    value={dnNotes}
-                    onChange={e => setDnNotes(e.target.value)}
-                  />
-                </div>
+                {/* MODE B: QUICK DIRECT DELIVERY NOTE */}
+                {dnOrderKey && dnMode === 'quick_direct' && (
+                  <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '260px', overflowY: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px', textAlign: 'left' }}>
+                      <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-primary)' }}>
+                        <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+                          <th style={{ padding: '7px 10px' }}>1-TO-1 Code</th>
+                          <th style={{ padding: '7px 10px' }}>Plan Code</th>
+                          <th style={{ padding: '7px 10px' }}>Description</th>
+                          <th style={{ padding: '7px 10px', textAlign: 'center' }}>Ordered</th>
+                          <th style={{ padding: '7px 10px', textAlign: 'center' }}>Remaining</th>
+                          <th style={{ padding: '7px 10px', width: '100px', textAlign: 'center' }}>Deliver Now</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dnDirectItems.map((it, idx) => (
+                          <tr key={it.order_item_id || idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 700 }}>{it.one_one_code}</td>
+                            <td style={{ padding: '6px 10px', fontFamily: 'monospace' }}>{it.plan_code || '—'}</td>
+                            <td style={{ padding: '6px 10px' }}>{it.description}</td>
+                            <td style={{ padding: '6px 10px', textAlign: 'center' }}>{it.qty_ordered}</td>
+                            <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700 }}>{it.remaining_to_deliver}</td>
+                            <td style={{ padding: '6px 10px' }}>
+                              <input
+                                type="number"
+                                min="0"
+                                className="form-control"
+                                style={{ height: '26px', textAlign: 'center', fontWeight: 700, fontSize: '12px' }}
+                                value={it.qty_to_deliver}
+                                onChange={e => {
+                                  const v = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                  setDnDirectItems(prev =>
+                                    prev.map((row, rIdx) => (rIdx === idx ? { ...row, qty_to_deliver: v } : row))
+                                  );
+                                }}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
 
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                      Special Site / Gate Access Instructions
+                    </label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      style={{ fontSize: '12px', height: '34px', background: 'var(--bg-primary)' }}
+                      placeholder="Gate code, estate security rules, crane/offloading notes..."
+                      value={dnSiteInstructions}
+                      onChange={e => setDnSiteInstructions(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                      General Delivery Remarks
+                    </label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      style={{ fontSize: '12px', height: '34px', background: 'var(--bg-primary)' }}
+                      placeholder="Optional delivery note remarks..."
+                      value={dnNotes}
+                      onChange={e => setDnNotes(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
 
-              {/* Modal Footer */}
               <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button 
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setShowDnModal(false)}
-                >
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowDnModal(false)}>
                   Cancel
                 </button>
-                <button 
-                  type="submit"
-                  disabled={!dnOrderKey || !Object.values(dnSelectedPlIds).some(Boolean)}
-                  className="btn btn-primary btn-sm"
-                  style={{ fontWeight: 700 }}
-                >
-                  Generate Delivery Note 🚚
+                <button type="submit" disabled={!dnOrderKey || isSavingLogistics} className="btn btn-primary btn-sm" style={{ fontWeight: 700 }}>
+                  {isSavingLogistics ? 'Dispatching...' : 'Generate Official Delivery Note 🚚'}
                 </button>
               </div>
-
             </form>
+          </div>
+        </div>
+      )}
 
+      {/* ─── MODAL 3: UPLOAD / VIEW SIGNED PROOF OF DELIVERY (POD) ─────────── */}
+      {showPodModal && podTargetDoc && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1300,
+            background: 'rgba(0,0,0,0.75)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={e => {
+            if (e.target === e.currentTarget) setShowPodModal(false);
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: '12px',
+              width: '100%',
+              maxWidth: '560px',
+              overflow: 'hidden',
+              boxShadow: '0 25px 50px rgba(0,0,0,0.7)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <FileCheck size={17} style={{ color: '#10b981' }} />
+                Signed Proof of Delivery (POD) — {podTargetDoc.id}
+              </h3>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowPodModal(false)}>
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitPod} style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>
+                  Signed / Received By (Site Representative Name)
+                </label>
+                <input
+                  type="text"
+                  className="form-control"
+                  style={{ height: '34px', fontSize: '12.5px' }}
+                  placeholder="Enter full name of person who signed on site..."
+                  value={podReceivedBy}
+                  onChange={e => setPodReceivedBy(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>
+                  Upload Scanned Signed DN (Image or PDF)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={handlePodFileSelect}
+                  className="form-control"
+                  style={{ padding: '6px', fontSize: '12px' }}
+                />
+              </div>
+
+              {podFileUrl && (
+                <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px', background: 'var(--bg-primary)', textAlign: 'center' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: '#10b981', marginBottom: '6px' }}>
+                    Attached File: {podFileName || 'Signed_POD'}
+                  </div>
+                  {podFileUrl.startsWith('data:image') ? (
+                    <img src={podFileUrl} alt="Signed POD" style={{ maxWidth: '100%', maxHeight: '220px', borderRadius: '4px' }} />
+                  ) : (
+                    <a href={podFileUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-xs" style={{ color: 'var(--text-info)' }}>
+                      Open Attached POD Document
+                    </a>
+                  )}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowPodModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary btn-sm" style={{ fontWeight: 700 }}>
+                  Save POD & Mark Delivered ✓
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -2135,7 +2020,6 @@ export default function LogisticsPage() {
           onOpenTemplateManager={() => setShowLabelTemplateModal(true)}
         />
       )}
-
     </div>
   );
 }
