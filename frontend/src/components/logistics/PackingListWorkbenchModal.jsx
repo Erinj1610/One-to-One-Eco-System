@@ -67,6 +67,8 @@ export default function PackingListWorkbenchModal({
   const [plRows, setPlRows] = useState([]);
   const [plFilterArea, setPlFilterArea] = useState('ALL');
   const [plSelectedRowKeys, setPlSelectedRowKeys] = useState({});
+  const [customAreaOrder, setCustomAreaOrder] = useState([]);
+  const [showAreaReorderModal, setShowAreaReorderModal] = useState(false);
 
   // Step 4: Boxing state
   const [plAvailableBoxes, setPlAvailableBoxes] = useState(['Box 1', 'Box 2', 'Box 3']);
@@ -147,6 +149,16 @@ export default function PackingListWorkbenchModal({
     return Object.values(map);
   };
 
+  // Natural BOQ area appearance order
+  const naturalBoqAreaOrder = useMemo(() => {
+    const list = [];
+    rawItems.forEach(it => {
+      const a = (it.area || 'General / Unspecified').trim();
+      if (a && !list.includes(a)) list.push(a);
+    });
+    return list;
+  }, [rawItems]);
+
   // ─── LOAD RAW ORDER ITEMS ──────────────────────────────────────────────────
   const loadOrderItems = async (compositeKey, existingPlDoc = null) => {
     setPlOrderKey(compositeKey);
@@ -194,6 +206,12 @@ export default function PackingListWorkbenchModal({
       setPlRows(existingRows);
       setRawItems(existingRows);
       setSummaryModels(buildSummaryModelsFromItems(existingRows));
+      const existingAreaOrder = [];
+      existingRows.forEach(it => {
+        const a = (it.area || 'General / Unspecified').trim();
+        if (a && !existingAreaOrder.includes(a)) existingAreaOrder.push(a);
+      });
+      setCustomAreaOrder(existingAreaOrder);
       return;
     }
 
@@ -226,6 +244,12 @@ export default function PackingListWorkbenchModal({
         setRawItems(builtRaw);
         const initialModels = buildSummaryModelsFromItems(builtRaw);
         setSummaryModels(initialModels);
+        const initialAreas = [];
+        builtRaw.forEach(it => {
+          const a = (it.area || 'General / Unspecified').trim();
+          if (a && !initialAreas.includes(a)) initialAreas.push(a);
+        });
+        setCustomAreaOrder(initialAreas);
       }
     } catch (err) {
       console.error('Failed to load order items:', err);
@@ -347,6 +371,46 @@ export default function PackingListWorkbenchModal({
     return map;
   }, [summaryModels]);
 
+  // ─── AREA / ROOM ORDERING CONTROLS ─────────────────────────────────────────
+  const handleMoveArea = (areaName, direction) => {
+    setCustomAreaOrder(prevOrder => {
+      const currentList = prevOrder.length > 0 ? [...prevOrder] : (plUniqueAreas.length > 0 ? [...plUniqueAreas] : [...naturalBoqAreaOrder]);
+      const idx = currentList.indexOf(areaName);
+      if (idx === -1) return currentList;
+
+      const next = [...currentList];
+      if (direction === 'up' && idx > 0) {
+        const swap = next[idx - 1];
+        next[idx - 1] = next[idx];
+        next[idx] = swap;
+      } else if (direction === 'down' && idx < next.length - 1) {
+        const swap = next[idx + 1];
+        next[idx + 1] = next[idx];
+        next[idx] = swap;
+      } else if (direction === 'top' && idx > 0) {
+        const item = next.splice(idx, 1)[0];
+        next.unshift(item);
+      } else if (direction === 'bottom' && idx < next.length - 1) {
+        const item = next.splice(idx, 1)[0];
+        next.push(item);
+      }
+      return next;
+    });
+  };
+
+  const handleResetAreaOrderToBoq = () => {
+    if (naturalBoqAreaOrder.length > 0) {
+      setCustomAreaOrder([...naturalBoqAreaOrder]);
+    }
+  };
+
+  const handleSortAreasAlpha = (descending = false) => {
+    setCustomAreaOrder(prev => {
+      const list = prev.length > 0 ? [...prev] : [...naturalBoqAreaOrder];
+      return [...list].sort((a, b) => descending ? b.localeCompare(a) : a.localeCompare(b));
+    });
+  };
+
   // ─── EXPLODE SUMMARY KITS INTO AUTO-ORGANIZED ROOM PICK SHEET (STEP 2) ─────
   const generatePickSheetRows = () => {
     if (rawItems.length === 0) return;
@@ -357,14 +421,32 @@ export default function PackingListWorkbenchModal({
 
     // Group raw BOQ items by area / room
     const roomsMap = {};
+    const rawAreasOrder = [];
     rawItems.forEach(it => {
-      const room = it.area || 'General';
-      if (!roomsMap[room]) roomsMap[room] = [];
+      const room = (it.area || 'General / Unspecified').trim();
+      if (!roomsMap[room]) {
+        roomsMap[room] = [];
+        rawAreasOrder.push(room);
+      }
       roomsMap[room].push(it);
     });
 
+    // Resolve active room sequence
+    let activeAreaOrder = customAreaOrder.length > 0 ? [...customAreaOrder] : [...rawAreasOrder];
+    rawAreasOrder.forEach(r => {
+      if (!activeAreaOrder.includes(r)) activeAreaOrder.push(r);
+    });
+    if (customAreaOrder.length === 0 && activeAreaOrder.length > 0) {
+      setCustomAreaOrder(activeAreaOrder);
+    }
+
+    const orderedRooms = [
+      ...activeAreaOrder.filter(a => roomsMap[a]),
+      ...Object.keys(roomsMap).filter(a => !activeAreaOrder.includes(a))
+    ];
+
     // In each room, list primary items and nest their attached accessories
-    Object.keys(roomsMap).sort().forEach(roomName => {
+    orderedRooms.forEach(roomName => {
       const itemsInRoom = roomsMap[roomName];
 
       itemsInRoom.forEach(it => {
@@ -452,19 +534,40 @@ export default function PackingListWorkbenchModal({
   const plUniqueAreas = useMemo(() => {
     const s = new Set();
     plRows.forEach(r => {
-      const a = (r.area || '').trim();
+      const a = (r.area || 'General / Unspecified').trim();
       if (a) s.add(a);
     });
-    return Array.from(s).sort();
-  }, [plRows]);
+    const foundList = Array.from(s);
+    return [
+      ...customAreaOrder.filter(a => foundList.includes(a)),
+      ...foundList.filter(a => !customAreaOrder.includes(a))
+    ];
+  }, [plRows, customAreaOrder]);
+
+  const sortedPlRows = useMemo(() => {
+    if (!customAreaOrder || customAreaOrder.length === 0) return plRows;
+    const areaRank = {};
+    customAreaOrder.forEach((area, idx) => {
+      areaRank[area.trim().toLowerCase()] = idx;
+    });
+
+    return [...plRows].sort((a, b) => {
+      const aArea = (a.area || 'General / Unspecified').trim().toLowerCase();
+      const bArea = (b.area || 'General / Unspecified').trim().toLowerCase();
+      const rankA = areaRank[aArea] !== undefined ? areaRank[aArea] : 9999;
+      const rankB = areaRank[bArea] !== undefined ? areaRank[bArea] : 9999;
+      if (rankA !== rankB) return rankA - rankB;
+      return 0; // maintain relative row order within same room
+    });
+  }, [plRows, customAreaOrder]);
 
   const visiblePlRows = useMemo(() => {
-    let rows = [...plRows];
+    let rows = [...sortedPlRows];
     if (plFilterArea !== 'ALL') {
       rows = rows.filter(r => (r.area || '').trim().toLowerCase() === plFilterArea.trim().toLowerCase());
     }
     return rows;
-  }, [plRows, plFilterArea]);
+  }, [sortedPlRows, plFilterArea]);
 
   const handlePackAll = () => {
     setPlRows(prev => prev.map(r => ({ ...r, qty_packed: Number(r.qty_ordered || 0) })));
@@ -484,10 +587,15 @@ export default function PackingListWorkbenchModal({
 
     const rowsByRoom = {};
     visiblePlRows.forEach(r => {
-      const room = r.area || 'General / Unspecified';
+      const room = (r.area || 'General / Unspecified').trim();
       if (!rowsByRoom[room]) rowsByRoom[room] = [];
       rowsByRoom[room].push(r);
     });
+
+    const orderedRoomsList = [
+      ...customAreaOrder.filter(r => rowsByRoom[r]),
+      ...Object.keys(rowsByRoom).filter(r => !customAreaOrder.includes(r))
+    ];
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -528,9 +636,9 @@ export default function PackingListWorkbenchModal({
           </div>
         </div>
 
-        ${Object.keys(rowsByRoom).map(room => `
+        ${orderedRoomsList.map((room, idx) => `
           <div class="room-section">
-            <div class="room-title">Room: ${room}</div>
+            <div class="room-title">Room #${idx + 1}: ${room}</div>
             <table>
               <thead>
                 <tr>
@@ -585,7 +693,7 @@ export default function PackingListWorkbenchModal({
     }
     const [pKey, oId] = plOrderKey.split(':::');
 
-    const activeItems = plRows
+    const activeItems = sortedPlRows
       .filter(r => Number(r.qty_packed) > 0)
       .map(r => ({
         order_item_id: r.order_item_id ? String(r.order_item_id) : null,
@@ -1344,6 +1452,15 @@ export default function PackingListWorkbenchModal({
                       <option key={a} value={a}>{a}</option>
                     ))}
                   </select>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-xs"
+                    style={{ border: '1px solid rgba(59, 130, 246, 0.4)', background: 'rgba(59, 130, 246, 0.08)', color: 'var(--text-info)', fontSize: '11.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 10px', height: '30px' }}
+                    onClick={() => setShowAreaReorderModal(true)}
+                    title="Control and arrange the walking sequence of areas and rooms"
+                  >
+                    <ArrowUpDown size={13} /> Reorder Areas ({customAreaOrder.length || plUniqueAreas.length})
+                  </button>
                 </div>
 
                 <div style={{ display: 'flex', gap: '6px' }}>
@@ -1407,17 +1524,66 @@ export default function PackingListWorkbenchModal({
                       </td>
                     </tr>
                   ) : (
-                    visiblePlRows.map(row => {
+                    visiblePlRows.map((row, rowIdx) => {
                       const backorder = Math.max(0, Number(row.qty_ordered || 0) - Number(row.qty_packed || 0));
+                      const currentAreaName = (row.area || 'General / Unspecified').trim();
+                      const prevRow = rowIdx > 0 ? visiblePlRows[rowIdx - 1] : null;
+                      const prevAreaName = prevRow ? (prevRow.area || 'General / Unspecified').trim() : null;
+                      const isNewArea = rowIdx === 0 || currentAreaName !== prevAreaName;
+                      
+                      const areaIdx = customAreaOrder.indexOf(currentAreaName);
+                      const displayRoomNum = areaIdx >= 0 ? areaIdx + 1 : (rowIdx + 1);
+                      const totalAreas = customAreaOrder.length || plUniqueAreas.length;
 
                       return (
-                        <tr
-                          key={row.rowKey}
-                          style={{
-                            borderBottom: '1px solid var(--border)',
-                            background: row.is_accessory ? 'rgba(168, 85, 247, 0.04)' : 'transparent',
-                          }}
-                        >
+                        <React.Fragment key={row.rowKey}>
+                          {isNewArea && (
+                            <tr style={{ background: 'var(--bg-secondary)', borderTop: '2px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
+                              <td colSpan={8} style={{ padding: '7px 12px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '10.5px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', background: 'var(--text-info)', color: '#fff', letterSpacing: '0.5px' }}>
+                                      ROOM #{displayRoomNum}
+                                    </span>
+                                    <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase' }}>
+                                      {currentAreaName}
+                                    </span>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                      ({visiblePlRows.filter(r => (r.area || 'General / Unspecified').trim() === currentAreaName).length} items)
+                                    </span>
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <button
+                                      type="button"
+                                      disabled={areaIdx <= 0}
+                                      onClick={() => handleMoveArea(currentAreaName, 'up')}
+                                      className="btn btn-ghost btn-xs"
+                                      style={{ padding: '2px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid var(--border)', opacity: areaIdx <= 0 ? 0.35 : 1, cursor: areaIdx <= 0 ? 'not-allowed' : 'pointer' }}
+                                      title="Move this room UP in the sequence"
+                                    >
+                                      <ArrowUp size={12} /> Move Room Up
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={areaIdx >= totalAreas - 1}
+                                      onClick={() => handleMoveArea(currentAreaName, 'down')}
+                                      className="btn btn-ghost btn-xs"
+                                      style={{ padding: '2px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid var(--border)', opacity: areaIdx >= totalAreas - 1 ? 0.35 : 1, cursor: areaIdx >= totalAreas - 1 ? 'not-allowed' : 'pointer' }}
+                                      title="Move this room DOWN in the sequence"
+                                    >
+                                      <ArrowDown size={12} /> Move Room Down
+                                    </button>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          <tr
+                            style={{
+                              borderBottom: '1px solid var(--border)',
+                              background: row.is_accessory ? 'rgba(168, 85, 247, 0.04)' : 'transparent',
+                            }}
+                          >
                           {/* One to One Code */}
                           <td style={{ padding: '8px 10px', fontWeight: 700, fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-primary)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1487,6 +1653,7 @@ export default function PackingListWorkbenchModal({
                             {backorder}
                           </td>
                         </tr>
+                        </React.Fragment>
                       );
                     })
                   )}
@@ -1647,16 +1814,37 @@ export default function PackingListWorkbenchModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {visiblePlRows.filter(r => Number(r.qty_packed) > 0).map(row => {
+                  {visiblePlRows.filter(r => Number(r.qty_packed) > 0).map((row, rowIdx, boxedRows) => {
                     const isChecked = !!plSelectedRowKeys[row.rowKey];
+                    const currentAreaName = (row.area || 'General / Unspecified').trim();
+                    const prevRow = rowIdx > 0 ? boxedRows[rowIdx - 1] : null;
+                    const prevAreaName = prevRow ? (prevRow.area || 'General / Unspecified').trim() : null;
+                    const isNewArea = rowIdx === 0 || currentAreaName !== prevAreaName;
+                    const areaIdx = customAreaOrder.indexOf(currentAreaName);
+                    const displayRoomNum = areaIdx >= 0 ? areaIdx + 1 : (rowIdx + 1);
+
                     return (
-                      <tr
-                        key={row.rowKey}
-                        style={{
-                          borderBottom: '1px solid var(--border)',
-                          background: isChecked ? 'rgba(59, 130, 246, 0.04)' : 'transparent',
-                        }}
-                      >
+                      <React.Fragment key={row.rowKey}>
+                        {isNewArea && (
+                          <tr style={{ background: 'var(--bg-secondary)', borderTop: '2px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
+                            <td colSpan={9} style={{ padding: '6px 12px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 7px', borderRadius: '4px', background: 'var(--text-info)', color: '#fff' }}>
+                                  ROOM #{displayRoomNum}
+                                </span>
+                                <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase' }}>
+                                  {currentAreaName}
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        <tr
+                          style={{
+                            borderBottom: '1px solid var(--border)',
+                            background: isChecked ? 'rgba(59, 130, 246, 0.04)' : 'transparent',
+                          }}
+                        >
                         <td style={{ padding: '8px', textAlign: 'center' }}>
                           <input
                             type="checkbox"
@@ -1740,6 +1928,7 @@ export default function PackingListWorkbenchModal({
                           </button>
                         </td>
                       </tr>
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
@@ -1776,6 +1965,181 @@ export default function PackingListWorkbenchModal({
                   disabled={isSaving}
                 >
                   <Check size={16} /> Finalize Packing List (Mark 100% Boxed) ✓
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── AREA / ROOM SEQUENCE REORDERING MODAL ──────────────────────── */}
+        {showAreaReorderModal && (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1350,
+              background: 'rgba(0,0,0,0.7)',
+              backdropFilter: 'blur(3px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '16px',
+            }}
+            onClick={() => setShowAreaReorderModal(false)}
+          >
+            <div
+              style={{
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
+                borderRadius: '12px',
+                width: '560px',
+                maxHeight: '85vh',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                boxShadow: '0 25px 50px rgba(0,0,0,0.6)',
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <ArrowUpDown size={16} style={{ color: 'var(--text-info)' }} />
+                    Arrange Area & Room Route Sequence
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    Set the physical walking order for warehouse pickers and A4 printouts (Room #1 is picked first).
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs"
+                  onClick={() => setShowAreaReorderModal(false)}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Presets Toolbar */}
+              <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)' }}>Presets:</span>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs"
+                  style={{ border: '1px solid var(--border)', fontSize: '11px' }}
+                  onClick={handleResetAreaOrderToBoq}
+                  title="Reset to the original order from the Quotation BOQ"
+                >
+                  Natural BOQ Order
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs"
+                  style={{ border: '1px solid var(--border)', fontSize: '11px' }}
+                  onClick={() => handleSortAreasAlpha(false)}
+                  title="Sort Alphabetically A to Z"
+                >
+                  Alphabetical (A → Z)
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs"
+                  style={{ border: '1px solid var(--border)', fontSize: '11px' }}
+                  onClick={() => handleSortAreasAlpha(true)}
+                  title="Sort Alphabetically Z to A"
+                >
+                  Alphabetical (Z → A)
+                </button>
+              </div>
+
+              {/* Area List */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {(customAreaOrder.length > 0 ? customAreaOrder : plUniqueAreas).map((areaName, idx, arr) => {
+                  const itemCount = plRows.filter(r => (r.area || 'General / Unspecified').trim() === areaName).length;
+                  return (
+                    <div
+                      key={areaName}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        background: 'var(--bg-primary)',
+                        border: '1px solid var(--border)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 7px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.15)', color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)', width: '28px', textAlign: 'center' }}>
+                          #{idx + 1}
+                        </span>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: '12.5px', color: 'var(--text-primary)' }}>
+                            {areaName}
+                          </div>
+                          <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                            {itemCount} line items in this room
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={() => handleMoveArea(areaName, 'top')}
+                          className="btn btn-ghost btn-xs"
+                          style={{ padding: '3px 6px', fontSize: '10px', opacity: idx === 0 ? 0.3 : 1, cursor: idx === 0 ? 'not-allowed' : 'pointer', border: '1px solid var(--border)' }}
+                          title="Move directly to Top (#1)"
+                        >
+                          Top
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={() => handleMoveArea(areaName, 'up')}
+                          className="btn btn-ghost btn-xs"
+                          style={{ padding: '3px 7px', opacity: idx === 0 ? 0.3 : 1, cursor: idx === 0 ? 'not-allowed' : 'pointer', border: '1px solid var(--border)' }}
+                          title="Move Up 1 step"
+                        >
+                          <ArrowUp size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === arr.length - 1}
+                          onClick={() => handleMoveArea(areaName, 'down')}
+                          className="btn btn-ghost btn-xs"
+                          style={{ padding: '3px 7px', opacity: idx === arr.length - 1 ? 0.3 : 1, cursor: idx === arr.length - 1 ? 'not-allowed' : 'pointer', border: '1px solid var(--border)' }}
+                          title="Move Down 1 step"
+                        >
+                          <ArrowDown size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === arr.length - 1}
+                          onClick={() => handleMoveArea(areaName, 'bottom')}
+                          className="btn btn-ghost btn-xs"
+                          style={{ padding: '3px 6px', fontSize: '10px', opacity: idx === arr.length - 1 ? 0.3 : 1, cursor: idx === arr.length - 1 ? 'not-allowed' : 'pointer', border: '1px solid var(--border)' }}
+                          title="Move directly to Bottom"
+                        >
+                          Bottom
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding: '12px 18px', borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  style={{ fontWeight: 700 }}
+                  onClick={() => setShowAreaReorderModal(false)}
+                >
+                  Apply & Done ✓
                 </button>
               </div>
             </div>
