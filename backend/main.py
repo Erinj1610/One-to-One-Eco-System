@@ -501,7 +501,8 @@ def init_db():
                             ("one_to_one_code", "VARCHAR"),
                             ("selection", "VARCHAR"),
                             ("technical_image_url", "TEXT"),
-                            ("spec_sheet_url", "TEXT")
+                            ("spec_sheet_url", "TEXT"),
+                            ("notes", "TEXT")
                         ]
                         for oi_col_name, oi_col_type in order_item_new_cols:
                             if oi_col_name not in order_item_cols:
