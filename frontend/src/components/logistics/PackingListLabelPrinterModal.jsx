@@ -15,18 +15,33 @@ import {
 import { listPrinters, printDirectLabels, printRawDirect, connectQz } from '../../services/qzPrintService';
 
 export default function PackingListLabelPrinterModal({
-  isOpen,
+  isOpen = true,
   onClose,
   packingList,
   project,
   order,
   templates = DEFAULT_LABEL_TEMPLATES,
-  onOpenTemplateManager
+  onOpenTemplateManager,
+  initialMode = 'item',
+  inline = false,
+  onNextStage = null,
+  nextStageLabel = 'Proceed to Boxing →'
 }) {
   if (!isOpen || !packingList) return null;
 
   // Active print mode: 'item' (individual fittings) or 'box' (outer box manifest)
-  const [mode, setMode] = useState('item'); 
+  const [mode, setMode] = useState(initialMode || 'item');
+
+  React.useEffect(() => {
+    if (initialMode) {
+      setMode(initialMode);
+      const matching = availableTemplates.filter(t => t.type === initialMode);
+      if (matching.length > 0) {
+        setSelectedTemplateId(matching[0].id);
+        setPrintRotation(matching[0].rotation ?? 0);
+      }
+    }
+  }, [initialMode]); 
   
   // Available templates matching current mode (or allow user to pick any)
   const availableTemplates = templates && templates.length > 0 ? templates : DEFAULT_LABEL_TEMPLATES;
@@ -468,39 +483,23 @@ export default function PackingListLabelPrinterModal({
     printWindow.document.close();
   };
 
-  return (
-    <div 
+    const modalInner = (
+    <div
       style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1200,
-        background: 'rgba(0, 0, 0, 0.75)',
-        backdropFilter: 'blur(5px)',
+        background: 'var(--bg-secondary)',
+        border: inline ? 'none' : '1px solid var(--border)',
+        borderRadius: inline ? '0px' : '14px',
+        width: '100%',
+        maxWidth: inline ? '100%' : '1200px',
+        height: inline ? '100%' : '92vh',
+        maxHeight: inline ? '100%' : '880px',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '16px'
+        flexDirection: 'column',
+        overflow: 'hidden',
+        boxShadow: inline ? 'none' : '0 25px 60px -15px rgba(0,0,0,0.7)'
       }}
-      onClick={e => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      onClick={e => e.stopPropagation()}
     >
-      <div 
-        style={{
-          background: 'var(--bg-secondary)',
-          border: '1px solid var(--border)',
-          borderRadius: '14px',
-          width: '100%',
-          maxWidth: '1200px',
-          height: '92vh',
-          maxHeight: '880px',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          boxShadow: '0 25px 60px -15px rgba(0,0,0,0.7)'
-        }}
-        onClick={e => e.stopPropagation()}
-      >
         {/* MODAL HEADER */}
         <div style={{
           padding: '16px 22px',
@@ -548,6 +547,16 @@ export default function PackingListLabelPrinterModal({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {onNextStage && (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                style={{ fontWeight: 700, fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                onClick={onNextStage}
+              >
+                {nextStageLabel}
+              </button>
+            )}
             <button
               className="btn btn-ghost btn-sm"
               onClick={onOpenTemplateManager}
@@ -556,13 +565,15 @@ export default function PackingListLabelPrinterModal({
             >
               <Settings size={14} /> Template Designer
             </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={onClose}
-              style={{ color: 'var(--text-secondary)' }}
-            >
-              <X size={18} />
-            </button>
+            {!inline && onClose && (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={onClose}
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <X size={18} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -1162,8 +1173,31 @@ export default function PackingListLabelPrinterModal({
           </div>
 
         </div>
-
       </div>
+  );
+
+  if (inline) {
+    return modalInner;
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1200,
+        background: 'rgba(0, 0, 0, 0.75)',
+        backdropFilter: 'blur(5px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '16px'
+      }}
+      onClick={e => {
+        if (e.target === e.currentTarget && onClose) onClose();
+      }}
+    >
+      {modalInner}
     </div>
   );
 }
