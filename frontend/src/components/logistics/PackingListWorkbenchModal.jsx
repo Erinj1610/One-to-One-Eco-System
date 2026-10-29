@@ -97,15 +97,23 @@ export default function PackingListWorkbenchModal({
   // Helper: clean description by stripping room quantity suffixes like " — 5 units", " - 1 units"
   const cleanDescription = (desc) => {
     if (!desc) return '';
-    return desc.replace(/\s*[\u2013\u2014\-–]\s*\d+\s*(?:units?|pcs?|m?|fixtures?)\s*$/i, '').trim();
+    return desc
+      .replace(/\s*[\u2010-\u2015\u2212\-]\s*\d+\s*(?:units?|pcs?|m?|fixtures?|items?)\s*$/i, '')
+      .replace(/\s*\(\s*\d+\s*(?:units?|pcs?|m?|fixtures?|items?)\s*\)\s*$/i, '')
+      .trim();
   };
 
-  // Helper: generate unique model key based on (plan_code, supplier_code, one_one_code, clean_desc)
+  // Helper: generate unique model key based on (plan_code, clean_desc, supplier_code, one_one_code)
   const getModelKey = (item) => {
     const plan = (item.plan_code || '').trim().toUpperCase();
+    const desc = cleanDescription(item.description || item.name || '').toUpperCase();
     const sup = (item.supplier_code || '').trim().toUpperCase();
     const oto = (item.one_one_code || '').trim().toUpperCase();
-    const desc = cleanDescription(item.description || item.name || '').toUpperCase();
+
+    // If item has a Plan Code and Description, group by Plan + Clean Description
+    if (plan && desc) {
+      return `${plan}:::${desc}`;
+    }
     return `${plan}:::${sup}:::${oto}:::${desc}`;
   };
 
@@ -127,6 +135,8 @@ export default function PackingListWorkbenchModal({
           attachedItems: [], // user-defined attachments
         };
       }
+      if (!map[key].one_one_code && it.one_one_code) map[key].one_one_code = it.one_one_code.trim();
+      if (!map[key].supplier_code && it.supplier_code) map[key].supplier_code = it.supplier_code.trim();
       map[key].total_ordered += Number(it.qty_ordered || it.qty_packed || 0);
       map[key].room_instances.push({
         ...it,
@@ -846,7 +856,7 @@ export default function PackingListWorkbenchModal({
                     border: '1px solid currentColor',
                   }}
                 >
-                  Step {currentStep}: {currentStep === 1 ? 'Product Summary' : currentStep === 2 ? 'Pick Sheet' : currentStep === 3 ? 'Labels' : 'Boxing'}
+                  Step {currentStep}: {currentStep === 1 ? 'Product Summary (Consolidated)' : currentStep === 2 ? 'Pick Sheet' : currentStep === 3 ? 'Labels' : 'Boxing'} [v2.0 LIVE]
                 </span>
               </div>
               <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
