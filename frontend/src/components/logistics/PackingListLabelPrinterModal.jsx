@@ -71,6 +71,17 @@ export default function PackingListLabelPrinterModal({
     return 0.0;
   });
 
+  // Hardware Print Scale Compensation:
+  // When printer driver or Chrome applies hardware unprintable margins, 50x30mm shrinks to 42x25mm (~16% shrink).
+  // Defaulting to 119% mathematically scales 42mm back to 50.0mm physical output on paper.
+  const [hardwareScalePercent, setHardwareScalePercent] = useState(() => {
+    try {
+      const saved = localStorage.getItem('oto_printer_scale_pct');
+      if (saved !== null) return Number(saved);
+    } catch(e) {}
+    return 119;
+  });
+
   // Available Windows printers discovered via QZ Tray
   const [printers, setPrinters] = useState([]);
   const [selectedPrinter, setSelectedPrinter] = useState(() => {
@@ -351,14 +362,19 @@ export default function PackingListLabelPrinterModal({
       return;
     }
 
-    const printWidthMm = Number(currentTemplate.widthMm ?? currentTemplate.labelMm?.width ?? 50);
-    const printHeightMm = Number(currentTemplate.heightMm ?? currentTemplate.labelMm?.height ?? 30);
+    const baseWidthMm = Number(currentTemplate.widthMm ?? currentTemplate.labelMm?.width ?? 50);
+    const baseHeightMm = Number(currentTemplate.heightMm ?? currentTemplate.labelMm?.height ?? 30);
     const effectiveRotation = printRotation !== undefined ? printRotation : (currentTemplate.rotation || 0);
 
-    // Render 203 DPI rasterized base64 PNGs matching physical printhead alignment
+    const scaleMult = (Number(hardwareScalePercent) || 100) / 100;
+    const printWidthMm = Number((baseWidthMm * scaleMult).toFixed(1));
+    const printHeightMm = Number((baseHeightMm * scaleMult).toFixed(1));
+
+    // Render 203 DPI rasterized base64 PNGs matching physical printhead alignment and scale compensation
     const dataUrls = generatedLabels.map(lbl => {
       return renderLabelToDataUrl(currentTemplate, lbl.context, effectiveRotation, {
         isPhysicalPrint: true,
+        scalePercent: hardwareScalePercent,
         offsetMmX: hardwareShiftX,
         offsetMmY: hardwareShiftY
       });
@@ -821,6 +837,86 @@ export default function PackingListLabelPrinterModal({
                 ▶
               </button>
             </div>
+          </div>
+
+          {/* Hardware Print Scale Calibration (Fixes printer shrinking 50x30 to 42x25) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-primary)', padding: '3px 8px', borderRadius: '8px', border: '1px solid var(--border)' }} title="Compensates when printer driver or Chrome shrinks 50x30mm to 42x25mm">
+            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Maximize2 size={12} /> Scale:
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+              <button 
+                type="button" 
+                className="btn btn-ghost btn-xs" 
+                style={{ padding: '0 4px', height: '20px', minHeight: 'unset', fontSize: '10px' }}
+                onClick={() => {
+                  const next = Math.max(80, Math.round(hardwareScalePercent - 1));
+                  setHardwareScalePercent(next);
+                  try { localStorage.setItem('oto_printer_scale_pct', next); } catch(e){}
+                }}
+                title="Decrease Scale (-1%)"
+              >
+                -
+              </button>
+              <span style={{ fontSize: '11px', fontWeight: 800, fontFamily: 'monospace', minWidth: '40px', textAlign: 'center', color: hardwareScalePercent !== 100 ? '#38bdf8' : 'var(--text-primary)' }}>
+                {hardwareScalePercent}%
+              </span>
+              <button 
+                type="button" 
+                className="btn btn-ghost btn-xs" 
+                style={{ padding: '0 4px', height: '20px', minHeight: 'unset', fontSize: '10px' }}
+                onClick={() => {
+                  const next = Math.min(150, Math.round(hardwareScalePercent + 1));
+                  setHardwareScalePercent(next);
+                  try { localStorage.setItem('oto_printer_scale_pct', next); } catch(e){}
+                }}
+                title="Increase Scale (+1%)"
+              >
+                +
+              </button>
+            </div>
+            <button
+              type="button"
+              className="btn btn-xs"
+              style={{
+                fontSize: '9.5px',
+                padding: '1px 6px',
+                height: '20px',
+                minHeight: 'unset',
+                background: hardwareScalePercent === 119 ? '#2563eb' : 'rgba(59, 130, 246, 0.1)',
+                color: hardwareScalePercent === 119 ? '#ffffff' : '#38bdf8',
+                border: '1px solid rgba(59, 130, 246, 0.4)',
+                borderRadius: '4px',
+                fontWeight: 700
+              }}
+              onClick={() => {
+                setHardwareScalePercent(119);
+                try { localStorage.setItem('oto_printer_scale_pct', 119); } catch(e){}
+              }}
+              title="Auto-Fit Full 50mm: Neutralizes printer driver 16% shrink"
+            >
+              Fit 50mm (119%)
+            </button>
+            {hardwareScalePercent !== 100 && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs"
+                style={{
+                  fontSize: '9.5px',
+                  padding: '1px 4px',
+                  height: '20px',
+                  minHeight: 'unset',
+                  color: 'var(--text-tertiary)'
+                }}
+                onClick={() => {
+                  setHardwareScalePercent(100);
+                  try { localStorage.setItem('oto_printer_scale_pct', 100); } catch(e){}
+                }}
+                title="Reset to 100% standard scaling"
+              >
+                100%
+              </button>
+            )}
           </div>
 
           {/* Printer Destination Selector */}

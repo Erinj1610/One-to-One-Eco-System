@@ -195,27 +195,31 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0, options
   const stickerW = Number(template.widthMm ?? template.labelMm?.width ?? 50);
   const stickerH = Number(template.heightMm ?? template.labelMm?.height ?? 30);
 
+  const isPhysical = !!options.isPhysicalPrint;
+  // Hardware Scale Compensation:
+  // When thermal printer drivers or Chrome enforce hardware unprintable margins,
+  // 50mm x 30mm shrinks to 42mm x 25mm (~16% shrink). Scaling by scalePercent (e.g. 119%)
+  // neutralizes driver shrinkage and prints at exactly 50.0mm x 30.0mm physical on paper.
+  const scaleMult = (isPhysical && options.scalePercent) ? (Number(options.scalePercent) / 100) : 1.0;
+
   // Thermal printers operate at ~8 dots per mm (203.2 DPI)
   const DOTS_PER_MM = 8;
-  const nominalW = Math.round(stickerW * DOTS_PER_MM);
-  const nominalH = Math.round(stickerH * DOTS_PER_MM);
+  const effectiveDotsPerMm = DOTS_PER_MM * scaleMult;
+  const nominalW = Math.round(stickerW * effectiveDotsPerMm);
+  const nominalH = Math.round(stickerH * effectiveDotsPerMm);
 
   const rot = ((Number(rotationDeg) || 0) % 360 + 360) % 360;
   const isSwap = rot === 90 || rot === 270;
 
   // Hardware Roll & Carrier Liner Inset Offset:
-  // Thermal printheads fire starting from dot 0 at the printer guide edge.
-  // The peel-off sticker sits centered on the backing liner with ~2.5mm margin on the left.
-  // Applying this offset shifts the canvas so coordinate (0, 0) starts dead-center on the physical sticker.
   const shiftMmX = Number(options?.offsetMmX !== undefined 
     ? options.offsetMmX 
     : (template.hardwareOffsetMm?.x ?? template.carrierLinerMm?.left ?? 0));
   const shiftMmY = Number(options?.offsetMmY !== undefined 
     ? options.offsetMmY 
     : (template.hardwareOffsetMm?.y ?? template.carrierLinerMm?.top ?? 0));
-  const isPhysical = !!options.isPhysicalPrint;
-  const shiftDotsX = isPhysical ? Math.round(shiftMmX * DOTS_PER_MM) : 0;
-  const shiftDotsY = isPhysical ? Math.round(shiftMmY * DOTS_PER_MM) : 0;
+  const shiftDotsX = isPhysical ? Math.round(shiftMmX * effectiveDotsPerMm) : 0;
+  const shiftDotsY = isPhysical ? Math.round(shiftMmY * effectiveDotsPerMm) : 0;
 
   // The final media canvas dimensions that matches the physical sticker
   const outputCanvas = document.createElement('canvas');
@@ -246,10 +250,10 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0, options
 
   // Internal safe margins inside the sticker
   const marginMm = template.marginMm || { top: 0, bottom: 0, left: 0, right: 0 };
-  const padLeft = Math.round((Number(marginMm.left) || 0) * DOTS_PER_MM);
-  const padRight = Math.round((Number(marginMm.right) || 0) * DOTS_PER_MM);
-  const padTop = Math.round((Number(marginMm.top) || 0) * DOTS_PER_MM);
-  const padBottom = Math.round((Number(marginMm.bottom) || 0) * DOTS_PER_MM);
+  const padLeft = Math.round((Number(marginMm.left) || 0) * effectiveDotsPerMm);
+  const padRight = Math.round((Number(marginMm.right) || 0) * effectiveDotsPerMm);
+  const padTop = Math.round((Number(marginMm.top) || 0) * effectiveDotsPerMm);
+  const padBottom = Math.round((Number(marginMm.bottom) || 0) * effectiveDotsPerMm);
 
   const stickerPixelW = nominalW;
   const contentWidth = Math.max(10, stickerPixelW - padLeft - padRight);
@@ -259,15 +263,15 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0, options
     // Coordinate origin is the top-left of the peel-off sticker
     const isExplicit = field.xMm !== undefined && field.yMm !== undefined;
     const elemX = isExplicit 
-      ? Math.round(Number(field.xMm) * DOTS_PER_MM) 
+      ? Math.round(Number(field.xMm) * effectiveDotsPerMm) 
       : padLeft;
     const elemW = (field.wMm !== undefined && Number(field.wMm) > 0)
-      ? Math.round(Number(field.wMm) * DOTS_PER_MM)
+      ? Math.round(Number(field.wMm) * effectiveDotsPerMm)
       : contentWidth;
 
-    const marginTop = Math.round((field.marginTop || 0) * DOTS_PER_MM * 0.35);
+    const marginTop = Math.round((field.marginTop || 0) * effectiveDotsPerMm * 0.35);
     const curY = isExplicit 
-      ? Math.round(Number(field.yMm) * DOTS_PER_MM) 
+      ? Math.round(Number(field.yMm) * effectiveDotsPerMm) 
       : (flowY + marginTop);
 
     if (field.type === 'text') {
@@ -282,7 +286,7 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0, options
       // At 203.2 DPI (8 dots/mm): 1 pt = 203.2 / 72 ≈ 2.822 dots.
       const DOTS_PER_PT = 2.822;
       const rawFs = Number(field.fontSize) || 8;
-      let baseFontSize = rawFs * DOTS_PER_PT;
+      let baseFontSize = rawFs * DOTS_PER_PT * scaleMult;
       ctx.font = `${fontStyleStr}${Math.round(baseFontSize)}px Arial, Helvetica, sans-serif`;
       ctx.fillStyle = '#000000';
       ctx.textBaseline = 'top';
@@ -300,7 +304,7 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0, options
       }
 
       const fontSizePx = Math.round(baseFontSize);
-      const boxH = field.hMm ? Math.round(field.hMm * DOTS_PER_MM) : (fontSizePx + 4);
+      const boxH = field.hMm ? Math.round(field.hMm * effectiveDotsPerMm) : (fontSizePx + 4);
 
       // Padding matching the DOM visual designer (1px 2px)
       const padX = 2;
@@ -440,14 +444,14 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0, options
       }
     } else if (field.type === 'line') {
       // Vector Divider Line (Horizontal or Vertical)
-      const thickness = Math.max(1, Math.round((field.thicknessMm || 0.5) * DOTS_PER_MM));
+      const thickness = Math.max(1, Math.round((field.thicknessMm || 0.5) * effectiveDotsPerMm));
       const isSolid = !field.lineStyle || field.lineStyle === 'solid';
 
       if (isSolid) {
         // Crisp pixel-perfect solid rectangle rendering (no stroke expansion or subpixel fuzziness)
         ctx.fillStyle = '#000000';
         if (field.orientation === 'vertical') {
-          const lineH = Math.round((field.hMm || 10) * DOTS_PER_MM);
+          const lineH = Math.round((field.hMm !== undefined ? Number(field.hMm) : stickerH) * effectiveDotsPerMm);
           ctx.fillRect(elemX, curY, thickness, lineH);
         } else {
           ctx.fillRect(elemX, curY, elemW, thickness);
@@ -466,7 +470,7 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0, options
 
         ctx.beginPath();
         if (field.orientation === 'vertical') {
-          const lineH = Math.round((field.hMm || 10) * DOTS_PER_MM);
+          const lineH = Math.round((field.hMm !== undefined ? Number(field.hMm) : stickerH) * effectiveDotsPerMm);
           ctx.moveTo(elemX + thickness / 2, curY);
           ctx.lineTo(elemX + thickness / 2, curY + lineH);
         } else {
@@ -482,8 +486,8 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0, options
       }
     } else if (field.type === 'box_frame') {
       // Outline Box or Inverted Badge
-      const boxH = Math.round((field.hMm || 10) * DOTS_PER_MM);
-      const borderWidth = Math.max(1, Math.round((field.borderThicknessMm || 1) * DOTS_PER_MM * 0.5));
+      const boxH = Math.round((field.hMm || 10) * effectiveDotsPerMm);
+      const borderWidth = Math.max(1, Math.round((field.borderThicknessMm || 1) * effectiveDotsPerMm * 0.5));
 
       if (field.filled) {
         ctx.fillStyle = '#000000';
@@ -511,7 +515,7 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0, options
       }
     } else if (field.type === 'barcode') {
       const barVal = evaluateTokens(field.barcodeValue || '{{item.code}}', context);
-      const barHeight = Math.round((field.barcodeHeight || 20) * DOTS_PER_MM * 0.35);
+      const barHeight = Math.round((field.barcodeHeight || 20) * effectiveDotsPerMm * 0.35);
       const drawnH = drawCode128OnCanvas(
         ctx,
         barVal,
