@@ -898,9 +898,14 @@ export const DEFAULT_LABEL_TEMPLATES = [
 ];
 
 // Evaluate tokens into real values
-export function evaluateTokens(templateString, context) {
+export function evaluateTokens(templateString, context = {}) {
   if (!templateString) return '';
   let res = String(templateString);
+
+  // Literal static text fast-path: if no variable delimiters '{{' exist, return static text as-is!
+  if (!res.includes('{{')) {
+    return res;
+  }
 
   const { item = {}, project = {}, order = {}, packingList = {}, box = {} } = context;
   const todayStr = new Date().toLocaleDateString('en-GB');
