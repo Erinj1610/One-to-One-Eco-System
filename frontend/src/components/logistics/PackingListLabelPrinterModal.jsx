@@ -280,14 +280,15 @@ export default function PackingListLabelPrinterModal({
   const activePreviewIndex = Math.min(previewIndex, Math.max(0, generatedLabels.length - 1));
   const activeLabel = generatedLabels[activePreviewIndex] || null;
 
-  // Real-time canvas rasterized preview matching exact 203 DPI print engine output
+  // Real-time canvas rasterized preview matching exact 203 DPI print engine output (un-shifted sticker origin)
   const previewDataUrl = useMemo(() => {
     if (!activeLabel || !currentTemplate) return null;
     return renderLabelToDataUrl(currentTemplate, activeLabel.context, printRotation || 0, {
-      offsetMmX: hardwareShiftX,
-      offsetMmY: hardwareShiftY
+      isPhysicalPrint: false,
+      offsetMmX: 0,
+      offsetMmY: 0
     });
-  }, [activeLabel, currentTemplate, printRotation, hardwareShiftX, hardwareShiftY]);
+  }, [activeLabel, currentTemplate, printRotation]);
 
   // Toggle item selection
   const handleToggleItem = (itemId) => {
@@ -354,9 +355,10 @@ export default function PackingListLabelPrinterModal({
     const printHeightMm = Number(currentTemplate.heightMm ?? currentTemplate.labelMm?.height ?? 30);
     const effectiveRotation = printRotation !== undefined ? printRotation : (currentTemplate.rotation || 0);
 
-    // Render 203 DPI rasterized base64 PNGs matching the 50mm x 30mm sticker
+    // Render 203 DPI rasterized base64 PNGs matching physical printhead alignment
     const dataUrls = generatedLabels.map(lbl => {
       return renderLabelToDataUrl(currentTemplate, lbl.context, effectiveRotation, {
+        isPhysicalPrint: true,
         offsetMmX: hardwareShiftX,
         offsetMmY: hardwareShiftY
       });
@@ -1192,30 +1194,61 @@ export default function PackingListLabelPrinterModal({
             }}>
               {activeLabel && previewDataUrl ? (
                 <div>
-                  {/* Physical Label Canvas Preview */}
+                  {/* Thermal Carrier Roll Backing Paper Track */}
                   <div
                     style={{
-                      background: '#ffffff',
-                      borderRadius: '4px',
-                      boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
-                      padding: '4px',
+                      background: '#1e293b',
+                      borderRadius: '10px',
+                      padding: '20px 24px',
+                      boxShadow: '0 12px 36px rgba(0,0,0,0.6)',
                       display: 'flex',
+                      flexDirection: 'column',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      overflow: 'hidden'
+                      position: 'relative',
+                      borderLeft: '2px dashed #475569',
+                      borderRight: '2px dashed #475569'
                     }}
                   >
-                    <img 
-                      src={previewDataUrl} 
-                      alt="Thermal Label Preview" 
+                    <div style={{
+                      fontSize: '9px',
+                      fontFamily: 'monospace',
+                      color: '#94a3b8',
+                      textTransform: 'uppercase',
+                      letterSpacing: '1px',
+                      marginBottom: '10px',
+                      userSelect: 'none'
+                    }}>
+                      ◄ Continuous Carrier Roll Backing ►
+                    </div>
+
+                    {/* Physical Peel-Off Sticker Canvas */}
+                    <div
                       style={{
-                        maxWidth: '360px',
-                        maxHeight: '360px',
-                        display: 'block',
-                        imageRendering: 'pixelated',
-                        border: '1px solid #cbd5e1'
+                        background: '#ffffff',
+                        borderRadius: '4px',
+                        boxShadow: '0 6px 24px rgba(0,0,0,0.4)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden'
                       }}
-                    />
+                    >
+                      <img 
+                        src={previewDataUrl} 
+                        alt="Thermal Label Preview" 
+                        style={{
+                          maxWidth: '360px',
+                          maxHeight: '360px',
+                          display: 'block',
+                          imageRendering: 'pixelated',
+                          border: 'none'
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ marginTop: '10px', textAlign: 'center', fontSize: '10px', color: '#64748b' }}>
+                      Peel-Off Sticker: <strong>{currentTemplate.widthMm}mm × {currentTemplate.heightMm}mm</strong> • Margins: <strong>Top 0mm, Left 0mm</strong>
+                    </div>
                   </div>
 
                   <div style={{ marginTop: '14px', textAlign: 'center', fontSize: '11px', color: '#94a3b8' }}>

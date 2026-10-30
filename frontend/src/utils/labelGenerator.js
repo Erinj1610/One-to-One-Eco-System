@@ -213,8 +213,9 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0, options
   const shiftMmY = Number(options?.offsetMmY !== undefined 
     ? options.offsetMmY 
     : (template.hardwareOffsetMm?.y ?? template.carrierLinerMm?.top ?? 0));
-  const shiftDotsX = Math.round(shiftMmX * DOTS_PER_MM);
-  const shiftDotsY = Math.round(shiftMmY * DOTS_PER_MM);
+  const isPhysical = !!options.isPhysicalPrint;
+  const shiftDotsX = isPhysical ? Math.round(shiftMmX * DOTS_PER_MM) : 0;
+  const shiftDotsY = isPhysical ? Math.round(shiftMmY * DOTS_PER_MM) : 0;
 
   // The final media canvas dimensions that matches the physical sticker
   const outputCanvas = document.createElement('canvas');
@@ -797,29 +798,29 @@ export const DEFAULT_LABEL_TEMPLATES = [
     heightMm: 30,
     orientation: 'landscape',
     rotation: 0,
-    carrierLinerMm: { left: 2.5, top: 0.5 },
-    marginMm: { top: 2, bottom: 2, left: 2.5, right: 2.5 },
+    carrierLinerMm: { left: 2.0, top: 1.0 },
+    marginMm: { top: 0, bottom: 0, left: 0, right: 0 },
     type: 'item',
     fields: [
-      // Top-Left: Plan Code
-      { id: 'f_lbl_plancode', type: 'text', content: 'PLAN CODE', fontSize: 6, fontWeight: 800, underline: false, align: 'left', xMm: 2.5, yMm: 2.5, wMm: 17, hMm: 3.5 },
-      { id: 'f_val_plancode', type: 'text', content: '{{item.plan_code}}', fontSize: 13, fontWeight: 900, align: 'center', shrinkToFit: true, xMm: 2.5, yMm: 6, wMm: 17, hMm: 8.5 },
+      // Full-Bleed Center Divider Lines (touching all four sticker edges)
+      { id: 'f_div_h', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', xMm: 0, yMm: 15, wMm: 50, hMm: 0.5 },
+      { id: 'f_div_v', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'vertical', xMm: 22, yMm: 0, wMm: 0.5, hMm: 30 },
+
+      // Top-Left: Plan Code (x: 1.5..21, y: 1..14.5)
+      { id: 'f_lbl_plancode', type: 'text', content: 'PLAN CODE', fontSize: 6.5, fontWeight: 800, underline: false, align: 'left', xMm: 1.5, yMm: 1.5, wMm: 19.5, hMm: 3.5 },
+      { id: 'f_val_plancode', type: 'text', content: '{{item.plan_code}}', fontSize: 15, fontWeight: 900, align: 'center', shrinkToFit: true, vAlign: 'middle', xMm: 1.5, yMm: 5.0, wMm: 19.5, hMm: 9.0 },
       
-      // Top-Right: 1-TO-1 Code (give 60% width so long codes don't truncate)
-      { id: 'f_lbl_code', type: 'text', content: '1-TO-1 CODE', fontSize: 6, fontWeight: 800, underline: false, align: 'left', xMm: 20.5, yMm: 2.5, wMm: 27, hMm: 3.5 },
-      { id: 'f_val_code', type: 'text', content: '{{item.code}}', fontSize: 9.5, fontWeight: 800, align: 'center', shrinkToFit: true, xMm: 20.5, yMm: 6, wMm: 27, hMm: 8.5 },
+      // Top-Right: 1-TO-1 Code (x: 23.5..48.5, y: 1..14.5)
+      { id: 'f_lbl_code', type: 'text', content: '1-TO-1 CODE', fontSize: 6.5, fontWeight: 800, underline: false, align: 'left', xMm: 23.5, yMm: 1.5, wMm: 25.0, hMm: 3.5 },
+      { id: 'f_val_code', type: 'text', content: '{{item.code}}', fontSize: 11, fontWeight: 800, align: 'center', shrinkToFit: true, vAlign: 'middle', xMm: 23.5, yMm: 5.0, wMm: 25.0, hMm: 9.0 },
 
-      // Center Divider Lines (confined neatly inside safe margins so they don't run into rounded corners)
-      { id: 'f_div_h', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', xMm: 2.5, yMm: 15, wMm: 45, hMm: 0.5 },
-      { id: 'f_div_v', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'vertical', xMm: 20, yMm: 2.5, wMm: 0.5, hMm: 25 },
+      // Bottom-Left: Floor (x: 1.5..21, y: 15.5..29)
+      { id: 'f_lbl_floor', type: 'text', content: 'FLOOR', fontSize: 6.5, fontWeight: 800, underline: false, align: 'left', xMm: 1.5, yMm: 16.0, wMm: 19.5, hMm: 3.5 },
+      { id: 'f_val_floor', type: 'text', content: '{{item.floor}}', fontSize: 9.5, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 1.5, yMm: 19.5, wMm: 19.5, hMm: 9.5 },
 
-      // Bottom-Left: Floor
-      { id: 'f_lbl_floor', type: 'text', content: 'FLOOR', fontSize: 6, fontWeight: 800, underline: false, align: 'left', xMm: 2.5, yMm: 16, wMm: 17, hMm: 3.5 },
-      { id: 'f_val_floor', type: 'text', content: '{{item.floor}}', fontSize: 8.5, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 2.5, yMm: 19.5, wMm: 17, hMm: 8.5 },
-
-      // Bottom-Right: Area
-      { id: 'f_lbl_area', type: 'text', content: 'AREA', fontSize: 6, fontWeight: 800, underline: false, align: 'left', xMm: 20.5, yMm: 16, wMm: 27, hMm: 3.5 },
-      { id: 'f_val_area', type: 'text', content: '{{item.area}}', fontSize: 8.5, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 20.5, yMm: 19.5, wMm: 27, hMm: 8.5 }
+      // Bottom-Right: Area (x: 23.5..48.5, y: 15.5..29)
+      { id: 'f_lbl_area', type: 'text', content: 'AREA', fontSize: 6.5, fontWeight: 800, underline: false, align: 'left', xMm: 23.5, yMm: 16.0, wMm: 25.0, hMm: 3.5 },
+      { id: 'f_val_area', type: 'text', content: '{{item.area}}', fontSize: 9.5, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 23.5, yMm: 19.5, wMm: 25.0, hMm: 9.5 }
     ]
   },
   {

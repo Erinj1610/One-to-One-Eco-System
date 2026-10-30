@@ -219,45 +219,67 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
     if (!editForm) return;
     const w = editForm.widthMm || 50;
     const h = editForm.heightMm || 30;
-    const safeL = 2.5;
-    const safeR = w - 2.5;
-    const midX = w / 2;
-    const midY = h / 2;
+    // Symmetrical 44/56 split gives right side 28mm for longer codes
+    const midX = w <= 50 ? 22 : Number((w * 0.46).toFixed(1));
+    const midY = Number((h / 2).toFixed(1));
 
     const updatedFields = (editForm.fields || []).map(f => {
       const clone = { ...f };
-      // Horizontal line: confine neatly inside safe printable area
+      // Horizontal line: full-bleed across whole sticker width
       if (clone.type === 'line' && clone.orientation !== 'vertical') {
-        clone.xMm = safeL;
-        clone.wMm = Number((safeR - safeL).toFixed(1));
+        clone.xMm = 0;
+        clone.wMm = Number(w.toFixed(1));
         clone.yMm = Number(midY.toFixed(1));
         return clone;
       }
-      // Vertical line: center at midX
+      // Vertical line: full-bleed across whole sticker height
       if (clone.type === 'line' && clone.orientation === 'vertical') {
         clone.xMm = Number(midX.toFixed(1));
-        clone.yMm = safeL;
-        clone.hMm = Number((h - 5.0).toFixed(1));
+        clone.yMm = 0;
+        clone.hMm = Number(h.toFixed(1));
         return clone;
       }
       // Text elements:
       const curX = Number(clone.xMm) || 0;
-      if (curX < midX - 2) {
-        // Left half element
-        clone.xMm = safeL;
-        clone.wMm = Number((midX - safeL - 1.0).toFixed(1));
+      const curY = Number(clone.yMm) || 0;
+      const isLeft = curX < midX;
+      const isTop = curY < midY;
+
+      if (isLeft) {
+        clone.xMm = 1.5;
+        clone.wMm = Number((midX - 2.5).toFixed(1));
       } else {
-        // Right half element
-        clone.xMm = Number((midX + 1.0).toFixed(1));
-        clone.wMm = Number((safeR - midX - 1.0).toFixed(1));
+        clone.xMm = Number((midX + 1.5).toFixed(1));
+        clone.wMm = Number((w - midX - 2.5).toFixed(1));
+      }
+
+      // Vertically center content boxes so there is no dead space
+      if (isTop) {
+        if (clone.fontSize && clone.fontSize >= 9) {
+          clone.yMm = 5.0;
+          clone.hMm = Number((midY - 5.5).toFixed(1));
+          clone.vAlign = 'middle';
+        } else {
+          clone.yMm = 1.5;
+          clone.hMm = 3.5;
+        }
+      } else {
+        if (clone.fontSize && clone.fontSize >= 9) {
+          clone.yMm = Number((midY + 4.5).toFixed(1));
+          clone.hMm = Number((h - midY - 5.5).toFixed(1));
+          clone.vAlign = 'middle';
+        } else {
+          clone.yMm = Number((midY + 1.0).toFixed(1));
+          clone.hMm = 3.5;
+        }
       }
       return clone;
     });
 
     setEditForm({
       ...editForm,
-      marginMm: { top: 2.0, bottom: 2.0, left: 2.5, right: 2.5 },
-      carrierLinerMm: { left: 2.5, top: 0.5 },
+      marginMm: { top: 0, bottom: 0, left: 0, right: 0 },
+      carrierLinerMm: { left: 2.0, top: 1.0 },
       fields: updatedFields
     });
   };
@@ -629,9 +651,9 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                       alignItems: 'center',
                       gap: '4px'
                     }}
-                    title="Automatically adjust quadrants and lines to 2.5mm safe printable margins"
+                    title="Automatically expand quadrants and dividers to full bleed (0mm margin)"
                   >
-                    <Maximize2 size={12} /> Auto-Center (2.5mm Safe)
+                    <Maximize2 size={12} /> Auto-Fit Full Bleed (0mm)
                   </button>
                   </>
                 )}
@@ -714,60 +736,57 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                   )}
                 </div>
 
-                {/* THE PHYSICAL LABEL CANVAS */}
+                {/* CONTINUOUS CARRIER ROLL BACKING PAPER TRACK */}
                 <div
-                  ref={canvasRef}
                   style={{
-                    width: `${canvasWidthPx}px`,
-                    height: `${canvasHeightPx}px`,
-                    background: '#ffffff',
-                    position: 'relative',
-                    boxShadow: '0 15px 40px rgba(0,0,0,0.6)',
-                    borderRadius: '6px',
-                    overflow: 'hidden',
-                    // Raster Grid Dots
-                    backgroundImage: isEditing && snapToGrid 
-                      ? 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)' 
-                      : 'none',
-                    backgroundSize: `${PIXELS_PER_MM}px ${PIXELS_PER_MM}px`, // 1mm grid dots
-                    cursor: isEditing ? 'default' : 'auto'
-                  }}
-                  onClick={(e) => {
-                    // Only deselect if the user clicked directly on the canvas background, not on any element or boundary
-                    if (e.target === e.currentTarget && isEditing) {
-                      setSelectedFieldIndex(null);
-                    }
+                    background: '#1e293b',
+                    padding: '24px 30px',
+                    borderRadius: '10px',
+                    borderLeft: '2px dashed #475569',
+                    borderRight: '2px dashed #475569',
+                    boxShadow: '0 12px 36px rgba(0,0,0,0.5)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center'
                   }}
                 >
-                  {/* SAFE PRINT MARGIN BOUNDARY (Dotted Blue Line) */}
-                  {isEditing && (
-                    <div 
-                      style={{
-                        position: 'absolute',
-                        top: `${(activeObj.marginMm?.top ?? 1.5) * PIXELS_PER_MM}px`,
-                        bottom: `${(activeObj.marginMm?.bottom ?? 1.5) * PIXELS_PER_MM}px`,
-                        left: `${(activeObj.marginMm?.left ?? 2.0) * PIXELS_PER_MM}px`,
-                        right: `${(activeObj.marginMm?.right ?? 2.0) * PIXELS_PER_MM}px`,
-                        border: '1px dashed rgba(59, 130, 246, 0.45)',
-                        borderRadius: '4px',
-                        pointerEvents: 'none',
-                        zIndex: 1
-                      }}
-                    >
-                      <span style={{
-                        position: 'absolute',
-                        top: '2px',
-                        right: '4px',
-                        fontSize: '9px',
-                        color: 'rgba(59, 130, 246, 0.65)',
-                        fontFamily: 'monospace',
-                        pointerEvents: 'none',
-                        userSelect: 'none'
-                      }}>
-                        Safe Printable Area
-                      </span>
-                    </div>
-                  )}
+                  <div style={{
+                    fontSize: '9px',
+                    fontFamily: 'monospace',
+                    color: '#94a3b8',
+                    textTransform: 'uppercase',
+                    letterSpacing: '1px',
+                    marginBottom: '10px',
+                    userSelect: 'none'
+                  }}>
+                    ◄ Continuous Carrier Roll Backing (Feed: Top → Bottom) ►
+                  </div>
+
+                  {/* THE PHYSICAL LABEL CANVAS */}
+                  <div
+                    ref={canvasRef}
+                    style={{
+                      width: `${canvasWidthPx}px`,
+                      height: `${canvasHeightPx}px`,
+                      background: '#ffffff',
+                      position: 'relative',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                      borderRadius: '6px',
+                      overflow: 'hidden',
+                      // Raster Grid Dots
+                      backgroundImage: isEditing && snapToGrid 
+                        ? 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)' 
+                        : 'none',
+                      backgroundSize: `${PIXELS_PER_MM}px ${PIXELS_PER_MM}px`, // 1mm grid dots
+                      cursor: isEditing ? 'default' : 'auto'
+                    }}
+                    onClick={(e) => {
+                      // Only deselect if the user clicked directly on the canvas background, not on any element or boundary
+                      if (e.target === e.currentTarget && isEditing) {
+                        setSelectedFieldIndex(null);
+                      }
+                    }}
+                  >
 
                   {/* ELEMENT RENDERING */}
                   {(activeObj.fields || []).map((field, idx) => {
@@ -907,6 +926,11 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                     );
                   })}
                 </div>
+
+                <div style={{ marginTop: '10px', textAlign: 'center', fontSize: '10px', color: '#64748b' }}>
+                  Peel-Off Sticker: <strong>{activeObj.widthMm}mm × {activeObj.heightMm}mm</strong> • Margins: <strong>Top 0mm, Left 0mm</strong>
+                </div>
+              </div>
 
                 <div style={{ marginTop: '16px', color: '#64748b', fontSize: '11px', textAlign: 'center' }}>
                   Scale: 1mm = 6.5px • Argox O4-250 Continuous 203 DPI Thermal Feed
