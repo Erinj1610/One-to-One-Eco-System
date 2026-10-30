@@ -189,7 +189,7 @@ export function drawCode128OnCanvas(ctx, text, x, y, maxWidth, height, showText 
 // Render a complete label template onto an offscreen canvas at native 203 DPI (8 dots/mm)
 // Render a complete label template onto an offscreen canvas at native 203 DPI (8 dots/mm)
 // and return a PNG data URL.
-export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
+export function renderLabelToDataUrl(template, context, rotationDeg = 0, options = {}) {
   // Sticker Die-Cut Dimensions (actual peel-off label sticker, e.g. 50mm x 30mm)
   // The canvas sent to QZ Tray and thermal preview matches the physical sticker directly.
   const stickerW = Number(template.widthMm ?? template.labelMm?.width ?? 50);
@@ -202,6 +202,19 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
 
   const rot = ((Number(rotationDeg) || 0) % 360 + 360) % 360;
   const isSwap = rot === 90 || rot === 270;
+
+  // Hardware Roll & Carrier Liner Inset Offset:
+  // Thermal printheads fire starting from dot 0 at the printer guide edge.
+  // The peel-off sticker sits centered on the backing liner with ~2.5mm margin on the left.
+  // Applying this offset shifts the canvas so coordinate (0, 0) starts dead-center on the physical sticker.
+  const shiftMmX = Number(options?.offsetMmX !== undefined 
+    ? options.offsetMmX 
+    : (template.hardwareOffsetMm?.x ?? template.carrierLinerMm?.left ?? 0));
+  const shiftMmY = Number(options?.offsetMmY !== undefined 
+    ? options.offsetMmY 
+    : (template.hardwareOffsetMm?.y ?? template.carrierLinerMm?.top ?? 0));
+  const shiftDotsX = Math.round(shiftMmX * DOTS_PER_MM);
+  const shiftDotsY = Math.round(shiftMmY * DOTS_PER_MM);
 
   // The final media canvas dimensions that matches the physical sticker
   const outputCanvas = document.createElement('canvas');
@@ -544,12 +557,34 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
     }
   });
 
-  // Stamp contentCanvas onto outputCanvas rotated by `rot`
+  // Stamp contentCanvas onto outputCanvas rotated by `rot` with hardware alignment shift
   outCtx.save();
-  outCtx.translate(outputCanvas.width / 2, outputCanvas.height / 2);
+  outCtx.translate(outputCanvas.width / 2 + shiftDotsX, outputCanvas.height / 2 + shiftDotsY);
   outCtx.rotate((rot * Math.PI) / 180);
   outCtx.drawImage(contentCanvas, -layoutW / 2, -layoutH / 2);
   outCtx.restore();
+
+  // 1-Bit Pure Thermal Binarization (Thresholding)
+  // Eliminates font antialiasing grayscale pixels that cause thermal dithering/stippling.
+  // Forces every letter and line to fire at 100% solid jet black (#000000) on the thermal printhead.
+  try {
+    const imgData = outCtx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
+    const d = imgData.data;
+    const len = d.length;
+    for (let i = 0; i < len; i += 4) {
+      // Fast integer luminance
+      const gray = (d[i] * 77 + d[i + 1] * 150 + d[i + 2] * 29) >> 8;
+      // High-contrast threshold: anything not pure white becomes solid black
+      const val = gray < 215 ? 0 : 255;
+      d[i] = val;
+      d[i + 1] = val;
+      d[i + 2] = val;
+      d[i + 3] = 255;
+    }
+    outCtx.putImageData(imgData, 0, 0);
+  } catch (threshErr) {
+    console.warn("Thermal binarization error:", threshErr);
+  }
 
   return outputCanvas.toDataURL('image/png');
 }
@@ -762,6 +797,7 @@ export const DEFAULT_LABEL_TEMPLATES = [
     heightMm: 30,
     orientation: 'landscape',
     rotation: 0,
+    carrierLinerMm: { left: 2.5, top: 0.5 },
     marginMm: { top: 2, bottom: 2, left: 2.5, right: 2.5 },
     type: 'item',
     fields: [

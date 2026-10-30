@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   X, Printer, Tag, Box, Settings, CheckSquare, Square, 
   ChevronLeft, ChevronRight, Layers, AlertCircle, Sparkles, Filter, RefreshCw,
-  RotateCw, Download, ExternalLink, CheckCircle
+  RotateCw, Download, ExternalLink, CheckCircle, Move
 } from 'lucide-react';
 import { 
   generateCode128Svg, 
@@ -54,6 +54,22 @@ export default function PackingListLabelPrinterModal({
 
   // Print Rotation state (degrees: 0, 90, 180, 270)
   const [printRotation, setPrintRotation] = useState(currentTemplate?.rotation ?? 0);
+
+  // Hardware Roll Alignment Shift (compensates for printer guide & liner margin)
+  const [hardwareShiftX, setHardwareShiftX] = useState(() => {
+    try {
+      const saved = localStorage.getItem('oto_printer_offset_x');
+      if (saved !== null) return Number(saved);
+    } catch(e) {}
+    return 2.5; // Default +2.5mm compensation for Argox roll feed guide
+  });
+  const [hardwareShiftY, setHardwareShiftY] = useState(() => {
+    try {
+      const saved = localStorage.getItem('oto_printer_offset_y');
+      if (saved !== null) return Number(saved);
+    } catch(e) {}
+    return 0.0;
+  });
 
   // Available Windows printers discovered via QZ Tray
   const [printers, setPrinters] = useState([]);
@@ -267,8 +283,11 @@ export default function PackingListLabelPrinterModal({
   // Real-time canvas rasterized preview matching exact 203 DPI print engine output
   const previewDataUrl = useMemo(() => {
     if (!activeLabel || !currentTemplate) return null;
-    return renderLabelToDataUrl(currentTemplate, activeLabel.context, printRotation || 0);
-  }, [activeLabel, currentTemplate, printRotation]);
+    return renderLabelToDataUrl(currentTemplate, activeLabel.context, printRotation || 0, {
+      offsetMmX: hardwareShiftX,
+      offsetMmY: hardwareShiftY
+    });
+  }, [activeLabel, currentTemplate, printRotation, hardwareShiftX, hardwareShiftY]);
 
   // Toggle item selection
   const handleToggleItem = (itemId) => {
@@ -337,7 +356,10 @@ export default function PackingListLabelPrinterModal({
 
     // Render 203 DPI rasterized base64 PNGs matching the 50mm x 30mm sticker
     const dataUrls = generatedLabels.map(lbl => {
-      return renderLabelToDataUrl(currentTemplate, lbl.context, effectiveRotation);
+      return renderLabelToDataUrl(currentTemplate, lbl.context, effectiveRotation, {
+        offsetMmX: hardwareShiftX,
+        offsetMmY: hardwareShiftY
+      });
     });
 
     // 1. If QZ Tray is active and a printer is selected, print SILENTLY directly to the Windows Spooler!
@@ -759,6 +781,44 @@ export default function PackingListLabelPrinterModal({
               <option value="180">180° (Inverted)</option>
               <option value="270">270° (Counter-CW)</option>
             </select>
+          </div>
+
+          {/* Hardware Roll Calibration / Alignment Nudge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-primary)', padding: '3px 8px', borderRadius: '8px', border: '1px solid var(--border)' }} title="Compensates for printer roll guides & sticker inset on backing liner">
+            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Move size={12} /> Roll Shift:
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+              <button 
+                type="button" 
+                className="btn btn-ghost btn-xs" 
+                style={{ padding: '0 4px', height: '20px', minHeight: 'unset', fontSize: '10px' }}
+                onClick={() => {
+                  const next = Number((hardwareShiftX - 0.5).toFixed(1));
+                  setHardwareShiftX(next);
+                  try { localStorage.setItem('oto_printer_offset_x', next); } catch(e){}
+                }}
+                title="Nudge Left (-0.5mm)"
+              >
+                ◀
+              </button>
+              <span style={{ fontSize: '11px', fontWeight: 800, fontFamily: 'monospace', minWidth: '46px', textAlign: 'center', color: hardwareShiftX !== 0 ? 'var(--text-info)' : 'var(--text-primary)' }}>
+                {hardwareShiftX > 0 ? `+${hardwareShiftX}` : hardwareShiftX}mm
+              </span>
+              <button 
+                type="button" 
+                className="btn btn-ghost btn-xs" 
+                style={{ padding: '0 4px', height: '20px', minHeight: 'unset', fontSize: '10px' }}
+                onClick={() => {
+                  const next = Number((hardwareShiftX + 0.5).toFixed(1));
+                  setHardwareShiftX(next);
+                  try { localStorage.setItem('oto_printer_offset_x', next); } catch(e){}
+                }}
+                title="Nudge Right (+0.5mm)"
+              >
+                ▶
+              </button>
+            </div>
           </div>
 
           {/* Printer Destination Selector */}

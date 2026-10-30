@@ -215,6 +215,53 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
     if (onSaveTemplates) onSaveTemplates(updated);
   };
 
+  const handleAutoCenterMargins = () => {
+    if (!editForm) return;
+    const w = editForm.widthMm || 50;
+    const h = editForm.heightMm || 30;
+    const safeL = 2.5;
+    const safeR = w - 2.5;
+    const midX = w / 2;
+    const midY = h / 2;
+
+    const updatedFields = (editForm.fields || []).map(f => {
+      const clone = { ...f };
+      // Horizontal line: confine neatly inside safe printable area
+      if (clone.type === 'line' && clone.orientation !== 'vertical') {
+        clone.xMm = safeL;
+        clone.wMm = Number((safeR - safeL).toFixed(1));
+        clone.yMm = Number(midY.toFixed(1));
+        return clone;
+      }
+      // Vertical line: center at midX
+      if (clone.type === 'line' && clone.orientation === 'vertical') {
+        clone.xMm = Number(midX.toFixed(1));
+        clone.yMm = safeL;
+        clone.hMm = Number((h - 5.0).toFixed(1));
+        return clone;
+      }
+      // Text elements:
+      const curX = Number(clone.xMm) || 0;
+      if (curX < midX - 2) {
+        // Left half element
+        clone.xMm = safeL;
+        clone.wMm = Number((midX - safeL - 1.0).toFixed(1));
+      } else {
+        // Right half element
+        clone.xMm = Number((midX + 1.0).toFixed(1));
+        clone.wMm = Number((safeR - midX - 1.0).toFixed(1));
+      }
+      return clone;
+    });
+
+    setEditForm({
+      ...editForm,
+      marginMm: { top: 2.0, bottom: 2.0, left: 2.5, right: 2.5 },
+      carrierLinerMm: { left: 2.5, top: 0.5 },
+      fields: updatedFields
+    });
+  };
+
   const handleDuplicate = (template) => {
     const copy = {
       ...JSON.parse(JSON.stringify(template)),
@@ -554,6 +601,7 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                   ({activeObj.widthMm}mm × {activeObj.heightMm}mm)
                 </span>
                 {isEditing && (
+                  <>
                   <button 
                     onClick={() => setSnapToGrid(!snapToGrid)}
                     className="btn btn-ghost btn-xs"
@@ -570,6 +618,22 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
                   >
                     <Grid size={12} /> Grid Snap {snapToGrid ? 'ON (0.5mm)' : 'OFF'}
                   </button>
+                  <button 
+                    onClick={handleAutoCenterMargins}
+                    className="btn btn-ghost btn-xs"
+                    style={{ 
+                      border: '1px solid var(--border)',
+                      fontSize: '11px',
+                      color: 'var(--text-info)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                    title="Automatically adjust quadrants and lines to 2.5mm safe printable margins"
+                  >
+                    <Maximize2 size={12} /> Auto-Center (2.5mm Safe)
+                  </button>
+                  </>
                 )}
 
                 {/* ZOOM CONTROLS */}
