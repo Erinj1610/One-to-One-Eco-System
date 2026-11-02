@@ -807,6 +807,53 @@ namespace OneToOne.CadParser
                     .FirstOrDefault();
             }
 
+            double DistanceToPolyline(XYZ pt, LwPolyline poly)
+            {
+                if (poly.Vertices == null || poly.Vertices.Count == 0) return double.MaxValue;
+                double minDist = double.MaxValue;
+                int count = poly.Vertices.Count;
+                var pxy = new XY(pt.X, pt.Y);
+                for (int i = 0; i < count; i++)
+                {
+                    var v1 = poly.Vertices[i].Location;
+                    var v2 = poly.Vertices[(i + 1) % count].Location;
+                    if (!poly.IsClosed && i == count - 1) break;
+                    double dist = DistanceToSegment(pxy, v1, v2);
+                    if (dist < minDist) minDist = dist;
+                }
+                return minDist;
+            }
+
+            (string Name, double Dist, string Floor) ResolveNearestRoom(XYZ pt)
+            {
+                if (roomBoundaries.Count == 0) return ("Unknown Area", 0.0, defaultFloor);
+                RoomBoundary? closest = null;
+                double bestDist = double.MaxValue;
+
+                foreach (var rb in roomBoundaries)
+                {
+                    double d = DistanceToPolyline(pt, rb.Polyline);
+                    if (d < bestDist)
+                    {
+                        bestDist = d;
+                        closest = rb;
+                    }
+                }
+
+                if (closest == null) return ("General Area", 0.0, defaultFloor);
+                return (closest.RoomName, Math.Round(bestDist, 0), closest.Floor);
+            }
+
+            var allCadTexts = doc.Entities.Where(e => e is MText || e is TextEntity)
+                .Select(e => new TextLabel
+                {
+                    Layer = e.Layer?.Name ?? "",
+                    Val = CleanCadText((e is MText mt) ? mt.Value : ((TextEntity)e).Value),
+                    Pt = (e is MText mt2) ? mt2.InsertPoint : ((TextEntity)e).InsertPoint
+                })
+                .Where(t => !string.IsNullOrWhiteSpace(t.Val))
+                .ToList();
+
             // Unassigned fittings: items located outside any 0-ROOMS boundary polygon
             var unassignedFittings = new List<UnassignedFittingItem>();
 
@@ -867,24 +914,50 @@ namespace OneToOne.CadParser
                     tag = nearest?.Val ?? CleanBlockName(ins.Block?.Name ?? "");
                 }
 
+                if (string.IsNullOrWhiteSpace(tag))
+                {
+                    var nearestFallback = allCadTexts
+                        .Select(t => new { t.Val, Dist = Math.Sqrt(Math.Pow(pt.X - t.Pt.X, 2) + Math.Pow(pt.Y - t.Pt.Y, 2)) })
+                        .Where(t => t.Dist <= 2000.0)
+                        .OrderBy(t => t.Dist)
+                        .FirstOrDefault();
+                    if (nearestFallback != null) tag = nearestFallback.Val;
+                }
+
                 tag = tag.Trim().ToUpperInvariant();
 
                 // Strict validation: must be inside a 0-ROOMS boundary
                 var room = ResolveRoom(pt);
                 if (room == null)
                 {
+                    var (nearRoom, nearDist, nearFloor) = ResolveNearestRoom(pt);
+                    string floorName = ResolveFloorName(pt, nearFloor);
+                    string hexHandle = ins.Handle.ToString("X");
+                    string bName = CleanBlockName(ins.Block?.Name ?? "");
+                    string displayTag = !string.IsNullOrWhiteSpace(tag) ? tag : (!string.IsNullOrWhiteSpace(bName) ? bName : "FITTING");
+
                     unassignedFittings.Add(new UnassignedFittingItem
                     {
-                        Tag = tag,
+                        Tag = displayTag,
                         Layer = layerName,
                         ItemType = "fixture",
                         Qty = 1,
                         Unit = "pcs",
+                        LengthMeters = 0,
                         FirstFix = isFirstFix ? "Yes" : "No",
                         Level = level,
+                        Floor = floorName,
+                        NearestRoom = nearRoom,
+                        DistanceToRoom = nearDist,
                         X = Math.Round(pt.X, 1),
                         Y = Math.Round(pt.Y, 1),
-                        Reason = "Fitting located outside all 0-ROOMS boundary polylines"
+                        StartX = Math.Round(pt.X, 1),
+                        StartY = Math.Round(pt.Y, 1),
+                        EndX = Math.Round(pt.X, 1),
+                        EndY = Math.Round(pt.Y, 1),
+                        Handle = hexHandle,
+                        BlockName = bName,
+                        Reason = $"Fitting outside 0-ROOMS boundary ({nearDist}mm from {nearRoom})"
                     });
                     continue;
                 }
@@ -963,44 +1036,70 @@ namespace OneToOne.CadParser
                 if (totalLen < 500.0) continue; // minimum 0.5m
 
                 double lenMeters = Math.Round(totalLen / 1000.0, 2);
+                if (poly.Vertices == null || poly.Vertices.Count == 0) continue;
+                var firstVert = poly.Vertices.First().Location;
+                var lastVert = poly.Vertices.Last().Location;
+                var startPt = new XYZ(firstVert.X, firstVert.Y, 0);
+                var endPt = new XYZ(lastVert.X, lastVert.Y, 0);
+
                 double midX = poly.Vertices.Average(v => v.Location.X);
                 double midY = poly.Vertices.Average(v => v.Location.Y);
                 var midPt = new XYZ(midX, midY, 0);
 
-                var room = ResolveRoom(midPt);
+                // Tag from nearby text (search before room check!)
+                var nearest = ledTexts
+                    .Where(t => string.Equals(t.Layer, layerName, StringComparison.OrdinalIgnoreCase))
+                    .Select(t => new { t.Val, Dist = Math.Sqrt(Math.Pow(t.Pt.X - startPt.X, 2) + Math.Pow(t.Pt.Y - startPt.Y, 2)) })
+                    .Where(t => t.Dist <= 3500.0)
+                    .OrderBy(t => t.Dist)
+                    .FirstOrDefault()
+                    ??
+                    allCadTexts
+                    .Select(t => new { t.Val, Dist = Math.Sqrt(Math.Pow(t.Pt.X - startPt.X, 2) + Math.Pow(t.Pt.Y - startPt.Y, 2)) })
+                    .Where(t => t.Dist <= 2500.0)
+                    .OrderBy(t => t.Dist)
+                    .FirstOrDefault();
+
+                string tag = (nearest?.Val ?? "LED Strip").Trim().ToUpperInvariant();
+
+                var room = ResolveRoom(midPt) ?? ResolveRoom(startPt);
                 if (room == null)
                 {
+                    var (nearRoom, nearDist, nearFloor) = ResolveNearestRoom(startPt);
+                    string floorName = ResolveFloorName(startPt, nearFloor);
+                    string hexHandle = poly.Handle.ToString("X");
+
                     unassignedFittings.Add(new UnassignedFittingItem
                     {
-                        Tag = "LED Strip",
+                        Tag = tag,
                         Layer = layerName,
                         ItemType = "linear_led",
                         Qty = lenMeters,
                         Unit = "m",
+                        LengthMeters = lenMeters,
                         FirstFix = isFirstFix ? "Yes" : "No",
                         Level = level,
-                        X = Math.Round(midX, 1),
-                        Y = Math.Round(midY, 1),
-                        Reason = "LED run located outside all 0-ROOMS boundary polylines"
+                        Floor = floorName,
+                        NearestRoom = nearRoom,
+                        DistanceToRoom = nearDist,
+                        X = Math.Round(startPt.X, 1),
+                        Y = Math.Round(startPt.Y, 1),
+                        StartX = Math.Round(startPt.X, 1),
+                        StartY = Math.Round(startPt.Y, 1),
+                        EndX = Math.Round(endPt.X, 1),
+                        EndY = Math.Round(endPt.Y, 1),
+                        Handle = hexHandle,
+                        BlockName = "",
+                        Reason = $"LED run ({lenMeters:F2}m) outside 0-ROOMS boundary ({nearDist}mm from {nearRoom})"
                     });
                     continue;
                 }
-
-                // Tag from nearby text on the same layer
-                var nearest = ledTexts
-                    .Where(t => string.Equals(t.Layer, layerName, StringComparison.OrdinalIgnoreCase))
-                    .Select(t => new { t.Val, Dist = Math.Sqrt(Math.Pow(t.Pt.X - midX, 2) + Math.Pow(t.Pt.Y - midY, 2)) })
-                    .Where(t => t.Dist <= 3500.0)
-                    .OrderBy(t => t.Dist)
-                    .FirstOrDefault();
-
-                string tag = nearest?.Val ?? "LED Strip";
 
                 rawLedRuns.Add(new ParsedItem
                 {
                     Floor = room.Floor,
                     Area = room.RoomName,
-                    Tag = tag.Trim().ToUpperInvariant(),
+                    Tag = tag,
                     ItemType = "linear_led",
                     Qty = lenMeters,
                     Unit = "m",
@@ -1069,38 +1168,64 @@ namespace OneToOne.CadParser
                 if (totalLen < 500.0) continue;
 
                 double trackLenM = Math.Round(totalLen / 1000.0, 2);
+                if (poly.Vertices == null || poly.Vertices.Count == 0) continue;
+                var firstVert = poly.Vertices.First().Location;
+                var lastVert = poly.Vertices.Last().Location;
+                var startPt = new XYZ(firstVert.X, firstVert.Y, 0);
+                var endPt = new XYZ(lastVert.X, lastVert.Y, 0);
+
                 double midX = poly.Vertices.Average(v => v.Location.X);
                 double midY = poly.Vertices.Average(v => v.Location.Y);
                 var midPt = new XYZ(midX, midY, 0);
 
-                var room = ResolveRoom(midPt);
+                // Tag from nearby text (search before room check!)
+                var nearest = trackTexts
+                    .Where(t => string.Equals(t.Layer, layerName, StringComparison.OrdinalIgnoreCase))
+                    .Select(t => new { t.Val, Dist = Math.Sqrt(Math.Pow(t.Pt.X - startPt.X, 2) + Math.Pow(t.Pt.Y - startPt.Y, 2)) })
+                    .Where(t => t.Dist <= 3500.0)
+                    .OrderBy(t => t.Dist)
+                    .FirstOrDefault()
+                    ??
+                    allCadTexts
+                    .Select(t => new { t.Val, Dist = Math.Sqrt(Math.Pow(t.Pt.X - startPt.X, 2) + Math.Pow(t.Pt.Y - startPt.Y, 2)) })
+                    .Where(t => t.Dist <= 2500.0)
+                    .OrderBy(t => t.Dist)
+                    .FirstOrDefault();
+
+                string tag = (nearest?.Val ?? "TRK").Trim().ToUpperInvariant();
+
+                var room = ResolveRoom(midPt) ?? ResolveRoom(startPt);
                 if (room == null)
                 {
+                    var (nearRoom, nearDist, nearFloor) = ResolveNearestRoom(startPt);
+                    string floorName = ResolveFloorName(startPt, nearFloor);
+                    string hexHandle = poly.Handle.ToString("X");
+
                     unassignedFittings.Add(new UnassignedFittingItem
                     {
-                        Tag = "TRK",
+                        Tag = tag,
                         Layer = layerName,
                         ItemType = "track_system",
                         Qty = trackLenM,
                         Unit = "m",
+                        LengthMeters = trackLenM,
                         FirstFix = isFirstFix ? "Yes" : "No",
                         Level = level,
-                        X = Math.Round(midX, 1),
-                        Y = Math.Round(midY, 1),
-                        Reason = "Track run located outside all 0-ROOMS boundary polylines"
+                        Floor = floorName,
+                        NearestRoom = nearRoom,
+                        DistanceToRoom = nearDist,
+                        X = Math.Round(startPt.X, 1),
+                        Y = Math.Round(startPt.Y, 1),
+                        StartX = Math.Round(startPt.X, 1),
+                        StartY = Math.Round(startPt.Y, 1),
+                        EndX = Math.Round(endPt.X, 1),
+                        EndY = Math.Round(endPt.Y, 1),
+                        Handle = hexHandle,
+                        BlockName = "",
+                        Reason = $"Track run ({trackLenM:F2}m) outside 0-ROOMS boundary ({nearDist}mm from {nearRoom})"
                     });
                     continue;
                 }
-
-                // Tag from nearby text
-                var nearest = trackTexts
-                    .Where(t => string.Equals(t.Layer, layerName, StringComparison.OrdinalIgnoreCase))
-                    .Select(t => new { t.Val, Dist = Math.Sqrt(Math.Pow(t.Pt.X - midX, 2) + Math.Pow(t.Pt.Y - midY, 2)) })
-                    .Where(t => t.Dist <= 3500.0)
-                    .OrderBy(t => t.Dist)
-                    .FirstOrDefault();
-
-                string tag = nearest?.Val ?? "TRK";
 
                 var mountedSpots = trackSpots.Where(ins =>
                 {
@@ -2093,17 +2218,47 @@ namespace OneToOne.CadParser
             [JsonPropertyName("unit")]
             public string Unit { get; set; } = "pcs";
 
+            [JsonPropertyName("lengthMeters")]
+            public double LengthMeters { get; set; } = 0;
+
             [JsonPropertyName("firstFix")]
             public string FirstFix { get; set; } = "No";
 
             [JsonPropertyName("level")]
             public string Level { get; set; } = "HL";
 
+            [JsonPropertyName("floor")]
+            public string Floor { get; set; } = "Ground Floor";
+
+            [JsonPropertyName("nearestRoom")]
+            public string NearestRoom { get; set; } = "";
+
+            [JsonPropertyName("distanceToRoom")]
+            public double DistanceToRoom { get; set; } = 0;
+
             [JsonPropertyName("x")]
             public double X { get; set; } = 0;
 
             [JsonPropertyName("y")]
             public double Y { get; set; } = 0;
+
+            [JsonPropertyName("startX")]
+            public double StartX { get; set; } = 0;
+
+            [JsonPropertyName("startY")]
+            public double StartY { get; set; } = 0;
+
+            [JsonPropertyName("endX")]
+            public double EndX { get; set; } = 0;
+
+            [JsonPropertyName("endY")]
+            public double EndY { get; set; } = 0;
+
+            [JsonPropertyName("handle")]
+            public string Handle { get; set; } = "";
+
+            [JsonPropertyName("blockName")]
+            public string BlockName { get; set; } = "";
 
             [JsonPropertyName("reason")]
             public string Reason { get; set; } = "Located outside all 0-ROOMS boundary polylines";

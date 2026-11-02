@@ -16,6 +16,7 @@ import {
   ChevronUp,
   Sliders,
   Check,
+  Copy,
   Zap,
   Info
 } from 'lucide-react';
@@ -35,6 +36,30 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
   const [missingLayersPrompt, setMissingLayersPrompt] = useState(false);
   const [dismissExcludedWarning, setDismissExcludedWarning] = useState(false);
   const [showExcludedDrawer, setShowExcludedDrawer] = useState(false);
+  const [copiedHandle, setCopiedHandle] = useState(null);
+
+  const handleCopyZoom = (uf) => {
+    const x = Math.round(uf.startX || uf.x);
+    const y = Math.round(uf.startY || uf.y);
+    const zoomCmd = `'ZOOM C ${x},${y} 1200`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(zoomCmd).catch(() => {});
+    }
+    const key = uf.handle || `${x}_${y}`;
+    setCopiedHandle(key);
+    setTimeout(() => setCopiedHandle(null), 2000);
+  };
+
+  const handleCopyCoords = (uf) => {
+    const x = Math.round(uf.startX || uf.x);
+    const y = Math.round(uf.startY || uf.y);
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(`${x},${y}`).catch(() => {});
+    }
+    const key = `coord_${uf.handle || `${x}_${y}`}`;
+    setCopiedHandle(key);
+    setTimeout(() => setCopiedHandle(null), 2000);
+  };
   const [lightingLayer, setLightingLayer] = useState('');
   const [boundaryLayer, setBoundaryLayer] = useState('');
   const [defaultFloor, setDefaultFloor] = useState('Ground Floor');
@@ -1441,33 +1466,167 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
 
                   {showExcludedDrawer && (
                     <div style={{
-                      maxHeight: '160px',
+                      maxHeight: '260px',
                       overflowY: 'auto',
                       background: '#ffffff',
-                      border: '1px solid #fcd34d',
-                      borderRadius: '6px',
-                      padding: '4px'
+                      border: '1.5px solid #fcd34d',
+                      borderRadius: '8px',
+                      padding: '4px',
+                      boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.04)'
                     }}>
                       <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse', color: '#0f172a' }}>
                         <thead>
-                          <tr style={{ background: '#fef3c7', color: '#78350f', borderBottom: '1px solid #fcd34d' }}>
-                            <th style={{ textAlign: 'left', padding: '5px 8px' }}>Tag</th>
-                            <th style={{ textAlign: 'left', padding: '5px 8px' }}>Layer</th>
-                            <th style={{ textAlign: 'left', padding: '5px 8px' }}>Type</th>
-                            <th style={{ textAlign: 'left', padding: '5px 8px' }}>Coordinates (X, Y)</th>
-                            <th style={{ textAlign: 'left', padding: '5px 8px' }}>Reason</th>
+                          <tr style={{ background: '#fef3c7', color: '#78350f', borderBottom: '1.5px solid #fcd34d', position: 'sticky', top: 0, zIndex: 1 }}>
+                            <th style={{ textAlign: 'left', padding: '6px 8px' }}>Fitting / Tag</th>
+                            <th style={{ textAlign: 'left', padding: '6px 8px' }}>Floor</th>
+                            <th style={{ textAlign: 'left', padding: '6px 8px' }}>Nearest Room & Proximity</th>
+                            <th style={{ textAlign: 'left', padding: '6px 8px' }}>Type & Length</th>
+                            <th style={{ textAlign: 'left', padding: '6px 8px' }}>CAD Point (X, Y)</th>
+                            <th style={{ textAlign: 'left', padding: '6px 8px' }}>AutoCAD Jump</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {parseResult.unassignedFittings.map((uf, i) => (
-                            <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                              <td style={{ padding: '5px 8px', fontWeight: 700, color: '#b91c1c', fontFamily: 'monospace' }}>{uf.tag || 'Unknown'}</td>
-                              <td style={{ padding: '5px 8px', fontFamily: 'monospace', color: '#334155' }}>{uf.layer}</td>
-                              <td style={{ padding: '5px 8px', color: '#334155' }}>{uf.itemType}</td>
-                              <td style={{ padding: '5px 8px', fontFamily: 'monospace', color: '#475569' }}>({Math.round(uf.x)}, {Math.round(uf.y)})</td>
-                              <td style={{ padding: '5px 8px', color: '#b45309', fontWeight: 600 }}>{uf.reason}</td>
-                            </tr>
-                          ))}
+                          {parseResult.unassignedFittings.map((uf, i) => {
+                            const coordKey = uf.handle || `${Math.round(uf.startX || uf.x)}_${Math.round(uf.startY || uf.y)}`;
+                            const isZoomCopied = copiedHandle === coordKey;
+                            const isCoordCopied = copiedHandle === `coord_${coordKey}`;
+
+                            return (
+                              <tr key={i} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#ffffff' : '#fafaf9' }}>
+                                <td style={{ padding: '6px 8px' }}>
+                                  <div style={{ fontWeight: 800, color: '#b91c1c', fontFamily: 'monospace', fontSize: '12px' }}>
+                                    {uf.tag || 'Unknown'}
+                                  </div>
+                                  {uf.blockName && uf.blockName !== uf.tag && (
+                                    <div style={{ fontSize: '9.5px', color: '#64748b', marginTop: '1px' }}>
+                                      Blk: {uf.blockName}
+                                    </div>
+                                  )}
+                                  <div style={{ fontSize: '9.5px', color: '#475569', fontFamily: 'monospace', marginTop: '1px' }}>
+                                    {uf.layer}
+                                  </div>
+                                </td>
+                                <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
+                                  <span style={{
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    background: '#eff6ff',
+                                    border: '1px solid #bfdbfe',
+                                    color: '#1d4ed8'
+                                  }}>
+                                    {uf.floor || 'Ground Floor'}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '6px 8px' }}>
+                                  <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '11.5px' }}>
+                                    {uf.nearestRoom || 'Drawing Area'}
+                                  </div>
+                                  <div style={{ fontSize: '10px', color: '#b45309', fontWeight: 600, marginTop: '1px' }}>
+                                    {uf.distanceToRoom > 1000 ? `${(uf.distanceToRoom / 1000).toFixed(1)}m outside` : `${Math.round(uf.distanceToRoom || 0)}mm outside`}
+                                  </div>
+                                </td>
+                                <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
+                                  {uf.itemType === 'linear_led' ? (
+                                    <span style={{ fontWeight: 700, color: '#b45309' }}>
+                                      LED Strip ({uf.lengthMeters ? uf.lengthMeters.toFixed(2) : uf.qty}m)
+                                    </span>
+                                  ) : uf.itemType === 'track_system' ? (
+                                    <span style={{ fontWeight: 700, color: '#2563eb' }}>
+                                      Track ({uf.lengthMeters ? uf.lengthMeters.toFixed(2) : uf.qty}m)
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: '#334155', fontWeight: 600 }}>
+                                      Fixture (1 pcs)
+                                    </span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyCoords(uf)}
+                                    title="Click to copy exact X,Y point to clipboard"
+                                    style={{
+                                      background: '#f8fafc',
+                                      border: '1px solid #cbd5e1',
+                                      borderRadius: '4px',
+                                      padding: '2px 6px',
+                                      fontFamily: 'monospace',
+                                      fontSize: '10.5px',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      color: '#0f172a'
+                                    }}
+                                  >
+                                    <span>{Math.round(uf.startX || uf.x)}, {Math.round(uf.startY || uf.y)}</span>
+                                    {isCoordCopied ? (
+                                      <Check size={11} color="#16a34a" />
+                                    ) : (
+                                      <Copy size={11} color="#64748b" />
+                                    )}
+                                  </button>
+                                  {uf.endX && (uf.endX !== uf.startX || uf.endY !== uf.startY) && (
+                                    <div style={{ fontSize: '9px', color: '#64748b', marginTop: '2px', fontFamily: 'monospace' }}>
+                                      to ({Math.round(uf.endX)}, {Math.round(uf.endY)})
+                                    </div>
+                                  )}
+                                </td>
+                                <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCopyZoom(uf)}
+                                      title="Copies 'ZOOM C X,Y 1200' to clipboard for direct paste in AutoCAD"
+                                      style={{
+                                        background: isZoomCopied ? '#dcfce7' : '#fffbeb',
+                                        border: '1px solid ' + (isZoomCopied ? '#86efac' : '#fcd34d'),
+                                        color: isZoomCopied ? '#15803d' : '#b45309',
+                                        borderRadius: '4px',
+                                        padding: '2px 7px',
+                                        fontSize: '10px',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '3px'
+                                      }}
+                                    >
+                                      {isZoomCopied ? (
+                                        <>
+                                          <Check size={11} />
+                                          <span>Copied!</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Compass size={11} />
+                                          <span>Zoom In CAD</span>
+                                        </>
+                                      )}
+                                    </button>
+                                    {uf.handle && (
+                                      <code
+                                        title="AutoCAD Entity Handle (unique ID)"
+                                        style={{
+                                          fontSize: '9.5px',
+                                          background: '#f1f5f9',
+                                          color: '#475569',
+                                          padding: '1px 5px',
+                                          borderRadius: '3px',
+                                          fontWeight: 700,
+                                          border: '1px solid #e2e8f0'
+                                        }}
+                                      >
+                                        #{uf.handle}
+                                      </code>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
