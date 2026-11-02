@@ -32,6 +32,9 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
   const [inspecting, setInspecting] = useState(false);
   const [inspectData, setInspectData] = useState(null);
   const [unstandardizedPrompt, setUnstandardizedPrompt] = useState(false);
+  const [missingLayersPrompt, setMissingLayersPrompt] = useState(false);
+  const [dismissExcludedWarning, setDismissExcludedWarning] = useState(false);
+  const [showExcludedDrawer, setShowExcludedDrawer] = useState(false);
   const [lightingLayer, setLightingLayer] = useState('');
   const [boundaryLayer, setBoundaryLayer] = useState('');
   const [defaultFloor, setDefaultFloor] = useState('Ground Floor');
@@ -50,6 +53,9 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
     setInspecting(false);
     setInspectData(null);
     setUnstandardizedPrompt(false);
+    setMissingLayersPrompt(false);
+    setDismissExcludedWarning(false);
+    setShowExcludedDrawer(false);
     setLightingLayer('');
     setBoundaryLayer('');
     setDefaultFloor('Ground Floor');
@@ -136,13 +142,22 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
       const hasStandardLayers = Boolean(data.isStandardized || (data.standardLayersFound && data.standardLayersFound.length > 0));
 
       if (!hasStandardLayers) {
-        // Halt automatic parse: Prompt user that standard 0- layers were not found
+        // Halt automatic parse: Prompt user that standard layers were not found
         setUnstandardizedPrompt(true);
+        setMissingLayersPrompt(false);
         return;
       }
 
-      // Standard layers found: run parse immediately
+      // Check if some standard layers are missing - prompt user as requested
+      if (data.standardLayersMissing && data.standardLayersMissing.length > 0) {
+        setUnstandardizedPrompt(false);
+        setMissingLayersPrompt(true);
+        return;
+      }
+
+      // Standard layers fully present: run parse immediately
       setUnstandardizedPrompt(false);
+      setMissingLayersPrompt(false);
       await runParseWithEngine(engineVersion, selectedFile, lightLayer, boundLayer, floorName);
     } catch (err) {
       console.error('CAD inspect error:', err);
@@ -167,6 +182,8 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
       itemType: item.itemType || 'fixture',
       lengthMeters: Number(item.lengthMeters) || 0,
       runIndex: Number(item.runIndex) || 0,
+      firstFix: item.firstFix || (item.notes?.includes('First Fix') ? 'Yes' : 'No'),
+      level: item.level || 'HL',
       notes: item.notes || '',
       driver: item.driver || '',
       accessories: item.accessories || []
@@ -636,6 +653,138 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                     </div>
                   </div>
                 </div>
+              ) : missingLayersPrompt && inspectData ? (
+                <div style={{
+                  borderRadius: '12px',
+                  border: '1px solid rgba(59, 130, 246, 0.4)',
+                  background: 'linear-gradient(180deg, rgba(59, 130, 246, 0.12) 0%, rgba(59, 130, 246, 0.04) 100%)',
+                  padding: '22px 20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '16px',
+                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+                      <div style={{
+                        width: '44px',
+                        height: '44px',
+                        borderRadius: '10px',
+                        background: 'rgba(59, 130, 246, 0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        color: '#60a5fa'
+                      }}>
+                        <Layers size={24} />
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '15px', fontWeight: 700, color: '#ffffff' }}>
+                            Layer Checklist: Not All Standard CAD Layers Exist
+                          </span>
+                          <span style={{
+                            fontSize: '9.5px',
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            background: 'rgba(59, 130, 246, 0.25)',
+                            border: '1px solid rgba(59, 130, 246, 0.4)',
+                            color: '#93c5fd',
+                            fontWeight: 700
+                          }}>
+                            {inspectData.standardLayersFound?.length || 0} FOUND / {inspectData.standardLayersMissing?.length || 0} MISSING
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#cbd5e1', marginTop: '4px', lineHeight: '1.5' }}>
+                          File <strong>{file?.name}</strong> was inspected ({inspectData.totalEntities?.toLocaleString()} entities). Standard layers were detected, but some expected layers are not present in this drawing.
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setMissingLayersPrompt(false);
+                        setFile(null);
+                        setInspectData(null);
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--text-secondary, #94a3b8)',
+                        cursor: 'pointer',
+                        padding: '4px'
+                      }}
+                      title="Clear File"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div style={{
+                      background: 'rgba(15, 23, 42, 0.6)',
+                      border: '1px solid rgba(34, 197, 94, 0.3)',
+                      borderRadius: '8px',
+                      padding: '10px 12px'
+                    }}>
+                      <div style={{ fontSize: '11px', fontWeight: 700, color: '#4ade80', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <CheckCircle2 size={13} /> Detected Standard Layers ({inspectData.standardLayersFound?.length || 0}):
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {(inspectData.standardLayersFound || []).map(l => (
+                          <span key={l} style={{ fontSize: '10.5px', fontFamily: 'monospace', padding: '2px 6px', borderRadius: '4px', background: 'rgba(34, 197, 94, 0.15)', color: '#86efac', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
+                            ✓ {l}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div style={{
+                      background: 'rgba(15, 23, 42, 0.6)',
+                      border: '1px solid rgba(245, 158, 11, 0.3)',
+                      borderRadius: '8px',
+                      padding: '10px 12px'
+                    }}>
+                      <div style={{ fontSize: '11px', fontWeight: 700, color: '#fbbf24', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <AlertTriangle size={13} /> Missing Layers ({inspectData.standardLayersMissing?.length || 0}):
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {(inspectData.standardLayersMissing || []).map(l => (
+                          <span key={l} style={{ fontSize: '10.5px', fontFamily: 'monospace', padding: '2px 6px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.15)', color: '#fde68a', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                            ✕ {l}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => {
+                        setMissingLayersPrompt(false);
+                        setFile(null);
+                        setInspectData(null);
+                        setShowCadGuide(true);
+                      }}
+                      style={{ fontSize: '12px' }}
+                    >
+                      Cancel & Review CAD Setup Guide
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() => {
+                        setMissingLayersPrompt(false);
+                        runParseWithEngine(engineVersion, file, lightingLayer, boundaryLayer, defaultFloor);
+                      }}
+                      style={{ fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}
+                    >
+                      <CheckCircle2 size={14} /> Proceed with Detected Layers →
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <div 
                   onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -757,59 +906,54 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                       To achieve <strong>100% mathematical precision</strong> with zero guesswork, set up your CAD drawing using these dedicated layers. When present, the parser reads <em>only</em> these layers and ignores all background drafting noise:
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
-                      {/* Layer 1: 0-FLOORS */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px' }}>
+                      {/* BOUNDARIES */}
                       <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--bg-secondary, #1e222d)', border: '1px solid var(--border, #2e3545)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#38bdf8' }}>
-                          <code>0-FLOORS</code>
-                          <span style={{ fontSize: '10px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>Closed Polylines + Text</span>
+                          <code>0-FLOORS</code> & <code>0-ROOMS</code>
+                          <span style={{ fontSize: '10px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>Spatial Polylines</span>
                         </div>
-                        <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>
-                          Closed polyline enclosing each floor envelope (e.g. Ground Floor, First Floor). Place text inside naming the floor.
-                        </div>
-                      </div>
-
-                      {/* Layer 2: 0-ROOMS */}
-                      <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--bg-secondary, #1e222d)', border: '1px solid var(--border, #2e3545)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#4ade80' }}>
-                          <code>0-ROOMS</code>
-                          <span style={{ fontSize: '10px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>Closed Polylines + Text</span>
-                        </div>
-                        <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>
-                          Closed polylines around rooms with room name text inside. <em>Tip: In AutoCAD type <code>BPOLY</code> and click inside each room for 1-click boundaries!</em>
+                        <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px', fontSize: '11px' }}>
+                          <strong>0-FLOORS:</strong> Closed polyline around each floor envelope with floor name text inside.<br />
+                          <strong>0-ROOMS:</strong> Closed polyline around each room with room name text inside. <em>(Tip: Type <code>BPOLY</code> inside room for 1-click boundary!)</em>
                         </div>
                       </div>
 
-                      {/* Layer 3: 0-FITTINGS or 0-FITTINGS-* */}
+                      {/* HIGH LEVEL (HL) FITTINGS */}
                       <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--bg-secondary, #1e222d)', border: '1px solid var(--border, #2e3545)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#facc15' }}>
-                          <code>0-FITTINGS-*</code>
-                          <span style={{ fontSize: '10px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>Blocks + Plan Code Text</span>
+                          <code>0-HL-ARC</code> | <code>0-HL-LED</code> | <code>0-HL-TRACK</code>
+                          <span style={{ fontSize: '10px', color: '#facc15', fontWeight: 700 }}>HIGH LEVEL</span>
                         </div>
-                        <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>
-                          All point fixtures. Use prefixes like <code>0-FITTINGS-DOWNLIGHT</code>, <code>0-FITTINGS-DECORATIVE</code>, or <code>0-FITTINGS-EMERGENCY</code> to independently freeze them per paperspace viewport!
-                        </div>
-                      </div>
-
-                      {/* Layer 4: 0-LEDS or 0-LEDS-* */}
-                      <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--bg-secondary, #1e222d)', border: '1px solid var(--border, #2e3545)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#fb923c' }}>
-                          <code>0-LEDS-*</code>
-                          <span style={{ fontSize: '10px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>Polylines + Tag Text</span>
-                        </div>
-                        <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>
-                          Linear LED coves, under-cabinet & joinery runs (in meters). Sub-layers like <code>0-LEDS-COVE</code> or <code>0-LEDS-JOINERY</code> are fully supported for paperspaces.
+                        <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px', fontSize: '11px' }}>
+                          <strong>0-HL-ARC:</strong> High-level architectural fixtures (downlights, pendants, ceiling wash).<br />
+                          <strong>0-HL-LED:</strong> High-level linear LEDs (coves, pelmets, bulkheads) in meters.<br />
+                          <strong>0-HL-TRACK:</strong> High-level track runs and spotlights in meters.
                         </div>
                       </div>
 
-                      {/* Layer 5: 0-TRACKS or 0-TRACKS-* */}
+                      {/* LOW LEVEL (LL) FITTINGS */}
                       <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'var(--bg-secondary, #1e222d)', border: '1px solid var(--border, #2e3545)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#c084fc' }}>
-                          <code>0-TRACKS-*</code>
-                          <span style={{ fontSize: '10px', color: 'var(--text-secondary, #94a3b8)', fontWeight: 400 }}>Polylines + Spot Blocks</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#34d399' }}>
+                          <code>0-LL-ARC</code> | <code>0-LL-LED</code> | <code>0-LL-TRACK</code>
+                          <span style={{ fontSize: '10px', color: '#34d399', fontWeight: 700 }}>LOW LEVEL</span>
                         </div>
-                        <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px' }}>
-                          Track rails (in meters). Place spotlight blocks directly along the track polyline. Supports <code>0-TRACKS-MAIN</code>, <code>0-TRACKS-STAGE</code>, etc.
+                        <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px', fontSize: '11px' }}>
+                          <strong>0-LL-ARC:</strong> Low-level architectural fixtures (step lights, floor wash, low wall wash).<br />
+                          <strong>0-LL-LED:</strong> Low-level linear LEDs (skirting, toe-kicks, stair risers, joinery).<br />
+                          <strong>0-LL-TRACK:</strong> Low-level or floor-recessed track systems.
+                        </div>
+                      </div>
+
+                      {/* FIRST FIX (-FF) EXTENSIONS */}
+                      <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#fbbf24' }}>
+                          <code>*-FF</code> (First Fix Layers)
+                          <span style={{ fontSize: '9.5px', padding: '1px 5px', borderRadius: '3px', background: '#f59e0b', color: '#000', fontWeight: 800 }}>FIRST FIX</span>
+                        </div>
+                        <div style={{ color: 'var(--text-secondary, #94a3b8)', marginTop: '4px', fontSize: '11px' }}>
+                          <code>0-HL-ARC-FF</code>, <code>0-HL-LED-FF</code>, <code>0-HL-TRACK-FF</code>, <code>0-LL-ARC-FF</code>, <code>0-LL-LED-FF</code>, <code>0-LL-TRACK-FF</code>.<br />
+                          Items on <code>-FF</code> layers are automatically flagged as <strong>First Fix = Yes</strong> in the BoQ without mutating the catalog tag or description!
                         </div>
                       </div>
                     </div>
@@ -1194,6 +1338,124 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                 </div>
               )}
 
+              {/* BOUNDARY EXCLUSION WARNING PROMPT */}
+              {parseResult.unassignedFittings && parseResult.unassignedFittings.length > 0 && !dismissExcludedWarning && (
+                <div style={{
+                  borderRadius: '10px',
+                  border: '1.5px solid rgba(245, 158, 11, 0.6)',
+                  background: 'linear-gradient(180deg, rgba(245, 158, 11, 0.16) 0%, rgba(245, 158, 11, 0.06) 100%)',
+                  padding: '16px 18px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                    <div style={{
+                      width: '38px',
+                      height: '38px',
+                      borderRadius: '8px',
+                      background: 'rgba(245, 158, 11, 0.25)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      color: '#fbbf24'
+                    }}>
+                      <AlertTriangle size={20} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#fef3c7', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span>⚠️ Boundary Exclusion: {parseResult.unassignedFittings.length} fittings were not found within any room/floor boundary</span>
+                        <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', background: '#dc2626', color: '#fff', fontWeight: 700 }}>EXCLUDED</span>
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#e2e8f0', marginTop: '6px', lineHeight: '1.5' }}>
+                        These fittings were excluded because their CAD coordinates are not inside any closed <code>0-ROOMS</code> boundary polylines.
+                        <br />
+                        <strong>Do you want to ignore them and click proceed?</strong> If not, please correct your CAD file by ensuring the fittings are within the boundary lines of rooms.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px', borderTop: '1px solid rgba(245, 158, 11, 0.25)', flexWrap: 'wrap', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowExcludedDrawer(!showExcludedDrawer)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#fbbf24',
+                        fontSize: '11.5px',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '2px 0'
+                      }}
+                    >
+                      {showExcludedDrawer ? '▲ Hide Excluded Fittings' : `▼ View ${parseResult.unassignedFittings.length} Excluded Fittings (${Array.from(new Set(parseResult.unassignedFittings.map(f => f.tag || 'Unknown'))).slice(0, 5).join(', ')}${parseResult.unassignedFittings.length > 5 ? '...' : ''})`}
+                    </button>
+
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleReset();
+                          setShowCadGuide(true);
+                        }}
+                        className="btn btn-secondary btn-sm"
+                        style={{ fontSize: '11.5px' }}
+                      >
+                        ✕ Cancel & Correct CAD File
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDismissExcludedWarning(true)}
+                        className="btn btn-warning btn-sm"
+                        style={{ fontSize: '11.5px', fontWeight: 700 }}
+                      >
+                        ✓ Ignore Excluded & Proceed ({parseResult.items?.length || 0} In-Room Items)
+                      </button>
+                    </div>
+                  </div>
+
+                  {showExcludedDrawer && (
+                    <div style={{
+                      maxHeight: '140px',
+                      overflowY: 'auto',
+                      background: 'rgba(0, 0, 0, 0.4)',
+                      border: '1px solid rgba(245, 158, 11, 0.25)',
+                      borderRadius: '6px',
+                      padding: '8px'
+                    }}>
+                      <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse', color: '#cbd5e1' }}>
+                        <thead>
+                          <tr style={{ color: '#94a3b8', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                            <th style={{ textAlign: 'left', padding: '3px 6px' }}>Tag</th>
+                            <th style={{ textAlign: 'left', padding: '3px 6px' }}>Layer</th>
+                            <th style={{ textAlign: 'left', padding: '3px 6px' }}>Type</th>
+                            <th style={{ textAlign: 'left', padding: '3px 6px' }}>Coordinates (X, Y)</th>
+                            <th style={{ textAlign: 'left', padding: '3px 6px' }}>Reason</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {parseResult.unassignedFittings.map((uf, i) => (
+                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                              <td style={{ padding: '3px 6px', fontWeight: 700, color: '#fca5a5', fontFamily: 'monospace' }}>{uf.tag || 'Unknown'}</td>
+                              <td style={{ padding: '3px 6px', fontFamily: 'monospace' }}>{uf.layer}</td>
+                              <td style={{ padding: '3px 6px' }}>{uf.itemType}</td>
+                              <td style={{ padding: '3px 6px', fontFamily: 'monospace' }}>({Math.round(uf.x)}, {Math.round(uf.y)})</td>
+                              <td style={{ padding: '3px 6px', color: '#fca5a5' }}>{uf.reason}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* STATS METRIC TILES */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', gap: '10px' }}>
                 <div style={{ padding: '12px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.25)', textAlign: 'center' }}>
@@ -1279,6 +1541,7 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                       <th style={{ padding: '8px 12px' }}>Floor Level</th>
                       <th style={{ padding: '8px 12px' }}>Room / Area</th>
                       <th style={{ padding: '8px 12px' }}>Plan Code</th>
+                      <th style={{ padding: '8px 12px', textAlign: 'center' }}>First Fix</th>
                       <th style={{ padding: '8px 12px' }}>Type & Details</th>
                       <th style={{ padding: '8px 12px', textAlign: 'right' }}>Measurement / Qty</th>
                     </tr>
@@ -1305,6 +1568,19 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                             border: item.itemType === 'linear_led' ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(59, 130, 246, 0.3)'
                           }}>
                             {item.tag}
+                          </span>
+                        </td>
+                        <td style={{ padding: '7px 12px', textAlign: 'center' }}>
+                          <span style={{
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            fontWeight: 700,
+                            fontSize: '11px',
+                            background: item.firstFix === 'Yes' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(100, 116, 139, 0.12)',
+                            color: item.firstFix === 'Yes' ? '#fbbf24' : 'var(--text-secondary, #94a3b8)',
+                            border: item.firstFix === 'Yes' ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid rgba(100, 116, 139, 0.25)'
+                          }}>
+                            {item.firstFix === 'Yes' ? '⚡ Yes (FF)' : 'No'}
                           </span>
                         </td>
                         <td style={{ padding: '7px 12px' }}>
@@ -1339,7 +1615,7 @@ export default function CadImportModal({ isOpen, onClose, onImportData }) {
                     ))}
                     {filteredItems.length === 0 && (
                       <tr>
-                        <td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary, #94a3b8)' }}>
+                        <td colSpan={6} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary, #94a3b8)' }}>
                           No matching items found.
                         </td>
                       </tr>

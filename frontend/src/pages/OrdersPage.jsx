@@ -468,6 +468,7 @@ export default function OrdersPage() {
     qty: 60,
     oneOneCode: 100,
     type: 80,
+    firstFix: 80,
     itemType: 90,
     code: 165,
     description: 250,
@@ -482,7 +483,7 @@ export default function OrdersPage() {
     margin: 60,
     stock: 90,
     actions: 70
-  }, ['qty', 'oneOneCode', 'type', 'itemType', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'supplier', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
+  }, ['qty', 'oneOneCode', 'type', 'firstFix', 'itemType', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'supplier', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
@@ -1681,7 +1682,9 @@ export default function OrdersPage() {
         stock_available: item.stock_available ?? item.stockAvailable,
         stockAvailable: item.stock_available ?? item.stockAvailable,
         stock_on_hand: item.stock_on_hand ?? item.stockOnHand,
-        stockOnHand: item.stock_on_hand ?? item.stockOnHand
+        stockOnHand: item.stock_on_hand ?? item.stockOnHand,
+        firstFix: item.first_fix || item.firstFix || 'No',
+        first_fix: item.first_fix || item.firstFix || 'No'
       };
     });
     loadedItems.sort((a, b) => (a.sortOrder ?? a.sort_order ?? 0) - (b.sortOrder ?? b.sort_order ?? 0));
@@ -2589,7 +2592,8 @@ export default function OrdersPage() {
       is_credit: !!(item.isCredit || item.is_credit),
       item_type: item.itemType || item.item_type || "Hardware",
       sort_order: Math.round(Number(item.sortOrder !== undefined ? item.sortOrder : (item.sort_order !== undefined ? item.sort_order : 0)) || 0),
-      notes: item.notes || null
+      notes: item.notes || null,
+      first_fix: item.firstFix || item.first_fix || 'No'
     }));
 
     try {
@@ -4412,6 +4416,10 @@ export default function OrdersPage() {
                                   Type
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('type', e)} />
                                 </th>
+                                <th style={{ width: widths.firstFix, position: 'relative', textAlign: 'center' }}>
+                                  First Fix
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('firstFix', e)} />
+                                </th>
                                 <th style={{ width: widths.itemType, position: 'relative' }}>
                                   Item Type
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('itemType', e)} />
@@ -4528,7 +4536,7 @@ export default function OrdersPage() {
                                       >
                                         <GripVertical size={9} style={{ verticalAlign: 'middle', opacity: 0.5 }} />
                                       </td>
-                                      <td colSpan={17} style={{ background: 'rgba(0, 0, 0, 0.04)', height: '9px', padding: 0, borderTop: '1px solid rgba(0,0,0,0.08)', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+                                      <td colSpan={18} style={{ background: 'rgba(0, 0, 0, 0.04)', height: '9px', padding: 0, borderTop: '1px solid rgba(0,0,0,0.08)', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
                                         <div style={{ height: '100%', width: '100%' }} />
                                       </td>
                                       <td style={{ textAlign: 'center', padding: '0 4px', verticalAlign: 'middle' }}>
@@ -4630,6 +4638,43 @@ export default function OrdersPage() {
                                         data-col={2}
                                         data-field="type"
                                       />
+                                    </td>
+
+                                    {/* FIRST FIX TOGGLE */}
+                                    <td style={{ textAlign: 'center', verticalAlign: 'middle', padding: '2px 4px' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateSpreadsheetCell(
+                                          item.id,
+                                          'firstFix',
+                                          (item.firstFix || item.first_fix) === 'Yes' ? 'No' : 'Yes'
+                                        )}
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          padding: '2px 8px',
+                                          borderRadius: '12px',
+                                          fontSize: '10px',
+                                          fontWeight: 700,
+                                          cursor: 'pointer',
+                                          border: 'none',
+                                          letterSpacing: '0.3px',
+                                          transition: 'all 0.15s',
+                                          ...(((item.firstFix || item.first_fix) === 'Yes') ? {
+                                            background: 'rgba(245, 158, 11, 0.18)',
+                                            color: '#d97706',
+                                            outline: '1px solid rgba(245, 158, 11, 0.4)'
+                                          } : {
+                                            background: 'rgba(100, 116, 139, 0.1)',
+                                            color: 'var(--text-secondary)',
+                                            outline: '1px solid rgba(100, 116, 139, 0.2)'
+                                          })
+                                        }}
+                                        title="Click to toggle First Fix (Yes / No)"
+                                      >
+                                        {((item.firstFix || item.first_fix) === 'Yes') ? '⚡ Yes (FF)' : 'No'}
+                                      </button>
                                     </td>
 
                                     {/* ITEM TYPE - Styled badge toggle */}

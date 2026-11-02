@@ -194,28 +194,43 @@ namespace OneToOne.CadParser
                 detectedFloors.Add("Ground Floor");
             }
 
+            var standardLayerSpecs = new[]
+            {
+                "0-FLOORS",
+                "0-ROOMS",
+                "0-HL-ARC",
+                "0-HL-ARC-FF",
+                "0-HL-LED",
+                "0-HL-LED-FF",
+                "0-HL-TRACK",
+                "0-HL-TRACK-FF",
+                "0-LL-ARC",
+                "0-LL-ARC-FF",
+                "0-LL-LED",
+                "0-LL-LED-FF"
+            };
+
             var standardLayersFound = layerGroups
                 .Where(l => {
                     string u = l.Name.ToUpperInvariant();
-                    return u.StartsWith("0-FITTING") || u.StartsWith("0-ROOM") || u.StartsWith("0-FLOOR") || u.StartsWith("0-LED") || u.StartsWith("0-TRACK");
+                    return standardLayerSpecs.Any(s => s.Equals(u, StringComparison.OrdinalIgnoreCase)) ||
+                           u.StartsWith("0-HL-") || u.StartsWith("0-LL-") || u.StartsWith("HL-") || u.StartsWith("LL-") ||
+                           u.Equals("0-FLOORS") || u.Equals("0-ROOMS") || u.StartsWith("RM-") || u.StartsWith("RM_") ||
+                           u.StartsWith("0-FITTING") || u.StartsWith("0-ROOM") || u.StartsWith("0-FLOOR") || u.StartsWith("0-LED") || u.StartsWith("0-TRACK");
                 })
                 .Select(l => l.Name)
+                .Distinct()
                 .ToList();
 
-            bool isStandardized = standardLayersFound.Any(l => l.ToUpperInvariant().StartsWith("0-FITTING")) ||
-                                  standardLayersFound.Any(l => l.ToUpperInvariant().StartsWith("0-ROOM"));
+            bool isStandardized = standardLayersFound.Any(l => {
+                string u = l.ToUpperInvariant();
+                return u.StartsWith("0-HL-") || u.StartsWith("0-LL-") || u.StartsWith("HL-") || u.StartsWith("LL-") ||
+                       u.Equals("0-FLOORS") || u.Equals("0-ROOMS") || u.StartsWith("RM-") ||
+                       u.StartsWith("0-FITTING") || u.StartsWith("0-ROOM");
+            });
 
-            var specPrefixes = new Dictionary<string, string>
-            {
-                { "0-FLOORS", "0-FLOOR" },
-                { "0-ROOMS", "0-ROOM" },
-                { "0-FITTINGS", "0-FITTING" },
-                { "0-LEDS", "0-LED" },
-                { "0-TRACKS", "0-TRACK" }
-            };
-            var missingStandardSpecs = specPrefixes
-                .Where(kvp => !standardLayersFound.Any(f => f.ToUpperInvariant().StartsWith(kvp.Value)))
-                .Select(kvp => kvp.Key)
+            var missingStandardSpecs = standardLayerSpecs
+                .Where(spec => !standardLayersFound.Any(found => found.Equals(spec, StringComparison.OrdinalIgnoreCase)))
                 .ToList();
 
             var result = new
@@ -651,18 +666,53 @@ namespace OneToOne.CadParser
             return doc.Entities.Any(e =>
             {
                 string l = (e.Layer?.Name ?? "").ToUpperInvariant();
-                return l.StartsWith("0-FITTING") || l.StartsWith("0-ROOM") || l.StartsWith("0-FLOOR") || l.StartsWith("0-LED") || l.StartsWith("0-TRACK");
+                return l.StartsWith("0-HL-") || l.StartsWith("0-LL-") || l.StartsWith("HL-") || l.StartsWith("LL-") ||
+                       l.Equals("0-FLOORS") || l.Equals("0-ROOMS") || l.StartsWith("RM-") || l.StartsWith("RM_") ||
+                       l.StartsWith("0-FITTING") || l.StartsWith("0-ROOM") || l.StartsWith("0-FLOOR") || l.StartsWith("0-LED") || l.StartsWith("0-TRACK");
             });
         }
 
         private static int ParseDrawingDeterministic(CadDocument doc, string defaultFloor)
         {
-            // 1. Gather Floors from 0-FLOORS
-            var floorPolys = doc.Entities.OfType<LwPolyline>()
-                .Where(p => p.IsClosed && (p.Layer?.Name ?? "").ToUpperInvariant().StartsWith("0-FLOOR"))
+            var standardLayerSpecs = new[]
+            {
+                "0-FLOORS", "0-ROOMS",
+                "0-HL-ARC", "0-HL-ARC-FF",
+                "0-HL-LED", "0-HL-LED-FF",
+                "0-HL-TRACK", "0-HL-TRACK-FF",
+                "0-LL-ARC", "0-LL-ARC-FF",
+                "0-LL-LED", "0-LL-LED-FF"
+            };
+
+            var standardLayersFound = doc.Entities
+                .Select(e => e.Layer?.Name ?? "")
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(n =>
+                {
+                    string u = n.ToUpperInvariant();
+                    return standardLayerSpecs.Any(s => s.Equals(u, StringComparison.OrdinalIgnoreCase)) ||
+                           u.StartsWith("0-HL-") || u.StartsWith("0-LL-") ||
+                           u.StartsWith("0-FITTING") || u.StartsWith("0-ROOM") || u.StartsWith("0-FLOOR") || u.StartsWith("0-LED") || u.StartsWith("0-TRACK");
+                })
                 .ToList();
 
-            var floorTexts = doc.Entities.Where(e => (e is MText || e is TextEntity) && (e.Layer?.Name ?? "").ToUpperInvariant().StartsWith("0-FLOOR"))
+            var missingStandardSpecs = standardLayerSpecs
+                .Where(spec => !standardLayersFound.Any(found => found.Equals(spec, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            // 1. Gather Floors from 0-FLOORS (or 0-FLOOR*)
+            bool IsFloorLayer(string name)
+            {
+                string u = (name ?? "").ToUpperInvariant();
+                return u.Equals("0-FLOORS") || u.StartsWith("0-FLOOR") || u.StartsWith("FLOOR");
+            }
+
+            var floorPolys = doc.Entities.OfType<LwPolyline>()
+                .Where(p => p.IsClosed && IsFloorLayer(p.Layer?.Name ?? ""))
+                .ToList();
+
+            var floorTexts = doc.Entities.Where(e => (e is MText || e is TextEntity) && IsFloorLayer(e.Layer?.Name ?? ""))
                 .Select(e => new TextLabel
                 {
                     Layer = e.Layer?.Name ?? "",
@@ -680,18 +730,40 @@ namespace OneToOne.CadParser
                 floorBoundaries.Add((fp, fName));
             }
 
-            string ResolveFloorName(XYZ pt)
+            string ResolveFloorName(XYZ pt, string fallbackFloor = "Ground Floor")
             {
                 var match = floorBoundaries.FirstOrDefault(fb => IsPointInPolyline(pt, fb.Poly));
-                return match.Name ?? defaultFloor;
+                return match.Name ?? fallbackFloor;
             }
 
-            // 2. Gather Rooms from 0-ROOMS
+            // 2. Gather Rooms from 0-ROOMS, 0-ROOM*, and RM-* (e.g. RM-GROUND, RM-FIRST FLOOR, RM-BASEMENT)
+            bool IsRoomLayer(string name)
+            {
+                string u = (name ?? "").ToUpperInvariant();
+                return u.Equals("0-ROOMS") || u.StartsWith("0-ROOM") || u.StartsWith("RM-") || u.StartsWith("RM_");
+            }
+
+            string ExtractFloorFromLayerName(string layerName)
+            {
+                string u = (layerName ?? "").ToUpperInvariant();
+                if (u.StartsWith("RM-") || u.StartsWith("RM_"))
+                {
+                    string suffix = u.Substring(3).Trim();
+                    if (suffix.Contains("BASE")) return "Basement";
+                    if (suffix.Contains("GROUND")) return "Ground Floor";
+                    if (suffix.Contains("FIRST") || suffix.Contains("1ST")) return "First Floor";
+                    if (suffix.Contains("SECOND") || suffix.Contains("2ND")) return "Second Floor";
+                    if (suffix.Contains("ROOF")) return "Roof";
+                    return char.ToUpper(suffix[0]) + suffix.Substring(1).ToLower();
+                }
+                return defaultFloor;
+            }
+
             var roomPolys = doc.Entities.OfType<LwPolyline>()
-                .Where(p => p.IsClosed && (p.Layer?.Name ?? "").ToUpperInvariant().StartsWith("0-ROOM"))
+                .Where(p => p.IsClosed && IsRoomLayer(p.Layer?.Name ?? ""))
                 .ToList();
 
-            var roomTexts = doc.Entities.Where(e => (e is MText || e is TextEntity) && (e.Layer?.Name ?? "").ToUpperInvariant().StartsWith("0-ROOM"))
+            var roomTexts = doc.Entities.Where(e => (e is MText || e is TextEntity) && IsRoomLayer(e.Layer?.Name ?? ""))
                 .Select(e => new TextLabel
                 {
                     Layer = e.Layer?.Name ?? "",
@@ -705,11 +777,18 @@ namespace OneToOne.CadParser
             foreach (var rp in roomPolys)
             {
                 double area = CalculateArea(rp.Vertices);
-                var inside = roomTexts.FirstOrDefault(t => IsPointInPolyline(t.Pt, rp));
+                string polyLayer = rp.Layer?.Name ?? "";
+                var inside = roomTexts
+                    .Where(t => string.Equals(t.Layer, polyLayer, StringComparison.OrdinalIgnoreCase))
+                    .FirstOrDefault(t => IsPointInPolyline(t.Pt, rp))
+                    ?? roomTexts.FirstOrDefault(t => IsPointInPolyline(t.Pt, rp));
+
                 string rName = inside != null ? inside.Val : "General Area";
                 double cx = rp.Vertices.Average(v => v.Location.X);
                 double cy = rp.Vertices.Average(v => v.Location.Y);
-                string flr = ResolveFloorName(new XYZ(cx, cy, 0));
+
+                string layerFloor = ExtractFloorFromLayerName(polyLayer);
+                string flr = ResolveFloorName(new XYZ(cx, cy, 0), layerFloor);
 
                 roomBoundaries.Add(new RoomBoundary
                 {
@@ -720,21 +799,31 @@ namespace OneToOne.CadParser
                 });
             }
 
-            string ResolveRoom(XYZ pt)
+            RoomBoundary? ResolveRoom(XYZ pt)
             {
-                var enclosing = roomBoundaries
+                return roomBoundaries
                     .Where(rb => IsPointInPolyline(pt, rb.Polyline))
-                    .OrderBy(rb => rb.Area)
+                    .OrderBy(rb => rb.Area) // innermost room if nested
                     .FirstOrDefault();
-                return enclosing?.RoomName ?? "General Area";
             }
 
-            // 3. Gather Point Fixtures from 0-FITTINGS
+            // Unassigned fittings: items located outside any 0-ROOMS boundary polygon
+            var unassignedFittings = new List<UnassignedFittingItem>();
+
+            // 3. Gather Point Fixtures from 0-HL-ARC, 0-LL-ARC, HL-ARC, LL-ARC, -FF variants, and legacy 0-FITTINGS
+            bool IsArcLayer(string name)
+            {
+                string u = (name ?? "").ToUpperInvariant();
+                return u.StartsWith("0-HL-ARC") || u.StartsWith("HL-ARC") ||
+                       u.StartsWith("0-LL-ARC") || u.StartsWith("LL-ARC") ||
+                       u.StartsWith("0-FITTING");
+            }
+
             var fittingInserts = doc.Entities.OfType<Insert>()
-                .Where(i => (i.Layer?.Name ?? "").ToUpperInvariant().StartsWith("0-FITTING"))
+                .Where(i => IsArcLayer(i.Layer?.Name ?? ""))
                 .ToList();
 
-            var fittingTexts = doc.Entities.Where(e => (e is MText || e is TextEntity) && (e.Layer?.Name ?? "").ToUpperInvariant().StartsWith("0-FITTING"))
+            var fittingTexts = doc.Entities.Where(e => (e is MText || e is TextEntity) && IsArcLayer(e.Layer?.Name ?? ""))
                 .Select(e => new TextLabel
                 {
                     Layer = e.Layer?.Name ?? "",
@@ -747,6 +836,12 @@ namespace OneToOne.CadParser
             var fixtureItems = new List<ParsedItem>();
             foreach (var ins in fittingInserts)
             {
+                string layerName = ins.Layer?.Name ?? "";
+                string uLayer = layerName.ToUpperInvariant();
+                bool isFirstFix = uLayer.EndsWith("-FF");
+                string level = (uLayer.Contains("-LL-") || uLayer.StartsWith("0-LL-")) ? "LL" : "HL";
+                string levelDesc = level == "LL" ? "Low Level" : "High Level";
+
                 var pt = ins.InsertPoint;
                 string tag = "";
 
@@ -763,6 +858,7 @@ namespace OneToOne.CadParser
                 if (string.IsNullOrWhiteSpace(tag))
                 {
                     var nearest = fittingTexts
+                        .Where(t => string.Equals(t.Layer, layerName, StringComparison.OrdinalIgnoreCase))
                         .Select(t => new { t.Val, Dist = Math.Sqrt(Math.Pow(pt.X - t.Pt.X, 2) + Math.Pow(pt.Y - t.Pt.Y, 2)) })
                         .Where(t => t.Dist <= 1800.0)
                         .OrderBy(t => t.Dist)
@@ -772,73 +868,127 @@ namespace OneToOne.CadParser
                 }
 
                 tag = tag.Trim().ToUpperInvariant();
-                string room = ResolveRoom(pt);
-                string floor = ResolveFloorName(pt);
+
+                // Strict validation: must be inside a 0-ROOMS boundary
+                var room = ResolveRoom(pt);
+                if (room == null)
+                {
+                    unassignedFittings.Add(new UnassignedFittingItem
+                    {
+                        Tag = tag,
+                        Layer = layerName,
+                        ItemType = "fixture",
+                        Qty = 1,
+                        Unit = "pcs",
+                        FirstFix = isFirstFix ? "Yes" : "No",
+                        Level = level,
+                        X = Math.Round(pt.X, 1),
+                        Y = Math.Round(pt.Y, 1),
+                        Reason = "Fitting located outside all 0-ROOMS boundary polylines"
+                    });
+                    continue;
+                }
 
                 fixtureItems.Add(new ParsedItem
                 {
-                    Floor = floor,
-                    Area = room,
+                    Floor = room.Floor,
+                    Area = room.RoomName,
                     Tag = tag,
                     ItemType = "fixture",
                     Qty = 1,
                     Unit = "pcs",
                     LengthMeters = 0,
                     RunIndex = 0,
-                    Notes = ""
+                    FirstFix = isFirstFix ? "Yes" : "No",
+                    Level = level,
+                    Notes = isFirstFix ? $"{levelDesc} (First Fix)" : levelDesc
                 });
             }
 
             var aggregatedFixtures = fixtureItems
-                .GroupBy(r => new { r.Floor, r.Area, r.Tag })
-                .Select(g => new ParsedItem
+                .GroupBy(r => new { r.Floor, r.Area, r.Tag, r.FirstFix, r.Level, r.ItemType })
+                .Select(g =>
                 {
-                    Floor = g.Key.Floor,
-                    Area = g.Key.Area,
-                    Tag = g.Key.Tag,
-                    ItemType = "fixture",
-                    Qty = g.Count(),
-                    Unit = "pcs",
-                    LengthMeters = 0,
-                    RunIndex = 0,
-                    Notes = $"{g.Count()} units"
+                    string stageNotes = g.Key.FirstFix == "Yes" ? $"{g.Count()} units - {g.Key.Level} (First Fix)" : $"{g.Count()} units - {g.Key.Level}";
+                    return new ParsedItem
+                    {
+                        Floor = g.Key.Floor,
+                        Area = g.Key.Area,
+                        Tag = g.Key.Tag,
+                        ItemType = g.Key.ItemType,
+                        Qty = g.Count(),
+                        Unit = "pcs",
+                        LengthMeters = 0,
+                        RunIndex = 0,
+                        FirstFix = g.Key.FirstFix,
+                        Level = g.Key.Level,
+                        Notes = stageNotes
+                    };
                 })
                 .ToList();
 
-            // 4. Gather Linear LEDs from 0-LEDS (and polylines on 0-FITTINGS)
+            // 4. Gather Linear LEDs from 0-HL-LED, 0-LL-LED, HL-LED, LL-LED, -FF variants, and legacy 0-LED*
+            bool IsLedLayer(string name)
+            {
+                string u = (name ?? "").ToUpperInvariant();
+                return u.StartsWith("0-HL-LED") || u.StartsWith("HL-LED") ||
+                       u.StartsWith("0-LL-LED") || u.StartsWith("LL-LED") ||
+                       u.StartsWith("0-LED");
+            }
+
             var ledPolylines = doc.Entities.OfType<LwPolyline>()
-                .Where(p =>
-                {
-                    string l = (p.Layer?.Name ?? "").ToUpperInvariant();
-                    return l.StartsWith("0-LED") || (!p.IsClosed && l.StartsWith("0-FITTING"));
-                })
+                .Where(p => IsLedLayer(p.Layer?.Name ?? ""))
                 .ToList();
 
-            var ledTexts = doc.Entities.Where(e => (e is MText || e is TextEntity) && ((e.Layer?.Name ?? "").ToUpperInvariant().StartsWith("0-LED") || (e.Layer?.Name ?? "").ToUpperInvariant().StartsWith("0-FITTING")))
+            var ledTexts = doc.Entities.Where(e => (e is MText || e is TextEntity) && IsLedLayer(e.Layer?.Name ?? ""))
                 .Select(e => new TextLabel
                 {
                     Layer = e.Layer?.Name ?? "",
                     Val = CleanCadText((e is MText mt) ? mt.Value : ((TextEntity)e).Value),
                     Pt = (e is MText mt2) ? mt2.InsertPoint : ((TextEntity)e).InsertPoint
                 })
-                .Where(t => !string.IsNullOrWhiteSpace(t.Val) && IsLinearLedTag(t.Val))
+                .Where(t => !string.IsNullOrWhiteSpace(t.Val))
                 .ToList();
 
             var rawLedRuns = new List<ParsedItem>();
             foreach (var poly in ledPolylines)
             {
+                string layerName = poly.Layer?.Name ?? "";
+                string uLayer = layerName.ToUpperInvariant();
+                bool isFirstFix = uLayer.EndsWith("-FF");
+                string level = (uLayer.Contains("-LL-") || uLayer.StartsWith("0-LL-")) ? "LL" : "HL";
+                string levelDesc = level == "LL" ? "Low Level" : "High Level";
+
                 double totalLen = CalculatePolylineLength(poly);
-                if (totalLen < 500.0) continue;
+                if (totalLen < 500.0) continue; // minimum 0.5m
 
                 double lenMeters = Math.Round(totalLen / 1000.0, 2);
                 double midX = poly.Vertices.Average(v => v.Location.X);
                 double midY = poly.Vertices.Average(v => v.Location.Y);
                 var midPt = new XYZ(midX, midY, 0);
 
-                string roomName = ResolveRoom(midPt);
-                string floorName = ResolveFloorName(midPt);
+                var room = ResolveRoom(midPt);
+                if (room == null)
+                {
+                    unassignedFittings.Add(new UnassignedFittingItem
+                    {
+                        Tag = "LED Strip",
+                        Layer = layerName,
+                        ItemType = "linear_led",
+                        Qty = lenMeters,
+                        Unit = "m",
+                        FirstFix = isFirstFix ? "Yes" : "No",
+                        Level = level,
+                        X = Math.Round(midX, 1),
+                        Y = Math.Round(midY, 1),
+                        Reason = "LED run located outside all 0-ROOMS boundary polylines"
+                    });
+                    continue;
+                }
 
+                // Tag from nearby text on the same layer
                 var nearest = ledTexts
+                    .Where(t => string.Equals(t.Layer, layerName, StringComparison.OrdinalIgnoreCase))
                     .Select(t => new { t.Val, Dist = Math.Sqrt(Math.Pow(t.Pt.X - midX, 2) + Math.Pow(t.Pt.Y - midY, 2)) })
                     .Where(t => t.Dist <= 3500.0)
                     .OrderBy(t => t.Dist)
@@ -848,40 +998,60 @@ namespace OneToOne.CadParser
 
                 rawLedRuns.Add(new ParsedItem
                 {
-                    Floor = floorName,
-                    Area = roomName,
-                    Tag = tag,
+                    Floor = room.Floor,
+                    Area = room.RoomName,
+                    Tag = tag.Trim().ToUpperInvariant(),
                     ItemType = "linear_led",
                     Qty = lenMeters,
                     Unit = "m",
                     LengthMeters = lenMeters,
-                    Notes = $"Length: {lenMeters:F2}m"
+                    FirstFix = isFirstFix ? "Yes" : "No",
+                    Level = level,
+                    Notes = isFirstFix ? $"{levelDesc} LED (First Fix)" : $"{levelDesc} LED"
                 });
             }
 
             var sequencedLedRuns = rawLedRuns
-                .GroupBy(r => new { r.Floor, r.Area })
+                .GroupBy(r => new { r.Floor, r.Area, r.FirstFix, r.Level })
                 .SelectMany(g =>
                 {
                     int runIdx = 1;
                     return g.OrderByDescending(r => r.LengthMeters).Select(item =>
                     {
                         item.RunIndex = runIdx;
-                        string prefix = g.Count() > 1 ? $"LED Run {runIdx}" : "LED Run 1";
-                        item.Notes = $"{prefix} ({item.LengthMeters:F2}m) — Extrusion & Strip";
+                        string stageSuffix = item.FirstFix == "Yes" ? " (First Fix)" : "";
+                        item.Notes = $"LED Run {runIdx} ({item.LengthMeters:F2}m) - {item.Level}{stageSuffix}";
                         runIdx++;
                         return item;
                     });
                 })
                 .ToList();
 
-            // 5. Gather Track Systems from 0-TRACKS
+            // 5. Gather Track Systems from 0-HL-TRACK, 0-LL-TRACK, HL-TRACK, LL-TRACK, -FF variants, and legacy 0-TRACK*
+            bool IsTrackLayer(string name)
+            {
+                string u = (name ?? "").ToUpperInvariant();
+                return u.StartsWith("0-HL-TRACK") || u.StartsWith("HL-TRACK") ||
+                       u.StartsWith("0-LL-TRACK") || u.StartsWith("LL-TRACK") ||
+                       u.StartsWith("0-TRACK");
+            }
+
             var trackPolylines = doc.Entities.OfType<LwPolyline>()
-                .Where(p => (p.Layer?.Name ?? "").ToUpperInvariant().StartsWith("0-TRACK"))
+                .Where(p => IsTrackLayer(p.Layer?.Name ?? ""))
+                .ToList();
+
+            var trackTexts = doc.Entities.Where(e => (e is MText || e is TextEntity) && IsTrackLayer(e.Layer?.Name ?? ""))
+                .Select(e => new TextLabel
+                {
+                    Layer = e.Layer?.Name ?? "",
+                    Val = CleanCadText((e is MText mt) ? mt.Value : ((TextEntity)e).Value),
+                    Pt = (e is MText mt2) ? mt2.InsertPoint : ((TextEntity)e).InsertPoint
+                })
+                .Where(t => !string.IsNullOrWhiteSpace(t.Val))
                 .ToList();
 
             var trackSpots = doc.Entities.OfType<Insert>()
-                .Where(i => (i.Layer?.Name ?? "").ToUpperInvariant().StartsWith("0-TRACK"))
+                .Where(i => IsTrackLayer(i.Layer?.Name ?? ""))
                 .ToList();
 
             var sequencedTrackRuns = new List<ParsedItem>();
@@ -889,6 +1059,12 @@ namespace OneToOne.CadParser
 
             foreach (var poly in trackPolylines)
             {
+                string layerName = poly.Layer?.Name ?? "";
+                string uLayer = layerName.ToUpperInvariant();
+                bool isFirstFix = uLayer.EndsWith("-FF");
+                string level = (uLayer.Contains("-LL-") || uLayer.StartsWith("0-LL-")) ? "LL" : "HL";
+                string levelDesc = level == "LL" ? "Low Level" : "High Level";
+
                 double totalLen = CalculatePolylineLength(poly);
                 if (totalLen < 500.0) continue;
 
@@ -897,8 +1073,34 @@ namespace OneToOne.CadParser
                 double midY = poly.Vertices.Average(v => v.Location.Y);
                 var midPt = new XYZ(midX, midY, 0);
 
-                string roomName = ResolveRoom(midPt);
-                string floorName = ResolveFloorName(midPt);
+                var room = ResolveRoom(midPt);
+                if (room == null)
+                {
+                    unassignedFittings.Add(new UnassignedFittingItem
+                    {
+                        Tag = "TRK",
+                        Layer = layerName,
+                        ItemType = "track_system",
+                        Qty = trackLenM,
+                        Unit = "m",
+                        FirstFix = isFirstFix ? "Yes" : "No",
+                        Level = level,
+                        X = Math.Round(midX, 1),
+                        Y = Math.Round(midY, 1),
+                        Reason = "Track run located outside all 0-ROOMS boundary polylines"
+                    });
+                    continue;
+                }
+
+                // Tag from nearby text
+                var nearest = trackTexts
+                    .Where(t => string.Equals(t.Layer, layerName, StringComparison.OrdinalIgnoreCase))
+                    .Select(t => new { t.Val, Dist = Math.Sqrt(Math.Pow(t.Pt.X - midX, 2) + Math.Pow(t.Pt.Y - midY, 2)) })
+                    .Where(t => t.Dist <= 3500.0)
+                    .OrderBy(t => t.Dist)
+                    .FirstOrDefault();
+
+                string tag = nearest?.Val ?? "TRK";
 
                 var mountedSpots = trackSpots.Where(ins =>
                 {
@@ -929,18 +1131,21 @@ namespace OneToOne.CadParser
 
                 string spotSummary = mountedSpots.Any() ? $" | Attached Spots: {mountedSpots.Count} heads" : "";
                 string accSummary = string.Join(", ", accessories.Select(a => $"{a.Qty}x {a.Name}"));
+                string stageSuffix = isFirstFix ? " (First Fix)" : "";
 
                 sequencedTrackRuns.Add(new ParsedItem
                 {
-                    Floor = floorName,
-                    Area = roomName,
-                    Tag = "TRK",
+                    Floor = room.Floor,
+                    Area = room.RoomName,
+                    Tag = tag.Trim().ToUpperInvariant(),
                     ItemType = "track_system",
                     Qty = trackLenM,
                     Unit = "m",
                     LengthMeters = trackLenM,
                     RunIndex = trackIdx,
-                    Notes = $"Track Run {trackIdx} ({trackLenM:F2}m){spotSummary} | Accessories: {accSummary}",
+                    FirstFix = isFirstFix ? "Yes" : "No",
+                    Level = level,
+                    Notes = $"Track Run {trackIdx} ({trackLenM:F2}m) - {levelDesc}{stageSuffix}{spotSummary} | Accessories: {accSummary}",
                     Accessories = accessories
                 });
 
@@ -956,6 +1161,7 @@ namespace OneToOne.CadParser
                 .OrderBy(r => r.Floor)
                 .ThenBy(r => r.Area)
                 .ThenBy(r => r.Tag)
+                .ThenBy(r => r.FirstFix)
                 .ThenBy(r => r.RunIndex)
                 .ToList();
 
@@ -971,9 +1177,13 @@ namespace OneToOne.CadParser
                     totalTrackRuns = sequencedTrackRuns.Count,
                     totalTrackMeters = Math.Round(sequencedTrackRuns.Sum(t => t.LengthMeters), 2),
                     totalRooms = orderedItems.Select(a => a.Area).Distinct().Count(),
-                    uniqueTags = orderedItems.Select(a => a.Tag).Distinct().Count()
+                    uniqueTags = orderedItems.Select(a => a.Tag).Distinct().Count(),
+                    unassignedCount = unassignedFittings.Count
                 },
-                items = orderedItems
+                items = orderedItems,
+                unassignedFittings = unassignedFittings,
+                standardLayersFound = standardLayersFound,
+                standardLayersMissing = missingStandardSpecs
             };
 
             Console.WriteLine(JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
@@ -1850,6 +2060,12 @@ namespace OneToOne.CadParser
             [JsonPropertyName("runIndex")]
             public int RunIndex { get; set; } = 0;
 
+            [JsonPropertyName("firstFix")]
+            public string FirstFix { get; set; } = "No";
+
+            [JsonPropertyName("level")]
+            public string Level { get; set; } = "HL";
+
             [JsonPropertyName("notes")]
             public string Notes { get; set; } = "";
 
@@ -1858,6 +2074,39 @@ namespace OneToOne.CadParser
 
             [JsonPropertyName("accessories")]
             public List<AccessoryItem> Accessories { get; set; } = new();
+        }
+
+        public class UnassignedFittingItem
+        {
+            [JsonPropertyName("tag")]
+            public string Tag { get; set; } = "";
+
+            [JsonPropertyName("layer")]
+            public string Layer { get; set; } = "";
+
+            [JsonPropertyName("itemType")]
+            public string ItemType { get; set; } = "fixture";
+
+            [JsonPropertyName("qty")]
+            public double Qty { get; set; } = 1;
+
+            [JsonPropertyName("unit")]
+            public string Unit { get; set; } = "pcs";
+
+            [JsonPropertyName("firstFix")]
+            public string FirstFix { get; set; } = "No";
+
+            [JsonPropertyName("level")]
+            public string Level { get; set; } = "HL";
+
+            [JsonPropertyName("x")]
+            public double X { get; set; } = 0;
+
+            [JsonPropertyName("y")]
+            public double Y { get; set; } = 0;
+
+            [JsonPropertyName("reason")]
+            public string Reason { get; set; } = "Located outside all 0-ROOMS boundary polylines";
         }
 
         public class AccessoryItem

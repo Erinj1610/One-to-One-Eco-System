@@ -502,7 +502,8 @@ def init_db():
                             ("selection", "VARCHAR"),
                             ("technical_image_url", "TEXT"),
                             ("spec_sheet_url", "TEXT"),
-                            ("notes", "TEXT")
+                            ("notes", "TEXT"),
+                            ("first_fix", "VARCHAR DEFAULT 'No'")
                         ]
                         for oi_col_name, oi_col_type in order_item_new_cols:
                             if oi_col_name not in order_item_cols:

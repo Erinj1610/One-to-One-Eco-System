@@ -17,6 +17,13 @@ def get_cad_parser_command():
     bin_dir = base_dir / "bin"
     
     if sys.platform.startswith("win"):
+        # On Windows, prioritize the compiled dll via dotnet to bypass Defender executable locking
+        rel_dll = base_dir / "cad_parser" / "bin" / "Release" / "net8.0" / "CadParser.dll"
+        if rel_dll.exists():
+            return ["dotnet", str(rel_dll)]
+        dbg_dll = base_dir / "cad_parser" / "bin" / "Debug" / "net8.0" / "CadParser.dll"
+        if dbg_dll.exists():
+            return ["dotnet", str(dbg_dll)]
         win_exe = bin_dir / "cad-parser-win.exe"
         if win_exe.exists():
             return [str(win_exe)]

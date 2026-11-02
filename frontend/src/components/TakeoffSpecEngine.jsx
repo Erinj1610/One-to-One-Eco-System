@@ -692,6 +692,8 @@ export default function TakeoffSpecEngine({
       itemType: item.itemType || 'fixture',
       lengthMeters: Number(item.lengthMeters) || 0,
       runIndex: Number(item.runIndex) || 0,
+      firstFix: item.firstFix || (item.notes?.includes('First Fix') ? 'Yes' : 'No'),
+      level: item.level || 'HL',
       notes: item.notes || ''
     }));
 
@@ -1625,6 +1627,12 @@ export default function TakeoffSpecEngine({
           eta: '2 weeks'
         });
       }
+      items.forEach(it => {
+        if (!it.firstFix) {
+          it.firstFix = row.firstFix || "No";
+          it.first_fix = row.firstFix || "No";
+        }
+      });
       return items;
     };
 
@@ -1791,6 +1799,12 @@ export default function TakeoffSpecEngine({
           eta: '3 weeks'
         });
       }
+      items.forEach(it => {
+        if (!it.firstFix) {
+          it.firstFix = row.firstFix || "No";
+          it.first_fix = row.firstFix || "No";
+        }
+      });
       return items;
     };
 
@@ -1843,7 +1857,9 @@ export default function TakeoffSpecEngine({
           : (product.stock_level !== undefined ? Number(product.stock_level) : 0),
         stockOnHand: product.stock_on_hand !== undefined && product.stock_on_hand !== null
           ? Number(product.stock_on_hand)
-          : (product.stock_level !== undefined ? Number(product.stock_level) : 0)
+          : (product.stock_level !== undefined ? Number(product.stock_level) : 0),
+        firstFix: row.firstFix || 'No',
+        first_fix: row.firstFix || 'No'
       };
     };
 
@@ -1918,6 +1934,8 @@ export default function TakeoffSpecEngine({
         unitTrade: 0,
         unitRetail: 0,
         selection: 'Selection',
+        firstFix: row.firstFix || 'No',
+        first_fix: row.firstFix || 'No',
         stockStatus: 'Ordered',
         eta: '4 weeks',
         foh_code_description: '',
@@ -2515,7 +2533,8 @@ export default function TakeoffSpecEngine({
                 <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1.5px solid var(--border)', color: 'var(--text-secondary)', fontSize: '11.5px' }}>
                   <th style={{ padding: '8px 10px', width: '36px', textAlign: 'center' }}>#</th>
                   <th style={{ padding: '8px 10px', width: '120px' }}>Plan Tag / Code</th>
-                  <th style={{ padding: '8px 10px', width: '135px' }}>Type</th>
+                  <th style={{ padding: '8px 10px', width: '120px' }}>Type</th>
+                  <th style={{ padding: '8px 10px', width: '85px', textAlign: 'center' }}>First Fix</th>
                   <th style={{ padding: '8px 10px', width: '130px' }}>Floor Level</th>
                   <th style={{ padding: '8px 10px', width: '210px' }}>Room / Area</th>
                   <th style={{ padding: '8px 10px', width: '110px', textAlign: 'center' }}>Qty / Length</th>
@@ -2527,7 +2546,7 @@ export default function TakeoffSpecEngine({
               <tbody>
                 {filteredCountUpRows.length === 0 ? (
                   <tr>
-                    <td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    <td colSpan={10} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                       No count-up lines recorded. Click <strong>+ Add Row</strong>, <strong>📐 Import CAD Plan (.dwg)</strong>, or <strong>📋 Paste from Excel / CSV</strong> to start your takeoff.
                     </td>
                   </tr>
@@ -2613,6 +2632,30 @@ export default function TakeoffSpecEngine({
                             <option value="fixture">💡 Fitting</option>
                             <option value="linear_led">〰️ Linear LED</option>
                             <option value="track_system">🛤️ Track</option>
+                          </select>
+                        </td>
+
+                        {/* FIRST FIX SELECTOR */}
+                        <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                          <select
+                            value={row.firstFix === 'Yes' ? 'Yes' : 'No'}
+                            onChange={e => handleUpdateRow(row.id, 'firstFix', e.target.value)}
+                            style={{
+                              width: '100%',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              padding: '3px 4px',
+                              borderRadius: '4px',
+                              border: '1px solid var(--border)',
+                              background: row.firstFix === 'Yes' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-secondary)',
+                              color: row.firstFix === 'Yes' ? '#f59e0b' : 'var(--text-secondary)',
+                              cursor: 'pointer',
+                              outline: 'none'
+                            }}
+                            title="Specify whether this item is First Fix (rough-in / pre-install)"
+                          >
+                            <option value="No">No</option>
+                            <option value="Yes">Yes (FF)</option>
                           </select>
                         </td>
 
