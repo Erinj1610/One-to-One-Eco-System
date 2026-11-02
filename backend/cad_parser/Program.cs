@@ -213,21 +213,13 @@ namespace OneToOne.CadParser
             var standardLayersFound = layerGroups
                 .Where(l => {
                     string u = l.Name.ToUpperInvariant();
-                    return standardLayerSpecs.Any(s => s.Equals(u, StringComparison.OrdinalIgnoreCase)) ||
-                           u.StartsWith("0-HL-") || u.StartsWith("0-LL-") || u.StartsWith("HL-") || u.StartsWith("LL-") ||
-                           u.Equals("0-FLOORS") || u.Equals("0-ROOMS") || u.StartsWith("RM-") || u.StartsWith("RM_") ||
-                           u.StartsWith("0-FITTING") || u.StartsWith("0-ROOM") || u.StartsWith("0-FLOOR") || u.StartsWith("0-LED") || u.StartsWith("0-TRACK");
+                    return standardLayerSpecs.Any(s => s.Equals(u, StringComparison.OrdinalIgnoreCase));
                 })
                 .Select(l => l.Name)
                 .Distinct()
                 .ToList();
 
-            bool isStandardized = standardLayersFound.Any(l => {
-                string u = l.ToUpperInvariant();
-                return u.StartsWith("0-HL-") || u.StartsWith("0-LL-") || u.StartsWith("HL-") || u.StartsWith("LL-") ||
-                       u.Equals("0-FLOORS") || u.Equals("0-ROOMS") || u.StartsWith("RM-") ||
-                       u.StartsWith("0-FITTING") || u.StartsWith("0-ROOM");
-            });
+            bool isStandardized = standardLayersFound.Any();
 
             var missingStandardSpecs = standardLayerSpecs
                 .Where(spec => !standardLayersFound.Any(found => found.Equals(spec, StringComparison.OrdinalIgnoreCase)))
@@ -663,12 +655,20 @@ namespace OneToOne.CadParser
         // =============================================================
         private static bool HasStandardZeroLayers(CadDocument doc)
         {
+            var standardLayerSpecs = new[]
+            {
+                "0-FLOORS", "0-ROOMS",
+                "0-HL-ARC", "0-HL-ARC-FF",
+                "0-HL-LED", "0-HL-LED-FF",
+                "0-HL-TRACK", "0-HL-TRACK-FF",
+                "0-LL-ARC", "0-LL-ARC-FF",
+                "0-LL-LED", "0-LL-LED-FF"
+            };
+
             return doc.Entities.Any(e =>
             {
                 string l = (e.Layer?.Name ?? "").ToUpperInvariant();
-                return l.StartsWith("0-HL-") || l.StartsWith("0-LL-") || l.StartsWith("HL-") || l.StartsWith("LL-") ||
-                       l.Equals("0-FLOORS") || l.Equals("0-ROOMS") || l.StartsWith("RM-") || l.StartsWith("RM_") ||
-                       l.StartsWith("0-FITTING") || l.StartsWith("0-ROOM") || l.StartsWith("0-FLOOR") || l.StartsWith("0-LED") || l.StartsWith("0-TRACK");
+                return standardLayerSpecs.Any(s => s.Equals(l, StringComparison.OrdinalIgnoreCase));
             });
         }
 
@@ -691,9 +691,7 @@ namespace OneToOne.CadParser
                 .Where(n =>
                 {
                     string u = n.ToUpperInvariant();
-                    return standardLayerSpecs.Any(s => s.Equals(u, StringComparison.OrdinalIgnoreCase)) ||
-                           u.StartsWith("0-HL-") || u.StartsWith("0-LL-") ||
-                           u.StartsWith("0-FITTING") || u.StartsWith("0-ROOM") || u.StartsWith("0-FLOOR") || u.StartsWith("0-LED") || u.StartsWith("0-TRACK");
+                    return standardLayerSpecs.Any(s => s.Equals(u, StringComparison.OrdinalIgnoreCase));
                 })
                 .ToList();
 
@@ -701,11 +699,11 @@ namespace OneToOne.CadParser
                 .Where(spec => !standardLayersFound.Any(found => found.Equals(spec, StringComparison.OrdinalIgnoreCase)))
                 .ToList();
 
-            // 1. Gather Floors from 0-FLOORS (or 0-FLOOR*)
+            // 1. Gather Floors strictly from 0-FLOORS
             bool IsFloorLayer(string name)
             {
                 string u = (name ?? "").ToUpperInvariant();
-                return u.Equals("0-FLOORS") || u.StartsWith("0-FLOOR") || u.StartsWith("FLOOR");
+                return u.Equals("0-FLOORS");
             }
 
             var floorPolys = doc.Entities.OfType<LwPolyline>()
@@ -736,27 +734,11 @@ namespace OneToOne.CadParser
                 return match.Name ?? fallbackFloor;
             }
 
-            // 2. Gather Rooms from 0-ROOMS, 0-ROOM*, and RM-* (e.g. RM-GROUND, RM-FIRST FLOOR, RM-BASEMENT)
+            // 2. Gather Rooms strictly from 0-ROOMS (RM-* layers such as RM-GROUND are completely excluded)
             bool IsRoomLayer(string name)
             {
                 string u = (name ?? "").ToUpperInvariant();
-                return u.Equals("0-ROOMS") || u.StartsWith("0-ROOM") || u.StartsWith("RM-") || u.StartsWith("RM_");
-            }
-
-            string ExtractFloorFromLayerName(string layerName)
-            {
-                string u = (layerName ?? "").ToUpperInvariant();
-                if (u.StartsWith("RM-") || u.StartsWith("RM_"))
-                {
-                    string suffix = u.Substring(3).Trim();
-                    if (suffix.Contains("BASE")) return "Basement";
-                    if (suffix.Contains("GROUND")) return "Ground Floor";
-                    if (suffix.Contains("FIRST") || suffix.Contains("1ST")) return "First Floor";
-                    if (suffix.Contains("SECOND") || suffix.Contains("2ND")) return "Second Floor";
-                    if (suffix.Contains("ROOF")) return "Roof";
-                    return char.ToUpper(suffix[0]) + suffix.Substring(1).ToLower();
-                }
-                return defaultFloor;
+                return u.Equals("0-ROOMS");
             }
 
             var roomPolys = doc.Entities.OfType<LwPolyline>()
@@ -787,8 +769,7 @@ namespace OneToOne.CadParser
                 double cx = rp.Vertices.Average(v => v.Location.X);
                 double cy = rp.Vertices.Average(v => v.Location.Y);
 
-                string layerFloor = ExtractFloorFromLayerName(polyLayer);
-                string flr = ResolveFloorName(new XYZ(cx, cy, 0), layerFloor);
+                string flr = ResolveFloorName(new XYZ(cx, cy, 0), defaultFloor);
 
                 roomBoundaries.Add(new RoomBoundary
                 {
@@ -861,9 +842,7 @@ namespace OneToOne.CadParser
             bool IsArcLayer(string name)
             {
                 string u = (name ?? "").ToUpperInvariant();
-                return u.StartsWith("0-HL-ARC") || u.StartsWith("HL-ARC") ||
-                       u.StartsWith("0-LL-ARC") || u.StartsWith("LL-ARC") ||
-                       u.StartsWith("0-FITTING");
+                return u.StartsWith("0-HL-ARC") || u.StartsWith("0-LL-ARC");
             }
 
             var fittingInserts = doc.Entities.OfType<Insert>()
@@ -1004,9 +983,7 @@ namespace OneToOne.CadParser
             bool IsLedLayer(string name)
             {
                 string u = (name ?? "").ToUpperInvariant();
-                return u.StartsWith("0-HL-LED") || u.StartsWith("HL-LED") ||
-                       u.StartsWith("0-LL-LED") || u.StartsWith("LL-LED") ||
-                       u.StartsWith("0-LED");
+                return u.StartsWith("0-HL-LED") || u.StartsWith("0-LL-LED");
             }
 
             var ledPolylines = doc.Entities.OfType<LwPolyline>()
@@ -1130,9 +1107,7 @@ namespace OneToOne.CadParser
             bool IsTrackLayer(string name)
             {
                 string u = (name ?? "").ToUpperInvariant();
-                return u.StartsWith("0-HL-TRACK") || u.StartsWith("HL-TRACK") ||
-                       u.StartsWith("0-LL-TRACK") || u.StartsWith("LL-TRACK") ||
-                       u.StartsWith("0-TRACK");
+                return u.StartsWith("0-HL-TRACK") || u.StartsWith("0-LL-TRACK");
             }
 
             var trackPolylines = doc.Entities.OfType<LwPolyline>()
