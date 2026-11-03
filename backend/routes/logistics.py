@@ -623,13 +623,23 @@ def get_enriched_order_items_for_logistics(
     ).all()
 
     packed_by_item_id: Dict[str, int] = {}
+    packed_by_code_area: Dict[str, int] = {}
     for pl in active_pls:
         if exclude_pl_id and pl.id == exclude_pl_id:
             continue
         for pl_it in pl.items:
-            if pl_it.order_item_id:
+            qty_p = int(pl_it.qty_packed or 0)
+            if qty_p <= 0:
+                continue
+            if pl_it.order_item_id and not str(pl_it.order_item_id).startswith("acc_"):
                 k = str(pl_it.order_item_id)
-                packed_by_item_id[k] = packed_by_item_id.get(k, 0) + int(pl_it.qty_packed or 0)
+                packed_by_item_id[k] = packed_by_item_id.get(k, 0) + qty_p
+            # Fallback matching by code + area
+            area_k = (pl_it.area or "").strip().lower()
+            for c in [pl_it.one_one_code, pl_it.supplier_code]:
+                if c and str(c).strip():
+                    ck = f"{str(c).strip().upper()}:::{area_k}"
+                    packed_by_code_area[ck] = packed_by_code_area.get(ck, 0) + qty_p
 
     # Also extract Project / Client site delivery contact details for DN pre-fill
     proj = db.query(Project).filter(Project.project_key == order_obj.project_key).first() if order_obj.project_key else None
@@ -681,6 +691,14 @@ def get_enriched_order_items_for_logistics(
 
         qty_ordered = int(oi.qty or 0)
         qty_packed_prev = int(packed_by_item_id.get(str(oi.id), 0))
+        if qty_packed_prev == 0:
+            area_k = (oi.area or "").strip().lower()
+            for c in [oi.one_one_code, oi.code]:
+                if c and str(c).strip():
+                    ck = f"{str(c).strip().upper()}:::{area_k}"
+                    if ck in packed_by_code_area:
+                        qty_packed_prev = packed_by_code_area[ck]
+                        break
         qty_delivered = int(oi.delivery_qty or 0)
         remaining_to_pack = max(0, qty_ordered - qty_packed_prev)
         remaining_to_deliver = max(0, qty_ordered - qty_delivered)

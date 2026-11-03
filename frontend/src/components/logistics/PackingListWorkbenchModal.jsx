@@ -64,6 +64,8 @@ export default function PackingListWorkbenchModal({
   const [attachSelectedItemKey, setAttachSelectedItemKey] = useState('');
   const [attachRatioInput, setAttachRatioInput] = useState(1);
   const [attachModalSearch, setAttachModalSearch] = useState('');
+  const [hideFullyPacked, setHideFullyPacked] = useState(false);
+  const [plFilterFloor, setPlFilterFloor] = useState('ALL');
   const [expandedKitKeys, setExpandedKitKeys] = useState(() => new Set());
   const [expandedAreaKeys, setExpandedAreaKeys] = useState({});
 
@@ -148,6 +150,8 @@ export default function PackingListWorkbenchModal({
           supplier_code: (it.supplier_code || '').trim(),
           description: cleanedDesc,
           total_ordered: 0,
+          total_already_packed: 0,
+          total_remaining_to_pack: 0,
           room_instances: [],
           attachedItems: [], // user-defined attachments
         };
@@ -155,7 +159,9 @@ export default function PackingListWorkbenchModal({
       if (!map[key].one_one_code && it.one_one_code) map[key].one_one_code = it.one_one_code.trim();
       if (!map[key].supplier_code && it.supplier_code) map[key].supplier_code = it.supplier_code.trim();
       if (!map[key].description && cleanedDesc) map[key].description = cleanedDesc;
-      map[key].total_ordered += Number(it.qty_ordered || it.qty_packed || 0);
+      map[key].total_ordered += Number(it.qty_ordered || 0);
+      map[key].total_already_packed += Number(it.qty_already_packed || 0);
+      map[key].total_remaining_to_pack += Number(it.remaining_to_pack !== undefined ? it.remaining_to_pack : (it.qty_ordered || 0));
       map[key].room_instances.push({
         ...it,
         description: cleanedDesc,
@@ -242,28 +248,27 @@ export default function PackingListWorkbenchModal({
         const apiItems = (data.items || []).filter(
           it => (it.plan_code || '').trim() !== 'SPACER' && ((it.description || '').trim() !== '' || it.one_one_code || it.supplier_code)
         );
-        const builtRaw = apiItems.map((it, idx) => ({
-          order_item_id: String(it.order_item_id || `item_${idx}`),
-          one_one_code: it.one_one_code || '',
-          plan_code: it.plan_code || '',
-          supplier_code: it.supplier_code || '',
-          description: it.description || '',
-          floor: it.floor || '',
-          area: it.area || '',
-          material_colour: it.material_colour || '',
-          first_fix: it.first_fix || 'No',
-          red_list: it.red_list || 'No',
-          qty_ordered: Number(it.qty_ordered || 0),
-          qty_packed: Number(it.remaining_to_pack ?? it.qty_ordered ?? 0),
-          box_number: 'Box 1',
-        }));
-        setRawItems(builtRaw);
-        const initialModels = buildSummaryModelsFromItems(builtRaw);
-        setSummaryModels(initialModels);
-        const initialAreas = [];
-        builtRaw.forEach(it => {
-          const a = (it.area || 'General / Unspecified').trim();
-          if (a && !initialAreas.includes(a)) initialAreas.push(a);
+        const builtRaw = apiItems.map((it, idx) => {
+          const ord = Number(it.qty_ordered || 0);
+          const prevPacked = Number(it.qty_already_packed || 0);
+          const rem = Math.max(0, it.remaining_to_pack !== undefined ? Number(it.remaining_to_pack) : ord - prevPacked);
+          return {
+            order_item_id: String(it.order_item_id || `item_${idx}`),
+            one_one_code: it.one_one_code || '',
+            plan_code: it.plan_code || '',
+            supplier_code: it.supplier_code || '',
+            description: it.description || '',
+            floor: it.floor || '',
+            area: it.area || '',
+            material_colour: it.material_colour || '',
+            first_fix: it.first_fix || 'No',
+            red_list: it.red_list || 'No',
+            qty_ordered: ord,
+            qty_already_packed: prevPacked,
+            remaining_to_pack: rem,
+            qty_packed: rem, // Default to packing remaining unfulfilled balance!
+            box_number: 'Box 1',
+          };
         });
         setCustomAreaOrder(initialAreas);
       }
@@ -548,7 +553,6 @@ export default function PackingListWorkbenchModal({
   const generatePickSheetRows = () => {
     if (rawItems.length === 0) return;
 
-    // Set of itemKeys that are attached to another item
     const attachedKeysSet = new Set(Object.keys(attachedItemKeyToParentMap));
     const explodedRows = [];
 
@@ -564,7 +568,6 @@ export default function PackingListWorkbenchModal({
       roomsMap[room].push(it);
     });
 
-    // Resolve active room sequence
     let activeAreaOrder = customAreaOrder.length > 0 ? [...customAreaOrder] : [...rawAreasOrder];
     rawAreasOrder.forEach(r => {
       if (!activeAreaOrder.includes(r)) activeAreaOrder.push(r);
@@ -578,7 +581,6 @@ export default function PackingListWorkbenchModal({
       ...Object.keys(roomsMap).filter(a => !activeAreaOrder.includes(a))
     ];
 
-    // In each room, list primary items and nest their attached accessories
     orderedRooms.forEach(roomName => {
       const itemsInRoom = roomsMap[roomName];
 
@@ -587,12 +589,13 @@ export default function PackingListWorkbenchModal({
         const modelDef = summaryModels.find(m => m.modelKey === itModelKey);
         const isAttachedToOther = attachedKeysSet.has(itModelKey);
 
-        // If this item was designated as an attachment to another fitting,
-        // it will be nested directly underneath its parent fitting per room!
         if (isAttachedToOther) return;
 
-        // Primary Item Row
         const parentRowKey = `row_${it.order_item_id}_${roomName}_${Math.random().toString(36).slice(2, 6)}`;
+        const ord = Number(it.qty_ordered || 0);
+        const prevPacked = Number(it.qty_already_packed || 0);
+        const rem = it.remaining_to_pack !== undefined ? Number(it.remaining_to_pack) : Math.max(0, ord - prevPacked);
+
         explodedRows.push({
           rowKey: parentRowKey,
           order_item_id: it.order_item_id,
@@ -607,8 +610,10 @@ export default function PackingListWorkbenchModal({
           material_colour: it.material_colour || '',
           first_fix: it.first_fix || 'No',
           red_list: it.red_list || 'No',
-          qty_ordered: Number(it.qty_ordered || 0),
-          qty_packed: Number(it.qty_packed ?? it.qty_ordered ?? 0),
+          qty_ordered: ord,
+          qty_already_packed: prevPacked,
+          remaining_to_pack: rem,
+          qty_packed: rem, // default to remaining unfulfilled balance!
           box_number: 'Box 1',
           is_accessory: false,
           is_split_child: false,
@@ -619,12 +624,18 @@ export default function PackingListWorkbenchModal({
           modelDef.attachedItems.forEach((att, attIdx) => {
             const attModel = summaryModels.find(m => m.modelKey === att.itemKey);
             if (!attModel) return;
-            const parentQty = Number(it.qty_ordered || 0);
-            const nestedQty = parentQty * (Number(att.ratio) || 1);
+            const ratio = Number(att.ratio) || 1;
+            const nestedTotalQty = ord * ratio;
+            const nestedRemQty = rem * ratio;
+
+            // Find matching raw accessory item in this room if it existed
+            const matchingRawInRoom = itemsInRoom.find(x => getModelKey(x) === att.itemKey);
+            const rawAccId = matchingRawInRoom?.order_item_id ? String(matchingRawInRoom.order_item_id) : `acc_${it.order_item_id}_${attIdx}`;
+            const rawPrevPacked = matchingRawInRoom ? Number(matchingRawInRoom.qty_already_packed || 0) : 0;
 
             explodedRows.push({
               rowKey: `att_${parentRowKey}_${attIdx}_${Math.random().toString(36).slice(2, 6)}`,
-              order_item_id: `acc_${it.order_item_id}_${attIdx}`,
+              order_item_id: rawAccId,
               parent_item_id: String(it.order_item_id),
               parent_fitting_code: it.plan_code || it.description || 'Parent Fitting',
               one_one_code: attModel.one_one_code || '',
@@ -636,8 +647,10 @@ export default function PackingListWorkbenchModal({
               material_colour: '',
               first_fix: 'No',
               red_list: 'No',
-              qty_ordered: nestedQty,
-              qty_packed: nestedQty,
+              qty_ordered: nestedTotalQty,
+              qty_already_packed: rawPrevPacked,
+              remaining_to_pack: nestedRemQty,
+              qty_packed: nestedRemQty,
               box_number: 'Box 1',
               is_accessory: true,
               is_split_child: false,
@@ -645,14 +658,6 @@ export default function PackingListWorkbenchModal({
           });
         }
       });
-    });
-
-    // Add any standalone items that were NOT attached to any other item
-    rawItems.forEach(it => {
-      const itModelKey = getModelKey(it);
-      if (!attachedKeysSet.has(itModelKey)) {
-        // Already processed above in roomsMap
-      }
     });
 
     setPlRows(explodedRows);
@@ -694,17 +699,61 @@ export default function PackingListWorkbenchModal({
     });
   }, [plRows, customAreaOrder]);
 
+  const plUniqueFloors = useMemo(() => {
+    const s = new Set();
+    plRows.forEach(r => {
+      const f = (r.floor || '').trim();
+      if (f) s.add(f);
+    });
+    return Array.from(s);
+  }, [plRows]);
+
   const visiblePlRows = useMemo(() => {
     let rows = [...sortedPlRows];
+    if (plFilterFloor !== 'ALL') {
+      rows = rows.filter(r => (r.floor || '').trim().toLowerCase() === plFilterFloor.trim().toLowerCase());
+    }
     if (plFilterArea !== 'ALL') {
       rows = rows.filter(r => (r.area || '').trim().toLowerCase() === plFilterArea.trim().toLowerCase());
     }
     return rows;
-  }, [sortedPlRows, plFilterArea]);
+  }, [sortedPlRows, plFilterFloor, plFilterArea]);
 
-  const handlePackAll = () => {
-    setPlRows(prev => prev.map(r => ({ ...r, qty_packed: Number(r.qty_ordered || 0) })));
+  const handleToggleRoom = (roomName) => {
+    setPlRows(prev => {
+      const roomRows = prev.filter(r => (r.area || 'General / Unspecified').trim() === roomName.trim());
+      const isAnyPacked = roomRows.some(r => Number(r.qty_packed || 0) > 0);
+      return prev.map(r => {
+        if ((r.area || 'General / Unspecified').trim() !== roomName.trim()) return r;
+        const targetVal = isAnyPacked ? 0 : (r.remaining_to_pack !== undefined ? r.remaining_to_pack : r.qty_ordered);
+        return { ...r, qty_packed: targetVal };
+      });
+    });
   };
+
+  const handlePackRoom = (roomName) => {
+    setPlRows(prev => prev.map(r => {
+      if ((r.area || 'General / Unspecified').trim() !== roomName.trim()) return r;
+      const targetVal = r.remaining_to_pack !== undefined ? r.remaining_to_pack : r.qty_ordered;
+      return { ...r, qty_packed: targetVal };
+    }));
+  };
+
+  const handleZeroRoom = (roomName) => {
+    setPlRows(prev => prev.map(r => {
+      if ((r.area || 'General / Unspecified').trim() !== roomName.trim()) return r;
+      return { ...r, qty_packed: 0 };
+    }));
+  };
+
+  const handlePackAllRemaining = () => {
+    setPlRows(prev => prev.map(r => ({
+      ...r,
+      qty_packed: r.remaining_to_pack !== undefined ? r.remaining_to_pack : r.qty_ordered,
+    })));
+  };
+
+  const handlePackAll = () => handlePackAllRemaining();
 
   const handleZeroAll = () => {
     setPlRows(prev => prev.map(r => ({ ...r, qty_packed: 0 })));
@@ -996,14 +1045,18 @@ export default function PackingListWorkbenchModal({
 
   // Filtered summary models for search in Step 1
   const visibleSummaryModels = useMemo(() => {
-    if (!summarySearchQuery.trim()) return topLevelSummaryModels;
+    let list = topLevelSummaryModels;
+    if (hideFullyPacked) {
+      list = list.filter(m => m.total_remaining_to_pack > 0 || (m.attachedItems && m.attachedItems.length > 0));
+    }
+    if (!summarySearchQuery.trim()) return list;
     const q = summarySearchQuery.toLowerCase();
-    return topLevelSummaryModels.filter(m =>
+    return list.filter(m =>
       (m.plan_code || '').toLowerCase().includes(q) ||
       (m.supplier_code || '').toLowerCase().includes(q) ||
       (m.description || '').toLowerCase().includes(q)
     );
-  }, [topLevelSummaryModels, summarySearchQuery]);
+  }, [topLevelSummaryModels, hideFullyPacked, summarySearchQuery]);
 
   return (
     <div
@@ -1305,6 +1358,24 @@ export default function PackingListWorkbenchModal({
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
+                    style={{
+                      border: hideFullyPacked ? '1px solid var(--text-info)' : '1px solid var(--border)',
+                      background: hideFullyPacked ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                      color: hideFullyPacked ? 'var(--text-info)' : 'var(--text-secondary)',
+                      fontSize: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}
+                    onClick={() => setHideFullyPacked(!hideFullyPacked)}
+                    title="Toggle between showing remaining unfulfilled products vs all products"
+                  >
+                    <CheckCircle2 size={13} />
+                    {hideFullyPacked ? 'Unpacked Only' : 'All Products'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
                     style={{ border: '1px solid var(--border)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px' }}
                     onClick={toggleAllKits}
                     title="Expand or collapse all assembled kit hierarchies"
@@ -1485,7 +1556,7 @@ export default function PackingListWorkbenchModal({
                               )}
                             </td>
 
-                            {/* Total Order Qty */}
+                            {/* Total Order & Remaining Balance Qty */}
                             <td style={{ padding: '10px', textAlign: 'center' }}>
                               {hasLeftover ? (
                                 <div>
@@ -1494,6 +1565,15 @@ export default function PackingListWorkbenchModal({
                                   </div>
                                   <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
                                     spare (of {model.total_ordered})
+                                  </div>
+                                </div>
+                              ) : model.total_already_packed > 0 ? (
+                                <div>
+                                  <div style={{ fontWeight: 800, fontSize: '14px', color: model.total_remaining_to_pack > 0 ? 'var(--text-info)' : 'var(--text-success)' }}>
+                                    {model.total_remaining_to_pack}
+                                  </div>
+                                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                                    rem (of {model.total_ordered} • {model.total_already_packed} prev)
                                   </div>
                                 </div>
                               ) : (
@@ -2116,15 +2196,35 @@ export default function PackingListWorkbenchModal({
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
             {/* Top Toolbar */}
             <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                {/* Floor Filter (if floors exist) */}
+                {plUniqueFloors.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                      Floor:
+                    </span>
+                    <select
+                      className="form-control"
+                      style={{ height: '30px', fontSize: '12px', fontWeight: 650, width: '130px', background: 'var(--bg-secondary)' }}
+                      value={plFilterFloor}
+                      onChange={e => setPlFilterFloor(e.target.value)}
+                    >
+                      <option value="ALL">All Floors</option>
+                      {plUniqueFloors.map(f => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 {/* Filter by Area */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                   <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <Filter size={12} style={{ color: 'var(--text-info)' }} /> Area:
                   </span>
                   <select
                     className="form-control"
-                    style={{ height: '30px', fontSize: '12px', fontWeight: 650, width: '200px', background: 'var(--bg-secondary)' }}
+                    style={{ height: '30px', fontSize: '12px', fontWeight: 650, width: '180px', background: 'var(--bg-secondary)' }}
                     value={plFilterArea}
                     onChange={e => setPlFilterArea(e.target.value)}
                   >
@@ -2136,11 +2236,11 @@ export default function PackingListWorkbenchModal({
                   <button
                     type="button"
                     className="btn btn-ghost btn-xs"
-                    style={{ border: '1px solid rgba(59, 130, 246, 0.4)', background: 'rgba(59, 130, 246, 0.08)', color: 'var(--text-info)', fontSize: '11.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 10px', height: '30px' }}
+                    style={{ border: '1px solid rgba(59, 130, 246, 0.4)', background: 'rgba(59, 130, 246, 0.08)', color: 'var(--text-info)', fontSize: '11.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 8px', height: '30px' }}
                     onClick={() => setShowAreaReorderModal(true)}
                     title="Control and arrange the walking sequence of areas and rooms"
                   >
-                    <ArrowUpDown size={13} /> Reorder Areas ({customAreaOrder.length || plUniqueAreas.length})
+                    <ArrowUpDown size={12} /> Sequence ({customAreaOrder.length || plUniqueAreas.length})
                   </button>
                 </div>
 
@@ -2148,24 +2248,33 @@ export default function PackingListWorkbenchModal({
                   <button
                     type="button"
                     className="btn btn-ghost btn-xs"
-                    style={{ border: '1px solid var(--border)', fontSize: '11px' }}
-                    onClick={handlePackAll}
+                    style={{ border: '1px solid var(--border)', fontSize: '11px', padding: '4px 8px' }}
+                    onClick={handlePackAllRemaining}
+                    title="Pack remaining balance for all visible lines"
                   >
-                    Pack All
+                    Pack All Remaining
                   </button>
                   <button
                     type="button"
                     className="btn btn-ghost btn-xs"
-                    style={{ border: '1px solid var(--border)', fontSize: '11px' }}
+                    style={{ border: '1px solid var(--border)', fontSize: '11px', padding: '4px 8px' }}
                     onClick={handleZeroAll}
+                    title="Zero out packed quantities for all lines"
                   >
                     Zero All
                   </button>
                 </div>
 
-                <span style={{ fontSize: '11.5px', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.25)', fontWeight: 650 }}>
-                  ✓ Auto-Organized: Attached items are proportionally nested per room
-                </span>
+                {/* Live Count Pill */}
+                {(() => {
+                  const packedUnits = visiblePlRows.reduce((sum, r) => sum + Number(r.qty_packed || 0), 0);
+                  const remUnits = visiblePlRows.reduce((sum, r) => sum + Number(r.remaining_to_pack || 0), 0);
+                  return (
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-info)', background: 'rgba(59, 130, 246, 0.09)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.25)', fontWeight: 650 }}>
+                      Selected: <strong>{packedUnits}</strong> of {remUnits} pcs remaining
+                    </span>
+                  );
+                })()}
               </div>
 
               {/* Print Pick Sheet Button */}
@@ -2182,31 +2291,52 @@ export default function PackingListWorkbenchModal({
               </div>
             </div>
 
-            {/* Room Pick Sheet Table (NO SPLIT BUTTON HERE) */}
+            {/* Room Pick Sheet Table */}
             <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-primary)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-primary)', boxShadow: '0 1px 0 var(--border)' }}>
                   <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 650 }}>
-                    <th style={{ padding: '9px 10px', minWidth: '115px' }}>One to One Code</th>
-                    <th style={{ padding: '9px 8px', width: '90px', textAlign: 'center' }}>Plan Code</th>
-                    <th style={{ padding: '9px 10px', minWidth: '115px' }}>Supplier / SKU</th>
-                    <th style={{ padding: '9px 10px', minWidth: '260px' }}>Description & Spec</th>
-                    <th style={{ padding: '9px 10px', minWidth: '130px' }}>Area / Room</th>
-                    <th style={{ padding: '9px 8px', width: '55px', textAlign: 'center' }}>Ord</th>
-                    <th style={{ padding: '9px 8px', width: '75px', textAlign: 'center' }}>Packed</th>
-                    <th style={{ padding: '9px 8px', width: '55px', textAlign: 'center' }}>B/O</th>
+                    <th style={{ padding: '9px 10px', width: '45px', textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={visiblePlRows.length > 0 && visiblePlRows.every(r => Number(r.qty_packed || 0) > 0)}
+                        ref={el => {
+                          if (el) {
+                            const some = visiblePlRows.some(r => Number(r.qty_packed || 0) > 0);
+                            const all = visiblePlRows.length > 0 && visiblePlRows.every(r => Number(r.qty_packed || 0) > 0);
+                            el.indeterminate = some && !all;
+                          }
+                        }}
+                        onChange={e => {
+                          if (e.target.checked) handlePackAllRemaining();
+                          else handleZeroAll();
+                        }}
+                        style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                        title="Toggle all items in view"
+                      />
+                    </th>
+                    <th style={{ padding: '9px 8px', width: '85px', textAlign: 'center' }}>Plan Code</th>
+                    <th style={{ padding: '9px 10px', minWidth: '110px' }}>One to One Code</th>
+                    <th style={{ padding: '9px 10px', minWidth: '110px' }}>Supplier / SKU</th>
+                    <th style={{ padding: '9px 10px', minWidth: '240px' }}>Description & Spec</th>
+                    <th style={{ padding: '9px 10px', minWidth: '120px' }}>Area / Room</th>
+                    <th style={{ padding: '9px 6px', width: '50px', textAlign: 'center' }} title="Quotation Total Order Quantity">Ord</th>
+                    <th style={{ padding: '9px 6px', width: '50px', textAlign: 'center' }} title="Quantity Already Packed in Other Packing Lists">Prev</th>
+                    <th style={{ padding: '9px 6px', width: '55px', textAlign: 'center' }} title="Remaining Quantity Unpacked in Order">Rem</th>
+                    <th style={{ padding: '9px 8px', width: '75px', textAlign: 'center' }} title="Quantity Packed in THIS Packing List">Packed</th>
+                    <th style={{ padding: '9px 6px', width: '50px', textAlign: 'center' }} title="Backorder Left After This Packing List">B/O</th>
                   </tr>
                 </thead>
                 <tbody>
                   {visiblePlRows.length === 0 ? (
                     <tr>
-                      <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                      <td colSpan={11} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
                         No items found for area "{plFilterArea}".
                       </td>
                     </tr>
                   ) : (
                     visiblePlRows.map((row, rowIdx) => {
-                      const backorder = Math.max(0, Number(row.qty_ordered || 0) - Number(row.qty_packed || 0));
+                      const backorder = Math.max(0, Number(row.remaining_to_pack || 0) - Number(row.qty_packed || 0));
                       const currentAreaName = (row.area || 'General / Unspecified').trim();
                       const prevRow = rowIdx > 0 ? visiblePlRows[rowIdx - 1] : null;
                       const prevAreaName = prevRow ? (prevRow.area || 'General / Unspecified').trim() : null;
@@ -2216,13 +2346,27 @@ export default function PackingListWorkbenchModal({
                       const displayRoomNum = areaIdx >= 0 ? areaIdx + 1 : (rowIdx + 1);
                       const totalAreas = customAreaOrder.length || plUniqueAreas.length;
 
+                      const roomRows = visiblePlRows.filter(r => (r.area || 'General / Unspecified').trim() === currentAreaName);
+                      const roomPackedCount = roomRows.reduce((sum, r) => sum + Number(r.qty_packed || 0), 0);
+                      const roomRemCount = roomRows.reduce((sum, r) => sum + Number(r.remaining_to_pack || 0), 0);
+                      const isRoomAllPacked = roomRows.length > 0 && roomRows.every(r => Number(r.qty_packed || 0) > 0);
+                      const isRoomPartiallyPacked = roomRows.some(r => Number(r.qty_packed || 0) > 0) && !isRoomAllPacked;
+
                       return (
                         <React.Fragment key={row.rowKey}>
                           {isNewArea && (
                             <tr style={{ background: 'var(--bg-secondary)', borderTop: '2px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
-                              <td colSpan={8} style={{ padding: '7px 12px' }}>
+                              <td colSpan={11} style={{ padding: '8px 12px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isRoomAllPacked}
+                                      ref={el => { if (el) el.indeterminate = isRoomPartiallyPacked; }}
+                                      onChange={() => handleToggleRoom(currentAreaName)}
+                                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                                      title={`Toggle all items in ${currentAreaName}`}
+                                    />
                                     <span style={{ fontSize: '10.5px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', background: 'var(--text-info)', color: '#fff', letterSpacing: '0.5px' }}>
                                       ROOM #{displayRoomNum}
                                     </span>
@@ -2230,29 +2374,47 @@ export default function PackingListWorkbenchModal({
                                       {currentAreaName}
                                     </span>
                                     <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                      ({visiblePlRows.filter(r => (r.area || 'General / Unspecified').trim() === currentAreaName).length} items)
+                                      ({roomRows.length} items • <strong style={{ color: 'var(--text-primary)' }}>{roomPackedCount} of {roomRemCount} pcs selected</strong>)
                                     </span>
                                   </div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <button
                                       type="button"
+                                      onClick={() => handlePackRoom(currentAreaName)}
+                                      className="btn btn-ghost btn-xs"
+                                      style={{ padding: '3px 8px', fontSize: '11px', border: '1px solid var(--border)', background: 'var(--bg-primary)' }}
+                                      title="Pack remaining balance for this room"
+                                    >
+                                      Pack Room ({roomRemCount})
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleZeroRoom(currentAreaName)}
+                                      className="btn btn-ghost btn-xs"
+                                      style={{ padding: '3px 8px', fontSize: '11px', border: '1px solid var(--border)', background: 'var(--bg-primary)' }}
+                                      title="Zero out this room"
+                                    >
+                                      Zero Room
+                                    </button>
+                                    <button
+                                      type="button"
                                       disabled={areaIdx <= 0}
                                       onClick={() => handleMoveArea(currentAreaName, 'up')}
                                       className="btn btn-ghost btn-xs"
-                                      style={{ padding: '2px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid var(--border)', opacity: areaIdx <= 0 ? 0.35 : 1, cursor: areaIdx <= 0 ? 'not-allowed' : 'pointer' }}
-                                      title="Move this room UP in the sequence"
+                                      style={{ padding: '3px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid var(--border)', opacity: areaIdx <= 0 ? 0.35 : 1, cursor: areaIdx <= 0 ? 'not-allowed' : 'pointer', background: 'var(--bg-primary)' }}
+                                      title="Move this room UP in the walking sequence"
                                     >
-                                      <ArrowUp size={12} /> Move Room Up
+                                      <ArrowUp size={12} />
                                     </button>
                                     <button
                                       type="button"
                                       disabled={areaIdx >= totalAreas - 1}
                                       onClick={() => handleMoveArea(currentAreaName, 'down')}
                                       className="btn btn-ghost btn-xs"
-                                      style={{ padding: '2px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid var(--border)', opacity: areaIdx >= totalAreas - 1 ? 0.35 : 1, cursor: areaIdx >= totalAreas - 1 ? 'not-allowed' : 'pointer' }}
-                                      title="Move this room DOWN in the sequence"
+                                      style={{ padding: '3px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid var(--border)', opacity: areaIdx >= totalAreas - 1 ? 0.35 : 1, cursor: areaIdx >= totalAreas - 1 ? 'not-allowed' : 'pointer', background: 'var(--bg-primary)' }}
+                                      title="Move this room DOWN in the walking sequence"
                                     >
-                                      <ArrowDown size={12} /> Move Room Down
+                                      <ArrowDown size={12} />
                                     </button>
                                   </div>
                                 </div>
@@ -2262,78 +2424,124 @@ export default function PackingListWorkbenchModal({
                           <tr
                             style={{
                               borderBottom: '1px solid var(--border)',
-                              background: row.is_accessory ? 'rgba(168, 85, 247, 0.04)' : 'transparent',
+                              background: row.is_accessory
+                                ? 'rgba(168, 85, 247, 0.04)'
+                                : Number(row.qty_packed || 0) > 0
+                                ? 'rgba(59, 130, 246, 0.02)'
+                                : 'transparent',
+                              opacity: row.remaining_to_pack <= 0 ? 0.55 : 1,
                             }}
                           >
-                          {/* One to One Code */}
-                          <td style={{ padding: '8px 10px', fontWeight: 700, fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-primary)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              {row.is_accessory && (
-                                <span style={{ color: '#a855f7', fontWeight: 800, fontSize: '13px' }}>↳</span>
+                            {/* Checkbox */}
+                            <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                              <input
+                                type="checkbox"
+                                checked={Number(row.qty_packed || 0) > 0}
+                                disabled={row.remaining_to_pack <= 0}
+                                onChange={e => {
+                                  const willPack = e.target.checked;
+                                  const targetVal = willPack ? (row.remaining_to_pack || row.qty_ordered || 0) : 0;
+                                  setPlRows(prev => prev.map(r => r.rowKey === row.rowKey ? { ...r, qty_packed: targetVal } : r));
+                                }}
+                                style={{ cursor: row.remaining_to_pack <= 0 ? 'not-allowed' : 'pointer', width: '15px', height: '15px' }}
+                              />
+                            </td>
+
+                            {/* Plan Code */}
+                            <td style={{ padding: '8px', textAlign: 'center' }}>
+                              {row.plan_code ? (
+                                <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, fontFamily: 'monospace', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                                  {row.plan_code}
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>—</span>
                               )}
-                              <span>{row.one_one_code || '—'}</span>
-                            </div>
-                          </td>
+                            </td>
 
-                          {/* Plan Code */}
-                          <td style={{ padding: '8px', textAlign: 'center' }}>
-                            {row.plan_code ? (
-                              <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, fontFamily: 'monospace', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                                {row.plan_code}
-                              </span>
-                            ) : (
-                              <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>—</span>
-                            )}
-                          </td>
+                            {/* One to One Code */}
+                            <td style={{ padding: '8px 10px', fontWeight: 700, fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-primary)' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {row.is_accessory && (
+                                  <span style={{ color: '#a855f7', fontWeight: 800, fontSize: '13px' }}>↳</span>
+                                )}
+                                <span>{row.one_one_code || '—'}</span>
+                              </div>
+                            </td>
 
-                          {/* Supplier / SKU */}
-                          <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                            {row.supplier_code || '—'}
-                          </td>
+                            {/* Supplier SKU */}
+                            <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                              {row.supplier_code || '—'}
+                            </td>
 
-                          {/* Description */}
-                          <td style={{ padding: '8px 10px' }}>
-                            <div style={{ fontWeight: row.is_accessory ? 500 : 650, color: row.is_accessory ? '#a855f7' : 'var(--text-primary)' }}>
-                              {row.description}
-                            </div>
-                            {row.is_accessory && row.parent_fitting_code && (
-                              <span style={{ fontSize: '10.5px', color: '#a855f7', opacity: 0.85 }}>
-                                ↳ Attached to {row.parent_fitting_code}
-                              </span>
-                            )}
-                          </td>
+                            {/* Description */}
+                            <td style={{ padding: '8px 10px' }}>
+                              <div style={{ fontWeight: row.is_accessory ? 500 : 650, color: row.is_accessory ? '#a855f7' : 'var(--text-primary)' }}>
+                                {row.description}
+                              </div>
+                              {row.is_accessory && row.parent_fitting_code && (
+                                <span style={{ fontSize: '10.5px', color: '#a855f7', opacity: 0.85 }}>
+                                  ↳ Attached to {row.parent_fitting_code}
+                                </span>
+                              )}
+                            </td>
 
-                          {/* Area / Room */}
-                          <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {row.area || 'General / Unspecified'}
-                          </td>
+                            {/* Area / Room */}
+                            <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                              <div>{row.area || 'General / Unspecified'}</div>
+                              {row.floor && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Floor: {row.floor}</div>}
+                            </td>
 
-                          {/* Ord */}
-                          <td style={{ padding: '8px', textAlign: 'center', fontWeight: 650, color: 'var(--text-secondary)' }}>
-                            {row.qty_ordered || 0}
-                          </td>
+                            {/* Ord (Quotation Total) */}
+                            <td style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                              {row.qty_ordered || 0}
+                            </td>
 
-                          {/* Packed Input */}
-                          <td style={{ padding: '8px', textAlign: 'center' }}>
-                            <input
-                              type="number"
-                              min={0}
-                              max={Number(row.qty_ordered || 999)}
-                              className="form-control"
-                              style={{ width: '65px', height: '28px', padding: '2px 4px', fontSize: '12px', fontWeight: 800, textAlign: 'center', borderColor: Number(row.qty_packed || 0) > 0 ? 'var(--text-info)' : 'var(--border)' }}
-                              value={row.qty_packed ?? 0}
-                              onChange={e => {
-                                const val = Math.max(0, parseInt(e.target.value, 10) || 0);
-                                setPlRows(prev => prev.map(r => (r.rowKey === row.rowKey ? { ...r, qty_packed: val } : r)));
-                              }}
-                            />
-                          </td>
+                            {/* Prev (Already Packed in other PLs) */}
+                            <td style={{ padding: '8px 6px', textAlign: 'center', fontSize: '11px', color: Number(row.qty_already_packed || 0) > 0 ? 'var(--text-info)' : 'var(--text-tertiary)' }}>
+                              {row.qty_already_packed || 0}
+                            </td>
 
-                          {/* Backorder */}
-                          <td style={{ padding: '8px', textAlign: 'center', fontSize: '11.5px', fontWeight: backorder > 0 ? 800 : 400, color: backorder > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
-                            {backorder}
-                          </td>
-                        </tr>
+                            {/* Rem (Remaining Unfulfilled Balance) */}
+                            <td style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 700, fontSize: '12px', color: row.remaining_to_pack > 0 ? 'var(--text-primary)' : 'var(--text-success)' }}>
+                              {row.remaining_to_pack !== undefined ? row.remaining_to_pack : row.qty_ordered}
+                            </td>
+
+                            {/* Packed Input */}
+                            <td style={{ padding: '8px', textAlign: 'center' }}>
+                              {row.remaining_to_pack <= 0 ? (
+                                <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-success)', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                                  ✓ Done
+                                </span>
+                              ) : (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={Number(row.remaining_to_pack || 999)}
+                                  className="form-control"
+                                  style={{
+                                    width: '65px',
+                                    height: '28px',
+                                    padding: '2px 4px',
+                                    fontSize: '12px',
+                                    fontWeight: 800,
+                                    textAlign: 'center',
+                                    borderColor: Number(row.qty_packed || 0) > 0 ? 'var(--text-info)' : 'var(--border)',
+                                    background: Number(row.qty_packed || 0) > 0 ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-secondary)',
+                                  }}
+                                  value={row.qty_packed ?? 0}
+                                  onChange={e => {
+                                    const val = Math.max(0, Math.min(row.remaining_to_pack || 999, parseInt(e.target.value, 10) || 0));
+                                    setPlRows(prev => prev.map(r => (r.rowKey === row.rowKey ? { ...r, qty_packed: val } : r)));
+                                  }}
+                                />
+                              )}
+                            </td>
+
+                            {/* Backorder: remaining_to_pack - qty_packed */}
+                            <td style={{ padding: '8px 6px', textAlign: 'center', fontSize: '11.5px', fontWeight: backorder > 0 ? 800 : 400, color: backorder > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
+                              {backorder}
+                            </td>
+                          </tr>
                         </React.Fragment>
                       );
                     })
