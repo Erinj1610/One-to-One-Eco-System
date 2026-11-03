@@ -912,6 +912,42 @@ def update_packing_list(pl_ref: str, payload: PackingListUpdateInput, db: Sessio
             )
             db.add(pl_item)
 
+        if pl_rec.delivery_note_id:
+            dn_rec = db.query(LogisticsDeliveryNote).filter(LogisticsDeliveryNote.id == pl_rec.delivery_note_id).first()
+            if dn_rec and (dn_rec.status or "").lower() not in ("cancelled", "voided"):
+                db.query(LogisticsDeliveryNoteItem).filter(
+                    LogisticsDeliveryNoteItem.delivery_note_id == dn_rec.id,
+                    LogisticsDeliveryNoteItem.packing_list_id == pl_rec.id
+                ).delete()
+                db.flush()
+                for it in active_items:
+                    dn_item = LogisticsDeliveryNoteItem(
+                        delivery_note_id=dn_rec.id,
+                        packing_list_id=pl_rec.id,
+                        packing_list_number=pl_rec.document_number,
+                        order_item_id=str(it.order_item_id) if it.order_item_id is not None else None,
+                        parent_item_id=str(it.parent_item_id) if it.parent_item_id is not None else None,
+                        parent_fitting_code=it.parent_fitting_code,
+                        one_one_code=it.one_one_code or it.supplier_code or "",
+                        plan_code=it.plan_code or "",
+                        supplier_code=it.supplier_code or it.one_one_code or "",
+                        description=it.description or "",
+                        floor=it.floor or "",
+                        area=it.area or "",
+                        material_colour=it.material_colour or "",
+                        first_fix=it.first_fix or "No",
+                        red_list=it.red_list or "No",
+                        box_number=str(it.box_number or "Box 1").strip(),
+                        qty_ordered=int(it.qty_ordered or 0),
+                        qty_delivered=int(it.qty_packed or 0),
+                        qty_remaining=max(0, int(it.qty_ordered or 0) - int(it.qty_packed or 0)),
+                        is_accessory=bool(it.is_accessory or it.parent_item_id),
+                    )
+                    db.add(dn_item)
+                db.flush()
+                all_dn_items = db.query(LogisticsDeliveryNoteItem).filter(LogisticsDeliveryNoteItem.delivery_note_id == dn_rec.id).all()
+                dn_rec.total_items = sum(int(dit.qty_delivered or 0) for dit in all_dn_items)
+
     db.flush()
     order_obj = db.query(Order).filter(Order.id == pl_rec.order_id).first()
     if order_obj:

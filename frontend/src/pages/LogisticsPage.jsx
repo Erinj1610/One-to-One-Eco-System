@@ -33,6 +33,15 @@ export default function LogisticsPage() {
   const [filterPm, setFilterPm] = useState('All');
   const [collapsedProjects, setCollapsedProjects] = useState({});
 
+  // Table Sorting state (default: Date descending)
+  const [sortField, setSortField] = useState('date');
+  const [sortOrder, setSortOrder] = useState('desc'); // 'asc' | 'desc'
+
+  // Safe Deletion & Void Modal state
+  const [deleteModalDoc, setDeleteModalDoc] = useState(null);
+  const [deleteVoidReason, setDeleteVoidReason] = useState('Dispatch cancelled / reversed');
+  const [isDeletingDoc, setIsDeletingDoc] = useState(false);
+
   // Modal display states
   const [showPlWorkbench, setShowPlWorkbench] = useState(false);
   const [workbenchInitialDoc, setWorkbenchInitialDoc] = useState(null);
@@ -295,6 +304,128 @@ export default function LogisticsPage() {
       });
     });
   }, [allDocs, activeFilterTab, filterPm, debouncedSearch]);
+
+  // Sorted documents for ledger
+  const sortedDocs = useMemo(() => {
+    const list = [...filteredDocs];
+    list.sort((a, b) => {
+      let comp = 0;
+      if (sortField === 'id') {
+        comp = (a.id || '').localeCompare(b.id || '', undefined, { numeric: true });
+      } else if (sortField === 'type') {
+        comp = (a.type || '').localeCompare(b.type || '');
+      } else if (sortField === 'project') {
+        const pA = `${a.projectName || ''} ${a.orderId || ''}`;
+        const pB = `${b.projectName || ''} ${b.orderId || ''}`;
+        comp = pA.localeCompare(pB);
+      } else if (sortField === 'client') {
+        comp = (a.projectClient || '').localeCompare(b.projectClient || '');
+      } else if (sortField === 'date') {
+        comp = (a.date || '').localeCompare(b.date || '');
+      } else if (sortField === 'units') {
+        const aQty = (a.items || []).reduce((s, i) => s + (Number(i.qtyDelivered) || 0), 0);
+        const bQty = (b.items || []).reduce((s, i) => s + (Number(i.qtyDelivered) || 0), 0);
+        comp = aQty - bQty;
+      } else if (sortField === 'status') {
+        const aSt = a.deliveryNoteId ? 'Dispatched' : (a.status || '');
+        const bSt = b.deliveryNoteId ? 'Dispatched' : (b.status || '');
+        comp = aSt.localeCompare(bSt);
+      }
+      return sortOrder === 'asc' ? comp : -comp;
+    });
+    return list;
+  }, [filteredDocs, sortField, sortOrder]);
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortOrder(field === 'date' || field === 'units' ? 'desc' : 'asc');
+    }
+  };
+
+  const openDeleteModal = (doc) => {
+    if (!doc) return;
+    setDeleteModalDoc(doc);
+    setDeleteVoidReason('Dispatch cancelled / reversed');
+  };
+
+  const closeDeleteModal = () => {
+    if (isDeletingDoc) return;
+    setDeleteModalDoc(null);
+  };
+
+  const handleConfirmDeleteOrVoid = async () => {
+    if (!deleteModalDoc) return;
+    setIsDeletingDoc(true);
+    try {
+      if (deleteModalDoc.type === 'packing_list') {
+        const res = await fetch(`${API_BASE}/api/logistics/packing-list/${encodeURIComponent(deleteModalDoc.id)}`, {
+          method: 'DELETE',
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'Delete failed');
+        }
+      } else {
+        const res = await fetch(`${API_BASE}/api/logistics/delivery-note/${encodeURIComponent(deleteModalDoc.id)}/void`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ void_reason: deleteVoidReason || 'Dispatch cancelled / reversed' }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || 'Void failed');
+        }
+      }
+      if (selectedDocId === deleteModalDoc.id) {
+        setSelectedDocId(null);
+        setSelectedProjectKey(null);
+      }
+      await refreshProjects();
+      setDeleteModalDoc(null);
+    } catch (err) {
+      alert(err.message || 'Operation failed');
+    } finally {
+      setIsDeletingDoc(false);
+    }
+  };
+
+  const renderSortHeader = (label, field, align = 'left', customStyle = {}) => {
+    const isActive = sortField === field;
+    return (
+      <th
+        onClick={() => handleSort(field)}
+        style={{
+          padding: '10px 14px',
+          textAlign: align,
+          cursor: 'pointer',
+          userSelect: 'none',
+          whiteSpace: 'nowrap',
+          color: isActive ? 'var(--text-info)' : 'var(--text-secondary)',
+          fontWeight: isActive ? 700 : 600,
+          background: isActive ? 'rgba(59, 130, 246, 0.05)' : 'transparent',
+          transition: 'all 0.15s ease',
+          ...customStyle,
+        }}
+        title={`Sort by ${label}`}
+      >
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}>
+          <span>{label}</span>
+          {isActive ? (
+            sortOrder === 'asc' ? (
+              <ArrowUp size={12} style={{ color: 'var(--text-info)' }} />
+            ) : (
+              <ArrowDown size={12} style={{ color: 'var(--text-info)' }} />
+            )
+          ) : (
+            <ArrowUpDown size={11} style={{ opacity: 0.35 }} />
+          )}
+        </div>
+      </th>
+    );
+  };
 
   const activeDoc = useMemo(() => {
     return allDocs.find(d => d.id === selectedDocId) || null;
@@ -853,14 +984,14 @@ export default function LogisticsPage() {
         <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
           <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <FileText size={15} style={{ color: 'var(--text-info)' }} />
-            Logistics Documents Ledger ({filteredDocs.length})
+            Logistics Documents Ledger ({sortedDocs.length})
           </span>
           <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-            Click any document to inspect, print thermal labels, upload signed POD, or download PDF
+            Click any column header to sort. Click a document to inspect or print.
           </span>
         </div>
 
-        {filteredDocs.length === 0 ? (
+        {sortedDocs.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-tertiary)', fontSize: '13px' }}>
             <Package size={36} style={{ margin: '0 auto 12px auto', opacity: 0.4 }} />
             <div>No issued packing lists or delivery notes found.</div>
@@ -871,22 +1002,25 @@ export default function LogisticsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
               <thead>
                 <tr style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
-                  <th style={{ padding: '10px 14px' }}>Document ID</th>
-                  <th style={{ padding: '10px 14px' }}>Type</th>
-                  <th style={{ padding: '10px 14px' }}>Project & Order</th>
-                  <th style={{ padding: '10px 14px' }}>Client / Method</th>
-                  <th style={{ padding: '10px 14px' }}>Date</th>
-                  <th style={{ padding: '10px 14px' }}>Items & Units</th>
-                  <th style={{ padding: '10px 14px' }}>Status & POD</th>
-                  <th style={{ padding: '10px 14px', textAlign: 'right' }}>Actions</th>
+                  {renderSortHeader('Document ID', 'id', 'left', { width: '190px' })}
+                  {renderSortHeader('Type', 'type', 'left', { width: '130px' })}
+                  {renderSortHeader('Project & Order', 'project', 'left', { minWidth: '190px' })}
+                  {renderSortHeader('Client / Method', 'client', 'left', { minWidth: '170px' })}
+                  {renderSortHeader('Date', 'date', 'left', { width: '110px' })}
+                  {renderSortHeader('Items & Units', 'units', 'left', { width: '130px' })}
+                  {renderSortHeader('Status & POD', 'status', 'left', { minWidth: '170px' })}
+                  <th style={{ padding: '10px 14px', textAlign: 'right', width: '140px', whiteSpace: 'nowrap' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredDocs.map(doc => {
+                {sortedDocs.map(doc => {
                   const isSelected = doc.id === selectedDocId;
                   const isPL = doc.type === 'packing_list';
                   const isVoided = (doc.status || '').toLowerCase() === 'cancelled';
                   const totalQty = (doc.items || []).reduce((s, i) => s + (Number(i.qtyDelivered) || 0), 0);
+                  const cleanOrderId = doc.orderObj?.poNumber
+                    ? `PO #${doc.orderObj.poNumber}`
+                    : (doc.orderId || '').replace(/^updated---/, '').replace(/---/g, ' - ');
 
                   return (
                     <tr
@@ -903,67 +1037,142 @@ export default function LogisticsPage() {
                         opacity: isVoided ? 0.55 : 1,
                       }}
                     >
-                      <td style={{ padding: '10px 14px', fontWeight: 800, fontFamily: 'monospace', color: isVoided ? 'var(--text-tertiary)' : 'var(--text-info)', textDecoration: isVoided ? 'line-through' : 'none' }}>
-                        {doc.id}
+                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                        <div
+                          style={{
+                            fontFamily: 'monospace',
+                            fontWeight: 700,
+                            fontSize: '11.5px',
+                            color: isVoided ? 'var(--text-tertiary)' : 'var(--text-info)',
+                            textDecoration: isVoided ? 'line-through' : 'none',
+                            maxWidth: '180px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                          title={doc.id}
+                        >
+                          {doc.id}
+                        </div>
                       </td>
-                      <td style={{ padding: '10px 14px' }}>
+                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                         <span style={{
-                          fontSize: '10px',
+                          fontSize: '10.5px',
                           fontWeight: 700,
-                          padding: '2px 8px',
+                          padding: '3px 8px',
                           borderRadius: '4px',
-                          textTransform: 'uppercase',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
                           background: isPL ? 'rgba(59, 130, 246, 0.12)' : 'rgba(34, 197, 94, 0.12)',
                           color: isPL ? 'var(--text-info)' : 'var(--text-success)',
+                          border: isPL ? '1px solid rgba(59, 130, 246, 0.25)' : '1px solid rgba(34, 197, 94, 0.25)',
                         }}>
                           {isPL ? '📦 Packing List' : `🚚 DN (${doc.delivery_type || 'Full'})`}
                         </span>
                       </td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{doc.projectName}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{doc.orderId}</div>
+                      <td style={{ padding: '10px 14px', maxWidth: '210px' }}>
+                        <div
+                          style={{
+                            fontWeight: 600,
+                            color: 'var(--text-primary)',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                          title={doc.projectName}
+                        >
+                          {doc.projectName}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '11px',
+                            color: 'var(--text-secondary)',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                          title={doc.orderObj?.poNumber ? `PO #${doc.orderObj.poNumber}` : doc.orderId}
+                        >
+                          {cleanOrderId}
+                        </div>
                       </td>
-                      <td style={{ padding: '10px 14px', color: 'var(--text-secondary)' }}>
-                        <div>{doc.projectClient || '—'}</div>
+                      <td style={{ padding: '10px 14px', maxWidth: '180px' }}>
+                        <div
+                          style={{
+                            color: 'var(--text-secondary)',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                          title={doc.projectClient || '—'}
+                        >
+                          {doc.projectClient || '—'}
+                        </div>
                         {!isPL && doc.dispatch_method && (
-                          <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>
+                          <div
+                            style={{
+                              fontSize: '10.5px',
+                              color: 'var(--text-tertiary)',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                            title={`${doc.dispatch_method} ${doc.carrier_driver ? `• ${doc.carrier_driver}` : ''}`}
+                          >
                             {doc.dispatch_method} {doc.carrier_driver ? `• ${doc.carrier_driver}` : ''}
                           </div>
                         )}
                       </td>
-                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>
+                      <td style={{ padding: '10px 14px', fontFamily: 'monospace', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                         {doc.date}
                       </td>
-                      <td style={{ padding: '10px 14px' }}>
+                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                         <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{doc.items?.length || 0} lines</span>
                         <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '4px' }}>({totalQty} pcs)</span>
                       </td>
-                      <td style={{ padding: '10px 14px' }}>
+                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                         {isVoided ? (
-                          <span style={{ color: 'var(--text-danger)', fontWeight: 700, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ color: 'var(--text-danger)', fontWeight: 700, fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                             <Ban size={12} /> Cancelled / Voided
                           </span>
                         ) : isPL ? (
                           doc.deliveryNoteId ? (
-                            <span style={{ color: 'var(--text-success)', fontWeight: 700, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <CheckCircle2 size={12} /> Dispatched ({doc.deliveryNoteId})
-                            </span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                              <span style={{ color: 'var(--text-success)', fontWeight: 700, fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <CheckCircle2 size={12} /> Dispatched
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '10px',
+                                  color: 'var(--text-tertiary)',
+                                  fontFamily: 'monospace',
+                                  maxWidth: '140px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title={`Linked DN: ${doc.deliveryNoteId}`}
+                              >
+                                DN: {doc.deliveryNoteId.replace(/^DEL-/, '')}
+                              </span>
+                            </div>
                           ) : doc.status === 'Boxed' || doc.status === 'Boxed & Packed' ? (
-                            <span style={{ color: '#10b981', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ color: '#10b981', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                               <Package size={12} /> Stage 3: Boxed
                             </span>
                           ) : doc.status === 'Labels Printed' || doc.status === 'Labeled' ? (
-                            <span style={{ color: 'var(--text-info)', background: 'rgba(59, 130, 246, 0.12)', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ color: 'var(--text-info)', background: 'rgba(59, 130, 246, 0.12)', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                               <Tag size={12} /> Stage 2: Labeled
                             </span>
                           ) : (
-                            <span style={{ color: '#f59e0b', background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ color: '#f59e0b', background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                               <ClipboardList size={12} /> Stage 1: Pick Sheet
                             </span>
                           )
                         ) : (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ color: 'var(--text-success)', fontWeight: 600, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ color: 'var(--text-success)', fontWeight: 600, fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                               <Truck size={12} /> {doc.status || 'Dispatched'}
                             </span>
                             {doc.pod_received && (
@@ -974,65 +1183,32 @@ export default function LogisticsPage() {
                           </div>
                         )}
                       </td>
-                      <td style={{ padding: '10px 14px', textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                          {/* Stage Quick Advance */}
-                          {isPL && !doc.deliveryNoteId && !isVoided && (
-                            doc.status === 'Boxed' || doc.status === 'Boxed & Packed' ? (
-                              <button
-                                className="btn btn-ghost btn-xs"
-                                title="Stage 3 Complete: Boxed & Packed"
-                                style={{ color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.4)', fontSize: '10.5px', padding: '2px 6px', fontWeight: 700 }}
-                                onClick={() => handleUpdatePlStage(doc, 'Pick Sheet Ready')}
-                              >
-                                ? Boxed
-                              </button>
-                            ) : doc.status === 'Labels Printed' || doc.status === 'Labeled' ? (
-                              <button
-                                className="btn btn-ghost btn-xs"
-                                title="Click to Advance to Stage 3: Boxed"
-                                style={{ color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.4)', fontSize: '10.5px', padding: '2px 6px', fontWeight: 700 }}
-                                onClick={() => handleUpdatePlStage(doc, 'Boxed')}
-                              >
-                                ? Mark Boxed
-                              </button>
-                            ) : (
-                              <button
-                                className="btn btn-ghost btn-xs"
-                                title="Click to Advance to Stage 2: Labels Printed"
-                                style={{ color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.4)', fontSize: '10.5px', padding: '2px 6px', fontWeight: 700 }}
-                                onClick={() => {
-                                  handleOpenLabelPrinter(doc);
-                                  handleUpdatePlStage(doc, 'Labels Printed');
-                                }}
-                              >
-                                ? Print Labels
-                              </button>
-                            )
-                          )}
-                          <button
-                            className="btn btn-ghost btn-xs"
-                            title="Print Thermal Labels (Argox O4-250)"
-                            style={{ color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)' }}
-                            onClick={() => handleOpenLabelPrinter(doc)}
-                          >
-                            <Tag size={13} />
-                          </button>
-                          {isPL && !doc.deliveryNoteId && !isVoided && (
+                      <td style={{ padding: '10px 14px', textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                        <div style={{ display: 'inline-flex', gap: '5px', alignItems: 'center', justifyContent: 'flex-end' }}>
+                          {/* Edit Packing List - always accessible for any active PL */}
+                          {isPL && !isVoided && (
                             <button
                               className="btn btn-ghost btn-xs"
-                              title="Edit Packing List"
-                              style={{ color: 'var(--text-primary)' }}
+                              title="Edit Packing List (Workbench)"
+                              style={{ color: 'var(--text-primary)', border: '1px solid var(--border)', padding: '3px 7px' }}
                               onClick={() => handleOpenPlModal('', doc)}
                             >
                               <Edit3 size={13} />
                             </button>
                           )}
+                          <button
+                            className="btn btn-ghost btn-xs"
+                            title="Print Thermal Labels (Argox O4-250)"
+                            style={{ color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '3px 7px' }}
+                            onClick={() => handleOpenLabelPrinter(doc)}
+                          >
+                            <Tag size={13} />
+                          </button>
                           {!isPL && !isVoided && (
                             <button
                               className="btn btn-ghost btn-xs"
                               title="Upload / View Signed Proof of Delivery (POD)"
-                              style={{ color: doc.pod_received ? '#10b981' : 'var(--text-warning)' }}
+                              style={{ color: doc.pod_received ? '#10b981' : 'var(--text-warning)', border: '1px solid var(--border)', padding: '3px 7px' }}
                               onClick={() => handleOpenPodModal(doc)}
                             >
                               <FileCheck size={13} />
@@ -1040,8 +1216,8 @@ export default function LogisticsPage() {
                           )}
                           <button
                             className="btn btn-ghost btn-xs"
-                            title="Inspect & Print PDF"
-                            style={{ color: 'var(--text-info)' }}
+                            title="Inspect & Print PDF Document"
+                            style={{ color: 'var(--text-info)', border: '1px solid var(--border)', padding: '3px 7px' }}
                             onClick={() => {
                               setSelectedDocId(doc.id);
                               setSelectedProjectKey(doc.projectKey);
@@ -1052,9 +1228,9 @@ export default function LogisticsPage() {
                           {!isVoided && (
                             <button
                               className="btn btn-ghost btn-xs"
-                              title={isPL ? 'Delete Packing List' : 'Void / Cancel Delivery Note & Reverse Quantities'}
-                              style={{ color: 'var(--text-danger)' }}
-                              onClick={() => handleVoidOrDeleteDoc(doc)}
+                              title={isPL ? 'Delete Packing List' : 'Void / Cancel Delivery Note'}
+                              style={{ color: 'var(--text-danger)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '3px 7px' }}
+                              onClick={() => openDeleteModal(doc)}
                             >
                               {isPL ? <Trash2 size={13} /> : <Ban size={13} />}
                             </button>
@@ -1186,6 +1362,20 @@ export default function LogisticsPage() {
                     <Upload size={14} /> {activeDoc.pod_received ? 'View / Replace Signed POD' : 'Upload Signed POD'}
                   </button>
                 )}
+                {activeDoc.type === 'packing_list' && activeDoc.status !== 'Cancelled' && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    onClick={() => {
+                      const docToEdit = activeDoc;
+                      setSelectedDocId(null);
+                      setSelectedProjectKey(null);
+                      handleOpenPlModal('', docToEdit);
+                    }}
+                  >
+                    <Edit3 size={14} /> Edit Packing List
+                  </button>
+                )}
                 <button
                   className="btn btn-primary btn-sm"
                   style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600 }}
@@ -1197,7 +1387,7 @@ export default function LogisticsPage() {
                   <button
                     className="btn btn-ghost btn-sm"
                     style={{ color: 'var(--text-danger)', border: '1px solid var(--border)', fontSize: '12px' }}
-                    onClick={() => handleVoidOrDeleteDoc(activeDoc)}
+                    onClick={() => openDeleteModal(activeDoc)}
                   >
                     {activeDoc.type === 'packing_list' ? <><Trash2 size={13} /> Delete</> : <><Ban size={13} /> Void / Cancel DN</>}
                   </button>
@@ -2019,6 +2209,151 @@ export default function LogisticsPage() {
           templates={labelTemplates}
           onOpenTemplateManager={() => setShowLabelTemplateModal(true)}
         />
+      )}
+
+      {/* ─── SAFE DELETION & VOID CONFIRMATION MODAL ────────────────────────── */}
+      {deleteModalDoc && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1300,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+          onClick={closeDeleteModal}
+        >
+          <div
+            style={{
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--border)',
+              borderRadius: '12px',
+              width: '100%',
+              maxWidth: '480px',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+              overflow: 'hidden',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {deleteModalDoc.type === 'packing_list' && deleteModalDoc.deliveryNoteId && deleteModalDoc.status !== 'Pending Dispatch' ? (
+                <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b', flexShrink: 0 }}>
+                  <AlertCircle size={20} />
+                </div>
+              ) : (
+                <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-danger)', flexShrink: 0 }}>
+                  {deleteModalDoc.type === 'packing_list' ? <Trash2 size={20} /> : <Ban size={20} />}
+                </div>
+              )}
+              <div>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {deleteModalDoc.type === 'packing_list'
+                    ? (deleteModalDoc.deliveryNoteId && deleteModalDoc.status !== 'Pending Dispatch' ? 'Cannot Delete Dispatched Packing List' : 'Delete Packing List')
+                    : 'Void & Cancel Delivery Note'}
+                </h3>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                  {deleteModalDoc.id}
+                </span>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '20px' }}>
+              {deleteModalDoc.type === 'packing_list' && deleteModalDoc.deliveryNoteId && deleteModalDoc.status !== 'Pending Dispatch' ? (
+                <div>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 12px 0', lineHeight: 1.5 }}>
+                    This Packing List is linked to official Delivery Note <strong style={{ color: 'var(--text-primary)' }}>{deleteModalDoc.deliveryNoteId}</strong>.
+                  </p>
+                  <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    To preserve inventory integrity and avoid stock discrepancies, please <strong style={{ color: 'var(--text-danger)' }}>Void or Cancel the Delivery Note</strong> first. Once voided, this packing list returns to Pending Dispatch and can then be edited or removed.
+                  </div>
+                </div>
+              ) : deleteModalDoc.type === 'packing_list' ? (
+                <div>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 14px 0', lineHeight: 1.5 }}>
+                    Are you sure you want to permanently delete this Packing List?
+                  </p>
+                  <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', marginBottom: '14px', fontSize: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Project:</span>
+                      <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{deleteModalDoc.projectName}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Order / PO:</span>
+                      <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{deleteModalDoc.orderId}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Total Units:</span>
+                      <span style={{ fontWeight: 600, color: 'var(--text-info)' }}>
+                        {deleteModalDoc.items?.length || 0} lines ({(deleteModalDoc.items || []).reduce((s, i) => s + (Number(i.qtyDelivered) || 0), 0)} pcs)
+                      </span>
+                    </div>
+                  </div>
+                  <p style={{ fontSize: '11.5px', color: 'var(--text-tertiary)', margin: 0 }}>
+                    ⚠️ All packed items in this document will immediately be restored to unallocated order stock.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 12px 0', lineHeight: 1.5 }}>
+                    Voiding Delivery Note <strong style={{ color: 'var(--text-primary)' }}>{deleteModalDoc.id}</strong> will reverse all delivered quantities on the order and release linked packing lists back to Pending Dispatch.
+                  </p>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                    Reason for Cancellation / Void:
+                  </label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    style={{ width: '100%', height: '36px', fontSize: '12.5px' }}
+                    value={deleteVoidReason}
+                    onChange={e => setDeleteVoidReason(e.target.value)}
+                    placeholder="e.g. Dispatched by mistake, customer reschedule, damaged in transit"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              {deleteModalDoc.type === 'packing_list' && deleteModalDoc.deliveryNoteId && deleteModalDoc.status !== 'Pending Dispatch' ? (
+                <>
+                  <button className="btn btn-ghost btn-sm" onClick={closeDeleteModal}>
+                    Close
+                  </button>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      const dnId = deleteModalDoc.deliveryNoteId;
+                      closeDeleteModal();
+                      setSelectedDocId(dnId);
+                    }}
+                  >
+                    View Delivery Note
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="btn btn-ghost btn-sm" onClick={closeDeleteModal} disabled={isDeletingDoc}>
+                    Cancel
+                  </button>
+                  <button
+                    className="btn btn-sm"
+                    style={{ background: 'var(--text-danger)', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
+                    onClick={handleConfirmDeleteOrVoid}
+                    disabled={isDeletingDoc}
+                  >
+                    {isDeletingDoc ? 'Processing...' : (deleteModalDoc.type === 'packing_list' ? 'Delete Permanently' : 'Confirm Void & Reverse')}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
