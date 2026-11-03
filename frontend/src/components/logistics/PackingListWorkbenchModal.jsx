@@ -96,27 +96,38 @@ export default function PackingListWorkbenchModal({
     }).slice(0, 50);
   }, [allOrders, plOrderSearchQuery]);
 
-  // Helper: clean description by stripping room quantity suffixes like " — 5 units", " - 1 units"
+  // Helper: clean description by stripping room quantity suffixes like " — 5 units - HL", " - 1 units", " (4 units)"
   const cleanDescription = (desc) => {
     if (!desc) return '';
-    return desc
-      .replace(/\s*[\u2010-\u2015\u2212\-]\s*\d+\s*(?:units?|pcs?|m?|fixtures?|items?)\s*$/i, '')
-      .replace(/\s*\(\s*\d+\s*(?:units?|pcs?|m?|fixtures?|items?)\s*\)\s*$/i, '')
-      .trim();
+    let d = desc;
+    // Strip trailing suffixes like " — 4 units - HL", " - 2 pcs", etc.
+    d = d.replace(/\s*[\u2010-\u2015\u2212\-]+\s*\d+\s*(?:units?|pcs?|m?|fixtures?|items?)(?:\s*[\u2010-\u2015\u2212\-].*)?$/i, '');
+    // Strip parenthetical/bracketed quantities like "(4 units)", "[4 units - HL]"
+    d = d.replace(/\s*[\(\[]\s*\d+\s*(?:units?|pcs?|m?|fixtures?|items?)(?:[^\)\]]*)?[\)\]]\s*$/i, '');
+    return d.trim();
   };
 
-  // Helper: generate unique model key based on (plan_code, clean_desc, supplier_code, one_one_code)
+  // Helper: generate unique model key based on (plan_code, supplier_code, one_one_code, clean_desc)
   const getModelKey = (item) => {
     const plan = (item.plan_code || '').trim().toUpperCase();
-    const desc = cleanDescription(item.description || item.name || '').toUpperCase();
     const sup = (item.supplier_code || '').trim().toUpperCase();
     const oto = (item.one_one_code || '').trim().toUpperCase();
+    const desc = cleanDescription(item.description || item.name || '').toUpperCase();
 
-    // If item has a Plan Code and Description, group by Plan + Clean Description
-    if (plan && desc) {
-      return `${plan}:::${desc}`;
+    // 1. If item has Plan Code + (Supplier SKU or 1:1 Code), that defines the exact unique product model
+    if (plan && (sup || oto)) {
+      return `${plan}:::${sup || oto}`;
     }
-    return `${plan}:::${sup}:::${oto}:::${desc}`;
+    // 2. If item has Plan Code, group by Plan + Clean Base Description
+    if (plan) {
+      return `${plan}:::${desc || 'FIXTURE'}`;
+    }
+    // 3. If no Plan Code, group by SKU/1:1 Code + Clean Description
+    if (sup || oto) {
+      return `NO_PLAN:::${sup || oto}:::${desc}`;
+    }
+    // 4. Fallback for generic lines
+    return `NO_PLAN:::GENERIC:::${desc || 'ITEM'}`;
   };
 
   // ─── BUILD CONSOLIDATED SUMMARY MODELS FROM RAW ITEMS ─────────────────────
@@ -139,6 +150,7 @@ export default function PackingListWorkbenchModal({
       }
       if (!map[key].one_one_code && it.one_one_code) map[key].one_one_code = it.one_one_code.trim();
       if (!map[key].supplier_code && it.supplier_code) map[key].supplier_code = it.supplier_code.trim();
+      if (!map[key].description && cleanedDesc) map[key].description = cleanedDesc;
       map[key].total_ordered += Number(it.qty_ordered || it.qty_packed || 0);
       map[key].room_instances.push({
         ...it,
@@ -1247,8 +1259,28 @@ export default function PackingListWorkbenchModal({
                           </td>
 
                           {/* Description */}
-                          <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {model.description}
+                          <td style={{ padding: '10px 12px' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                              {model.description}
+                            </div>
+                            {model.room_instances && model.room_instances.length > 1 && (
+                              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span
+                                  style={{
+                                    background: 'rgba(59, 130, 246, 0.08)',
+                                    color: 'var(--text-info)',
+                                    padding: '1px 6px',
+                                    borderRadius: '4px',
+                                    fontSize: '10px',
+                                    fontWeight: 600,
+                                    border: '1px solid rgba(59, 130, 246, 0.2)',
+                                  }}
+                                  title={model.room_instances.map(r => `${r.area || r.floor || 'Area'}: ${r.qty_ordered || r.qty_packed || 0} pcs`).join(', ')}
+                                >
+                                  Used in {model.room_instances.length} rooms / areas
+                                </span>
+                              </div>
+                            )}
                           </td>
 
                           {/* Total Order Qty */}
