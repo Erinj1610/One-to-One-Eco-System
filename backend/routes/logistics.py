@@ -153,6 +153,13 @@ def _resolve_order(db: Session, order_ref: Any, project_key: Optional[str] = Non
             if proj_match:
                 return proj_match
         order_obj = q.first()
+    if not order_obj:
+        q_quote = db.query(Order).filter(Order.quote_name.ilike(ref_str))
+        if project_key:
+            proj_match = q_quote.filter(Order.project_key == project_key).first()
+            if proj_match:
+                return proj_match
+        order_obj = q_quote.first()
     return order_obj
 
 

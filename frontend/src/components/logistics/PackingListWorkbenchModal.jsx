@@ -270,6 +270,14 @@ export default function PackingListWorkbenchModal({
             box_number: 'Box 1',
           };
         });
+        setRawItems(builtRaw);
+        const initialModels = buildSummaryModelsFromItems(builtRaw);
+        setSummaryModels(initialModels);
+        const initialAreas = [];
+        builtRaw.forEach(it => {
+          const a = (it.area || 'General / Unspecified').trim();
+          if (a && !initialAreas.includes(a)) initialAreas.push(a);
+        });
         setCustomAreaOrder(initialAreas);
       }
     } catch (err) {
