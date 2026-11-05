@@ -108,6 +108,7 @@ class DeliveryNoteCreateInput(BaseModel):
 
 class DeliveryNoteStatusInput(BaseModel):
     status: Optional[str] = None
+    delivery_type: Optional[str] = None
     dispatch_method: Optional[str] = None
     carrier_driver: Optional[str] = None
     vehicle_reg: Optional[str] = None
@@ -118,6 +119,7 @@ class DeliveryNoteStatusInput(BaseModel):
     site_instructions: Optional[str] = None
     received_by: Optional[str] = None
     notes: Optional[str] = None
+    source_packing_lists: Optional[List[str]] = None
 
 
 class DeliveryNotePodInput(BaseModel):
@@ -1155,7 +1157,7 @@ def create_delivery_note(payload: DeliveryNoteCreateInput, db: Session = Depends
                 "backorder_eta": eta_val,
             })
 
-    computed_delivery_type = "Partial" if has_undelivered else "Full"
+    computed_delivery_type = payload.delivery_type or "Full"
     initial_status = "Delivered" if payload.received_by else "Dispatched"
 
     dn_rec = LogisticsDeliveryNote(
@@ -1235,6 +1237,7 @@ def create_delivery_note(payload: DeliveryNoteCreateInput, db: Session = Depends
     }
 
 
+@router.put("/logistics/delivery-note/{dn_ref}")
 @router.put("/logistics/delivery-note/{dn_ref}/status")
 def update_delivery_note_status(dn_ref: str, payload: DeliveryNoteStatusInput, db: Session = Depends(get_db)):
     dn_rec = None
@@ -1256,6 +1259,7 @@ def update_delivery_note_status(dn_ref: str, payload: DeliveryNoteStatusInput, d
                 pl.status = "Delivered"
 
     for field in (
+        "delivery_type",
         "dispatch_method",
         "carrier_driver",
         "vehicle_reg",

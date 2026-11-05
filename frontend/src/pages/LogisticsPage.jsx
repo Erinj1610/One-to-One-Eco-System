@@ -469,6 +469,7 @@ export default function LogisticsPage() {
   // ─── DELIVERY NOTE CREATION, POD UPLOAD & VOID HANDLERS ──────────────────
 
   const [dnOrderKey, setDnOrderKey] = useState(''); // "projectKey:::orderId"
+  const [editingDnDoc, setEditingDnDoc] = useState(null);
   const [dnMode, setDnMode] = useState('from_pl'); // 'from_pl' (95% standard) | 'quick_direct' (5% emergency)
   const [dnSelectedPlIds, setDnSelectedPlIds] = useState({});
   const [dnDirectItems, setDnDirectItems] = useState([]);
@@ -537,21 +538,37 @@ export default function LogisticsPage() {
     } catch (e) {}
   };
 
-  const handleOpenDnModal = (preselectedKey = '') => {
-    setDnMode('from_pl');
-    setDnNotes('');
-    setDnDispatchMethod('Internal Driver');
-    setDnCarrierDriver('');
-    setDnVehicleReg('');
-    setDnTrackingNumber('');
-    setDnDeliveryAddress('');
-    setDnSiteContactName('');
-    setDnSiteContactPhone('');
-    setDnSiteInstructions('');
+  const handleOpenDnModal = (preselectedKey = '', docToEdit = null) => {
+    setEditingDnDoc(docToEdit);
+    setDnMode(docToEdit?.items?.some(i => !i.packing_list_number) ? 'quick_direct' : 'from_pl');
+    setDnNotes(docToEdit?.notes || '');
+    setDnDispatchMethod(docToEdit?.dispatch_method || 'Internal Driver');
+    setDnCarrierDriver(docToEdit?.carrier_driver || '');
+    setDnVehicleReg(docToEdit?.vehicle_reg || '');
+    setDnTrackingNumber(docToEdit?.tracking_number || '');
+    setDnDeliveryAddress(docToEdit?.delivery_address || '');
+    setDnSiteContactName(docToEdit?.site_contact_name || '');
+    setDnSiteContactPhone(docToEdit?.site_contact_phone || '');
+    setDnSiteInstructions(docToEdit?.site_instructions || '');
     setDnOrderSearchQuery('');
     setShowDnModal(true);
 
-    if (preselectedKey) {
+    if (docToEdit) {
+      const pKey = docToEdit.project_key || docToEdit.projectKey;
+      const oId = docToEdit.order_id || docToEdit.orderId;
+      setDnOrderKey(`${pKey}:::${oId}`);
+      const pls = docToEdit.source_packing_lists || [];
+      const selPls = {};
+      pls.forEach(p => { selPls[p] = true; });
+      setDnSelectedPlIds(selPls);
+      if (docToEdit.items && docToEdit.items.length > 0) {
+        setDnDirectItems(docToEdit.items.map(it => ({
+          ...it,
+          qty_to_deliver: Number(it.qty_delivered || it.qty || 0),
+          remaining_to_deliver: Number(it.qty_remaining || 0) + Number(it.qty_delivered || 0)
+        })));
+      }
+    } else if (preselectedKey) {
       handleDnOrderChange(preselectedKey);
     } else {
       setDnOrderKey('');
@@ -565,8 +582,14 @@ export default function LogisticsPage() {
     const [pKey, oId] = dnOrderKey.split(':::');
     const order = allOrders.find(o => o.projectKey === pKey && o.id === oId);
     if (!order) return [];
+    const editingDnRef = editingDnDoc?.document_number || editingDnDoc?.id;
     return (order.packingLists || []).filter(
-      pl => !pl.deliveryNoteId && !pl.delivery_note_number && pl.status !== 'Cancelled'
+      pl => {
+        if (pl.status === 'Cancelled') return false;
+        if (!pl.deliveryNoteId && !pl.delivery_note_number) return true;
+        if (editingDnRef && (pl.deliveryNoteId === editingDnRef || pl.delivery_note_number === editingDnRef)) return true;
+        return false;
+      }
     );
   };
 
@@ -589,6 +612,17 @@ export default function LogisticsPage() {
         });
       }
     });
+    if (list.length === 0 && editingDnDoc?.items?.length) {
+      return (editingDnDoc.items || []).map(pi => ({
+        ...pi,
+        packing_list_number: pi.packing_list_number || (editingDnDoc.source_packing_lists || [])[0] || '—',
+        one_one_code: pi.one_one_code || pi.code || '',
+        plan_code: pi.plan_code || pi.type || '',
+        supplier_code: pi.supplier_code || pi.code || '',
+        qtyDelivered: Number(pi.qty_delivered ?? pi.qtyDelivered ?? pi.qty ?? 0),
+        boxNumber: pi.box_number || pi.boxNumber || 'Box 1',
+      }));
+    }
     return list;
   };
 
@@ -619,7 +653,7 @@ export default function LogisticsPage() {
     const [pKey, oId] = dnOrderKey.split(':::');
 
     const selectedPlNumbers = Object.keys(dnSelectedPlIds).filter(k => dnSelectedPlIds[k]);
-    if (dnMode === 'from_pl' && selectedPlNumbers.length === 0) {
+    if (!editingDnDoc && dnMode === 'from_pl' && selectedPlNumbers.length === 0) {
       alert('Please select at least one Packing List to generate the Delivery Note.');
       return;
     }
@@ -627,7 +661,7 @@ export default function LogisticsPage() {
     let directPayloadItems = null;
     if (dnMode === 'quick_direct') {
       const activeDirect = dnDirectItems.filter(it => Number(it.qty_to_deliver) > 0);
-      if (activeDirect.length === 0) {
+      if (!editingDnDoc && activeDirect.length === 0) {
         alert('Please enter a quantity > 0 for at least one item in Quick Direct Delivery mode.');
         return;
       }
@@ -652,41 +686,60 @@ export default function LogisticsPage() {
 
     setIsSavingLogistics(true);
     try {
-      const res = await fetch(`${API_BASE}/api/logistics/delivery-note`, {
-        method: 'POST',
+      const isEdit = !!editingDnDoc;
+      const url = isEdit
+        ? `${API_BASE}/api/logistics/delivery-note/${encodeURIComponent(editingDnDoc.document_number || editingDnDoc.id)}`
+        : `${API_BASE}/api/logistics/delivery-note`;
+      const method = isEdit ? 'PUT' : 'POST';
+
+      const payload = isEdit ? {
+        dispatch_method: dnDispatchMethod,
+        carrier_driver: dnCarrierDriver,
+        vehicle_reg: dnVehicleReg,
+        tracking_number: dnTrackingNumber,
+        delivery_address: dnDeliveryAddress,
+        site_contact_name: dnSiteContactName,
+        site_contact_phone: dnSiteContactPhone,
+        site_instructions: dnSiteInstructions,
+        notes: dnNotes,
+      } : {
+        project_key: pKey,
+        order_id: oId,
+        source_packing_lists: dnMode === 'from_pl' ? selectedPlNumbers : [],
+        dispatch_method: dnDispatchMethod,
+        carrier_driver: dnCarrierDriver,
+        vehicle_reg: dnVehicleReg,
+        tracking_number: dnTrackingNumber,
+        delivery_address: dnDeliveryAddress,
+        site_contact_name: dnSiteContactName,
+        site_contact_phone: dnSiteContactPhone,
+        site_instructions: dnSiteInstructions,
+        notes: dnNotes,
+        backorder_etas: dnItemEtas,
+        items: directPayloadItems,
+      };
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          project_key: pKey,
-          order_id: oId,
-          source_packing_lists: dnMode === 'from_pl' ? selectedPlNumbers : [],
-          dispatch_method: dnDispatchMethod,
-          carrier_driver: dnCarrierDriver,
-          vehicle_reg: dnVehicleReg,
-          tracking_number: dnTrackingNumber,
-          delivery_address: dnDeliveryAddress,
-          site_contact_name: dnSiteContactName,
-          site_contact_phone: dnSiteContactPhone,
-          site_instructions: dnSiteInstructions,
-          notes: dnNotes,
-          backorder_etas: dnItemEtas,
-          items: directPayloadItems,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || 'Failed to generate Delivery Note');
+        throw new Error(errData.detail || `Failed to ${isEdit ? 'update' : 'generate'} Delivery Note`);
       }
 
       const data = await res.json();
       await refreshProjects();
       setShowDnModal(false);
+      setEditingDnDoc(null);
       if (data.delivery_note?.id) {
         setSelectedDocId(data.delivery_note.id);
         setSelectedProjectKey(pKey);
       }
     } catch (err) {
-      alert(`Error creating Delivery Note: ${err.message}`);
+      alert(`Error saving Delivery Note: ${err.message}`);
     } finally {
       setIsSavingLogistics(false);
     }
@@ -1099,7 +1152,7 @@ export default function LogisticsPage() {
                           color: isPL ? 'var(--text-info)' : 'var(--text-success)',
                           border: isPL ? '1px solid rgba(59, 130, 246, 0.25)' : '1px solid rgba(34, 197, 94, 0.25)',
                         }}>
-                          {isPL ? '📦 Packing List' : `🚚 DN (${doc.delivery_type || 'Full'})`}
+                          {isPL ? '📦 Packing List' : '🚚 Delivery Note'}
                         </span>
                       </td>
                       <td style={{ padding: '10px 14px', maxWidth: '210px' }}>
@@ -1234,6 +1287,17 @@ export default function LogisticsPage() {
                               <Edit3 size={13} />
                             </button>
                           )}
+                          {/* Edit Delivery Note - always accessible for any active DN */}
+                          {!isPL && !isVoided && (
+                            <button
+                              className="btn btn-ghost btn-xs"
+                              title="Edit Delivery Note (Transport & Site Details)"
+                              style={{ color: 'var(--text-primary)', border: '1px solid var(--border)', padding: '3px 7px' }}
+                              onClick={() => handleOpenDnModal('', doc)}
+                            >
+                              <Edit3 size={13} />
+                            </button>
+                          )}
                           <button
                             className="btn btn-ghost btn-xs"
                             title="Print Thermal Labels (Argox O4-250)"
@@ -1334,7 +1398,7 @@ export default function LogisticsPage() {
                   background: activeDoc.type === 'packing_list' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(34, 197, 94, 0.15)',
                   color: activeDoc.type === 'packing_list' ? 'var(--text-info)' : 'var(--text-success)',
                 }}>
-                  {activeDoc.type === 'packing_list' ? 'Packing List' : `Delivery Note (${activeDoc.delivery_type || 'Full'})`}
+                  {activeDoc.type === 'packing_list' ? 'Packing List' : 'Delivery Note'}
                 </span>
                 <h3 style={{ margin: 0, fontSize: '16px', color: 'var(--text-primary)', fontWeight: 800, fontFamily: 'monospace' }}>
                   {activeDoc.id}
@@ -1414,6 +1478,20 @@ export default function LogisticsPage() {
                     <Edit3 size={14} /> Edit Packing List
                   </button>
                 )}
+                {activeDoc.type !== 'packing_list' && activeDoc.status !== 'Cancelled' && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    onClick={() => {
+                      const docToEdit = activeDoc;
+                      setSelectedDocId(null);
+                      setSelectedProjectKey(null);
+                      handleOpenDnModal('', docToEdit);
+                    }}
+                  >
+                    <Edit3 size={14} /> Edit Delivery Note
+                  </button>
+                )}
                 <button
                   className="btn btn-primary btn-sm"
                   style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600 }}
@@ -1483,7 +1561,7 @@ export default function LogisticsPage() {
                       borderRadius: '4px',
                       fontWeight: 700,
                     }}>
-                      {activeDoc.type === 'packing_list' ? 'Logistical Packing List' : `Official Delivery Note (${activeDoc.delivery_type || 'Full'})`}
+                      {activeDoc.type === 'packing_list' ? 'Logistical Packing List' : 'Official Delivery Note'}
                     </span>
                     <h3 style={{ margin: '6px 0 0 0', fontSize: '17px', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace' }}>
                       {activeDoc.id}
@@ -1730,7 +1808,10 @@ export default function LogisticsPage() {
             padding: '16px',
           }}
           onClick={e => {
-            if (e.target === e.currentTarget) setShowDnModal(false);
+            if (e.target === e.currentTarget) {
+              setShowDnModal(false);
+              setEditingDnDoc(null);
+            }
           }}
         >
           <div
@@ -1754,13 +1835,15 @@ export default function LogisticsPage() {
               <div>
                 <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Truck size={18} style={{ color: 'var(--text-success)' }} />
-                  Generate Official Delivery Note (DN)
+                  {editingDnDoc ? `Edit Delivery Note (${editingDnDoc.document_number || editingDnDoc.id})` : 'Generate Official Delivery Note (DN)'}
                 </h3>
                 <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Dispatch existing Packing Lists (or emergency Quick Direct DN) and automatically update Order & Sales Tracker delivery metrics
+                  {editingDnDoc
+                    ? 'Update transport method, driver details, vehicle registration, site contact, and delivery instructions'
+                    : 'Dispatch existing Packing Lists (or emergency Quick Direct DN) and automatically update Order & Sales Tracker delivery metrics'}
                 </span>
               </div>
-              <button onClick={() => setShowDnModal(false)} className="btn btn-ghost btn-sm">
+              <button onClick={() => { setShowDnModal(false); setEditingDnDoc(null); }} className="btn btn-ghost btn-sm">
                 <X size={18} />
               </button>
             </div>
@@ -1775,9 +1858,17 @@ export default function LogisticsPage() {
                     </label>
                     <div style={{ position: 'relative' }}>
                       <div
-                        onClick={() => setDnOrderDropdownOpen(!dnOrderDropdownOpen)}
+                        onClick={() => !editingDnDoc && setDnOrderDropdownOpen(!dnOrderDropdownOpen)}
                         className="form-control"
-                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', height: '36px', background: 'var(--bg-primary)' }}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          cursor: editingDnDoc ? 'default' : 'pointer',
+                          height: '36px',
+                          background: 'var(--bg-primary)',
+                          opacity: editingDnDoc ? 0.8 : 1,
+                        }}
                       >
                         <span style={{ fontSize: '12.5px', color: dnOrderKey ? 'var(--text-primary)' : 'var(--text-tertiary)', fontWeight: dnOrderKey ? 700 : 400 }}>
                           {dnOrderKey
@@ -2162,11 +2253,11 @@ export default function LogisticsPage() {
               </div>
 
               <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowDnModal(false)}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setShowDnModal(false); setEditingDnDoc(null); }}>
                   Cancel
                 </button>
                 <button type="submit" disabled={!dnOrderKey || isSavingLogistics} className="btn btn-primary btn-sm" style={{ fontWeight: 700 }}>
-                  {isSavingLogistics ? 'Dispatching...' : 'Generate Official Delivery Note 🚚'}
+                  {isSavingLogistics ? 'Saving...' : (editingDnDoc ? 'Update Delivery Note 🚚' : 'Generate Official Delivery Note 🚚')}
                 </button>
               </div>
             </form>
