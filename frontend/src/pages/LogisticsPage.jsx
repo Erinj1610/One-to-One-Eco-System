@@ -472,6 +472,9 @@ export default function LogisticsPage() {
   const [editingDnDoc, setEditingDnDoc] = useState(null);
   const [dnMode, setDnMode] = useState('from_pl'); // 'from_pl' (95% standard) | 'quick_direct' (5% emergency)
   const [dnSelectedPlIds, setDnSelectedPlIds] = useState({});
+  const [dnIncludeBackorders, setDnIncludeBackorders] = useState(true);
+  const [dnExcludedPlIds, setDnExcludedPlIds] = useState({});
+  const [dnRawOrderItems, setDnRawOrderItems] = useState([]);
   const [dnDirectItems, setDnDirectItems] = useState([]);
   const [dnItemEtas, setDnItemEtas] = useState({});
   const [dnDispatchMethod, setDnDispatchMethod] = useState('Internal Driver');
@@ -495,8 +498,11 @@ export default function LogisticsPage() {
     setDnOrderKey(compositeKey);
     setDnOrderDropdownOpen(false);
     setDnSelectedPlIds({});
+    setDnExcludedPlIds({});
+    setDnIncludeBackorders(true);
     setDnItemEtas({});
     setDnDirectItems([]);
+    setDnRawOrderItems([]);
 
     if (!compositeKey) return;
     const [pKey, oId] = compositeKey.split(':::');
@@ -507,15 +513,14 @@ export default function LogisticsPage() {
       setDnDeliveryAddress(order.deliveryAddress || order.projectLocation || '');
       setDnSiteContactName(order.clientContact || order.projectClient || '');
       setDnSiteContactPhone(order.clientPhone || order.projectPhone || '');
-      // Auto-select all pending Packing Lists for convenience
+      // Auto-select the first pending Packing List for 1:1 binding
       const pendingPls = (order.packingLists || []).filter(
         pl => !pl.delivery_note_number && !pl.deliveryNoteId && pl.status !== 'Cancelled'
       );
-      const autoCheck = {};
-      pendingPls.forEach(pl => {
-        autoCheck[pl.id || pl.document_number] = true;
-      });
-      setDnSelectedPlIds(autoCheck);
+      if (pendingPls.length > 0) {
+        const firstId = pendingPls[0].id || pendingPls[0].document_number;
+        setDnSelectedPlIds({ [firstId]: true });
+      }
     }
 
     try {
@@ -524,6 +529,7 @@ export default function LogisticsPage() {
       );
       if (res.ok) {
         const data = await res.json();
+        setDnRawOrderItems(data.items || []);
         if (data.site_address) setDnDeliveryAddress(prev => prev || data.site_address);
         if (data.site_contact_name) setDnSiteContactName(prev => prev || data.site_contact_name);
         if (data.site_contact_phone) setDnSiteContactPhone(prev => prev || data.site_contact_phone);
@@ -551,6 +557,8 @@ export default function LogisticsPage() {
     setDnSiteContactPhone(docToEdit?.site_contact_phone || '');
     setDnSiteInstructions(docToEdit?.site_instructions || '');
     setDnOrderSearchQuery('');
+    setDnIncludeBackorders(docToEdit ? (Array.isArray(docToEdit.outstanding_snapshot) && docToEdit.outstanding_snapshot.length > 0) : true);
+    setDnExcludedPlIds({});
     setShowDnModal(true);
 
     if (docToEdit) {
@@ -568,12 +576,18 @@ export default function LogisticsPage() {
           remaining_to_deliver: Number(it.qty_remaining || 0) + Number(it.qty_delivered || 0)
         })));
       }
+      // Also load raw order items for accurate live calculations
+      fetch(`${API_BASE}/api/logistics/order-items/${encodeURIComponent(oId)}?project_key=${encodeURIComponent(pKey)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.items) setDnRawOrderItems(d.items); })
+        .catch(() => {});
     } else if (preselectedKey) {
       handleDnOrderChange(preselectedKey);
     } else {
       setDnOrderKey('');
       setDnSelectedPlIds({});
       setDnDirectItems([]);
+      setDnRawOrderItems([]);
     }
   };
 
@@ -623,6 +637,73 @@ export default function LogisticsPage() {
         boxNumber: pi.box_number || pi.boxNumber || 'Box 1',
       }));
     }
+    return list;
+  };
+
+  // Calculate live backorders based on order items, selected target PL, and excluded PLs
+  const getComputedBackorderItems = () => {
+    if (!dnOrderKey || !dnIncludeBackorders) return [];
+    const [pKey, oId] = dnOrderKey.split(':::');
+    const order = allOrders.find(o => o.projectKey === pKey && o.id === oId);
+    if (!order) return [];
+
+    const selectedPlId = Object.keys(dnSelectedPlIds).find(k => dnSelectedPlIds[k]);
+    const targetPl = (order.packingLists || []).find(p => (p.id || p.document_number) === selectedPlId);
+    const targetPlItems = targetPl?.items || (editingDnDoc?.items || []);
+
+    // Excluded packing lists
+    const excludedPlNumbers = Object.keys(dnExcludedPlIds).filter(k => dnExcludedPlIds[k]);
+    const excludedPls = (order.packingLists || []).filter(p => excludedPlNumbers.includes(p.id || p.document_number));
+
+    // Calculate sum of packed items in excluded packing lists
+    const excludedQuantitiesByItem = {};
+    excludedPls.forEach(pl => {
+      (pl.items || []).forEach(it => {
+        const key = it.order_item_id || it.one_one_code || it.code;
+        if (key) {
+          const qty = Number(it.qty_packed ?? it.qtyDelivered ?? 0);
+          excludedQuantitiesByItem[key] = (excludedQuantitiesByItem[key] || 0) + qty;
+        }
+      });
+    });
+
+    // Quantities in this target PL
+    const thisPlQuantitiesByItem = {};
+    targetPlItems.forEach(it => {
+      const key = it.order_item_id || it.one_one_code || it.code;
+      if (key) {
+        const qty = Number(it.qty_packed ?? it.qty_delivered ?? it.qtyDelivered ?? 0);
+        thisPlQuantitiesByItem[key] = (thisPlQuantitiesByItem[key] || 0) + qty;
+      }
+    });
+
+    const list = [];
+    (dnRawOrderItems || []).forEach(oi => {
+      if (oi.is_credit) return;
+      const key = oi.id;
+      const codeKey = oi.one_one_code || oi.code;
+      const ordered = Number(oi.qty || 0);
+      const prevDeliv = Number(oi.delivery_qty || oi.qty_delivered || 0);
+      const thisDeliv = thisPlQuantitiesByItem[key] || (codeKey ? thisPlQuantitiesByItem[codeKey] || 0 : 0);
+      const excludedDeliv = excludedQuantitiesByItem[key] || (codeKey ? excludedQuantitiesByItem[codeKey] || 0 : 0);
+
+      const remaining = Math.max(0, ordered - (prevDeliv + thisDeliv + excludedDeliv));
+      if (remaining > 0) {
+        list.push({
+          order_item_id: oi.id,
+          code: oi.one_one_code || oi.code || '',
+          one_one_code: oi.one_one_code || oi.code || '',
+          plan_code: oi.type || oi.plan_code || '—',
+          description: oi.description || '',
+          floor: oi.floor || '',
+          area: oi.area || '',
+          qty_ordered: ordered,
+          qty_remaining: remaining,
+          backorder_eta: dnItemEtas[oi.id] || oi.eta || 'TBA',
+        });
+      }
+    });
+
     return list;
   };
 
@@ -692,6 +773,9 @@ export default function LogisticsPage() {
         : `${API_BASE}/api/logistics/delivery-note`;
       const method = isEdit ? 'PUT' : 'POST';
 
+      const computedBackorders = getComputedBackorderItems();
+      const excludedPlList = Object.keys(dnExcludedPlIds).filter(k => dnExcludedPlIds[k]);
+
       const payload = isEdit ? {
         dispatch_method: dnDispatchMethod,
         carrier_driver: dnCarrierDriver,
@@ -702,6 +786,9 @@ export default function LogisticsPage() {
         site_contact_phone: dnSiteContactPhone,
         site_instructions: dnSiteInstructions,
         notes: dnNotes,
+        include_backorders: dnIncludeBackorders,
+        excluded_backorder_pls: excludedPlList,
+        outstanding_snapshot: dnIncludeBackorders ? computedBackorders : [],
       } : {
         project_key: pKey,
         order_id: oId,
@@ -717,6 +804,9 @@ export default function LogisticsPage() {
         notes: dnNotes,
         backorder_etas: dnItemEtas,
         items: directPayloadItems,
+        include_backorders: dnIncludeBackorders,
+        excluded_backorder_pls: excludedPlList,
+        outstanding_snapshot: dnIncludeBackorders ? computedBackorders : [],
       };
 
       const res = await fetch(url, {
@@ -2099,10 +2189,15 @@ export default function LogisticsPage() {
                   const dnItems = getAggregatedDnItems();
 
                   return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        Available Packing Lists Ready for Dispatch ({availablePls.length})
-                      </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                          Target Packing List to Dispatch (1 Delivery Note = 1 Packing List)
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          Select the specific packing list for this document
+                        </span>
+                      </div>
 
                       {availablePls.length === 0 ? (
                         <div style={{ padding: '20px', textAlign: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', color: 'var(--text-tertiary)', fontSize: '12px' }}>
@@ -2118,7 +2213,7 @@ export default function LogisticsPage() {
                             return (
                               <div
                                 key={plId}
-                                onClick={() => setDnSelectedPlIds(prev => ({ ...prev, [plId]: !prev[plId] }))}
+                                onClick={() => setDnSelectedPlIds({ [plId]: true })}
                                 style={{
                                   border: isChecked ? '1.5px solid var(--text-success)' : '1px solid var(--border)',
                                   background: isChecked ? 'rgba(34, 197, 94, 0.08)' : 'var(--bg-primary)',
@@ -2128,16 +2223,22 @@ export default function LogisticsPage() {
                                   display: 'flex',
                                   justifyContent: 'space-between',
                                   alignItems: 'center',
+                                  transition: 'all 0.15s ease',
                                 }}
                               >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <input type="checkbox" checked={isChecked} onChange={() => {}} />
+                                  <input
+                                    type="radio"
+                                    name="targetPl"
+                                    checked={isChecked}
+                                    onChange={() => setDnSelectedPlIds({ [plId]: true })}
+                                  />
                                   <div>
                                     <div style={{ fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-primary)', fontSize: '13px' }}>{plId}</div>
                                     <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Issued: {pl.date}</div>
                                   </div>
                                 </div>
-                                <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                <div style={{ fontSize: '11.5px', fontWeight: 700, color: isChecked ? 'var(--text-success)' : 'var(--text-primary)' }}>
                                   {pl.items?.length || 0} lines ({totalUnits} pcs)
                                 </div>
                               </div>
@@ -2147,33 +2248,157 @@ export default function LogisticsPage() {
                       )}
 
                       {dnItems.length > 0 && (
-                        <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '340px', overflowY: 'auto' }}>
-                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
-                            <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-primary)' }}>
-                              <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
-                                <th style={{ padding: '6px 10px' }}>PL #</th>
-                                <th style={{ padding: '6px 10px' }}>1-TO-1 Code</th>
-                                <th style={{ padding: '6px 10px' }}>Plan Code</th>
-                                <th style={{ padding: '6px 10px' }}>Description</th>
-                                <th style={{ padding: '6px 10px' }}>Box #</th>
-                                <th style={{ padding: '6px 10px', textAlign: 'center' }}>Dispatch Qty</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {dnItems.map((it, idx) => (
-                                <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                                  <td style={{ padding: '6px 10px', fontFamily: 'monospace' }}>{it.packing_list_number}</td>
-                                  <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 700 }}>{it.one_one_code}</td>
-                                  <td style={{ padding: '6px 10px', fontFamily: 'monospace' }}>{it.plan_code || '—'}</td>
-                                  <td style={{ padding: '6px 10px' }}>{it.description}</td>
-                                  <td style={{ padding: '6px 10px', fontWeight: 700 }}>{it.boxNumber}</td>
-                                  <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 800, color: 'var(--text-success)' }}>{it.qtyDelivered}</td>
+                        <div>
+                          <span style={{ fontSize: '11.5px', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: '6px' }}>
+                            Items Included in This Dispatch Note ({dnItems.length} lines):
+                          </span>
+                          <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '220px', overflowY: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
+                              <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-primary)' }}>
+                                <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+                                  <th style={{ padding: '6px 10px' }}>PL #</th>
+                                  <th style={{ padding: '6px 10px' }}>1-TO-1 Code</th>
+                                  <th style={{ padding: '6px 10px' }}>Plan Code</th>
+                                  <th style={{ padding: '6px 10px' }}>Description</th>
+                                  <th style={{ padding: '6px 10px' }}>Box #</th>
+                                  <th style={{ padding: '6px 10px', textAlign: 'center' }}>Dispatch Qty</th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                              </thead>
+                              <tbody>
+                                {dnItems.map((it, idx) => (
+                                  <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                                    <td style={{ padding: '6px 10px', fontFamily: 'monospace' }}>{it.packing_list_number}</td>
+                                    <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 700 }}>{it.one_one_code}</td>
+                                    <td style={{ padding: '6px 10px', fontFamily: 'monospace' }}>{it.plan_code || '—'}</td>
+                                    <td style={{ padding: '6px 10px' }}>{it.description}</td>
+                                    <td style={{ padding: '6px 10px', fontWeight: 700 }}>{it.boxNumber}</td>
+                                    <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 800, color: 'var(--text-success)' }}>{it.qtyDelivered}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
                       )}
+
+                      {/* SECTION 2: OUTSTANDING BACKORDERS & EXCLUSION CHECKLIST */}
+                      <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0, fontWeight: 800, fontSize: '12.5px', color: 'var(--text-primary)' }}>
+                            <input
+                              type="checkbox"
+                              checked={dnIncludeBackorders}
+                              onChange={e => setDnIncludeBackorders(e.target.checked)}
+                            />
+                            <span>Include Section 2: Outstanding Backorders Table on Delivery Note</span>
+                          </label>
+                          <span style={{ fontSize: '11px', color: dnIncludeBackorders ? 'var(--text-success)' : 'var(--text-tertiary)', fontWeight: 700 }}>
+                            {dnIncludeBackorders ? 'Section 2 Active on Document' : 'Section 2 Hidden'}
+                          </span>
+                        </div>
+
+                        {dnIncludeBackorders && (() => {
+                          const [pKey, oId] = dnOrderKey.split(':::');
+                          const order = allOrders.find(o => o.projectKey === pKey && o.id === oId);
+                          const selectedPlId = Object.keys(dnSelectedPlIds).find(k => dnSelectedPlIds[k]);
+                          const otherPls = (order?.packingLists || []).filter(
+                            p => (p.id || p.document_number) !== selectedPlId && p.status !== 'Cancelled'
+                          );
+                          const computedBackorders = getComputedBackorderItems();
+
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '4px' }}>
+                              {otherPls.length > 0 && (
+                                <div style={{ background: 'rgba(59, 130, 246, 0.05)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '8px', padding: '12px' }}>
+                                  <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '3px' }}>
+                                    📦 Other Packing Lists on this Order (Tick to EXCLUDE from Backorders — e.g. Delivering in same shipment):
+                                  </div>
+                                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+                                    Ticking a packing list indicates it is also being delivered today, so its items will not be stamped as "backorders" on this document.
+                                  </div>
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '8px' }}>
+                                    {otherPls.map(opl => {
+                                      const oplId = opl.id || opl.document_number;
+                                      const isExcluded = !!dnExcludedPlIds[oplId];
+                                      const oplUnits = (opl.items || []).reduce((s, i) => s + (Number(i.qty_packed ?? i.qtyDelivered) || 0), 0);
+
+                                      return (
+                                        <label
+                                          key={oplId}
+                                          style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            padding: '8px 12px',
+                                            borderRadius: '6px',
+                                            border: isExcluded ? '1.5px solid var(--text-info)' : '1px solid var(--border)',
+                                            background: isExcluded ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-secondary)',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s',
+                                          }}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={isExcluded}
+                                            onChange={() => setDnExcludedPlIds(prev => ({ ...prev, [oplId]: !prev[oplId] }))}
+                                          />
+                                          <div style={{ flex: 1 }}>
+                                            <div style={{ fontWeight: 800, fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-primary)' }}>{oplId}</div>
+                                            <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                                              {opl.items?.length || 0} lines ({oplUnits} pcs) • {isExcluded ? 'Excluded from Backorder' : 'Not excluded'}
+                                            </div>
+                                          </div>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Live Preview of Section 2 Backorder Table */}
+                              <div>
+                                <div style={{ fontSize: '11.5px', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px', letterSpacing: '0.4px' }}>
+                                  Live Backorder Preview (What will print on Section 2):
+                                </div>
+                                {computedBackorders.length === 0 ? (
+                                  <div style={{ padding: '14px', background: 'rgba(34, 197, 94, 0.08)', border: '1px solid rgba(34, 197, 94, 0.25)', borderRadius: '6px', color: 'var(--text-success)', fontSize: '12px', fontWeight: 700, textAlign: 'center' }}>
+                                    ✓ All items on this order are accounted for between this Delivery Note and excluded packing lists. No backorders will print on this document.
+                                  </div>
+                                ) : (
+                                  <div style={{ border: '1px solid var(--border)', borderRadius: '6px', overflow: 'hidden', maxHeight: '200px', overflowY: 'auto' }}>
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
+                                      <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-secondary)' }}>
+                                        <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+                                          <th style={{ padding: '6px 10px' }}>1-TO-1 Code</th>
+                                          <th style={{ padding: '6px 10px' }}>Plan Code</th>
+                                          <th style={{ padding: '6px 10px' }}>Description</th>
+                                          <th style={{ padding: '6px 10px' }}>Floor / Area</th>
+                                          <th style={{ padding: '6px 10px', textAlign: 'center' }}>Ordered</th>
+                                          <th style={{ padding: '6px 10px', textAlign: 'center' }}>Remaining</th>
+                                          <th style={{ padding: '6px 10px', textAlign: 'center' }}>ETA</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {computedBackorders.map((bo, bIdx) => (
+                                          <tr key={bIdx} style={{ borderBottom: '1px solid var(--border)' }}>
+                                            <td style={{ padding: '5px 10px', fontFamily: 'monospace', fontWeight: 700 }}>{bo.one_one_code || bo.code}</td>
+                                            <td style={{ padding: '5px 10px', fontFamily: 'monospace' }}>{bo.plan_code || '—'}</td>
+                                            <td style={{ padding: '5px 10px' }}>{bo.description}</td>
+                                            <td style={{ padding: '5px 10px', color: 'var(--text-secondary)' }}>{[bo.floor, bo.area].filter(Boolean).join(' / ') || '—'}</td>
+                                            <td style={{ padding: '5px 10px', textAlign: 'center' }}>{bo.qty_ordered}</td>
+                                            <td style={{ padding: '5px 10px', textAlign: 'center', fontWeight: 800, color: 'var(--text-warning)' }}>{bo.qty_remaining}</td>
+                                            <td style={{ padding: '5px 10px', textAlign: 'center' }}>{bo.backorder_eta || 'TBA'}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </div>
                   );
                 })()}

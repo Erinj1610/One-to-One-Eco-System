@@ -104,6 +104,9 @@ class DeliveryNoteCreateInput(BaseModel):
     dispatched_by: Optional[str] = "Logistics Team"
     backorder_etas: Optional[Dict[str, str]] = {}   # order_item_id or code -> ETA string
     items: Optional[List[DeliveryNoteItemInput]] = None  # Used for Quick Direct DN or explicit override
+    include_backorders: Optional[bool] = True
+    excluded_backorder_pls: Optional[List[str]] = []
+    outstanding_snapshot: Optional[List[Any]] = None
 
 
 class DeliveryNoteStatusInput(BaseModel):
@@ -120,6 +123,9 @@ class DeliveryNoteStatusInput(BaseModel):
     received_by: Optional[str] = None
     notes: Optional[str] = None
     source_packing_lists: Optional[List[str]] = None
+    include_backorders: Optional[bool] = None
+    excluded_backorder_pls: Optional[List[str]] = None
+    outstanding_snapshot: Optional[List[Any]] = None
 
 
 class DeliveryNotePodInput(BaseModel):
@@ -1122,40 +1128,59 @@ def create_delivery_note(payload: DeliveryNoteCreateInput, db: Session = Depends
 
     outstanding_snapshot = []
     has_undelivered = False
-    for oi in all_order_items:
-        if oi.is_credit:
-            continue
-        ordered = int(oi.qty or 0)
-        prev_deliv = int(oi.delivery_qty or 0)
-        this_deliv = dispatched_in_this_dn_by_item.get(str(oi.id), 0)
-        remaining_after = max(0, ordered - (prev_deliv + this_deliv))
 
-        eta_val = (
-            (payload.backorder_etas or {}).get(str(oi.id))
-            or (payload.backorder_etas or {}).get(oi.one_one_code or "")
-            or oi.po_eta
-            or oi.eta
-            or "TBA"
-        )
-        if eta_val and eta_val != "TBA":
-            oi.eta = eta_val
+    if payload.outstanding_snapshot is not None:
+        outstanding_snapshot = payload.outstanding_snapshot
+    elif payload.include_backorders is False:
+        outstanding_snapshot = []
+    else:
+        excluded_deliv_by_item: Dict[str, int] = {}
+        if payload.excluded_backorder_pls:
+            ex_pls = db.query(LogisticsPackingList).filter(
+                LogisticsPackingList.order_id == order_obj.id,
+                LogisticsPackingList.document_number.in_(payload.excluded_backorder_pls)
+            ).all()
+            for pl in ex_pls:
+                for pit in pl.items:
+                    if pit.order_item_id:
+                        k = str(pit.order_item_id)
+                        excluded_deliv_by_item[k] = excluded_deliv_by_item.get(k, 0) + int(pit.qty_packed or 0)
 
-        if remaining_after > 0:
-            has_undelivered = True
-            outstanding_snapshot.append({
-                "order_item_id": oi.id,
-                "code": oi.one_one_code or oi.code or "",
-                "one_one_code": oi.one_one_code or oi.code or "",
-                "plan_code": oi.type or "",
-                "supplier_code": oi.code or "",
-                "description": oi.description or "",
-                "floor": oi.floor or "",
-                "area": oi.area or "",
-                "qty_ordered": ordered,
-                "qty_delivered_to_date": prev_deliv + this_deliv,
-                "qty_remaining": remaining_after,
-                "backorder_eta": eta_val,
-            })
+        for oi in all_order_items:
+            if oi.is_credit:
+                continue
+            ordered = int(oi.qty or 0)
+            prev_deliv = int(oi.delivery_qty or 0)
+            this_deliv = dispatched_in_this_dn_by_item.get(str(oi.id), 0)
+            excluded_deliv = excluded_deliv_by_item.get(str(oi.id), 0)
+            remaining_after = max(0, ordered - (prev_deliv + this_deliv + excluded_deliv))
+
+            eta_val = (
+                (payload.backorder_etas or {}).get(str(oi.id))
+                or (payload.backorder_etas or {}).get(oi.one_one_code or "")
+                or oi.po_eta
+                or oi.eta
+                or "TBA"
+            )
+            if eta_val and eta_val != "TBA":
+                oi.eta = eta_val
+
+            if remaining_after > 0:
+                has_undelivered = True
+                outstanding_snapshot.append({
+                    "order_item_id": oi.id,
+                    "code": oi.one_one_code or oi.code or "",
+                    "one_one_code": oi.one_one_code or oi.code or "",
+                    "plan_code": oi.type or "",
+                    "supplier_code": oi.code or "",
+                    "description": oi.description or "",
+                    "floor": oi.floor or "",
+                    "area": oi.area or "",
+                    "qty_ordered": ordered,
+                    "qty_delivered_to_date": prev_deliv + this_deliv + excluded_deliv,
+                    "qty_remaining": remaining_after,
+                    "backorder_eta": eta_val,
+                })
 
     computed_delivery_type = payload.delivery_type or "Full"
     initial_status = "Delivered" if payload.received_by else "Dispatched"
@@ -1274,6 +1299,60 @@ def update_delivery_note_status(dn_ref: str, payload: DeliveryNoteStatusInput, d
         val = getattr(payload, field, None)
         if val is not None:
             setattr(dn_rec, field, val)
+
+    if payload.include_backorders is False:
+        dn_rec.outstanding_snapshot = []
+    elif payload.outstanding_snapshot is not None:
+        dn_rec.outstanding_snapshot = payload.outstanding_snapshot
+    elif payload.excluded_backorder_pls is not None:
+        order_obj = db.query(Order).filter(Order.id == dn_rec.order_id).first()
+        if order_obj:
+            order_keys = [k for k in [order_obj.po_number, str(order_obj.id)] if k]
+            all_order_items = db.query(OrderItem).filter(OrderItem.order_id.in_(order_keys)).order_by(OrderItem.sort_order.asc(), OrderItem.id.asc()).all()
+
+            dispatched_in_this_dn_by_item = {}
+            for dit in dn_rec.items:
+                if dit.order_item_id:
+                    k = str(dit.order_item_id)
+                    dispatched_in_this_dn_by_item[k] = dispatched_in_this_dn_by_item.get(k, 0) + int(dit.qty_delivered or 0)
+
+            excluded_deliv_by_item = {}
+            if payload.excluded_backorder_pls:
+                ex_pls = db.query(LogisticsPackingList).filter(
+                    LogisticsPackingList.order_id == order_obj.id,
+                    LogisticsPackingList.document_number.in_(payload.excluded_backorder_pls)
+                ).all()
+                for pl in ex_pls:
+                    for pit in pl.items:
+                        if pit.order_item_id:
+                            k = str(pit.order_item_id)
+                            excluded_deliv_by_item[k] = excluded_deliv_by_item.get(k, 0) + int(pit.qty_packed or 0)
+
+            new_snapshot = []
+            for oi in all_order_items:
+                if oi.is_credit:
+                    continue
+                ordered = int(oi.qty or 0)
+                prev_deliv = int(oi.delivery_qty or 0)
+                this_deliv = dispatched_in_this_dn_by_item.get(str(oi.id), 0)
+                excluded_deliv = excluded_deliv_by_item.get(str(oi.id), 0)
+                remaining_after = max(0, ordered - (prev_deliv + this_deliv + excluded_deliv))
+                if remaining_after > 0:
+                    new_snapshot.append({
+                        "order_item_id": oi.id,
+                        "code": oi.one_one_code or oi.code or "",
+                        "one_one_code": oi.one_one_code or oi.code or "",
+                        "plan_code": oi.type or "",
+                        "supplier_code": oi.code or "",
+                        "description": oi.description or "",
+                        "floor": oi.floor or "",
+                        "area": oi.area or "",
+                        "qty_ordered": ordered,
+                        "qty_delivered_to_date": prev_deliv + this_deliv + excluded_deliv,
+                        "qty_remaining": remaining_after,
+                        "backorder_eta": oi.eta or "TBA",
+                    })
+            dn_rec.outstanding_snapshot = new_snapshot
 
     db.flush()
     order_obj = db.query(Order).filter(Order.id == dn_rec.order_id).first()
