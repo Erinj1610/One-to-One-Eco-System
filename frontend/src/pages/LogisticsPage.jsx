@@ -1722,13 +1722,12 @@ export default function LogisticsPage() {
             position: 'fixed',
             inset: 0,
             zIndex: 1200,
-            background: 'rgba(0,0,0,0.78)',
-            backdropFilter: 'blur(4px)',
+            background: 'rgba(0,0,0,0.82)',
+            backdropFilter: 'blur(5px)',
             display: 'flex',
-            alignItems: 'flex-start',
+            alignItems: 'center',
             justifyContent: 'center',
-            overflowY: 'auto',
-            padding: '20px 12px',
+            padding: '16px',
           }}
           onClick={e => {
             if (e.target === e.currentTarget) setShowDnModal(false);
@@ -1736,17 +1735,18 @@ export default function LogisticsPage() {
         >
           <div
             style={{
-              margin: 'auto',
               background: 'var(--bg-secondary)',
               border: '1px solid var(--border)',
-              borderRadius: '12px',
-              width: '100%',
-              maxWidth: '1040px',
-              maxHeight: 'calc(100vh - 40px)',
+              borderRadius: '14px',
+              width: '96vw',
+              maxWidth: '1380px',
+              height: '90vh',
+              maxHeight: '920px',
+              minHeight: '640px',
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
-              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)',
+              boxShadow: '0 25px 60px -15px rgba(0,0,0,0.8)',
             }}
             onClick={e => e.stopPropagation()}
           >
@@ -1794,13 +1794,13 @@ export default function LogisticsPage() {
                       </div>
 
                       {dnOrderDropdownOpen && (
-                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.45)', marginTop: '4px', maxHeight: '260px', overflowY: 'auto' }}>
-                          <div style={{ padding: '8px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg-primary)' }}>
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', boxShadow: '0 16px 40px rgba(0,0,0,0.6)', marginTop: '6px', maxHeight: '380px', overflowY: 'auto' }}>
+                          <div style={{ padding: '10px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg-primary)', zIndex: 10 }}>
                             <input
                               type="text"
                               placeholder="Type to filter projects / orders..."
                               className="form-control"
-                              style={{ height: '30px', fontSize: '12px' }}
+                              style={{ height: '34px', fontSize: '12.5px' }}
                               value={dnOrderSearchQuery}
                               onChange={e => setDnOrderSearchQuery(e.target.value)}
                               onClick={e => e.stopPropagation()}
@@ -1810,18 +1810,23 @@ export default function LogisticsPage() {
                           {allOrders
                             .filter(o => {
                               const q = dnOrderSearchQuery.toLowerCase();
-                              return !q || (o.projectName || '').toLowerCase().includes(q) || (o.id || '').toLowerCase().includes(q) || (o.projectClient || '').toLowerCase().includes(q);
+                              return !q || (o.projectName || '').toLowerCase().includes(q) || (o.id || '').toLowerCase().includes(q) || (o.projectClient || '').toLowerCase().includes(q) || (o.quote_name || '').toLowerCase().includes(q);
                             })
                             .map(o => (
                               <div
                                 key={`${o.projectKey}:::${o.id}`}
                                 onClick={() => handleDnOrderChange(`${o.projectKey}:::${o.id}`)}
                                 className="hover-row"
-                                style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: '12px' }}
+                                style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: '12.5px', transition: 'background 0.15s' }}
                               >
-                                <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{o.projectName}</div>
-                                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
-                                  <span>Order: {o.quote_name ? `${o.quote_name} (${o.id})` : o.id}</span>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span style={{ fontWeight: 800, color: 'var(--text-primary)' }}>{o.projectName}</span>
+                                  <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--text-info)', fontFamily: 'monospace' }}>
+                                    {o.id}
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between', marginTop: '3px' }}>
+                                  <span>{o.quote_name ? `Quote: ${o.quote_name}` : 'Order'}</span>
                                   <span>Client: {o.projectClient || '—'}</span>
                                 </div>
                               </div>
@@ -1866,6 +1871,46 @@ export default function LogisticsPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* EMPTY STATE WHEN NO ORDER SELECTED */}
+                {!dnOrderKey && (
+                  <div style={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '40px 20px',
+                    background: 'var(--bg-primary)',
+                    border: '1px dashed var(--border)',
+                    borderRadius: '12px',
+                    color: 'var(--text-secondary)',
+                    textAlign: 'center',
+                    gap: '12px',
+                    minHeight: '320px'
+                  }}>
+                    <div style={{
+                      width: '56px',
+                      height: '56px',
+                      borderRadius: '16px',
+                      background: 'rgba(34, 197, 94, 0.12)',
+                      color: 'var(--text-success)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <Truck size={28} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '5px' }}>
+                        Select a Project & Quotation Order Above
+                      </div>
+                      <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', maxWidth: '480px', lineHeight: 1.5 }}>
+                        Choose an active order to load its boxed packing lists, enter site delivery contact and driver details, and generate the official delivery note document.
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* DISPATCH & TRANSPORT METADATA SECTION */}
                 {dnOrderKey && (
@@ -2011,7 +2056,7 @@ export default function LogisticsPage() {
                       )}
 
                       {dnItems.length > 0 && (
-                        <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '220px', overflowY: 'auto' }}>
+                        <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '340px', overflowY: 'auto' }}>
                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
                             <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-primary)' }}>
                               <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
@@ -2044,7 +2089,7 @@ export default function LogisticsPage() {
 
                 {/* MODE B: QUICK DIRECT DELIVERY NOTE */}
                 {dnOrderKey && dnMode === 'quick_direct' && (
-                  <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '260px', overflowY: 'auto' }}>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '360px', overflowY: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px', textAlign: 'left' }}>
                       <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-primary)' }}>
                         <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
