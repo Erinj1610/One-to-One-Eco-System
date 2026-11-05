@@ -163,6 +163,10 @@ export default function LogisticsPage() {
   const allDocs = useMemo(() => {
     const docs = [];
     allOrders.forEach(order => {
+      const quoteName = order.quote_name || order.quoteName || '';
+      const orderName = quoteName || order.id || '';
+      const poNum = order.poNumber || order.order_po_number || '';
+
       (order.packingLists || []).forEach(pl => {
         const linkedDn = pl.delivery_note_number || pl.deliveryNoteId || '';
         const normalizedItems = (pl.items || []).map(it => ({
@@ -188,6 +192,9 @@ export default function LogisticsPage() {
           deliveryNoteId: linkedDn,
           status: pl.status || (linkedDn ? 'Dispatched' : 'Pending Dispatch'),
           orderId: order.id,
+          order_po_number: poNum,
+          quote_name: quoteName,
+          orderName: orderName,
           projectKey: order.projectKey,
           projectName: order.projectName,
           projectClient: order.projectClient,
@@ -223,6 +230,9 @@ export default function LogisticsPage() {
           status: dn.status || 'Dispatched',
           packingListIds: dn.source_packing_lists || dn.packingListIds || [],
           orderId: order.id,
+          order_po_number: poNum,
+          quote_name: quoteName,
+          orderName: orderName,
           projectKey: order.projectKey,
           projectName: order.projectName,
           projectClient: order.projectClient,
@@ -233,7 +243,7 @@ export default function LogisticsPage() {
         });
       });
     });
-    docs.sort((a, b) => (b.id || '').localeCompare(a.id || ''));
+    docs.sort((a, b) => (b.id || '').localeCompare(a.id || '', undefined, { numeric: true }));
     return docs;
   }, [allOrders]);
 
@@ -273,6 +283,14 @@ export default function LogisticsPage() {
     return Array.from(set).sort();
   }, [projects, allOrders]);
 
+  // Robust timestamp helper for reliable date sorting
+  const parseDocDateMs = (doc) => {
+    const raw = doc.created_at || doc.dispatched_at || doc.date;
+    if (!raw) return 0;
+    const ms = new Date(raw).getTime();
+    return isNaN(ms) ? 0 : ms;
+  };
+
   // Filtered documents for ledger
   const filteredDocs = useMemo(() => {
     return allDocs.filter(doc => {
@@ -287,25 +305,29 @@ export default function LogisticsPage() {
       const q = debouncedSearch.trim().toLowerCase();
       if (!q) return true;
 
-      const searchTokens = q.split(/\s+/);
+      const searchTokens = q.split(/\s+/).filter(Boolean);
       return searchTokens.every(token => {
         const idMatch = (doc.id || '').toLowerCase().includes(token);
-        const projectMatch = (doc.projectName || '').toLowerCase().includes(token);
-        const orderMatch = (doc.orderId || '').toLowerCase().includes(token);
+        const projectMatch = (doc.projectName || '').toLowerCase().includes(token) || (doc.projectKey || '').toLowerCase().includes(token);
+        const orderMatch = (doc.orderId || '').toLowerCase().includes(token) || (doc.order_po_number || doc.orderObj?.poNumber || '').toLowerCase().includes(token);
+        const quoteNameMatch = (doc.quote_name || doc.orderName || doc.orderObj?.quote_name || '').toLowerCase().includes(token);
         const clientMatch = (doc.projectClient || '').toLowerCase().includes(token);
+        const statusMatch = (doc.status || '').toLowerCase().includes(token);
+        const carrierMatch = (doc.carrier_driver || doc.dispatch_method || '').toLowerCase().includes(token);
         const itemMatch = (doc.items || []).some(
           item =>
             (item.code || '').toLowerCase().includes(token) ||
+            (item.one_one_code || '').toLowerCase().includes(token) ||
             (item.plan_code || '').toLowerCase().includes(token) ||
             (item.supplier_code || '').toLowerCase().includes(token) ||
-            (item.description || '').toLowerCase().includes(token)
+            (item.description || item.name || '').toLowerCase().includes(token)
         );
-        return idMatch || projectMatch || orderMatch || clientMatch || itemMatch;
+        return idMatch || projectMatch || orderMatch || quoteNameMatch || clientMatch || statusMatch || carrierMatch || itemMatch;
       });
     });
   }, [allDocs, activeFilterTab, filterPm, debouncedSearch]);
 
-  // Sorted documents for ledger
+  // Sorted documents for ledger (defaults to chronological date descending)
   const sortedDocs = useMemo(() => {
     const list = [...filteredDocs];
     list.sort((a, b) => {
@@ -315,16 +337,22 @@ export default function LogisticsPage() {
       } else if (sortField === 'type') {
         comp = (a.type || '').localeCompare(b.type || '');
       } else if (sortField === 'project') {
-        const pA = `${a.projectName || ''} ${a.orderId || ''}`;
-        const pB = `${b.projectName || ''} ${b.orderId || ''}`;
+        const pA = `${a.projectName || ''} ${a.quote_name || ''} ${a.orderId || ''}`;
+        const pB = `${b.projectName || ''} ${b.quote_name || ''} ${b.orderId || ''}`;
         comp = pA.localeCompare(pB);
       } else if (sortField === 'client') {
         comp = (a.projectClient || '').localeCompare(b.projectClient || '');
       } else if (sortField === 'date') {
-        comp = (a.date || '').localeCompare(b.date || '');
+        const tA = parseDocDateMs(a);
+        const tB = parseDocDateMs(b);
+        comp = tA - tB;
+        // Tie-breaker: sort higher/newer document ID first if on the same date
+        if (comp === 0) {
+          comp = (a.id || '').localeCompare(b.id || '', undefined, { numeric: true });
+        }
       } else if (sortField === 'units') {
-        const aQty = (a.items || []).reduce((s, i) => s + (Number(i.qtyDelivered) || 0), 0);
-        const bQty = (b.items || []).reduce((s, i) => s + (Number(i.qtyDelivered) || 0), 0);
+        const aQty = (a.items || []).reduce((s, i) => s + (Number(i.qty_packed || i.qty_delivered || i.qtyDelivered || i.qty || 0)), 0);
+        const bQty = (b.items || []).reduce((s, i) => s + (Number(i.qty_packed || i.qty_delivered || i.qtyDelivered || i.qty || 0)), 0);
         comp = aQty - bQty;
       } else if (sortField === 'status') {
         const aSt = a.deliveryNoteId ? 'Dispatched' : (a.status || '');
@@ -341,7 +369,7 @@ export default function LogisticsPage() {
       setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortField(field);
-      setSortOrder(field === 'date' || field === 'units' ? 'desc' : 'asc');
+      setSortOrder(field === 'date' || field === 'units' || field === 'id' ? 'desc' : 'asc');
     }
   };
 
@@ -1017,10 +1045,13 @@ export default function LogisticsPage() {
                   const isSelected = doc.id === selectedDocId;
                   const isPL = doc.type === 'packing_list';
                   const isVoided = (doc.status || '').toLowerCase() === 'cancelled';
-                  const totalQty = (doc.items || []).reduce((s, i) => s + (Number(i.qtyDelivered) || 0), 0);
+                  const totalQty = (doc.items || []).reduce((s, i) => s + (Number(i.qty_packed || i.qty_delivered || i.qtyDelivered || i.qty || 0)), 0);
                   const cleanOrderId = doc.orderObj?.poNumber
                     ? `PO #${doc.orderObj.poNumber}`
                     : (doc.orderId || '').replace(/^updated---/, '').replace(/---/g, ' - ');
+                  const orderDisplayName = doc.quote_name
+                    ? `${doc.quote_name} (${cleanOrderId})`
+                    : cleanOrderId;
 
                   return (
                     <tr
@@ -1092,9 +1123,16 @@ export default function LogisticsPage() {
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                           }}
-                          title={doc.orderObj?.poNumber ? `PO #${doc.orderObj.poNumber}` : doc.orderId}
+                          title={orderDisplayName}
                         >
-                          {cleanOrderId}
+                          {doc.quote_name ? (
+                            <span>
+                              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{doc.quote_name}</span>
+                              <span style={{ color: 'var(--text-tertiary)', marginLeft: '4px' }}>({cleanOrderId})</span>
+                            </span>
+                          ) : (
+                            cleanOrderId
+                          )}
                         </div>
                       </td>
                       <td style={{ padding: '10px 14px', maxWidth: '180px' }}>

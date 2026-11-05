@@ -276,6 +276,7 @@ def _serialize_dn_for_order_json(dn: LogisticsDeliveryNote) -> Dict[str, Any]:
         "document_number": dn.document_number,
         "date": date_str,
         "dispatched_at": dn.dispatched_at.isoformat() if dn.dispatched_at else None,
+        "created_at": dn.created_at.isoformat() if dn.created_at else (dn.dispatched_at.isoformat() if dn.dispatched_at else None),
         "status": dn.status or "Dispatched",
         "type": dn.delivery_type or "Full",
         "delivery_type": dn.delivery_type or "Full",
