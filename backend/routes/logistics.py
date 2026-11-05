@@ -631,6 +631,7 @@ def get_enriched_order_items_for_logistics(
 
     packed_by_item_id: Dict[str, int] = {}
     packed_by_code_area: Dict[str, int] = {}
+    packed_by_code_total: Dict[str, int] = {}
     for pl in active_pls:
         if exclude_pl_id and pl.id == exclude_pl_id:
             continue
@@ -645,8 +646,10 @@ def get_enriched_order_items_for_logistics(
             area_k = (pl_it.area or "").strip().lower()
             for c in [pl_it.one_one_code, pl_it.supplier_code]:
                 if c and str(c).strip():
-                    ck = f"{str(c).strip().upper()}:::{area_k}"
+                    c_clean = str(c).strip().upper()
+                    ck = f"{c_clean}:::{area_k}"
                     packed_by_code_area[ck] = packed_by_code_area.get(ck, 0) + qty_p
+                    packed_by_code_total[c_clean] = packed_by_code_total.get(c_clean, 0) + qty_p
 
     # Also extract Project / Client site delivery contact details for DN pre-fill
     proj = db.query(Project).filter(Project.project_key == order_obj.project_key).first() if order_obj.project_key else None
@@ -702,9 +705,13 @@ def get_enriched_order_items_for_logistics(
             area_k = (oi.area or "").strip().lower()
             for c in [oi.one_one_code, oi.code]:
                 if c and str(c).strip():
-                    ck = f"{str(c).strip().upper()}:::{area_k}"
+                    c_clean = str(c).strip().upper()
+                    ck = f"{c_clean}:::{area_k}"
                     if ck in packed_by_code_area:
                         qty_packed_prev = packed_by_code_area[ck]
+                        break
+                    elif not area_k and c_clean in packed_by_code_total:
+                        qty_packed_prev = min(qty_ordered, packed_by_code_total[c_clean])
                         break
         qty_delivered = int(oi.delivery_qty or 0)
         remaining_to_pack = max(0, qty_ordered - qty_packed_prev)

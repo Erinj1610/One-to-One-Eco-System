@@ -635,11 +635,11 @@ export default function PackingListWorkbenchModal({
             const ratio = Number(att.ratio) || 1;
             const nestedTotalQty = ord * ratio;
             const nestedRemQty = rem * ratio;
+            const nestedPrevPacked = Math.max(0, nestedTotalQty - nestedRemQty);
 
             // Find matching raw accessory item in this room if it existed
             const matchingRawInRoom = itemsInRoom.find(x => getModelKey(x) === att.itemKey);
             const rawAccId = matchingRawInRoom?.order_item_id ? String(matchingRawInRoom.order_item_id) : `acc_${it.order_item_id}_${attIdx}`;
-            const rawPrevPacked = matchingRawInRoom ? Number(matchingRawInRoom.qty_already_packed || 0) : 0;
 
             explodedRows.push({
               rowKey: `att_${parentRowKey}_${attIdx}_${Math.random().toString(36).slice(2, 6)}`,
@@ -656,7 +656,7 @@ export default function PackingListWorkbenchModal({
               first_fix: 'No',
               red_list: 'No',
               qty_ordered: nestedTotalQty,
-              qty_already_packed: rawPrevPacked,
+              qty_already_packed: nestedPrevPacked,
               remaining_to_pack: nestedRemQty,
               qty_packed: nestedRemQty,
               box_number: 'Box 1',
@@ -728,8 +728,13 @@ export default function PackingListWorkbenchModal({
   }, [sortedPlRows, plFilterFloor, plFilterArea]);
 
   const handleToggleRoom = (roomName) => {
+    const roomRows = plRows.filter(r => (r.area || 'General / Unspecified').trim() === roomName.trim());
+    const totalRemaining = roomRows.reduce((sum, r) => sum + Number(r.remaining_to_pack || 0), 0);
+    if (totalRemaining <= 0) {
+      alert(`Notice: All items in "${roomName}" were already packed in previous packing lists (0 pcs remaining to pack).\n\nTo repack items from this room, please edit or void the existing packing list from the main Logistics table.`);
+      return;
+    }
     setPlRows(prev => {
-      const roomRows = prev.filter(r => (r.area || 'General / Unspecified').trim() === roomName.trim());
       const isAnyPacked = roomRows.some(r => Number(r.qty_packed || 0) > 0);
       return prev.map(r => {
         if ((r.area || 'General / Unspecified').trim() !== roomName.trim()) return r;
@@ -740,6 +745,12 @@ export default function PackingListWorkbenchModal({
   };
 
   const handlePackRoom = (roomName) => {
+    const roomRows = plRows.filter(r => (r.area || 'General / Unspecified').trim() === roomName.trim());
+    const totalRemaining = roomRows.reduce((sum, r) => sum + Number(r.remaining_to_pack || 0), 0);
+    if (totalRemaining <= 0) {
+      alert(`Notice: All items in "${roomName}" were already packed in previous packing lists (0 pcs remaining to pack).\n\nTo repack items from this room, please edit or void the existing packing list from the main Logistics table.`);
+      return;
+    }
     setPlRows(prev => prev.map(r => {
       if ((r.area || 'General / Unspecified').trim() !== roomName.trim()) return r;
       const targetVal = r.remaining_to_pack !== undefined ? r.remaining_to_pack : r.qty_ordered;
@@ -2369,11 +2380,12 @@ export default function PackingListWorkbenchModal({
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                     <input
                                       type="checkbox"
-                                      checked={isRoomAllPacked}
-                                      ref={el => { if (el) el.indeterminate = isRoomPartiallyPacked; }}
+                                      checked={roomRemCount > 0 ? isRoomAllPacked : true}
+                                      disabled={roomRemCount === 0}
+                                      ref={el => { if (el) el.indeterminate = roomRemCount > 0 && isRoomPartiallyPacked; }}
                                       onChange={() => handleToggleRoom(currentAreaName)}
-                                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
-                                      title={`Toggle all items in ${currentAreaName}`}
+                                      style={{ cursor: roomRemCount === 0 ? 'not-allowed' : 'pointer', width: '16px', height: '16px' }}
+                                      title={roomRemCount === 0 ? `All items in ${currentAreaName} were already packed in previous packing lists` : `Toggle all items in ${currentAreaName}`}
                                     />
                                     <span style={{ fontSize: '10.5px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', background: 'var(--text-info)', color: '#fff', letterSpacing: '0.5px' }}>
                                       ROOM #{displayRoomNum}
@@ -2381,19 +2393,26 @@ export default function PackingListWorkbenchModal({
                                     <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase' }}>
                                       {currentAreaName}
                                     </span>
-                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                      ({roomRows.length} items • <strong style={{ color: 'var(--text-primary)' }}>{roomPackedCount} of {roomRemCount} pcs selected</strong>)
-                                    </span>
+                                    {roomRemCount === 0 ? (
+                                      <span style={{ fontSize: '10.5px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.12)', color: 'var(--text-success)', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                                        ✓ 100% Fulfilled in Prior Packing List ({roomRows.length} items • 0 pcs remaining)
+                                      </span>
+                                    ) : (
+                                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                        ({roomRows.length} items • <strong style={{ color: 'var(--text-primary)' }}>{roomPackedCount} of {roomRemCount} pcs selected</strong>)
+                                      </span>
+                                    )}
                                   </div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <button
                                       type="button"
                                       onClick={() => handlePackRoom(currentAreaName)}
+                                      disabled={roomRemCount === 0}
                                       className="btn btn-ghost btn-xs"
-                                      style={{ padding: '3px 8px', fontSize: '11px', border: '1px solid var(--border)', background: 'var(--bg-primary)' }}
-                                      title="Pack remaining balance for this room"
+                                      style={{ padding: '3px 8px', fontSize: '11px', border: '1px solid var(--border)', background: 'var(--bg-primary)', opacity: roomRemCount === 0 ? 0.5 : 1, cursor: roomRemCount === 0 ? 'not-allowed' : 'pointer' }}
+                                      title={roomRemCount === 0 ? "All items in this room were already packed in previous packing lists" : "Pack remaining balance for this room"}
                                     >
-                                      Pack Room ({roomRemCount})
+                                      {roomRemCount === 0 ? 'Fully Packed' : `Pack Room (${roomRemCount})`}
                                     </button>
                                     <button
                                       type="button"
