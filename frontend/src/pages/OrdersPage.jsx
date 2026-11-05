@@ -738,6 +738,7 @@ export default function OrdersPage() {
 
   // Workspace View State (BOQ Spreadsheet vs Document Generator)
   const [workspaceSubTab, setWorkspaceSubTab] = useState('boq'); // 'boq' | 'doc_gen'
+  const [showVoidedLogisticsDocs, setShowVoidedLogisticsDocs] = useState(false);
   const [creditsSectionOpen, setCreditsSectionOpen] = useState(true);
   const [interactiveCreditsOpen, setInteractiveCreditsOpen] = useState(true);
   const [showAddCreditModal, setShowAddCreditModal] = useState(false);
@@ -6461,85 +6462,166 @@ export default function OrdersPage() {
               </div>
             )}
 
-            {workspaceSubTab === 'logistics' && (
+            {workspaceSubTab === 'logistics' && (() => {
               /* SUB-TAB 4: DELIVERY LOGISTICS & PACKING LISTS REFERENCE VIEW */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '20px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <div>
-                      <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-info)' }}>
-                        📦 Logistics Documents & Waybills
-                      </h4>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Packing Lists and Delivery Notes issued for this quotation order.</span>
-                    </div>
-                    <button 
-                      type="button" 
-                      className="btn btn-sm btn-outline" 
-                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                      onClick={() => navigate('/logistics', { state: { filterOrderId: selectedOrderId } })}
-                    >
-                      <Truck size={14} /> Open Logistics Dashboard
-                    </button>
-                  </div>
+              const isDocVoided = (doc) => {
+                const s = String(doc?.status || '').toLowerCase();
+                return s === 'cancelled' || s === 'voided' || Boolean(doc?.voided_at);
+              };
 
-                  <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                          <th style={{ padding: '10px 12px' }}>Document ID</th>
-                          <th style={{ padding: '10px 12px' }}>Document Type</th>
-                          <th style={{ padding: '10px 12px' }}>Date Issued</th>
-                          <th style={{ padding: '10px 12px' }}>Items Count</th>
-                          <th style={{ padding: '10px 12px' }}>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(!activeOrderObject?.packingLists?.length && !activeOrderObject?.deliveryNotes?.length) ? (
-                          <tr>
-                            <td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                              No packing lists or delivery notes have been generated for this order yet. Go to Logistics to draft one.
-                            </td>
-                          </tr>
-                        ) : (
-                          <>
-                            {/* Render Packing Lists */}
-                            {(activeOrderObject?.packingLists || []).map((pl, idx) => (
-                              <tr key={`pl-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
-                                <td 
-                                  style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-info)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
-                                  onClick={() => navigate('/logistics', { state: { openDocId: pl.id, projectKey: pl.projectKey || activeOrderObject.projectKey } })}
-                                >
-                                  {pl.id}
-                                </td>
-                                <td style={{ padding: '10px 12px' }}>📋 Packing List / Box Label</td>
-                                <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{pl.date || '—'}</td>
-                                <td style={{ padding: '10px 12px' }}>{(pl.items || []).length} items</td>
-                                <td style={{ padding: '10px 12px' }}><span className="badge b-info">Issued</span></td>
-                              </tr>
-                            ))}
-                            {/* Render Delivery Notes */}
-                            {(activeOrderObject?.deliveryNotes || []).map((dn, idx) => (
-                              <tr key={`dn-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
-                                <td 
-                                  style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-info)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
-                                  onClick={() => navigate('/logistics', { state: { openDocId: dn.id, projectKey: dn.projectKey || activeOrderObject.projectKey } })}
-                                >
-                                  {dn.id}
-                                </td>
-                                <td style={{ padding: '10px 12px' }}>🚚 Delivery Note (Waybill)</td>
-                                <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{dn.date || '—'}</td>
-                                <td style={{ padding: '10px 12px' }}>{(dn.items || []).length} items</td>
-                                <td style={{ padding: '10px 12px' }}><span className="badge b-success">Delivered</span></td>
-                              </tr>
-                            ))}
-                          </>
+              const allPls = activeOrderObject?.packingLists || [];
+              const allDns = activeOrderObject?.deliveryNotes || [];
+              const voidedCount = allPls.filter(isDocVoided).length + allDns.filter(isDocVoided).length;
+              const displayedPackingLists = allPls.filter(pl => showVoidedLogisticsDocs || !isDocVoided(pl));
+              const displayedDeliveryNotes = allDns.filter(dn => showVoidedLogisticsDocs || !isDocVoided(dn));
+              const totalVisible = displayedPackingLists.length + displayedDeliveryNotes.length;
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-info)' }}>
+                          📦 Logistics Documents & Waybills
+                        </h4>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Packing Lists and Delivery Notes issued for this quotation order.</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        {voidedCount > 0 && (
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none', background: 'var(--bg-primary)', border: '1px solid var(--border)', padding: '5px 10px', borderRadius: '4px' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={showVoidedLogisticsDocs} 
+                              onChange={(e) => setShowVoidedLogisticsDocs(e.target.checked)} 
+                              style={{ cursor: 'pointer' }}
+                            />
+                            Show Voided / Cancelled ({voidedCount})
+                          </label>
                         )}
-                      </tbody>
-                    </table>
+                        <button 
+                          type="button" 
+                          className="btn btn-sm btn-outline" 
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                          onClick={() => navigate('/logistics', { state: { filterOrderId: selectedOrderId } })}
+                        >
+                          <Truck size={14} /> Open Logistics Dashboard
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                            <th style={{ padding: '10px 12px' }}>Document ID</th>
+                            <th style={{ padding: '10px 12px' }}>Document Type</th>
+                            <th style={{ padding: '10px 12px' }}>Date Issued</th>
+                            <th style={{ padding: '10px 12px' }}>Items Count</th>
+                            <th style={{ padding: '10px 12px' }}>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {totalVisible === 0 ? (
+                            <tr>
+                              <td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                {voidedCount > 0 && !showVoidedLogisticsDocs
+                                  ? `All ${voidedCount} document(s) on this order are voided. Tick 'Show Voided / Cancelled' to view them.`
+                                  : 'No packing lists or delivery notes have been generated for this order yet. Go to Logistics to draft one.'}
+                              </td>
+                            </tr>
+                          ) : (
+                            <>
+                              {/* Render Packing Lists */}
+                              {displayedPackingLists.map((pl, idx) => {
+                                const isVoided = isDocVoided(pl);
+                                return (
+                                  <tr 
+                                    key={`pl-${idx}`} 
+                                    style={{ 
+                                      borderBottom: '1px solid var(--border)', 
+                                      background: isVoided ? 'rgba(239, 68, 68, 0.03)' : 'transparent',
+                                      opacity: isVoided ? 0.65 : 1
+                                    }}
+                                  >
+                                    <td 
+                                      style={{ 
+                                        padding: '10px 12px', 
+                                        fontWeight: 600, 
+                                        color: isVoided ? 'var(--text-secondary)' : 'var(--text-info)', 
+                                        fontFamily: 'monospace', 
+                                        cursor: 'pointer', 
+                                        textDecoration: isVoided ? 'line-through' : 'underline' 
+                                      }}
+                                      onClick={() => navigate('/logistics', { state: { openDocId: pl.id, projectKey: pl.projectKey || activeOrderObject.projectKey } })}
+                                    >
+                                      {pl.id}
+                                    </td>
+                                    <td style={{ padding: '10px 12px' }}>📋 Packing List / Box Label</td>
+                                    <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{pl.date || '—'}</td>
+                                    <td style={{ padding: '10px 12px' }}>{(pl.items || []).length} items</td>
+                                    <td style={{ padding: '10px 12px' }}>
+                                      {isVoided ? (
+                                        <span className="badge b-danger" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>Voided</span>
+                                      ) : pl.status === 'Delivered' ? (
+                                        <span className="badge b-success">Delivered</span>
+                                      ) : (
+                                        <span className="badge b-info">{pl.status || 'Issued'}</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                              {/* Render Delivery Notes */}
+                              {displayedDeliveryNotes.map((dn, idx) => {
+                                const isVoided = isDocVoided(dn);
+                                const dnStatusLower = String(dn.status || '').toLowerCase();
+                                const isDelivered = dnStatusLower === 'delivered';
+                                return (
+                                  <tr 
+                                    key={`dn-${idx}`} 
+                                    style={{ 
+                                      borderBottom: '1px solid var(--border)', 
+                                      background: isVoided ? 'rgba(239, 68, 68, 0.03)' : 'transparent',
+                                      opacity: isVoided ? 0.65 : 1
+                                    }}
+                                  >
+                                    <td 
+                                      style={{ 
+                                        padding: '10px 12px', 
+                                        fontWeight: 600, 
+                                        color: isVoided ? 'var(--text-secondary)' : 'var(--text-info)', 
+                                        fontFamily: 'monospace', 
+                                        cursor: 'pointer', 
+                                        textDecoration: isVoided ? 'line-through' : 'underline' 
+                                      }}
+                                      onClick={() => navigate('/logistics', { state: { openDocId: dn.id, projectKey: dn.projectKey || activeOrderObject.projectKey } })}
+                                    >
+                                      {dn.id}
+                                    </td>
+                                    <td style={{ padding: '10px 12px' }}>🚚 Delivery Note (Waybill)</td>
+                                    <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{dn.date || '—'}</td>
+                                    <td style={{ padding: '10px 12px' }}>{(dn.items || []).length} items</td>
+                                    <td style={{ padding: '10px 12px' }}>
+                                      {isVoided ? (
+                                        <span className="badge b-danger" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>Voided</span>
+                                      ) : isDelivered ? (
+                                        <span className="badge b-success" style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0' }}>Delivered</span>
+                                      ) : (
+                                        <span className="badge b-warning" style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' }}>🚚 Dispatched</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {workspaceSubTab === 'credits' && (() => {
               const totalErpCredited = orderCreditNotes.reduce((sum, cn) => sum + Math.abs(Number(cn.totalValue || cn.value || cn.amount || 0)), 0);

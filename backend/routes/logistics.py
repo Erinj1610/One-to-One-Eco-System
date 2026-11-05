@@ -536,9 +536,18 @@ def recalc_order_item_logistics(db: Session, order_obj: Order):
                 is_match = False
                 if dn_it.order_item_id and str(dn_it.order_item_id) == str(oi.id):
                     is_match = True
+                elif dn_it.is_accessory or str(dn_it.order_item_id or "").startswith("acc_"):
+                    # Accessory matching: compare item codes & plan code / parent fitting
+                    oi_codes = {str(c).strip().upper() for c in [oi.one_one_code, oi.code] if c}
+                    dn_codes = {str(c).strip().upper() for c in [dn_it.one_one_code, dn_it.supplier_code, dn_it.code] if c}
+                    if oi_codes and dn_codes and (oi_codes & dn_codes):
+                        oi_plan = str(oi.type or "").strip().upper()
+                        dn_plan = str(dn_it.plan_code or dn_it.parent_fitting_code or "").strip().upper()
+                        if not oi_plan or not dn_plan or oi_plan == dn_plan:
+                            is_match = True
                 elif not dn_it.order_item_id:
                     oi_codes = {str(c).strip().upper() for c in [oi.one_one_code, oi.code] if c}
-                    dn_codes = {str(c).strip().upper() for c in [dn_it.one_one_code, dn_it.supplier_code] if c}
+                    dn_codes = {str(c).strip().upper() for c in [dn_it.one_one_code, dn_it.supplier_code, dn_it.code] if c}
                     if oi_codes and dn_codes and (oi_codes & dn_codes):
                         # Also match floor/area if present to avoid cross-room collisions
                         if not dn_it.area or not oi.area or dn_it.area.strip().lower() == oi.area.strip().lower():
@@ -633,6 +642,9 @@ def get_enriched_order_items_for_logistics(
                 prod_by_code[p.sku.strip().upper()] = p
 
     # Calculate already packed quantities across active Packing Lists for this order
+    recalc_order_item_logistics(db, order_obj)
+    db.commit()
+
     active_pls = db.query(LogisticsPackingList).filter(
         LogisticsPackingList.order_id == order_obj.id,
         LogisticsPackingList.status != "Cancelled"
@@ -1525,3 +1537,25 @@ def save_label_templates(payload: LabelTemplatesSaveInput, db: Session = Depends
 
     db.commit()
     return {"status": "ok", "count": len(payload.templates)}
+
+
+@router.post("/logistics/recalc/{order_ref}")
+def recalculate_order_logistics_endpoint(order_ref: str, db: Session = Depends(get_db)):
+    order_obj = None
+    if str(order_ref).isdigit():
+        order_obj = db.query(Order).filter(Order.id == int(order_ref)).first()
+    if not order_obj:
+        order_obj = db.query(Order).filter(Order.po_number == str(order_ref)).first()
+    if not order_obj:
+        raise HTTPException(status_code=404, detail=f"Order '{order_ref}' not found")
+
+    recalc_order_item_logistics(db, order_obj)
+    db.commit()
+    db.refresh(order_obj)
+
+    return {
+        "status": "ok",
+        "message": f"Logistics reconciled for Order {order_obj.po_number or order_obj.id}",
+        "packing_lists_count": len(order_obj.packing_lists or []),
+        "delivery_notes_count": len(order_obj.delivery_notes or []),
+    }
