@@ -539,7 +539,7 @@ def recalc_order_item_logistics(db: Session, order_obj: Order):
                 elif dn_it.is_accessory or str(dn_it.order_item_id or "").startswith("acc_"):
                     # Accessory matching: compare item codes & plan code / parent fitting
                     oi_codes = {str(c).strip().upper() for c in [oi.one_one_code, oi.code] if c}
-                    dn_codes = {str(c).strip().upper() for c in [dn_it.one_one_code, dn_it.supplier_code, dn_it.code] if c}
+                    dn_codes = {str(c).strip().upper() for c in [dn_it.one_one_code, dn_it.supplier_code, getattr(dn_it, 'code', None)] if c}
                     if oi_codes and dn_codes and (oi_codes & dn_codes):
                         oi_plan = str(oi.type or "").strip().upper()
                         dn_plan = str(dn_it.plan_code or dn_it.parent_fitting_code or "").strip().upper()
@@ -547,7 +547,7 @@ def recalc_order_item_logistics(db: Session, order_obj: Order):
                             is_match = True
                 elif not dn_it.order_item_id:
                     oi_codes = {str(c).strip().upper() for c in [oi.one_one_code, oi.code] if c}
-                    dn_codes = {str(c).strip().upper() for c in [dn_it.one_one_code, dn_it.supplier_code, dn_it.code] if c}
+                    dn_codes = {str(c).strip().upper() for c in [dn_it.one_one_code, dn_it.supplier_code, getattr(dn_it, 'code', None)] if c}
                     if oi_codes and dn_codes and (oi_codes & dn_codes):
                         # Also match floor/area if present to avoid cross-room collisions
                         if not dn_it.area or not oi.area or dn_it.area.strip().lower() == oi.area.strip().lower():
