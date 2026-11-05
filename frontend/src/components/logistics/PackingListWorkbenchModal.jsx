@@ -1577,28 +1577,27 @@ export default function PackingListWorkbenchModal({
 
                             {/* Total Order & Remaining Balance Qty */}
                             <td style={{ padding: '10px', textAlign: 'center' }}>
+                              <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--text-primary)' }}>
+                                {model.total_ordered}
+                              </div>
                               {hasLeftover ? (
-                                <div>
-                                  <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--text-primary)' }}>
-                                    {remainingUnallocated}
-                                  </div>
-                                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-                                    spare (of {model.total_ordered})
-                                  </div>
+                                <div style={{ fontSize: '10px', color: 'var(--text-warning)', fontWeight: 650, marginTop: '2px' }}>
+                                  {remainingUnallocated} spare unassigned
                                 </div>
                               ) : model.total_already_packed > 0 ? (
-                                <div>
-                                  <div style={{ fontWeight: 800, fontSize: '14px', color: model.total_remaining_to_pack > 0 ? 'var(--text-info)' : 'var(--text-success)' }}>
-                                    {model.total_remaining_to_pack}
+                                model.total_remaining_to_pack === 0 ? (
+                                  <span style={{ fontSize: '9.5px', fontWeight: 700, color: 'var(--text-success)', background: 'rgba(16, 185, 129, 0.12)', padding: '1px 5px', borderRadius: '4px', display: 'inline-block', marginTop: '2px' }}>
+                                    ✓ All {model.total_ordered} packed
+                                  </span>
+                                ) : (
+                                  <div style={{ fontSize: '10px', color: 'var(--text-info)', fontWeight: 650, marginTop: '2px' }}>
+                                    {model.total_remaining_to_pack} rem • {model.total_already_packed} prev
                                   </div>
-                                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-                                    rem (of {model.total_ordered} • {model.total_already_packed} prev)
-                                  </div>
-                                </div>
+                                )
                               ) : (
-                                <span style={{ fontWeight: 800, fontSize: '14px', color: 'var(--text-primary)' }}>
-                                  {model.total_ordered}
-                                </span>
+                                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                                  ordered
+                                </div>
                               )}
                             </td>
 
