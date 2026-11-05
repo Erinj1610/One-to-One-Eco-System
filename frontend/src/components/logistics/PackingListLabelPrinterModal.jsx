@@ -142,9 +142,9 @@ export default function PackingListLabelPrinterModal({
     }
   };
 
-  // Raw items from the packing list, normalized so every item has a guaranteed unique id and packed qty
+  // Raw items from the packing list, normalized and batched by Product / Model Group
   const plItems = useMemo(() => {
-    return ((packingList && packingList.items) || []).map((item, idx) => {
+    const raw = ((packingList && packingList.items) || []).map((item, idx) => {
       const packedQty = Math.max(1, Number(item.qty_packed ?? item.qtyDelivered ?? item.qty ?? 1));
       const boxVal = item.box_number || item.box || item.boxNumber || 'Box 1';
       return {
@@ -161,6 +161,23 @@ export default function PackingListLabelPrinterModal({
         qty: packedQty,
         boxNumber: boxVal,
       };
+    });
+
+    // Clean Batching: Group by Plan Code, then Code/SKU, then Location
+    return [...raw].sort((a, b) => {
+      const planA = (a.planCode || a.plan_code || '').trim();
+      const planB = (b.planCode || b.plan_code || '').trim();
+      const pComp = planA.localeCompare(planB, undefined, { numeric: true });
+      if (pComp !== 0) return pComp;
+
+      const codeA = (a.code || a.oneOneCode || '').trim();
+      const codeB = (b.code || b.oneOneCode || '').trim();
+      const cComp = codeA.localeCompare(codeB, undefined, { numeric: true });
+      if (cComp !== 0) return cComp;
+
+      const locA = `${a.floor || ''} ${a.area || ''}`.trim();
+      const locB = `${b.floor || ''} ${b.area || ''}`.trim();
+      return locA.localeCompare(locB);
     });
   }, [packingList]);
 
@@ -387,7 +404,10 @@ export default function PackingListLabelPrinterModal({
           // Native Argox PPLB / EPL2 command mode:
           // Directly calibrates Q240,12 (gap 1.5mm) and prints via printer firmware with 0 driver offset
           const rawCommands = generatedLabels.map(lbl => {
-            return generatePplbCommands(currentTemplate, lbl.context, 1);
+            return generatePplbCommands(currentTemplate, lbl.context, 1, {
+              shiftMmX: hardwareShiftX,
+              shiftMmY: hardwareShiftY,
+            });
           });
           await printRawDirect(selectedPrinter, rawCommands);
         } else {

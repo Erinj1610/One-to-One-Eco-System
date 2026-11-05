@@ -598,11 +598,14 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0, options
  * Generate native Argox PPLB (EPL2) command sequence for hardware-accurate printing.
  * Tells the Argox printer its exact label length, gap length, and draws lines & fonts directly in firmware.
  */
-export function generatePplbCommands(template, context, copies = 1) {
+export function generatePplbCommands(template, context, copies = 1, options = {}) {
   const DOTS_PER_MM = 8;
   const stickerW = Number(template.widthMm ?? 50);
   const stickerH = Number(template.heightMm ?? 30);
   const gapMm = Number(template.gapMm ?? 1.5);
+
+  const shiftX = Math.round(Number(options.shiftMmX ?? 0) * DOTS_PER_MM);
+  const shiftY = Math.round(Number(options.shiftMmY ?? 0) * DOTS_PER_MM);
 
   const widthDots = Math.round(stickerW * DOTS_PER_MM);  // 400 dots for 50mm
   const heightDots = Math.round(stickerH * DOTS_PER_MM); // 240 dots for 30mm
@@ -622,18 +625,20 @@ export function generatePplbCommands(template, context, copies = 1) {
 
   (template.fields || template.elements || []).forEach(field => {
     const isExplicit = field.xMm !== undefined && field.yMm !== undefined;
-    const xDots = Math.max(0, Math.min(widthDots - 4, Math.round((isExplicit ? Number(field.xMm) : 1) * DOTS_PER_MM)));
-    const yDots = Math.max(0, Math.min(maxSafeY, isExplicit ? Math.round(Number(field.yMm) * DOTS_PER_MM) : flowY));
+    const rawX = Math.round((isExplicit ? Number(field.xMm) : 1) * DOTS_PER_MM) + shiftX;
+    const rawY = (isExplicit ? Math.round(Number(field.yMm) * DOTS_PER_MM) : flowY) + shiftY;
+    const xDots = Math.max(0, Math.min(widthDots - 2, rawX));
+    const yDots = Math.max(0, Math.min(maxSafeY, rawY));
     const wDots = Math.max(16, Math.min(widthDots - xDots, Math.round((field.wMm !== undefined ? Number(field.wMm) : (stickerW - 2)) * DOTS_PER_MM)));
 
     if (field.type === 'line') {
       const thickness = Math.max(1, Math.round((field.thicknessMm || 0.5) * DOTS_PER_MM));
       if (field.orientation === 'vertical') {
         const rawH = Math.round((field.hMm || stickerH) * DOTS_PER_MM);
-        const hDots = Math.max(4, Math.min(rawH, maxSafeY - yDots));
+        const hDots = Math.max(4, Math.min(rawH, heightDots - yDots));
         cmds.push(`LO${xDots},${yDots},${thickness},${hDots}`);
       } else {
-        const safeW = Math.max(4, Math.min(wDots, widthDots - xDots - 2));
+        const safeW = Math.max(4, Math.min(wDots, widthDots - xDots));
         cmds.push(`LO${xDots},${yDots},${safeW},${thickness}`);
         if (!isExplicit) flowY = Math.min(maxSafeY, yDots + thickness + 6);
       }
@@ -657,20 +662,28 @@ export function generatePplbCommands(template, context, copies = 1) {
       let vMul = 1;
 
       if (fs <= 7) {
-        fontNum = 1; // 8x12 dots (compact label headers)
+        fontNum = 1; // 8x12 dots (compact label headers: PLAN CODE, 1-TO-1 CODE)
       } else if (fs <= 9.5) {
-        fontNum = 2; // 10x16 dots
+        fontNum = 2; // 10x16 dots (Floor and Area text)
       } else if (fs <= 12) {
-        fontNum = 3; // 12x20 dots
+        fontNum = 3; // 12x20 dots (1-to-1 codes like SP-PXLB-B)
       } else {
-        fontNum = 4; // 14x24 dots
+        // Prominent Plan Codes (fs >= 13, like 15pt Plan Code)
+        fontNum = 4; // 14x24 dots base
+        hMul = 2;    // 28 dots wide
+        vMul = 2;    // 48 dots tall (bold ~6mm prominent text)
       }
 
-      // Shrink font if text is wider than box
-      const getCharW = (fn, hm) => (fn === 1 ? 10 : fn === 2 ? 12 : fn === 3 ? 14 : 16) * hm;
+      // Font character dimensions
+      const getCharW = (fn, hm) => (fn === 1 ? 8 : fn === 2 ? 10 : fn === 3 ? 12 : 14) * hm;
       const getCharH = (fn, vm) => (fn === 1 ? 12 : fn === 2 ? 16 : fn === 3 ? 20 : 24) * vm;
 
+      // Auto-scale down if text overflows available width wDots
       if (!field.wrap) {
+        while (hMul > 1 && text.length * getCharW(fontNum, hMul) > wDots) {
+          hMul -= 1;
+          vMul = Math.max(1, vMul - 1);
+        }
         while (fontNum > 1 && text.length * getCharW(fontNum, hMul) > wDots) {
           fontNum -= 1;
         }
@@ -698,16 +711,22 @@ export function generatePplbCommands(template, context, copies = 1) {
         lines.push(text.length > maxCharsPerLine ? text.slice(0, maxCharsPerLine) : text);
       }
 
+      // Exact Vertical Centering (vAlign: 'middle')
+      const boxHDots = field.hMm !== undefined ? Math.round(Number(field.hMm) * DOTS_PER_MM) : charH;
+      const totalTextHDots = lines.length * charH + (lines.length - 1) * 2;
+      const startY = (field.vAlign === 'middle' && boxHDots > totalTextHDots)
+        ? yDots + Math.floor((boxHDots - totalTextHDots) / 2)
+        : yDots;
+
       lines.slice(0, 2).forEach((lnText, idx) => {
-        const lnY = yDots + idx * (charH + 2);
+        const lnY = startY + idx * (charH + 2);
         if (lnY + charH > maxSafeY) return; // Never overflow bottom of label buffer!
         let drawX = xDots;
+        const totalTextW = lnText.length * charW;
         if (field.align === 'center') {
-          const totalTextW = lnText.length * charW;
-          drawX = Math.max(xDots, Math.round(xDots + (wDots - totalTextW) / 2));
+          drawX = Math.max(0, Math.min(widthDots - totalTextW, Math.round(xDots + (wDots - totalTextW) / 2)));
         } else if (field.align === 'right') {
-          const totalTextW = lnText.length * charW;
-          drawX = Math.max(xDots, Math.round(xDots + wDots - totalTextW));
+          drawX = Math.max(0, Math.min(widthDots - totalTextW, Math.round(xDots + wDots - totalTextW)));
         }
         cmds.push(`A${drawX},${lnY},0,${fontNum},${hMul},${vMul},N,"${lnText}"`);
       });
@@ -806,25 +825,25 @@ export const DEFAULT_LABEL_TEMPLATES = [
     marginMm: { top: 0, bottom: 0, left: 0, right: 0 },
     type: 'item',
     fields: [
-      // Full-Bleed Center Divider Lines (touching all four sticker edges)
-      { id: 'f_div_h', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', xMm: 0, yMm: 15, wMm: 50, hMm: 0.5 },
-      { id: 'f_div_v', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'vertical', xMm: 22, yMm: 0, wMm: 0.5, hMm: 30 },
+      // Full-Bleed Center Divider Lines (touching all four sticker edges with exact 25/15mm symmetry)
+      { id: 'f_div_h', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', xMm: 0, yMm: 15.0, wMm: 50, hMm: 0.5 },
+      { id: 'f_div_v', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'vertical', xMm: 25.0, yMm: 0, wMm: 0.5, hMm: 30 },
 
-      // Top-Left: Plan Code (x: 1.5..21, y: 1..14.5)
-      { id: 'f_lbl_plancode', type: 'text', content: 'PLAN CODE', fontSize: 6.5, fontWeight: 800, underline: false, align: 'left', xMm: 1.5, yMm: 1.5, wMm: 19.5, hMm: 3.5 },
-      { id: 'f_val_plancode', type: 'text', content: '{{item.plan_code}}', fontSize: 15, fontWeight: 900, align: 'center', shrinkToFit: true, vAlign: 'middle', xMm: 1.5, yMm: 5.0, wMm: 19.5, hMm: 9.0 },
+      // Top-Left: Plan Code (x: 1.5..23.5, y: 1.5..14)
+      { id: 'f_lbl_plancode', type: 'text', content: 'PLAN CODE', fontSize: 6.5, fontWeight: 800, underline: false, align: 'left', xMm: 1.5, yMm: 1.5, wMm: 22.0, hMm: 3.5 },
+      { id: 'f_val_plancode', type: 'text', content: '{{item.plan_code}}', fontSize: 15, fontWeight: 900, align: 'center', shrinkToFit: true, vAlign: 'middle', xMm: 1.5, yMm: 5.0, wMm: 22.0, hMm: 9.0 },
       
-      // Top-Right: 1-TO-1 Code (x: 23.5..48.5, y: 1..14.5)
-      { id: 'f_lbl_code', type: 'text', content: '1-TO-1 CODE', fontSize: 6.5, fontWeight: 800, underline: false, align: 'left', xMm: 23.5, yMm: 1.5, wMm: 25.0, hMm: 3.5 },
-      { id: 'f_val_code', type: 'text', content: '{{item.code}}', fontSize: 11, fontWeight: 800, align: 'center', shrinkToFit: true, vAlign: 'middle', xMm: 23.5, yMm: 5.0, wMm: 25.0, hMm: 9.0 },
+      // Top-Right: 1-TO-1 Code (x: 26.5..48.5, y: 1.5..14)
+      { id: 'f_lbl_code', type: 'text', content: '1-TO-1 CODE', fontSize: 6.5, fontWeight: 800, underline: false, align: 'left', xMm: 26.5, yMm: 1.5, wMm: 22.0, hMm: 3.5 },
+      { id: 'f_val_code', type: 'text', content: '{{item.code}}', fontSize: 11, fontWeight: 800, align: 'center', shrinkToFit: true, vAlign: 'middle', xMm: 26.5, yMm: 5.0, wMm: 22.0, hMm: 9.0 },
 
-      // Bottom-Left: Floor (x: 1.5..21, y: 15.5..29)
-      { id: 'f_lbl_floor', type: 'text', content: 'FLOOR', fontSize: 6.5, fontWeight: 800, underline: false, align: 'left', xMm: 1.5, yMm: 16.0, wMm: 19.5, hMm: 3.5 },
-      { id: 'f_val_floor', type: 'text', content: '{{item.floor}}', fontSize: 9.5, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 1.5, yMm: 19.5, wMm: 19.5, hMm: 9.5 },
+      // Bottom-Left: Floor (x: 1.5..23.5, y: 16.5..29)
+      { id: 'f_lbl_floor', type: 'text', content: 'FLOOR', fontSize: 6.5, fontWeight: 800, underline: false, align: 'left', xMm: 1.5, yMm: 16.5, wMm: 22.0, hMm: 3.5 },
+      { id: 'f_val_floor', type: 'text', content: '{{item.floor}}', fontSize: 9.5, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 1.5, yMm: 20.0, wMm: 22.0, hMm: 9.0 },
 
-      // Bottom-Right: Area (x: 23.5..48.5, y: 15.5..29)
-      { id: 'f_lbl_area', type: 'text', content: 'AREA', fontSize: 6.5, fontWeight: 800, underline: false, align: 'left', xMm: 23.5, yMm: 16.0, wMm: 25.0, hMm: 3.5 },
-      { id: 'f_val_area', type: 'text', content: '{{item.area}}', fontSize: 9.5, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 23.5, yMm: 19.5, wMm: 25.0, hMm: 9.5 }
+      // Bottom-Right: Area (x: 26.5..48.5, y: 16.5..29)
+      { id: 'f_lbl_area', type: 'text', content: 'AREA', fontSize: 6.5, fontWeight: 800, underline: false, align: 'left', xMm: 26.5, yMm: 16.5, wMm: 22.0, hMm: 3.5 },
+      { id: 'f_val_area', type: 'text', content: '{{item.area}}', fontSize: 9.5, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 26.5, yMm: 20.0, wMm: 22.0, hMm: 9.0 }
     ]
   },
   {
