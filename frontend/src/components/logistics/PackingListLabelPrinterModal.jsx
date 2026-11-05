@@ -9,6 +9,7 @@ import {
   drawCode128OnCanvas, 
   renderLabelToDataUrl,
   generatePplbCommands,
+  generatePplbGraphicPrintUnits,
   evaluateTokens, 
   DEFAULT_LABEL_TEMPLATES 
 } from '../../utils/labelGenerator';
@@ -59,7 +60,7 @@ export default function PackingListLabelPrinterModal({
       const saved = localStorage.getItem('oto_printer_offset_x');
       if (saved !== null) return Number(saved);
     } catch(e) {}
-    return 2.5; // Default +2.5mm compensation for Argox roll feed guide
+    return 0.0; // Default exact center (0.0mm)
   });
   const [hardwareShiftY, setHardwareShiftY] = useState(() => {
     try {
@@ -70,14 +71,13 @@ export default function PackingListLabelPrinterModal({
   });
 
   // Hardware Print Scale Compensation:
-  // When printer driver or Chrome applies hardware unprintable margins, 50x30mm shrinks to 42x25mm (~16% shrink).
-  // Defaulting to 119% mathematically scales 42mm back to 50.0mm physical output on paper.
+  // In Native PPLB/EPL2 mode, 1:1 hardware resolution is exactly 100%.
   const [hardwareScalePercent, setHardwareScalePercent] = useState(() => {
     try {
       const saved = localStorage.getItem('oto_printer_scale_pct');
       if (saved !== null) return Number(saved);
     } catch(e) {}
-    return 119;
+    return 100; // Default 100% 1:1 dot mapping
   });
 
   // Available Windows printers discovered via QZ Tray
@@ -401,15 +401,20 @@ export default function PackingListLabelPrinterModal({
         setIsDirectPrinting(true);
 
         if (usePplbRaw) {
-          // Native Argox PPLB / EPL2 command mode:
-          // Directly calibrates Q240,12 (gap 1.5mm) and prints via printer firmware with 0 driver offset
-          const rawCommands = generatedLabels.map(lbl => {
-            return generatePplbCommands(currentTemplate, lbl.context, 1, {
+          // Native Argox PPLB / EPL2 command mode with 1-Bit Raw Graphic Streaming:
+          // Directly calibrates Q240,12 (gap 1.5mm) and prints via printer firmware with 0 driver offset.
+          // Full-bleed divider lines, TrueType designer typography, zero Windows driver margins or dithering!
+          const rawItems = [];
+          generatedLabels.forEach(lbl => {
+            const units = generatePplbGraphicPrintUnits(currentTemplate, lbl.context, 1, {
+              scalePercent: hardwareScalePercent,
               shiftMmX: hardwareShiftX,
               shiftMmY: hardwareShiftY,
+              rotation: effectiveRotation
             });
+            rawItems.push(...units);
           });
-          await printRawDirect(selectedPrinter, rawCommands);
+          await printRawDirect(selectedPrinter, rawItems);
         } else {
           // Standard Raster PNG mode
           await printDirectLabels(selectedPrinter, dataUrls, { widthMm: printWidthMm, heightMm: printHeightMm });
@@ -937,6 +942,34 @@ export default function PackingListLabelPrinterModal({
                 100%
               </button>
             )}
+            {(hardwareShiftX !== 0 || hardwareShiftY !== 0 || hardwareScalePercent !== 100) && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs"
+                style={{
+                  fontSize: '9.5px',
+                  padding: '1px 6px',
+                  height: '20px',
+                  minHeight: 'unset',
+                  color: 'var(--text-info)',
+                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                  borderRadius: '4px'
+                }}
+                onClick={() => {
+                  setHardwareShiftX(0.0);
+                  setHardwareShiftY(0.0);
+                  setHardwareScalePercent(100);
+                  try {
+                    localStorage.removeItem('oto_printer_offset_x');
+                    localStorage.removeItem('oto_printer_offset_y');
+                    localStorage.removeItem('oto_printer_scale_pct');
+                  } catch(e){}
+                }}
+                title="Reset to factory calibration (0mm shift, 100% scale)"
+              >
+                Reset Calibration
+              </button>
+            )}
           </div>
 
           {/* Printer Destination Selector */}
@@ -1010,11 +1043,11 @@ export default function PackingListLabelPrinterModal({
                   border: '1px solid currentColor'
                 }}
                 title={usePplbRaw 
-                  ? "Native Argox PPLB Mode: Sends raw EPL2/PPLB commands directly to printer hardware (exact 1.5mm gap detection, 0mm spooler offset, BarTender style)" 
-                  : "Raster Graphics Mode: Renders canvas PNG via Windows Spooler"
+                  ? "Native Argox Mode: Direct 1-bit streaming with hardware gap sensor calibration (Q240,12), 100% full-bleed divider lines, zero driver margins, and sharp TrueType typography." 
+                  : "Windows Spooler Mode: Renders canvas PNG via Windows GDI printer driver."
                 }
               >
-                {usePplbRaw ? '⚡ Native Argox (PPLB)' : '🖼️ Raster Graphic'}
+                {usePplbRaw ? '⚡ Native Argox 1-Bit' : '🖼️ Windows Spooler'}
               </button>
             </div>
           )}

@@ -595,6 +595,60 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0, options
 }
 
 /**
+ * Generate native Argox PPLB (EPL2) print units using 1-bit raw graphic streaming.
+ * Bypasses Windows GDI driver margins, delivers 100% full-bleed divider lines,
+ * preserves TrueType designer typography (Plan Code, 1-TO-1 Code, Floor, Area),
+ * and calibrates the Argox O4-250 hardware gap sensor (Q240,12).
+ */
+export function generatePplbGraphicPrintUnits(template, context, copies = 1, options = {}) {
+  const DOTS_PER_MM = 8;
+  const stickerW = Number(template.widthMm ?? 50);
+  const stickerH = Number(template.heightMm ?? 30);
+  const gapMm = Number(template.gapMm ?? 1.5);
+
+  const widthDots = Math.round(stickerW * DOTS_PER_MM);  // 400 dots for 50mm
+  const heightDots = Math.round(stickerH * DOTS_PER_MM); // 240 dots for 30mm
+  const gapDots = Math.max(8, Math.round(gapMm * DOTS_PER_MM)); // 12 dots for 1.5mm gap
+
+  const rot = options.rotation !== undefined ? options.rotation : (template.rotation || 0);
+
+  // Render 1-bit binarized 203 DPI canvas PNG
+  const dataUrl = renderLabelToDataUrl(template, context, rot, {
+    isPhysicalPrint: true,
+    scalePercent: options.scalePercent || 100,
+    offsetMmX: options.shiftMmX ?? 0,
+    offsetMmY: options.shiftMmY ?? 0
+  });
+
+  const cleanBase64 = (dataUrl || '').replace(/^data:image\/[a-z]+;base64,/, '');
+
+  const printUnits = [];
+  const count = Math.max(1, Number(copies) || 1);
+
+  for (let c = 0; c < count; c++) {
+    printUnits.push('\nN\n');
+    printUnits.push(`q${widthDots}\n`);
+    printUnits.push(`Q${heightDots},${gapDots}\n`);
+    printUnits.push('D11\n');
+    printUnits.push('S3\n');
+    printUnits.push({
+      type: 'raw',
+      format: 'image',
+      flavor: 'base64',
+      data: cleanBase64,
+      options: {
+        language: 'EPL',
+        x: 0,
+        y: 0
+      }
+    });
+    printUnits.push('\nP1\n');
+  }
+
+  return printUnits;
+}
+
+/**
  * Generate native Argox PPLB (EPL2) command sequence for hardware-accurate printing.
  * Tells the Argox printer its exact label length, gap length, and draws lines & fonts directly in firmware.
  */
@@ -821,7 +875,7 @@ export const DEFAULT_LABEL_TEMPLATES = [
     heightMm: 30,
     orientation: 'landscape',
     rotation: 0,
-    carrierLinerMm: { left: 2.0, top: 1.0 },
+    carrierLinerMm: { left: 0.0, top: 0.0 },
     marginMm: { top: 0, bottom: 0, left: 0, right: 0 },
     type: 'item',
     fields: [
