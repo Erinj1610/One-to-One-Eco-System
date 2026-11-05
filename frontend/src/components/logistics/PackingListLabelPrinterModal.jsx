@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   X, Printer, Tag, Box, Settings, CheckSquare, Square, 
   ChevronLeft, ChevronRight, Layers, AlertCircle, Sparkles, Filter, RefreshCw,
-  RotateCw, Download, ExternalLink, CheckCircle, Move
+  RotateCw, Download, ExternalLink, CheckCircle, Move, Maximize2
 } from 'lucide-react';
 import { 
   generateCode128Svg, 
@@ -27,8 +27,6 @@ export default function PackingListLabelPrinterModal({
   onNextStage = null,
   nextStageLabel = 'Proceed to Boxing →'
 }) {
-  if (!isOpen || !packingList) return null;
-
   // Active print mode: 'item' (individual fittings) or 'box' (outer box manifest)
   const [mode, setMode] = useState(initialMode || 'item');
 
@@ -146,7 +144,7 @@ export default function PackingListLabelPrinterModal({
 
   // Raw items from the packing list, normalized so every item has a guaranteed unique id and packed qty
   const plItems = useMemo(() => {
-    return (packingList.items || []).map((item, idx) => {
+    return ((packingList && packingList.items) || []).map((item, idx) => {
       const packedQty = Math.max(1, Number(item.qty_packed ?? item.qtyDelivered ?? item.qty ?? 1));
       const boxVal = item.box_number || item.box || item.boxNumber || 'Box 1';
       return {
@@ -523,7 +521,9 @@ export default function PackingListLabelPrinterModal({
     printWindow.document.close();
   };
 
-    const modalInner = (
+  if (!isOpen || !packingList) return null;
+
+  const modalInner = (
     <div
       style={{
         background: 'var(--bg-secondary)',
