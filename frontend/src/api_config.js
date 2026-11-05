@@ -1,7 +1,12 @@
 const hostname = typeof window !== 'undefined' ? (window.location.hostname || '') : '';
 // Hosts containing 'staging' (e.g. frontend-git-staging-erinj1610s-projects.vercel.app) route to Staging
 // Main production hosts (ejportal.vercel.app, ejportal.world, www.ejportal.world, portal.one-to-one.world) route to Production
-const isStagingHost = hostname.includes('staging');
+const isStagingHost = 
+  hostname.includes('staging') || 
+  hostname.includes('localhost') || 
+  hostname.includes('127.0.0.1') || 
+  hostname.includes('-git-') ||
+  (hostname.includes('vercel.app') && !hostname.startsWith('ejportal.'));
 
 export const API_BASE = isStagingHost 
   ? 'https://one-to-one-backend-staging-858977785048.us-central1.run.app'
