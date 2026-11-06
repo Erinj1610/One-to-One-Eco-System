@@ -515,6 +515,28 @@ export default function OrdersPage() {
   const [swapTargetItem, setSwapTargetItem] = useState(null);
   const [scopeFilter, setScopeFilter] = useState('ALL');
   const [revisionStatusFilter, setRevisionStatusFilter] = useState('ACTIVE');
+
+  // Currently open order in spreadsheet workspace
+  const currentOrderObj = useMemo(() => {
+    if (!selectedOrderId) return {};
+    return Object.values(projects || {}).flatMap(p => Array.isArray(p.orders) ? p.orders : Object.values(p.orders || {})).find(o => String(o.id) === String(selectedOrderId) || String(o.po_number || o.poNumber) === String(selectedOrderId)) || {};
+  }, [projects, selectedOrderId]);
+
+  const fetchCurrentOrderItems = async (orderId) => {
+    const idToFetch = orderId || selectedOrderId;
+    if (!idToFetch) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/orders/${idToFetch}/items`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setActiveOrderItems(data);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to reload order items:', e);
+    }
+  };
   const [boqCustomSku, setBoqCustomSku] = useState('');
   const [boqCustomName, setBoqCustomName] = useState('');
   const [boqCustomCategory, setBoqCustomCategory] = useState('Downlight');
@@ -7048,7 +7070,7 @@ export default function OrdersPage() {
         onSubOrderCreated={(res) => {
           refreshProjects();
           if (selectedOrderId) {
-            loadOrderItems(selectedOrderId);
+            fetchCurrentOrderItems(selectedOrderId);
           }
         }}
       />
@@ -7063,7 +7085,7 @@ export default function OrdersPage() {
         onSwapCompleted={(res) => {
           refreshProjects();
           if (selectedOrderId) {
-            loadOrderItems(selectedOrderId);
+            fetchCurrentOrderItems(selectedOrderId);
           }
         }}
       />
