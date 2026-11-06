@@ -3219,9 +3219,6 @@ export default function OrdersPage() {
                       value={searchQuery}
                       onChange={e => setSearchQuery(e.target.value)}
                     />
-                    {!searchQuery && (
-                      <span className="kbd-hint" style={{ position: 'absolute', right: '10px', top: '9px' }}>/</span>
-                    )}
                   </div>
                   
                   <select 
