@@ -33,21 +33,36 @@
 }
 
 /* Portal-Wide Sticky Table Headers across EVERY module and scroll container */
+table thead,
+.table thead,
+.tracker-table thead,
+thead {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 20 !important;
+}
+
 table thead th,
 .table thead th,
 .tracker-table thead th,
 thead th {
   position: sticky !important;
   top: 0 !important;
-  z-index: 10 !important;
+  z-index: 20 !important;
   background: var(--bg-secondary, #1e293b) !important;
   background-color: var(--bg-secondary, #1e293b) !important;
   box-shadow: 0 1.5px 0 var(--border, rgba(255, 255, 255, 0.12)) !important;
 }
 
-/* Ensure table container scrolls retain sticky headers */
-div:has(> table) {
-  overflow-y: auto;
+/* Allow text selection everywhere across all tables so right-click/copy always works */
+table, .table, .tracker-table, tbody, tr, td {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+/* In cards containing tables, remove overflow:hidden on intermediate wrappers that break sticky scrolling */
+.card:has(table) {
+  overflow: visible !important;
 }
 
 /* Modal styling utilities */
