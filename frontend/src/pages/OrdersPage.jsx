@@ -8,6 +8,10 @@ import TakeoffSpecEngine from '../components/TakeoffSpecEngine';
 import MobileOrdersViewer from '../components/mobile/MobileOrdersViewer';
 import DriveFileExplorer from '../components/common/DriveFileExplorer';
 import TechnicalPackModal from '../components/orders/TechnicalPackModal';
+import SubOrderModal from '../components/orders/SubOrderModal';
+import ItemSwapModal from '../components/orders/ItemSwapModal';
+import AuditHistoryTab from '../components/orders/AuditHistoryTab';
+import ClientVariationDocument from '../components/orders/ClientVariationDocument';
 import { API_BASE } from '../api_config';
 import { 
   ArrowUpDown,
@@ -33,6 +37,9 @@ import {
   DollarSign,
   Truck,
   Layers,
+  GitBranch,
+  RotateCcw,
+  History,
   ChevronRight,
   Sparkles,
   ClipboardList,
@@ -504,6 +511,10 @@ export default function OrdersPage() {
   // In-Order Ad-Hoc Product Creation Modal State (for BOQ Spreadsheet)
   const [showBoqCreateProductModal, setShowBoqCreateProductModal] = useState(false);
   const [boqTargetItemId, setBoqTargetItemId] = useState(null);
+  const [showSubOrderModal, setShowSubOrderModal] = useState(false);
+  const [swapTargetItem, setSwapTargetItem] = useState(null);
+  const [scopeFilter, setScopeFilter] = useState('ALL');
+  const [revisionStatusFilter, setRevisionStatusFilter] = useState('ACTIVE');
   const [boqCustomSku, setBoqCustomSku] = useState('');
   const [boqCustomName, setBoqCustomName] = useState('');
   const [boqCustomCategory, setBoqCustomCategory] = useState('Downlight');
@@ -981,7 +992,7 @@ export default function OrdersPage() {
     const depositFormatted70 = `R ${(finalTotalInclVat * 0.70).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const depositFormatted100 = `R ${(finalTotalInclVat * 1.00).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-    const currentOrderObj = Object.values(projects || {}).flatMap(p => Object.values(p.orders || {})).find(o => o.id === selectedOrderId || o.poNumber === selectedOrderId) || {};
+    const currentOrderObj = Object.values(projects || {}).flatMap(p => Array.isArray(p.orders) ? p.orders : Object.values(p.orders || {})).find(o => String(o.id) === String(selectedOrderId) || String(o.po_number || o.poNumber) === String(selectedOrderId)) || {};
     const effectivePaidFromOrder = Number(currentOrderObj.paid) || 0;
     const effectivePaymentsFromOrder = Array.isArray(currentOrderObj.payments) ? currentOrderObj.payments : [];
 
@@ -3738,6 +3749,13 @@ export default function OrdersPage() {
               >
                 <DollarSign size={13} style={{ color: '#ef4444' }} /> 🔴 Credits & Returns
               </button>
+              <button 
+                className={`btn btn-sm ${workspaceSubTab === 'audits' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
+                onClick={() => setWorkspaceSubTab('audits')}
+              >
+                <History size={13} style={{ color: '#10b981' }} /> 📜 Revisions & Audits
+              </button>
             </div>
 
             {/* SUB-TAB 0: TAKEOFF & SPECIFICATION ENGINE */}
@@ -4390,6 +4408,116 @@ export default function OrdersPage() {
                         </div>
                       )}
 
+                      {/* SUB-ORDER & REVISION VARIATION WORKFLOW TOOLBAR */}
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        background: 'var(--bg-secondary)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '8px',
+                        padding: '10px 14px',
+                        marginBottom: '14px',
+                        flexWrap: 'wrap',
+                        gap: '10px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            Scope Filter:
+                          </span>
+                          <div style={{ display: 'inline-flex', gap: '4px', background: 'var(--bg-primary)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                            <button
+                              type="button"
+                              onClick={() => setScopeFilter('ALL')}
+                              className="btn btn-xs"
+                              style={{
+                                padding: '3px 10px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                borderRadius: '4px',
+                                border: 'none',
+                                background: scopeFilter === 'ALL' ? 'var(--text-info)' : 'transparent',
+                                color: scopeFilter === 'ALL' ? '#fff' : 'var(--text-secondary)',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              All Scope ({activeOrderItems.filter(it => !it.is_credit && !it.isCredit).length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setScopeFilter('UNASSIGNED')}
+                              className="btn btn-xs"
+                              style={{
+                                padding: '3px 10px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                borderRadius: '4px',
+                                border: 'none',
+                                background: scopeFilter === 'UNASSIGNED' ? 'var(--text-warning)' : 'transparent',
+                                color: scopeFilter === 'UNASSIGNED' ? '#fff' : 'var(--text-secondary)',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Unassigned Scope ({activeOrderItems.filter(it => !it.is_credit && !it.isCredit && !it.sub_order_ref && !it.subOrderRef).length})
+                            </button>
+                            {Object.values(projects || {}).flatMap(p => Array.isArray(p.orders) ? p.orders : Object.values(p.orders || {})).filter(o => 
+                              (o.parent_order_id && String(o.parent_order_id) === String(selectedOrderId)) ||
+                              (o.parentOrderId && String(o.parentOrderId) === String(selectedOrderId)) ||
+                              (o.parent_po_number && String(o.parent_po_number) === String(selectedOrderId)) ||
+                              (o.parentPoNumber && String(o.parentPoNumber) === String(selectedOrderId))
+                            ).map(sub => (
+                              <button
+                                key={sub.id || sub.po_number}
+                                type="button"
+                                onClick={() => setScopeFilter(sub.po_number || sub.poNumber || sub.id)}
+                                className="btn btn-xs"
+                                style={{
+                                  padding: '3px 10px',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  borderRadius: '4px',
+                                  border: 'none',
+                                  background: scopeFilter === (sub.po_number || sub.poNumber || sub.id) ? '#8b5cf6' : 'transparent',
+                                  color: scopeFilter === (sub.po_number || sub.poNumber || sub.id) ? '#fff' : 'var(--text-secondary)',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {sub.po_number || sub.id} ({sub.phase_name || sub.phaseName || 'Sub'})
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* REVISION VISIBILITY TOGGLE */}
+                          <button
+                            type="button"
+                            onClick={() => setRevisionStatusFilter(prev => prev === 'ACTIVE' ? 'ALL' : 'ACTIVE')}
+                            className="btn btn-xs btn-ghost"
+                            style={{ fontSize: '11px', border: '1px solid var(--border)', color: revisionStatusFilter === 'ALL' ? 'var(--text-warning)' : 'var(--text-secondary)' }}
+                          >
+                            {revisionStatusFilter === 'ALL' ? '👁️ Showing Swapped Out Items' : '👁️ Hide Swapped Items'}
+                          </button>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-ghost"
+                            onClick={() => setWorkspaceSubTab('audits')}
+                            style={{ fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid var(--border)' }}
+                          >
+                            <History size={13} color="var(--text-info)" /> Audit History
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-primary"
+                            onClick={() => setShowSubOrderModal(true)}
+                            style={{ fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '6px', background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', border: 'none', color: '#fff' }}
+                          >
+                            <GitBranch size={13} /> ⚡ Create Sub-Order / Phase (-01)
+                          </button>
+                        </div>
+                      </div>
+
                       {/* TWO-COLUMN SPREADSHEET + AREA BREAKDOWN LAYOUT */}
                       <div style={{ display: 'grid', gridTemplateColumns: showAreaBreakdown ? '1fr 340px' : '1fr', gap: '20px', marginBottom: '20px' }}>
                         
@@ -4483,7 +4611,19 @@ export default function OrdersPage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {activeOrderItems.filter(item => !(item.is_credit || item.isCredit)).map((item, index) => {
+                              {activeOrderItems.filter(item => {
+                                if (item.is_credit || item.isCredit) return false;
+                                if (revisionStatusFilter === 'ACTIVE' && item.revision_status === 'Swapped') return false;
+                                if (revisionStatusFilter === 'SWAPPED' && item.revision_status !== 'Swapped') return false;
+                                if (scopeFilter === 'UNASSIGNED') {
+                                  return !item.sub_order_ref && !item.subOrderRef;
+                                }
+                                if (scopeFilter !== 'ALL') {
+                                  const ref = item.sub_order_ref || item.subOrderRef;
+                                  return ref === scopeFilter || (ref && ref.endsWith(scopeFilter));
+                                }
+                                return true;
+                              }).map((item, index) => {
                                 const cost = Number(item.unitCost) || 0;
                                 const retail = Number(item.unitRetail) || 0;
                                 const qty = Number(item.qty) || 0;
@@ -4491,9 +4631,13 @@ export default function OrdersPage() {
                                 const lineMargin = retail > 0 ? ((retail - cost) / retail) * 100 : 0;
                                 const isLowMargin = lineMargin < 39;
 
-                                // Google Sheet Highlighting rules
+                                // Google Sheet & Revision Highlighting rules
                                 let rowStyle = {};
-                                if (item.stockStatus === 'In Stock') {
+                                if (item.revision_status === 'Swapped') {
+                                  rowStyle = { background: 'rgba(239, 68, 68, 0.08)', opacity: 0.75, textDecoration: 'line-through' };
+                                } else if (item.revision_status === 'Added') {
+                                  rowStyle = { background: 'rgba(16, 185, 129, 0.08)' };
+                                } else if (item.stockStatus === 'In Stock') {
                                   rowStyle = { background: 'rgba(59, 130, 246, 0.08)' };
                                 } else if (item.selection === 'Selection') {
                                   rowStyle = { background: 'rgba(16, 185, 129, 0.06)' };
@@ -4617,15 +4761,33 @@ export default function OrdersPage() {
                                     
                                     {/* 1:1 CODE */}
                                     <td>
-                                      <input 
-                                        type="text"
-                                        className="boq-cell-input"
-                                        value={item.oneOneCode || ''}
-                                        onChange={e => handleUpdateSpreadsheetCell(item.id, 'oneOneCode', e.target.value)}
-                                        data-row={index}
-                                        data-col={1}
-                                        data-field="oneOneCode"
-                                      />
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                        <input 
+                                          type="text"
+                                          className="boq-cell-input"
+                                          style={{ textDecoration: item.revision_status === 'Swapped' ? 'line-through' : 'none' }}
+                                          value={item.oneOneCode || ''}
+                                          onChange={e => handleUpdateSpreadsheetCell(item.id, 'oneOneCode', e.target.value)}
+                                          data-row={index}
+                                          data-col={1}
+                                          data-field="oneOneCode"
+                                        />
+                                        {(item.sub_order_ref || item.subOrderRef) && (
+                                          <span className="badge" title={`Assigned to ${item.sub_order_ref || item.subOrderRef}`} style={{ fontSize: '9px', padding: '1px 4px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: 700, flexShrink: 0, textDecoration: 'none' }}>
+                                            {(item.sub_order_ref || item.subOrderRef).slice(-3)}
+                                          </span>
+                                        )}
+                                        {item.revision_status === 'Swapped' && (
+                                          <span className="badge b-danger" title={`Swapped: ${item.swap_reason || ''}`} style={{ fontSize: '8.5px', padding: '1px 3px', flexShrink: 0, textDecoration: 'none' }}>
+                                            Swap
+                                          </span>
+                                        )}
+                                        {item.revision_status === 'Added' && (
+                                          <span className="badge b-success" title={`Replacement: ${item.swap_reason || ''}`} style={{ fontSize: '8.5px', padding: '1px 3px', flexShrink: 0, textDecoration: 'none' }}>
+                                            Add
+                                          </span>
+                                        )}
+                                      </div>
                                     </td>
 
                                     {/* TYPE CODE */}
@@ -4923,6 +5085,15 @@ export default function OrdersPage() {
                                           onClick={() => handleDuplicateSpreadsheetRow(item)}
                                         >
                                           <Copy size={12} />
+                                        </button>
+                                        <button 
+                                          type="button"
+                                          className="btn btn-ghost"
+                                          style={{ padding: '2px', height: 'auto', color: '#f59e0b' }}
+                                          title="On-Site Item Variation & Swap"
+                                          onClick={() => setSwapTargetItem(item)}
+                                        >
+                                          <RotateCcw size={12} />
                                         </button>
                                         <button 
                                           type="button"
@@ -5356,6 +5527,7 @@ export default function OrdersPage() {
                       } else {
                         docsList = [
                           { id: 'quote', name: 'Quotation (Summarized)', icon: <FileText size={14} /> },
+                          { id: 'revision_audit', name: 'Revision & Variation Audit', icon: <History size={14} /> },
                           { id: 'boq_doc', name: 'BOQ (Detailed Breakdown)', icon: <Layers size={14} /> },
                           { id: 'schedule', name: 'Lighting Schedule', icon: <ClipboardList size={14} /> },
                           { id: 'deposit_invoice', name: 'Deposit Invoice', icon: <DollarSign size={14} /> },
@@ -5433,7 +5605,13 @@ export default function OrdersPage() {
                 </div>
 
                 {/* THE HIGH-FIDELITY LIVE DOCUMENT CANVAS PREVIEW */}
-                {(() => {
+                {selectedDocType === 'revision_audit' ? (
+                  <ClientVariationDocument
+                    poNumber={selectedOrderId}
+                    order={currentOrderObj}
+                    onBackToWorkspace={() => setWorkspaceSubTab('boq')}
+                  />
+                ) : (() => {
                   const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
                   const totalRetailGross = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
                   const totalCreditedRetail = (erpCreditedItems || []).reduce((s, item) => s + Math.abs(Number(item.totalRetail || 0)), 0);
@@ -6623,6 +6801,17 @@ export default function OrdersPage() {
               );
             })()}
 
+            {workspaceSubTab === 'audits' && (
+              <AuditHistoryTab
+                poNumber={selectedOrderId}
+                order={currentOrderObj}
+                onOpenVariationDocument={() => {
+                  setSelectedDocType('revision_audit');
+                  setWorkspaceSubTab('doc_gen');
+                }}
+              />
+            )}
+
             {workspaceSubTab === 'credits' && (() => {
               const totalErpCredited = orderCreditNotes.reduce((sum, cn) => sum + Math.abs(Number(cn.totalValue || cn.value || cn.amount || 0)), 0);
               const grossOrderValue = activeOrderItems.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * (1 - (orderDiscount || 0) / 100);
@@ -6833,11 +7022,51 @@ export default function OrdersPage() {
               );
             })()}
 
+            {workspaceSubTab === 'audits' && (
+              <AuditHistoryTab
+                poNumber={selectedOrderId}
+                order={currentOrderObj}
+                onOpenVariationDocument={() => {
+                  setSelectedDocType('revision_audit');
+                  setWorkspaceSubTab('doc_gen');
+                }}
+              />
+            )}
+
 
 
           </div>
         </div>
       )}
+
+      {/* SUB-ORDER / PHASE CREATION MODAL */}
+      <SubOrderModal
+        isOpen={showSubOrderModal}
+        onClose={() => setShowSubOrderModal(false)}
+        masterOrder={currentOrderObj?.po_number ? currentOrderObj : { po_number: selectedOrderId, quote_name: quoteName }}
+        items={activeOrderItems}
+        onSubOrderCreated={(res) => {
+          refreshProjects();
+          if (selectedOrderId) {
+            loadOrderItems(selectedOrderId);
+          }
+        }}
+      />
+
+      {/* ON-SITE ITEM VARIATION & SWAP MODAL */}
+      <ItemSwapModal
+        isOpen={!!swapTargetItem}
+        onClose={() => setSwapTargetItem(null)}
+        item={swapTargetItem}
+        poNumber={selectedOrderId}
+        catalogProducts={catalogProducts}
+        onSwapCompleted={(res) => {
+          refreshProjects();
+          if (selectedOrderId) {
+            loadOrderItems(selectedOrderId);
+          }
+        }}
+      />
 
       {/* CREATE PURCHASE ORDER MODAL */}
       {showCreatePoModal && (

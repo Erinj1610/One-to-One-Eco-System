@@ -503,7 +503,11 @@ def init_db():
                             ("technical_image_url", "TEXT"),
                             ("spec_sheet_url", "TEXT"),
                             ("notes", "TEXT"),
-                            ("first_fix", "VARCHAR DEFAULT 'No'")
+                            ("first_fix", "VARCHAR DEFAULT 'No'"),
+                            ("sub_order_ref", "VARCHAR"),
+                            ("revision_status", "VARCHAR DEFAULT 'Active'"),
+                            ("swap_parent_id", "VARCHAR"),
+                            ("swap_reason", "TEXT")
                         ]
                         for oi_col_name, oi_col_type in order_item_new_cols:
                             if oi_col_name not in order_item_cols:
@@ -512,6 +516,25 @@ def init_db():
                                 print(f"Database migration: added column {oi_col_name} to 'order_items' table.")
                 except Exception as oi_err:
                     print(f"Database migration order_items (info): {oi_err}")
+
+                # Migrate orders table for sub-orders and phases
+                try:
+                    if 'orders' in inspector.get_table_names():
+                        order_cols = [c["name"] for c in inspector.get_columns("orders")]
+                        order_new_cols = [
+                            ("parent_order_id", "INTEGER"),
+                            ("parent_po_number", "VARCHAR"),
+                            ("is_sub_order", "BOOLEAN DEFAULT FALSE"),
+                            ("sub_order_index", "INTEGER DEFAULT 0"),
+                            ("phase_name", "VARCHAR")
+                        ]
+                        for o_col_name, o_col_type in order_new_cols:
+                            if o_col_name not in order_cols:
+                                conn.execute(text(f"ALTER TABLE orders ADD COLUMN IF NOT EXISTS {o_col_name} {o_col_type};"))
+                                conn.commit()
+                                print(f"Database migration: added column {o_col_name} to 'orders' table.")
+                except Exception as ord_err:
+                    print(f"Database migration orders (info): {ord_err}")
 
                 # Migrate support_tickets table to ensure extended fields exist
                 try:

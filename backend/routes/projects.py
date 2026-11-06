@@ -1493,7 +1493,14 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "expected_deposit_month": order.expected_deposit_month,
                 "expectedDepositMonth": order.expected_deposit_month,
                 "takeoffData": enrich_takeoff_stock(order.takeoff_data),
-                "notes": order.notes or ""
+                "notes": order.notes or "",
+                "parentOrderId": getattr(order, 'parent_order_id', None),
+                "parentPoNumber": getattr(order, 'parent_po_number', None),
+                "isSubOrder": bool(getattr(order, 'is_sub_order', False)),
+                "is_sub_order": bool(getattr(order, 'is_sub_order', False)),
+                "subOrderIndex": getattr(order, 'sub_order_index', 0) or 0,
+                "phaseName": getattr(order, 'phase_name', '') or '',
+                "phase_name": getattr(order, 'phase_name', '') or ''
             }
             orders_by_project[order.project_key].append(order_dict)
 

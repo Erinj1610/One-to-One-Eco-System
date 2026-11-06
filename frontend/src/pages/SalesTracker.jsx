@@ -1031,6 +1031,7 @@ export default function SalesTracker() {
   }, [searchQuery]);
 
   const [filterStatus, setFilterStatus] = useState('All');
+  const [subOrderFilter, setSubOrderFilter] = useState('All'); // 'All' | 'Master' | 'Sub'
   const [projectFilterKey, setProjectFilterKey] = useState('All');
   const [clientFilter, setClientFilter] = useState('All');
   const [pmFilter, setPmFilter] = useState('All');
@@ -1378,6 +1379,15 @@ export default function SalesTracker() {
       const matchesPm = pmFilter === 'All' || o.projectPm === pmFilter;
       const matchesPaymentStatus = paymentStatusFilter === 'All' || o.paymentStatus === paymentStatusFilter;
       
+      // Option 3 Sub-Order Filter Matching
+      let matchesSubOrder = true;
+      const isSub = Boolean(o.is_sub_order || o.isSubOrder || o.parent_po_number || o.parentPoNumber || (o.id && /-0\d+$/.test(o.id)));
+      if (subOrderFilter === 'Master') {
+        matchesSubOrder = !isSub;
+      } else if (subOrderFilter === 'Sub') {
+        matchesSubOrder = isSub;
+      }
+
       // KPI interactive filter matching
       let matchesKpi = true;
       if (activeKpiFilter === 'all') {
@@ -1390,9 +1400,9 @@ export default function SalesTracker() {
         matchesKpi = o.status === 'Complete';
       }
 
-      return matchesSearch && matchesStatus && matchesProject && matchesClient && matchesPm && matchesPaymentStatus && matchesKpi;
+      return matchesSearch && matchesStatus && matchesProject && matchesClient && matchesPm && matchesPaymentStatus && matchesKpi && matchesSubOrder;
     });
-  }, [dateFilteredOrders, debouncedSearchQuery, filterStatus, projectFilterKey, clientFilter, pmFilter, paymentStatusFilter, activeKpiFilter]);
+  }, [dateFilteredOrders, debouncedSearchQuery, filterStatus, projectFilterKey, clientFilter, pmFilter, paymentStatusFilter, activeKpiFilter, subOrderFilter]);
 
   // Sort Logic for All Columns in Sales Tracker Module
   const sortedOrders = useMemo(() => {
@@ -4610,6 +4620,58 @@ export default function SalesTracker() {
                     />
                   </div>
                   
+                  {/* OPTION 3: SUB-ORDER HIERARCHY FILTER TOGGLE */}
+                  <div style={{ display: 'inline-flex', background: 'var(--bg-secondary)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border)', height: '34px', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => setSubOrderFilter('All')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11.5px',
+                        fontWeight: 600,
+                        border: 'none',
+                        borderRadius: '4px',
+                        background: subOrderFilter === 'All' ? 'var(--text-info)' : 'transparent',
+                        color: subOrderFilter === 'All' ? '#fff' : 'var(--text-secondary)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      All Orders
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSubOrderFilter('Master')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11.5px',
+                        fontWeight: 600,
+                        border: 'none',
+                        borderRadius: '4px',
+                        background: subOrderFilter === 'Master' ? 'var(--text-info)' : 'transparent',
+                        color: subOrderFilter === 'Master' ? '#fff' : 'var(--text-secondary)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Master Only
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSubOrderFilter('Sub')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11.5px',
+                        fontWeight: 600,
+                        border: 'none',
+                        borderRadius: '4px',
+                        background: subOrderFilter === 'Sub' ? '#8b5cf6' : 'transparent',
+                        color: subOrderFilter === 'Sub' ? '#fff' : 'var(--text-secondary)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Sub-Orders Only
+                    </button>
+                  </div>
+
                   <select 
                     className="form-control"
                     style={{ width: '130px', height: '34px', fontSize: '13px' }}
@@ -4868,8 +4930,24 @@ export default function SalesTracker() {
                               }}
                             />
                           </td>
-                          <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{o.id}</td>
-                          <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
+                          <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                              <span>{o.id}</span>
+                              {(o.is_sub_order || o.isSubOrder || o.parent_po_number || o.parentPoNumber || (o.id && /-0\d+$/.test(o.id))) && (
+                                <span className="badge" style={{ fontSize: '9px', padding: '1px 4px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: 700 }}>
+                                  ↳ Sub
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ fontWeight: 600 }}>
+                            {o.quote_name || 'General Spec'}
+                            {(o.phase_name || o.phaseName) && (
+                              <span style={{ display: 'block', fontSize: '10.5px', color: '#8b5cf6', fontWeight: 500 }}>
+                                {o.phase_name || o.phaseName}
+                              </span>
+                            )}
+                          </td>
                           <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectFullName || o.projectName}</td>
                           <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: (o.clientContact || o.projectClient) } }); }}>{(o.clientCompany || o.projectClient) || '—'}</td>
                           <td style={{ fontWeight: 600 }}>{o.projectPm || '—'}</td>
