@@ -7044,19 +7044,6 @@ export default function OrdersPage() {
               );
             })()}
 
-            {workspaceSubTab === 'audits' && (
-              <AuditHistoryTab
-                poNumber={selectedOrderId}
-                order={currentOrderObj}
-                onOpenVariationDocument={() => {
-                  setSelectedDocType('revision_audit');
-                  setWorkspaceSubTab('doc_gen');
-                }}
-              />
-            )}
-
-
-
           </div>
         </div>
       )}
