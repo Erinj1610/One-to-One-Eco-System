@@ -3,19 +3,45 @@ import React, { useEffect, useState } from 'react';
 /**
  * GlobalToastNotification
  * Non-intrusive, luxury brand floating toast alert system.
- * Automatically handles window.otoToast(message, type) and intercepts/upgrades window.alert()
- * so user never suffers through modal popups for informational notifications.
+ * Automatically handles window.otoToast(message, type) and dispatches a DOM custom event
+ * so any part of the app or console can trigger it instantly.
  */
+
+// Initialize global handler immediately upon module load so window.otoToast is always ready
+if (typeof window !== 'undefined') {
+  window.otoToast = (message, type = 'info', duration = 3500) => {
+    window.dispatchEvent(new CustomEvent('oto-toast-event', {
+      detail: { message, type, duration }
+    }));
+  };
+
+  // Gracefully upgrade native window.alert to sleek, non-blocking toast
+  window.alert = (msg) => {
+    const str = String(msg || '');
+    const isError = str.toLowerCase().includes('fail') || 
+                    str.toLowerCase().includes('error') || 
+                    str.toLowerCase().includes('denied') ||
+                    str.toLowerCase().includes('cannot');
+    const isSuccess = str.toLowerCase().includes('success') || 
+                      str.toLowerCase().includes('saved') || 
+                      str.toLowerCase().includes('created') ||
+                      str.toLowerCase().includes('copied');
+    
+    const type = isError ? 'error' : isSuccess ? 'success' : 'info';
+    window.otoToast(str, type, isError ? 4500 : 3500);
+  };
+}
+
 export default function GlobalToastNotification() {
   const [toasts, setToasts] = useState([]);
 
   useEffect(() => {
-    // Custom global toast method
-    window.otoToast = (message, type = 'info', duration = 3500) => {
+    const handleToastEvent = (e) => {
+      const { message, type = 'info', duration = 3500 } = e.detail || {};
       const id = Date.now() + Math.random().toString(36).substring(2, 6);
       const text = typeof message === 'string' ? message : JSON.stringify(message);
 
-      setToasts(prev => [...prev.slice(-4), { id, text, type }]); // Keep at most 5
+      setToasts(prev => [...prev.slice(-4), { id, text, type }]);
 
       if (duration > 0) {
         setTimeout(() => {
@@ -24,28 +50,8 @@ export default function GlobalToastNotification() {
       }
     };
 
-    // Gracefully route native window.alert to sleek, non-blocking toast
-    const originalAlert = window.alert;
-    window.alert = (msg) => {
-      const str = String(msg || '');
-      // Determine if it is error-like or success-like
-      const isError = str.toLowerCase().includes('fail') || 
-                      str.toLowerCase().includes('error') || 
-                      str.toLowerCase().includes('denied') ||
-                      str.toLowerCase().includes('cannot');
-      const isSuccess = str.toLowerCase().includes('success') || 
-                        str.toLowerCase().includes('saved') || 
-                        str.toLowerCase().includes('created') ||
-                        str.toLowerCase().includes('copied');
-      
-      const type = isError ? 'error' : isSuccess ? 'success' : 'info';
-      window.otoToast(str, type, isError ? 4500 : 3500);
-    };
-
-    // Clean up
-    return () => {
-      window.alert = originalAlert;
-    };
+    window.addEventListener('oto-toast-event', handleToastEvent);
+    return () => window.removeEventListener('oto-toast-event', handleToastEvent);
   }, []);
 
   const removeToast = (id) => {
@@ -69,18 +75,18 @@ export default function GlobalToastNotification() {
       }}
     >
       {toasts.map(t => {
-        let borderColor = 'rgba(224, 153, 36, 0.4)';
+        let borderColor = 'rgba(224, 153, 36, 0.45)';
         let iconBg = 'rgba(224, 153, 36, 0.15)';
         let iconColor = '#e09924';
         let iconChar = 'ℹ';
 
         if (t.type === 'success') {
-          borderColor = 'rgba(34, 197, 94, 0.45)';
+          borderColor = 'rgba(34, 197, 94, 0.5)';
           iconBg = 'rgba(34, 197, 94, 0.15)';
           iconColor = '#22c55e';
           iconChar = '✓';
         } else if (t.type === 'error') {
-          borderColor = 'rgba(239, 68, 68, 0.45)';
+          borderColor = 'rgba(239, 68, 68, 0.5)';
           iconBg = 'rgba(239, 68, 68, 0.15)';
           iconColor = '#ef4444';
           iconChar = '✕';
@@ -94,7 +100,7 @@ export default function GlobalToastNotification() {
               backgroundColor: '#161c26',
               color: '#f8fafc',
               border: `1px solid ${borderColor}`,
-              boxShadow: '0 12px 30px rgba(0, 0, 0, 0.55), 0 0 1px 1px rgba(255, 255, 255, 0.08)',
+              boxShadow: '0 12px 30px rgba(0, 0, 0, 0.65), 0 0 1px 1px rgba(255, 255, 255, 0.1)',
               borderRadius: '9px',
               padding: '12px 14px',
               display: 'flex',
