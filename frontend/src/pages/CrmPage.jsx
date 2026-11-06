@@ -40,7 +40,8 @@ export default function CrmPage() {
     attritionLogs, 
     logAttrition,
     addProject,
-    getModuleName
+    getModuleName,
+    isStoreLoading
   } = useStore();
   const { user, userProfile } = useAuth();
   const currentStaffName = useMemo(() => {

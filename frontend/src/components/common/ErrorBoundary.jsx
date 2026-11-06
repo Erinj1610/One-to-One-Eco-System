@@ -13,6 +13,16 @@ export default class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     console.error("ErrorBoundary caught an uncaught rendering error:", error, errorInfo);
+    // If a new deployment replaced chunk hashes, automatically reload once to fetch the latest bundle
+    const errorStr = String(error?.message || error || '');
+    if (errorStr.includes('Failed to fetch dynamically imported module') || errorStr.includes('dynamically imported module')) {
+      const now = Date.now();
+      const lastReload = parseInt(sessionStorage.getItem('chunk_reload_timestamp') || '0', 10);
+      if (now - lastReload > 8000) {
+        sessionStorage.setItem('chunk_reload_timestamp', String(now));
+        window.location.reload();
+      }
+    }
   }
 
   handleReload = () => {
