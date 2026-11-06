@@ -92,6 +92,10 @@ export default function Sidebar({ isCollapsed, toggleCollapse }) {
                     className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
                     title={isCollapsed ? item.label : undefined}
                     style={{ position: 'relative' }}
+                    onClick={() => {
+                      // Dispatch global reset event so active workspaces, sub-views, or drilled-down orders reset back to module root
+                      window.dispatchEvent(new CustomEvent('portal-nav-reset', { detail: { path: item.path, id: item.id } }));
+                    }}
                   >
                     <IconComponent size={16} style={{ flexShrink: 0 }} /> 
                     {!isCollapsed && <span style={{ flex: 1 }}>{item.label}</span>}

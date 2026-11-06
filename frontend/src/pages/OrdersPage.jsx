@@ -1,3 +1,4 @@
+import CopyBadge from '../components/common/CopyBadge';
 import EmptyStateBanner from '../components/common/EmptyStateBanner';
 import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -498,6 +499,18 @@ export default function OrdersPage() {
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
+
+  // Listen for sidebar navigation clicks to reset to root orders ledger
+  useEffect(() => {
+    const handleNavReset = (e) => {
+      if (e?.detail?.path === '/orders' || e?.detail?.id === 'orders') {
+        setSelectedOrderId(null);
+        setSelectedProjectKey(null);
+      }
+    };
+    window.addEventListener('portal-nav-reset', handleNavReset);
+    return () => window.removeEventListener('portal-nav-reset', handleNavReset);
+  }, []);
   
   // Temporary state for the active order items in the spreadsheet workspace
   const [activeOrderItems, setActiveOrderItems] = useState([]);
@@ -3361,7 +3374,10 @@ export default function OrdersPage() {
                             />
                           </td>
                           <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={e => e.stopPropagation()}>
-                            <span className="btn-link" style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => handleOpenWorkspace(o)}>{o.id}</span>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <span className="btn-link" style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => handleOpenWorkspace(o)}>{o.id}</span>
+                              <CopyBadge text={o.id} title="Copy Order ID" />
+                            </div>
                             {isAdmin && (
                               <button
                                 className="btn btn-ghost btn-sm"
