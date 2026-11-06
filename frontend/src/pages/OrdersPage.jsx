@@ -538,6 +538,22 @@ export default function OrdersPage() {
     return Object.values(projects || {}).flatMap(p => Array.isArray(p.orders) ? p.orders : Object.values(p.orders || {})).find(o => String(o.id) === String(selectedOrderId) || String(o.po_number || o.poNumber) === String(selectedOrderId)) || {};
   }, [projects, selectedOrderId]);
 
+  // Sync breadcrumb subContext with Topbar
+  useEffect(() => {
+    if (selectedOrderId) {
+      const orderName = currentOrderObj?.name || currentOrderObj?.title || selectedOrderId;
+      const clientName = currentOrderObj?.client || currentOrderObj?.client_name;
+      const label = clientName ? `${clientName} › ${orderName}` : orderName;
+      window.dispatchEvent(new CustomEvent('portal-context-change', {
+        detail: { subContext: label }
+      }));
+    } else {
+      window.dispatchEvent(new CustomEvent('portal-context-change', {
+        detail: { subContext: null }
+      }));
+    }
+  }, [selectedOrderId, currentOrderObj]);
+
   const isSubOrderWorkspace = useMemo(() => {
     if (!selectedOrderId) return false;
     // 1. Explicit database boolean (highest authority)

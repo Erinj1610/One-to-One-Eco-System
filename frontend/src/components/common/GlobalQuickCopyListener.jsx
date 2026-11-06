@@ -114,10 +114,14 @@ export default function GlobalQuickCopyListener() {
     }
 
     setCopied(true);
+    if (window.otoToast) {
+      const snippet = menu.text.length > 28 ? menu.text.slice(0, 25) + '…' : menu.text;
+      window.otoToast(`Copied "${snippet}" to clipboard`, 'success', 2200);
+    }
     setTimeout(() => {
       setMenu(null);
       setCopied(false);
-    }, 600);
+    }, 400);
   };
 
   if (!menu) return null;
