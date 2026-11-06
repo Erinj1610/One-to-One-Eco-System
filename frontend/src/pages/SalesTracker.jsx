@@ -1036,11 +1036,13 @@ export default function SalesTracker() {
   const [expandedMasterOrders, setExpandedMasterOrders] = useState(new Set());
   const toggleExpandMaster = (masterId, e) => {
     if (e) e.stopPropagation();
-    setExpandedMasterOrders(prev => {
-      const next = new Set(prev);
-      if (next.has(masterId)) next.delete(masterId);
-      else next.add(masterId);
-      return next;
+    React.startTransition(() => {
+      setExpandedMasterOrders(prev => {
+        const next = new Set(prev);
+        if (next.has(masterId)) next.delete(masterId);
+        else next.add(masterId);
+        return next;
+      });
     });
   };
 
@@ -1798,7 +1800,8 @@ export default function SalesTracker() {
 
   // Open the spreadsheet workspace
   const handleOpenWorkspace = (order) => {
-    setSelectedOrderId(order.id);
+    React.startTransition(() => {
+      setSelectedOrderId(order.id);
     setSelectedProjectKey(order.projectKey);
     setSelectedLedgerItemIds(new Set());
     // Dynamically calculate delivery properties from deliveryHistory on load to prevent overwrite
@@ -1949,6 +1952,7 @@ export default function SalesTracker() {
 
     setDeliveryAddress(order.deliveryAddress || proj.deliveryAddress || '7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941');
     setBillingDetails(order.billingDetails || proj.billingDetails || 'TEST TSTETESSETSETEESTSETEST\nTEST TSTETESSETSETEESTSETEST');
+    });
   };
 
   const handleApplyBulkValue = () => {

@@ -140,6 +140,8 @@ const PRODUCT_CATALOG = [
   { code: 'MOL-TRK-005', description: '3-Phase Track System 2m', brand: 'Molecule', dimming: 'Non-dim', unitCost: 520.00, unitRetail: 780.00, stockQty: 30, eta: '2 weeks' },
 ];
 
+const PRODUCT_CATALOG_MAP = new Map(PRODUCT_CATALOG.map(p => [(p.code || '').trim(), p]));
+
 function SearchableCodeSelect({ value, onChange, onSelect, onOpenCreateProduct, rowIdx, colIdx, onKeyDown }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchVal, setSearchVal] = useState(value || '');
@@ -1717,12 +1719,13 @@ export default function OrdersPage() {
 
   // Open the spreadsheet workspace
   const handleOpenWorkspace = (order) => {
-    setSelectedOrderId(order.id);
+    React.startTransition(() => {
+      setSelectedOrderId(order.id);
     setSelectedProjectKey(order.projectKey);
     const loadedItems = (order.itemsList || []).map(item => {
       let etaVal = item.eta;
       if (!etaVal) {
-        const catalogItem = PRODUCT_CATALOG.find(p => p.code === item.code);
+        const catalogItem = PRODUCT_CATALOG_MAP.get((item.code || '').trim()) || PRODUCT_CATALOG.find(p => p.code === item.code);
         etaVal = catalogItem ? catalogItem.eta : '4 weeks';
       }
       return {
@@ -1868,6 +1871,7 @@ export default function OrdersPage() {
 
     const rawBilling = (order.billingDetails || order.billing_details || proj.billingDetails || contact.billingAddress || '').trim();
     setBillingDetails(rawBilling.includes('TEST TSTETESSET') ? (proj.billingDetails || contact.billingAddress || '') : rawBilling);
+    });
   };
 
   // Cell modification in the spreadsheet workspace
@@ -1878,7 +1882,7 @@ export default function OrdersPage() {
         
         // Auto-populate details from PRODUCT_CATALOG if code changes
         if (field === 'code') {
-          const catalogItem = PRODUCT_CATALOG.find(p => p.code === val);
+          const catalogItem = PRODUCT_CATALOG_MAP.get((val || "").trim()) || PRODUCT_CATALOG.find(p => p.code === val);
           if (catalogItem) {
             updated.description = catalogItem.description;
             updated.brand = catalogItem.brand;
@@ -5169,7 +5173,7 @@ export default function OrdersPage() {
                                         const rawAvail = item.stock_available ?? item.stockAvailable ?? item.stock_on_hand ?? item.stockOnHand ?? item.stockQty;
                                         let avail = (rawAvail !== undefined && rawAvail !== null && rawAvail !== '') ? Number(rawAvail) : null;
                                         if (avail === null || isNaN(avail)) {
-                                          const catalogItem = PRODUCT_CATALOG.find(p => p.code === item.code);
+                                          const catalogItem = PRODUCT_CATALOG_MAP.get((item.code || '').trim()) || PRODUCT_CATALOG.find(p => p.code === item.code);
                                           if (catalogItem) {
                                             avail = Number(catalogItem.stockQty);
                                           }
