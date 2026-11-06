@@ -522,6 +522,20 @@ export default function OrdersPage() {
     return Object.values(projects || {}).flatMap(p => Array.isArray(p.orders) ? p.orders : Object.values(p.orders || {})).find(o => String(o.id) === String(selectedOrderId) || String(o.po_number || o.poNumber) === String(selectedOrderId)) || {};
   }, [projects, selectedOrderId]);
 
+  const isSubOrderWorkspace = useMemo(() => {
+    return Boolean(
+      currentOrderObj?.is_sub_order || 
+      currentOrderObj?.isSubOrder || 
+      (currentOrderObj?.parent_po_number && currentOrderObj.parent_po_number !== currentOrderObj.id) ||
+      (currentOrderObj?.parentPoNumber && currentOrderObj.parentPoNumber !== currentOrderObj.id) ||
+      (selectedOrderId && /-0\d+$/.test(selectedOrderId))
+    );
+  }, [currentOrderObj, selectedOrderId]);
+
+  const masterPoRef = useMemo(() => {
+    return currentOrderObj?.parent_po_number || currentOrderObj?.parentPoNumber || (selectedOrderId ? String(selectedOrderId).replace(/-0\d+$/, '') : null);
+  }, [currentOrderObj, selectedOrderId]);
+
   const fetchCurrentOrderItems = async (orderId) => {
     const idToFetch = orderId || selectedOrderId;
     if (!idToFetch) return;
@@ -3518,6 +3532,54 @@ export default function OrdersPage() {
                 </div>
               </div>
 
+              {/* SUB-ORDER GOVERNANCE BANNER */}
+              {isSubOrderWorkspace && (
+                <div style={{
+                  background: 'linear-gradient(90deg, rgba(139, 92, 246, 0.12) 0%, rgba(59, 130, 246, 0.08) 100%)',
+                  border: '1px solid rgba(139, 92, 246, 0.35)',
+                  borderRadius: '8px',
+                  padding: '12px 18px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                  width: '100%'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '22px' }}>🔒</span>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '13.5px', color: '#8b5cf6', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>Sub-Order Phase Workspace: {selectedOrderId}</span>
+                        {(currentOrderObj.phase_name || currentOrderObj.phaseName) && (
+                          <span style={{ background: 'rgba(139, 92, 246, 0.2)', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', color: '#8b5cf6', fontWeight: 700 }}>
+                            {currentOrderObj.phase_name || currentOrderObj.phaseName}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        Line items, quantities, and Takeoff are centrally governed by Master Order <strong>{masterPoRef}</strong>. Edits to line items must be performed on the Master Order. Document Generator, Tech Packs, Payments, Logistics, and Invoicing are active for this phase.
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: 700, color: 'var(--text-info)' }}
+                    onClick={() => {
+                      if (masterPoRef) {
+                        const masterObj = Object.values(projects || {}).flatMap(p => Array.isArray(p.orders) ? p.orders : Object.values(p.orders || {})).find(o => String(o.id) === String(masterPoRef) || String(o.po_number || o.poNumber) === String(masterPoRef));
+                        if (masterObj) handleOpenWorkspace(masterObj);
+                        else setSelectedOrderId(masterPoRef);
+                      }
+                    }}
+                  >
+                    <span>↗ Switch to Master Order ({masterPoRef})</span>
+                  </button>
+                </div>
+              )}
+
               {/* TIER 2: FINANCIAL VITALS GRID (FULL 100% WIDTH, PERCENTAGE PROPORTIONS, NO HARDCODED MIN-WIDTH) */}
               {(() => {
                 const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
@@ -3782,16 +3844,49 @@ export default function OrdersPage() {
 
             {/* SUB-TAB 0: TAKEOFF & SPECIFICATION ENGINE */}
             {workspaceSubTab === 'takeoff' && (
-              <TakeoffSpecEngine
-                orderId={selectedOrderId}
-                projectKey={selectedProjectKey}
-                orderSupplier={orderSupplier}
-                initialTakeoffData={takeoffData}
-                orderNotes={orderNotes}
-                onUpdateOrderNotes={setOrderNotes}
-                onSaveTakeoffData={handleSaveTakeoffData}
-                onGenerateBOQ={handleGenerateBOQFromTakeoff}
-              />
+              isSubOrderWorkspace ? (
+                <div style={{
+                  padding: '48px 24px',
+                  textAlign: 'center',
+                  background: 'var(--bg-primary)',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border)',
+                  maxWidth: '680px',
+                  margin: '36px auto'
+                }}>
+                  <div style={{ fontSize: '38px', marginBottom: '12px' }}>🔒</div>
+                  <h3 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Takeoff & Specification Locked for Sub-Orders
+                  </h3>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 20px 0' }}>
+                    Fittings, quantities, and room specifications are centrally mastered on <strong>{masterPoRef}</strong>. Line item changes must be executed on the Master Order to prevent scope conflicts across phases.
+                  </p>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      if (masterPoRef) {
+                        const masterObj = Object.values(projects || {}).flatMap(p => Array.isArray(p.orders) ? p.orders : Object.values(p.orders || {})).find(o => String(o.id) === String(masterPoRef) || String(o.po_number || o.poNumber) === String(masterPoRef));
+                        if (masterObj) handleOpenWorkspace(masterObj);
+                        else setSelectedOrderId(masterPoRef);
+                      }
+                    }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    ↗ Switch to Master Order ({masterPoRef})
+                  </button>
+                </div>
+              ) : (
+                <TakeoffSpecEngine
+                  orderId={selectedOrderId}
+                  projectKey={selectedProjectKey}
+                  orderSupplier={orderSupplier}
+                  initialTakeoffData={takeoffData}
+                  orderNotes={orderNotes}
+                  onUpdateOrderNotes={setOrderNotes}
+                  onSaveTakeoffData={handleSaveTakeoffData}
+                  onGenerateBOQ={handleGenerateBOQFromTakeoff}
+                />
+              )
             )}
 
             {workspaceSubTab === 'boq' && (
@@ -5550,6 +5645,7 @@ export default function OrdersPage() {
                         docsList = [
                           { id: 'quote', name: 'Quotation (Summarized)', icon: <FileText size={14} /> },
                           { id: 'revision_audit', name: 'Revision & Variation Audit', icon: <History size={14} /> },
+                          { id: 'technical_pack', name: 'Technical Pack & Spec Book', icon: <BookOpen size={14} /> },
                           { id: 'boq_doc', name: 'BOQ (Detailed Breakdown)', icon: <Layers size={14} /> },
                           { id: 'schedule', name: 'Lighting Schedule', icon: <ClipboardList size={14} /> },
                           { id: 'deposit_invoice', name: 'Deposit Invoice', icon: <DollarSign size={14} /> },
@@ -5633,6 +5729,35 @@ export default function OrdersPage() {
                     order={currentOrderObj}
                     onBackToWorkspace={() => setWorkspaceSubTab('boq')}
                   />
+                ) : selectedDocType === 'technical_pack' ? (
+                  <div style={{
+                    background: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                    padding: '36px 24px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border)',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+                    maxWidth: '800px',
+                    margin: '0 auto',
+                    textAlign: 'center'
+                  }}>
+                    <div style={{ fontSize: '36px', marginBottom: '10px' }}>📘</div>
+                    <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      One to One Architectural Technical Pack Studio
+                    </h3>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '13px', maxWidth: '540px', margin: '0 auto 20px auto', lineHeight: 1.5 }}>
+                      Compile high-resolution, standardized PDF Technical Packs containing complete photometric specs, wiring diagrams, cutouts, and installation guidelines for <strong>{selectedOrderId}</strong> ({activeOrderItems.length} active fittings).
+                    </p>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => setIsTechPackModalOpen(true)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 22px', fontSize: '13px', fontWeight: 700 }}
+                      >
+                        <BookOpen size={16} /> Launch Technical Pack Studio
+                      </button>
+                    </div>
+                  </div>
                 ) : (() => {
                   const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
                   const totalRetailGross = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);

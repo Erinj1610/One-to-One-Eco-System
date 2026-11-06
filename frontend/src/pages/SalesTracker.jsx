@@ -1032,6 +1032,21 @@ export default function SalesTracker() {
 
   const [filterStatus, setFilterStatus] = useState('All');
   const [subOrderFilter, setSubOrderFilter] = useState('All'); // 'All' | 'Master' | 'Sub'
+  const [expandedMasterOrders, setExpandedMasterOrders] = useState(new Set());
+  const toggleExpandMaster = (masterId, e) => {
+    if (e) e.stopPropagation();
+    setExpandedMasterOrders(prev => {
+      const next = new Set(prev);
+      if (next.has(masterId)) next.delete(masterId);
+      else next.add(masterId);
+      return next;
+    });
+  };
+
+  const checkIsSubOrder = React.useCallback((ord) => {
+    if (!ord || !ord.id) return false;
+    return /-0\d+$/.test(String(ord.id).trim());
+  }, []);
   const [projectFilterKey, setProjectFilterKey] = useState('All');
   const [clientFilter, setClientFilter] = useState('All');
   const [pmFilter, setPmFilter] = useState('All');
@@ -1294,6 +1309,18 @@ export default function SalesTracker() {
     return list;
   }, [projects]);
 
+  const subOrdersByParent = useMemo(() => {
+    const map = {};
+    allOrders.forEach(ord => {
+      if (checkIsSubOrder(ord)) {
+        const parentKey = ord.parent_po_number || ord.parentPoNumber || String(ord.id).replace(/-0\d+$/, '');
+        if (!map[parentKey]) map[parentKey] = [];
+        map[parentKey].push(ord);
+      }
+    });
+    return map;
+  }, [allOrders, checkIsSubOrder]);
+
   // Memoized unique dropdown lists for instant O(1) filter rendering
   const projectOptions = useMemo(() => {
     const list = Array.from(new Set(allOrders.map(o => o.projectName).filter(Boolean))).sort();
@@ -1379,13 +1406,23 @@ export default function SalesTracker() {
       const matchesPm = pmFilter === 'All' || o.projectPm === pmFilter;
       const matchesPaymentStatus = paymentStatusFilter === 'All' || o.paymentStatus === paymentStatusFilter;
       
-      // Option 3 Sub-Order Filter Matching
+      // Option 3 Sub-Order Filter & Hierarchy Matching
       let matchesSubOrder = true;
-      const isSub = Boolean(o.is_sub_order || o.isSubOrder || o.parent_po_number || o.parentPoNumber || (o.id && /-0\d+$/.test(o.id)));
+      const isSub = checkIsSubOrder(o);
       if (subOrderFilter === 'Master') {
         matchesSubOrder = !isSub;
       } else if (subOrderFilter === 'Sub') {
         matchesSubOrder = isSub;
+      } else if (subOrderFilter === 'All') {
+        // In 'All' view, top-level rows are master orders. Sub-orders are nested under their master order.
+        // If a sub-order directly matches search or its parent is not present, display it in root.
+        if (isSub) {
+          const parentKey = o.parent_po_number || o.parentPoNumber || String(o.id).replace(/-0\d+$/, '');
+          const hasParent = dateFilteredOrders.some(p => String(p.id) === String(parentKey));
+          matchesSubOrder = Boolean((debouncedSearchQuery && matchesSearch) || !hasParent);
+        } else {
+          matchesSubOrder = true;
+        }
       }
 
       // KPI interactive filter matching
@@ -4908,13 +4945,20 @@ export default function SalesTracker() {
                       const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
                       const isLowMargin = margin < 39;
                       const isSelected = selectedOrders.includes(`${o.projectKey}_${o.id}`);
+                      const isSub = checkIsSubOrder(o);
+                      const childSubs = (!isSub && subOrdersByParent[o.id]) || [];
+                      const hasChildSubs = childSubs.length > 0;
+                      const isExpanded = expandedMasterOrders.has(o.id);
 
                       return (
+                        <React.Fragment key={o.id}>
                         <tr 
-                          key={o.id} 
                           className="clickable" 
                           onClick={() => handleOpenWorkspace(o)}
-                          style={{ background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'transparent' }}
+                          style={{ 
+                            background: isSelected ? 'rgba(59, 130, 246, 0.08)' : (hasChildSubs ? 'rgba(59, 130, 246, 0.02)' : 'transparent'),
+                            borderLeft: hasChildSubs ? '3px solid #3b82f6' : (isSub ? '3px solid #8b5cf6' : '3px solid transparent')
+                          }}
                         >
                           <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                             <input 
@@ -4931,10 +4975,26 @@ export default function SalesTracker() {
                             />
                           </td>
                           <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              {hasChildSubs && (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm"
+                                  style={{ padding: '0', height: '22px', width: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}
+                                  onClick={(e) => toggleExpandMaster(o.id, e)}
+                                  title={isExpanded ? "Collapse Sub-Orders" : `Expand ${childSubs.length} Sub-Orders`}
+                                >
+                                  {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                </button>
+                              )}
                               <span>{o.id}</span>
-                              {(o.is_sub_order || o.isSubOrder || o.parent_po_number || o.parentPoNumber || (o.id && /-0\d+$/.test(o.id))) && (
-                                <span className="badge" style={{ fontSize: '9px', padding: '1px 4px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: 700 }}>
+                              {hasChildSubs && (
+                                <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(59, 130, 246, 0.15)', color: '#2563eb', fontWeight: 700, borderRadius: '4px' }}>
+                                  👑 Master ({childSubs.length})
+                                </span>
+                              )}
+                              {isSub && (
+                                <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: 700, borderRadius: '4px' }}>
                                   ↳ Sub
                                 </span>
                               )}
@@ -4989,6 +5049,85 @@ export default function SalesTracker() {
                           </td>
                         </tr>
 
+                        {/* EXPANDED SUB-ORDER CHILDREN ROWS */}
+                        {hasChildSubs && isExpanded && subOrderFilter === 'All' && childSubs.map(sub => {
+                          const subCost = isSupplierMarginMode ? (sub.supplierCostValue || sub.costValue || 0) : (sub.costValue || 0);
+                          const subRetail = sub.value || 0;
+                          const subMargin = subRetail > 0 ? Math.round(((subRetail - subCost) / subRetail) * 100) : 0;
+                          const subIsLowMargin = subMargin < 39;
+                          const subIsSelected = selectedOrders.includes(`${sub.projectKey}_${sub.id}`);
+
+                          return (
+                            <tr
+                              key={sub.id}
+                              className="clickable"
+                              onClick={() => handleOpenWorkspace(sub)}
+                              style={{
+                                background: subIsSelected ? 'rgba(139, 92, 246, 0.12)' : 'rgba(139, 92, 246, 0.04)',
+                                borderLeft: '3px solid #8b5cf6'
+                              }}
+                            >
+                              <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={subIsSelected}
+                                  onChange={e => {
+                                    const key = `${sub.projectKey}_${sub.id}`;
+                                    if (e.target.checked) setSelectedOrders(prev => [...prev, key]);
+                                    else setSelectedOrders(prev => prev.filter(k => k !== key));
+                                  }}
+                                />
+                              </td>
+                              <td style={{ fontFamily: 'monospace', fontWeight: 600, paddingLeft: '24px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                  <span style={{ color: '#8b5cf6', fontWeight: 700 }}>↳</span>
+                                  <span style={{ color: '#8b5cf6' }}>{sub.id}</span>
+                                  <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: 700, borderRadius: '4px' }}>
+                                    {sub.phase_name || sub.phaseName || `Phase ${sub.sub_order_index || 1}`}
+                                  </span>
+                                </div>
+                              </td>
+                              <td style={{ fontWeight: 600 }}>
+                                {sub.quote_name || 'Phase Scope'}
+                              </td>
+                              <td style={{ color: 'var(--text-secondary)' }}>{sub.projectFullName || sub.projectName}</td>
+                              <td style={{ color: 'var(--text-secondary)' }}>{(sub.clientCompany || sub.projectClient) || '—'}</td>
+                              <td style={{ color: 'var(--text-secondary)' }}>{sub.projectPm || '—'}</td>
+                              <td style={{ fontWeight: 700, color: subMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                                {subMargin}%
+                              </td>
+                              <td style={{ fontWeight: 600 }}>R {subRetail.toLocaleString()}</td>
+                              <td style={{ color: 'var(--text-success)' }}>R {(sub.paid || 0).toLocaleString()}</td>
+                              <td style={{ fontWeight: 600, color: (sub.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
+                                R {(sub.outstanding || 0).toLocaleString()}
+                              </td>
+                              <td>
+                                <span className={`badge ${statusColor[sub.status] || 'b-default'}`}>{sub.status}</span>
+                              </td>
+                              <td>
+                                <span className={`badge ${
+                                  sub.paymentStatus === 'Fully Paid' ? 'b-success' : sub.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
+                                }`}>{sub.paymentStatus}</span>
+                              </td>
+                              <td>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'rgba(74, 222, 128, 0.08)', color: '#4ade80' }}>
+                                  Proc: {sub.procPct || 0}%
+                                </div>
+                              </td>
+                              <td>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b' }}>
+                                  Inv: {sub.invPct || 0}%
+                                </div>
+                              </td>
+                              <td>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'rgba(96, 165, 250, 0.08)', color: '#60a5fa' }}>
+                                  Del: {sub.delPct || 0}%
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        </React.Fragment>
                       );
                     })}
 

@@ -121,6 +121,57 @@ export default function TakeoffSpecEngine({
 
   // Catalog Picker Modal State
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
+  const [takeoffSwapTarget, setTakeoffSwapTarget] = useState(null);
+  const [takeoffSwapScope, setTakeoffSwapScope] = useState('ALL'); // 'ALL' | 'ROW_ONLY'
+  const [takeoffSwapReason, setTakeoffSwapReason] = useState('');
+  const [takeoffSwapModalOpen, setTakeoffSwapModalOpen] = useState(false);
+
+  const handleInitiateRowSwap = (row) => {
+    const tag = (row.tag || '').trim().toUpperCase();
+    const spec = specifications[tag];
+    const matchingRowCount = countUpRows.filter(r => (r.tag || '').trim().toUpperCase() === tag).length;
+    setTakeoffSwapTarget({
+      mode: 'row',
+      row,
+      tag,
+      currentProduct: spec?.product || null,
+      matchingRowCount
+    });
+    setTakeoffSwapScope('ALL');
+    setTakeoffSwapReason('');
+    setTakeoffSwapModalOpen(true);
+  };
+
+  const handleInitiateSpecSwap = (tag, spec) => {
+    const matchingRowCount = countUpRows.filter(r => (r.tag || '').trim().toUpperCase() === tag).length;
+    setTakeoffSwapTarget({
+      mode: 'spec',
+      tag,
+      currentProduct: spec?.product || null,
+      matchingRowCount
+    });
+    setTakeoffSwapScope('ALL');
+    setTakeoffSwapReason('');
+    setTakeoffSwapModalOpen(true);
+  };
+
+  const handleConfirmSwapAndOpenPicker = () => {
+    if (!takeoffSwapReason.trim()) {
+      alert('Please enter a brief reason for this fitting variation (e.g. Client site request).');
+      return;
+    }
+    const targetTag = takeoffSwapTarget?.tag;
+    const currentMode = specifications[targetTag]?.itemType || takeoffSwapTarget?.row?.itemType || 'fixture';
+    setTakeoffSwapModalOpen(false);
+
+    if (currentMode === 'linear_led') {
+      openCatalogPicker(targetTag, 'led_profile', 'Linear');
+    } else if (currentMode === 'track_system') {
+      openCatalogPicker(targetTag, 'track_rail', 'Track');
+    } else {
+      openCatalogPicker(targetTag, 'product');
+    }
+  };
   const [catalogTargetTag, setCatalogTargetTag] = useState(null);
   const [catalogTargetMode, setCatalogTargetMode] = useState('product'); // 'product' | 'accessory' | 'led_profile' | 'led_strip' | 'led_driver' | 'track_rail' | 'track_spot' | 'track_driver'
   const [catalogTargetSubId, setCatalogTargetSubId] = useState(null);
@@ -726,6 +777,48 @@ export default function TakeoffSpecEngine({
     if (!activeTag) return;
 
     if (catalogTargetMode === 'product') {
+      // Log variation audit if triggered from swap flow
+      if (takeoffSwapTarget && orderId) {
+        try {
+          const prevProduct = takeoffSwapTarget.currentProduct;
+          const origCode = prevProduct?.sku || prevProduct?.one_to_one_code || takeoffSwapTarget.tag;
+          const repCode = product.sku || product.one_to_one_code || product.name;
+          const diffVal = (Number(product.retail_price || 0)) - (Number(prevProduct?.retail_price || 0));
+
+          fetch(`${API_BASE}/api/orders/${orderId}/audit-logs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'ITEM_SWAPPED',
+              reason: takeoffSwapReason || 'Fitting variation executed from Takeoff & Specification Engine',
+              room: takeoffSwapTarget.row?.area || 'Takeoff Scope',
+              item_code: repCode,
+              item_description: `Takeoff Swap: ${origCode} -> ${repCode}`,
+              retail_delta: diffVal,
+              performed_by: 'Dani (PM)'
+            })
+          }).catch(err => console.error('Error logging takeoff swap audit:', err));
+        } catch (e) {
+          console.error('Audit log failed:', e);
+        }
+      }
+
+      // If scope was ROW_ONLY, create sub-tag for that row
+      if (takeoffSwapTarget && takeoffSwapTarget.mode === 'row' && takeoffSwapScope === 'ROW_ONLY' && takeoffSwapTarget.row) {
+        let altIdx = 1;
+        let newAltTag = `${takeoffSwapTarget.tag}.${altIdx}`;
+        while (countUpRows.some(r => (r.tag || '').toUpperCase() === newAltTag)) {
+          altIdx++;
+          newAltTag = `${takeoffSwapTarget.tag}.${altIdx}`;
+        }
+        handleUpdateRow(takeoffSwapTarget.row.id, 'tag', newAltTag);
+        setTakeoffSwapTarget(null);
+        // Continue setting specification for newAltTag
+        return handleSelectCatalogItem(product, newAltTag);
+      }
+
+      setTakeoffSwapTarget(null);
+
       // 1. Fetch linked accessories from DB
       let fetchedAccessories = [];
       try {
@@ -3264,6 +3357,14 @@ export default function TakeoffSpecEngine({
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
                             <button 
                               className="btn btn-ghost btn-xs" 
+                              onClick={() => handleInitiateRowSwap(row)}
+                              title="Swap / Replace Fitting"
+                              style={{ padding: '2px 4px', color: '#f59e0b' }}
+                            >
+                              <RotateCcw size={12} />
+                            </button>
+                            <button 
+                              className="btn btn-ghost btn-xs" 
                               onClick={() => handleDuplicateRow(row.id)}
                               title="Duplicate row"
                               style={{ padding: '2px 4px', color: 'var(--text-secondary)' }}
@@ -3466,6 +3567,15 @@ export default function TakeoffSpecEngine({
 
                               {product && (
                                 <>
+                                  <button
+                                    type="button"
+                                    className="btn btn-xs"
+                                    onClick={() => handleInitiateSpecSwap(tag, spec)}
+                                    title="Swap / Replace this fitting across the Takeoff"
+                                    style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px', background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)', fontWeight: 600 }}
+                                  >
+                                    <RotateCcw size={11} /> Swap Spec
+                                  </button>
                                   <button
                                     className="btn btn-ghost btn-xs"
                                     onClick={() => {
@@ -6016,6 +6126,189 @@ export default function TakeoffSpecEngine({
                 </tfoot>
               )}
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* TAKEOFF FITTING SWAP VARIATION MODAL                           */}
+      {/* ------------------------------------------------------------- */}
+      {takeoffSwapModalOpen && takeoffSwapTarget && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.65)',
+          backdropFilter: 'blur(3px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: 'var(--bg-primary)',
+            border: '1px solid var(--border)',
+            borderRadius: '10px',
+            width: '100%',
+            maxWidth: '520px',
+            boxShadow: '0 12px 36px rgba(0,0,0,0.3)',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            {/* MODAL HEADER */}
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: 'var(--bg-secondary)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <RotateCcw size={16} color="#f59e0b" />
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Swap Fitting Variation &bull; Tag <span style={{ fontFamily: 'monospace', color: 'var(--text-info)' }}>{takeoffSwapTarget.tag}</span>
+                </h3>
+              </div>
+              <button 
+                type="button"
+                className="btn btn-ghost btn-sm" 
+                style={{ padding: '4px' }} 
+                onClick={() => setTakeoffSwapModalOpen(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* MODAL BODY */}
+            <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ background: 'var(--bg-secondary)', padding: '12px 14px', borderRadius: '6px', border: '1px solid var(--border)', fontSize: '12px' }}>
+                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '10.5px', textTransform: 'uppercase', fontWeight: 700 }}>Current Fitting</span>
+                <strong style={{ fontSize: '13px', color: 'var(--text-primary)' }}>
+                  {takeoffSwapTarget.currentProduct?.sku || takeoffSwapTarget.currentProduct?.name || 'Unmapped Specification'}
+                </strong>
+                {takeoffSwapTarget.currentProduct?.retail_price && (
+                  <span style={{ marginLeft: '8px', color: 'var(--text-info)', fontWeight: 600 }}>
+                    (R {Number(takeoffSwapTarget.currentProduct.retail_price).toLocaleString()} ea)
+                  </span>
+                )}
+              </div>
+
+              {/* SCOPE SELECTION (Row vs All) */}
+              {takeoffSwapTarget.mode === 'row' && (
+                <div>
+                  <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
+                    Replacement Scope
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '10px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid',
+                      borderColor: takeoffSwapScope === 'ALL' ? '#f59e0b' : 'var(--border)',
+                      background: takeoffSwapScope === 'ALL' ? 'rgba(245, 158, 11, 0.08)' : 'var(--bg-primary)',
+                      cursor: 'pointer'
+                    }}>
+                      <input 
+                        type="radio" 
+                        name="swapScope" 
+                        checked={takeoffSwapScope === 'ALL'} 
+                        onChange={() => setTakeoffSwapScope('ALL')} 
+                        style={{ accentColor: '#f59e0b' }}
+                      />
+                      <div>
+                        <strong style={{ fontSize: '12.5px', color: 'var(--text-primary)' }}>
+                          Replace for ALL rows using tag {takeoffSwapTarget.tag}
+                        </strong>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          Applies the replacement fitting across all {takeoffSwapTarget.matchingRowCount} occurrences in the project.
+                        </div>
+                      </div>
+                    </label>
+
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '10px 12px',
+                      borderRadius: '6px',
+                      border: '1px solid',
+                      borderColor: takeoffSwapScope === 'ROW_ONLY' ? '#f59e0b' : 'var(--border)',
+                      background: takeoffSwapScope === 'ROW_ONLY' ? 'rgba(245, 158, 11, 0.08)' : 'var(--bg-primary)',
+                      cursor: 'pointer'
+                    }}>
+                      <input 
+                        type="radio" 
+                        name="swapScope" 
+                        checked={takeoffSwapScope === 'ROW_ONLY'} 
+                        onChange={() => setTakeoffSwapScope('ROW_ONLY')} 
+                        style={{ accentColor: '#f59e0b' }}
+                      />
+                      <div>
+                        <strong style={{ fontSize: '12.5px', color: 'var(--text-primary)' }}>
+                          Replace for THIS ROW ONLY ({takeoffSwapTarget.row?.area || 'Selected Room'})
+                        </strong>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          Splits this row into an alternate tag (e.g. {takeoffSwapTarget.tag}.1) and leaves the other rooms unchanged.
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {/* REASON FOR VARIATION */}
+              <div>
+                <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', display: 'block', marginBottom: '6px' }}>
+                  Reason for Variation / Instruction <span style={{ color: 'var(--text-danger)' }}>*</span>
+                </label>
+                <textarea
+                  className="form-control"
+                  rows={3}
+                  value={takeoffSwapReason}
+                  onChange={e => setTakeoffSwapReason(e.target.value)}
+                  placeholder="e.g. Client requested 2700K warm white pendant on-site during architect walkthrough"
+                  style={{ width: '100%', fontSize: '12.5px', padding: '8px 10px', resize: 'vertical' }}
+                  required
+                />
+                <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', marginTop: '4px', display: 'block' }}>
+                  This reason will be recorded on the official Client Revision & Variation Audit Schedule.
+                </span>
+              </div>
+            </div>
+
+            {/* MODAL FOOTER */}
+            <div style={{
+              padding: '14px 20px',
+              borderTop: '1px solid var(--border)',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '10px',
+              background: 'var(--bg-secondary)'
+            }}>
+              <button 
+                type="button" 
+                className="btn btn-ghost btn-sm" 
+                onClick={() => setTakeoffSwapModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-warning btn-sm" 
+                onClick={handleConfirmSwapAndOpenPicker}
+                style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              >
+                Proceed to Catalogue &rarr;
+              </button>
+            </div>
           </div>
         </div>
       )}

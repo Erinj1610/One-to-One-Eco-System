@@ -2070,6 +2070,56 @@ def get_variation_document_data(po_number: str, db: Session = Depends(get_db)):
         OrderAuditLog.order_po == order.po_number
     ).order_by(OrderAuditLog.created_at.desc()).limit(20).all()
 
+    paired_variations = []
+    used_added_ids = set()
+
+    for sw in swapped_items:
+        matching_add = next((ad for ad in added_items if getattr(ad, 'swap_parent_id', None) == sw.id and ad.id not in used_added_ids), None)
+        if not matching_add:
+            matching_add = next((ad for ad in added_items if ad.area == sw.area and ad.id not in used_added_ids), None)
+        
+        orig_val = float(sw.qty or 0) * float(sw.unit_retail or 0.0)
+        rep_val = float(matching_add.qty or 0) * float(matching_add.unit_retail or 0.0) if matching_add else 0.0
+        diff = rep_val - orig_val
+
+        if matching_add:
+            used_added_ids.add(matching_add.id)
+
+        paired_variations.append({
+            "room": sw.area or "General Scope",
+            "original_code": sw.code or sw.one_one_code or "—",
+            "original_desc": sw.description or "—",
+            "original_qty": int(sw.qty or 0),
+            "original_unit_retail": float(sw.unit_retail or 0.0),
+            "original_total": round(orig_val, 2),
+            "replacement_code": (matching_add.code or matching_add.one_one_code) if matching_add else "—",
+            "replacement_desc": matching_add.description if matching_add else "Credit Only (No Replacement)",
+            "replacement_qty": int(matching_add.qty or 0) if matching_add else 0,
+            "replacement_unit_retail": float(matching_add.unit_retail or 0.0) if matching_add else 0.0,
+            "replacement_total": round(rep_val, 2),
+            "line_net_diff": round(diff, 2),
+            "reason": sw.swap_reason or (matching_add.swap_reason if matching_add else "Site change / client request")
+        })
+
+    for ad in added_items:
+        if ad.id not in used_added_ids:
+            rep_val = float(ad.qty or 0) * float(ad.unit_retail or 0.0)
+            paired_variations.append({
+                "room": ad.area or "General Scope",
+                "original_code": "—",
+                "original_desc": "None (New Addition to Scope)",
+                "original_qty": 0,
+                "original_unit_retail": 0.0,
+                "original_total": 0.0,
+                "replacement_code": ad.code or ad.one_one_code or "—",
+                "replacement_desc": ad.description or "—",
+                "replacement_qty": int(ad.qty or 0),
+                "replacement_unit_retail": float(ad.unit_retail or 0.0),
+                "replacement_total": round(rep_val, 2),
+                "line_net_diff": round(rep_val, 2),
+                "reason": ad.swap_reason or "New scope addition"
+            })
+
     audit_history = [{
         "date": l.created_at.strftime("%d %b %Y %H:%M") if l.created_at else "—",
         "action": l.action,
@@ -2079,6 +2129,7 @@ def get_variation_document_data(po_number: str, db: Session = Depends(get_db)):
     } for l in audit_logs]
 
     return {
+        "paired_variations": paired_variations,
         "order_po": order.po_number,
         "order_name": order.quote_name or order.po_number,
         "parent_po": order.parent_po_number,

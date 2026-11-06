@@ -264,65 +264,97 @@ export default function ClientVariationDocument({
           </div>
         </div>
 
-        {/* ITEMIZED VARIATION CHANGES LEDGER TABLE */}
+        {/* ARCHITECTURAL SCHEDULE OF VARIATIONS: SIDE-BY-SIDE BEFORE & AFTER */}
         <div style={{ marginBottom: '36px' }}>
-          <div style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.8px', color: '#0f172a', fontWeight: 800, marginBottom: '10px' }}>
-            📋 Itemized Variation & Site Changes Ledger
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <div style={{ fontSize: '12.5px', textTransform: 'uppercase', letterSpacing: '0.8px', color: '#0f172a', fontWeight: 800 }}>
+              ⚖️ Contractual Schedule of Variations (Before &rarr; After)
+            </div>
+            <span style={{ fontSize: '11px', color: '#64748b' }}>
+              Showing original approved specification versus approved replacement fitting
+            </span>
           </div>
 
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px', textAlign: 'left' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11.5px', textAlign: 'left', border: '1px solid #cbd5e1' }}>
             <thead>
-              <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1', color: '#334155', fontWeight: 700 }}>
-                <th style={{ padding: '8px 10px', width: '130px' }}>Change Type</th>
-                <th style={{ padding: '8px 10px', width: '120px' }}>Room / Area</th>
-                <th style={{ padding: '8px 10px', width: '120px' }}>Fitting Code</th>
-                <th style={{ padding: '8px 10px' }}>Description</th>
-                <th style={{ padding: '8px 10px', width: '60px', textAlign: 'center' }}>Qty</th>
-                <th style={{ padding: '8px 10px', width: '90px', textAlign: 'right' }}>Unit Retail</th>
-                <th style={{ padding: '8px 10px', width: '110px', textAlign: 'right' }}>Line Net Delta</th>
-                <th style={{ padding: '8px 10px', width: '190px' }}>Reason for Change</th>
+              <tr style={{ background: '#0f172a', color: '#ffffff', fontWeight: 700 }}>
+                <th style={{ padding: '10px 12px', width: '130px' }}>Room / Area</th>
+                <th style={{ padding: '10px 12px', width: '260px' }}>Original Fitting (Before)</th>
+                <th style={{ padding: '10px 12px', width: '260px' }}>Replacement Fitting (After)</th>
+                <th style={{ padding: '10px 12px', width: '110px', textAlign: 'right' }}>Net Difference</th>
+                <th style={{ padding: '10px 12px' }}>Reason & Site Instruction</th>
               </tr>
             </thead>
             <tbody>
-              {itemized_ledger.length === 0 ? (
+              {((docData.paired_variations && docData.paired_variations.length > 0) ? docData.paired_variations : itemized_ledger).length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>
-                    No line item variations recorded on this order yet.
+                  <td colSpan={5} style={{ padding: '32px', textAlign: 'center', color: '#64748b', background: '#f8fafc' }}>
+                    No product variations or substitutions recorded on this order.
                   </td>
                 </tr>
               ) : (
-                itemized_ledger.map((item, idx) => {
-                  const isCredit = item.qty_delta < 0;
+                ((docData.paired_variations && docData.paired_variations.length > 0) ? docData.paired_variations : []).map((pv, idx) => {
+                  const isPositive = pv.line_net_diff > 0;
+                  const isNegative = pv.line_net_diff < 0;
                   return (
-                    <tr key={item.id || idx} style={{ borderBottom: '1px solid #e2e8f0', background: isCredit ? '#fffdfd' : '#fcfdfc' }}>
-                      <td style={{ padding: '8px 10px', fontWeight: 700 }}>
-                        <span style={{
-                          display: 'inline-block',
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          fontSize: '10px',
-                          background: isCredit ? '#fee2e2' : '#dcfce7',
-                          color: isCredit ? '#991b1b' : '#166534'
-                        }}>
-                          {item.change_type}
-                        </span>
+                    <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0', background: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                      {/* ROOM */}
+                      <td style={{ padding: '12px', fontWeight: 700, color: '#334155', verticalAlign: 'top' }}>
+                        {pv.room}
                       </td>
-                      <td style={{ padding: '8px 10px', color: '#334155' }}>{item.room}</td>
-                      <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 700, color: isCredit ? '#991b1b' : '#166534' }}>
-                        {item.code}
+
+                      {/* ORIGINAL SPEC (BEFORE) */}
+                      <td style={{ padding: '12px', verticalAlign: 'top', background: 'rgba(239, 68, 68, 0.03)', borderRight: '1px solid #e2e8f0' }}>
+                        {pv.original_qty > 0 ? (
+                          <>
+                            <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#b91c1c', fontSize: '12px' }}>
+                              {pv.original_code}
+                            </div>
+                            <div style={{ color: '#475569', fontSize: '11px', marginTop: '3px', lineHeight: 1.35 }}>
+                              {pv.original_desc}
+                            </div>
+                            <div style={{ fontSize: '10.5px', color: '#991b1b', marginTop: '4px', fontWeight: 600 }}>
+                              Qty: {pv.original_qty} &bull; R {pv.original_unit_retail.toLocaleString(undefined, { minimumFractionDigits: 2 })} ea &bull; <span style={{ textDecoration: 'line-through' }}>-R {pv.original_total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                          </>
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '11px' }}>— None (New Scope Item)</span>
+                        )}
                       </td>
-                      <td style={{ padding: '8px 10px', color: '#0f172a' }}>{item.description}</td>
-                      <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: isCredit ? '#991b1b' : '#166534' }}>
-                        {item.qty_delta > 0 ? `+${item.qty_delta}` : item.qty_delta}
+
+                      {/* REPLACEMENT SPEC (AFTER) */}
+                      <td style={{ padding: '12px', verticalAlign: 'top', background: 'rgba(22, 163, 74, 0.03)', borderRight: '1px solid #e2e8f0' }}>
+                        {pv.replacement_qty > 0 ? (
+                          <>
+                            <div style={{ fontFamily: 'monospace', fontWeight: 700, color: '#15803d', fontSize: '12px' }}>
+                              {pv.replacement_code}
+                            </div>
+                            <div style={{ color: '#1e293b', fontSize: '11px', marginTop: '3px', fontWeight: 500, lineHeight: 1.35 }}>
+                              {pv.replacement_desc}
+                            </div>
+                            <div style={{ fontSize: '10.5px', color: '#166534', marginTop: '4px', fontWeight: 600 }}>
+                              Qty: {pv.replacement_qty} &bull; R {pv.replacement_unit_retail.toLocaleString(undefined, { minimumFractionDigits: 2 })} ea &bull; +R {pv.replacement_total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </div>
+                          </>
+                        ) : (
+                          <span style={{ color: '#b91c1c', fontWeight: 600, fontSize: '11px' }}>Credit Only (Removed from Scope)</span>
+                        )}
                       </td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right', color: '#64748b' }}>
-                        R {item.unit_retail.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+
+                      {/* NET DIFFERENCE */}
+                      <td style={{ padding: '12px', verticalAlign: 'top', textAlign: 'right', fontWeight: 800, borderRight: '1px solid #e2e8f0', color: isPositive ? '#16a34a' : isNegative ? '#dc2626' : '#64748b' }}>
+                        <div style={{ fontSize: '12.5px' }}>
+                          {isPositive ? `+R ${pv.line_net_diff.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : isNegative ? `-R ${Math.abs(pv.line_net_diff).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : 'R 0.00'}
+                        </div>
+                        <div style={{ fontSize: '9.5px', color: '#64748b', fontWeight: 500, marginTop: '2px' }}>
+                          {isPositive ? 'Cost Increase' : isNegative ? 'Cost Reduction' : 'Even Swap'}
+                        </div>
                       </td>
-                      <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: isCredit ? '#dc2626' : '#16a34a' }}>
-                        {item.line_delta > 0 ? `+R ${item.line_delta.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `-R ${Math.abs(item.line_delta).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                      </td>
-                      <td style={{ padding: '8px 10px', fontSize: '11px', color: '#334155', fontStyle: 'italic', lineHeight: 1.3 }}>
-                        {item.reason}
+
+                      {/* REASON */}
+                      <td style={{ padding: '12px', verticalAlign: 'top', color: '#334155', fontSize: '11px', lineHeight: 1.4 }}>
+                        <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: '2px' }}>Instruction:</div>
+                        <em>{pv.reason}</em>
                       </td>
                     </tr>
                   );
@@ -331,13 +363,15 @@ export default function ClientVariationDocument({
             </tbody>
             <tfoot>
               <tr style={{ background: '#f8fafc', borderTop: '2px solid #0f172a', fontWeight: 800 }}>
-                <td colSpan={6} style={{ padding: '10px', textAlign: 'right', fontSize: '12px' }}>
+                <td colSpan={3} style={{ padding: '12px', textAlign: 'right', fontSize: '12px', color: '#0f172a' }}>
                   NET VARIATION IMPACT (EXCL. VAT):
                 </td>
-                <td style={{ padding: '10px', textAlign: 'right', fontSize: '13px', color: isPositiveNet ? '#16a34a' : isNegativeNet ? '#dc2626' : '#0f172a' }}>
+                <td style={{ padding: '12px', textAlign: 'right', fontSize: '13px', color: isPositiveNet ? '#16a34a' : isNegativeNet ? '#dc2626' : '#0f172a' }}>
                   {isPositiveNet ? `+R ${financial_summary.net_variation.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : isNegativeNet ? `-R ${Math.abs(financial_summary.net_variation).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'R 0.00'}
                 </td>
-                <td></td>
+                <td style={{ padding: '12px', fontSize: '11px', color: '#64748b' }}>
+                  Reflected in revised order schedule
+                </td>
               </tr>
             </tfoot>
           </table>
