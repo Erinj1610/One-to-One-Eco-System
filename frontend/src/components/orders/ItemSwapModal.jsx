@@ -219,6 +219,31 @@ export default function ItemSwapModal({
               </div>
             )}
 
+            {/* SUB-ORDER & FINANCIAL PHASE ALLOCATION NOTICE */}
+            {(item?.sub_order_ref || item?.subOrderRef) && (
+              <div style={{
+                background: 'linear-gradient(90deg, rgba(139, 92, 246, 0.1) 0%, rgba(245, 158, 11, 0.1) 100%)',
+                border: '1px solid rgba(139, 92, 246, 0.35)',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                fontSize: '12px',
+                color: 'var(--text-primary)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px'
+              }}>
+                <span style={{ fontSize: '18px', lineHeight: 1 }}>⚠️</span>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#8b5cf6' }}>
+                    Allocated to Phase: {item.sub_order_ref || item.subOrderRef}
+                  </div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '11.5px', marginTop: '2px' }}>
+                    This fitting is assigned to an active phase. Swapping this fitting will generate an audited variation and automatically update the specification in that phase. If an invoice or deposit was already processed, financial adjustments will be tracked.
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* SIDE-BY-SIDE COMPARISON: ORIGINAL VS REPLACEMENT */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
               {/* ORIGINAL ITEM (TO BE SWAPPED OUT / CREDITED) */}

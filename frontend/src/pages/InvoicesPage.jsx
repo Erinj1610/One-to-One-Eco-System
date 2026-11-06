@@ -2149,8 +2149,15 @@ export default function InvoicesPage() {
                                           {alloc.project_name || `Project #${alloc.project_id}`}
                                         </span>
                                         {alloc.order_id && (
-                                          <span style={{ color: 'var(--text-secondary)' }}>
-                                            (Order #{alloc.order_id}{alloc.fitting_code ? ` • Fitting: ${alloc.fitting_code}` : ''})
+                                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: 'var(--text-secondary)' }}>
+                                            <span>(Order #{alloc.order_id}</span>
+                                            {/-\d{1,2}$/.test(String(alloc.order_id)) && (
+                                              <span style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 700 }}>
+                                                Phase {String(alloc.order_id).split('-').pop()}
+                                              </span>
+                                            )}
+                                            {alloc.fitting_code ? <span>• Fitting: {alloc.fitting_code}</span> : null}
+                                            <span>)</span>
                                           </span>
                                         )}
                                         {isCreditDoc && (
@@ -3451,8 +3458,15 @@ export default function InvoicesPage() {
                             }}
                           >
                             <div>
-                              <div style={{ fontWeight: 700, fontSize: '12px', color: 'var(--text-primary)' }}>
-                                {cand.project_name} <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>•</span> {cand.order_title}
+                              <div style={{ fontWeight: 700, fontSize: '12px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span>{cand.project_name}</span>
+                                <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>•</span>
+                                <span>{cand.order_title}</span>
+                                {/-\d{1,2}$/.test(String(cand.po_number || cand.order_title || '')) && (
+                                  <span style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', padding: '1px 6px', borderRadius: '4px', fontSize: '9.5px', fontWeight: 700 }}>
+                                    Phase {String(cand.po_number || cand.order_title).split('-').pop()}
+                                  </span>
+                                )}
                               </div>
                               <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
                                 Client: <strong style={{ color: 'var(--text-primary)' }}>{cand.client}</strong> • Match: <span style={{ color: '#3b82f6', fontWeight: 600 }}>{cand.match_type}</span>
@@ -3522,8 +3536,13 @@ export default function InvoicesPage() {
                             }}
                           >
                             <div>
-                              <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '12px' }}>
-                                {ord.quote_name} ({ord.poNumber || ord.order_id})
+                              <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span>{ord.quote_name} ({ord.poNumber || ord.order_id})</span>
+                                {/-\d{1,2}$/.test(String(ord.poNumber || ord.order_id || '')) && (
+                                  <span style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', padding: '1px 6px', borderRadius: '4px', fontSize: '9.5px', fontWeight: 700 }}>
+                                    Phase {String(ord.poNumber || ord.order_id).split('-').pop()}
+                                  </span>
+                                )}
                               </div>
                               <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                                 Project: <strong style={{ color: 'var(--text-primary)' }}>{ord.project_name}</strong> {ord.client ? `| Client: ${ord.client}` : ''}

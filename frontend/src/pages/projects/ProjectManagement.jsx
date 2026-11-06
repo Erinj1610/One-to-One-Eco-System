@@ -15,7 +15,7 @@ import {
   File, FileText, Receipt, Plus, Play, User, Users, ShieldAlert, 
   AlertTriangle, TrendingUp, DollarSign, Calendar, BarChart3, HelpCircle,
   ShoppingBag, ClipboardList, Wallet, Percent, Award, Folder, Download, Trash2,
-  Copy, Save, AlertCircle, ChevronRight, Layers, Ticket
+  Copy, Save, AlertCircle, ChevronRight, ChevronDown, Layers, Ticket
 } from 'lucide-react';
 
 // Philosophy Contexts for the Right Panel
@@ -534,9 +534,49 @@ export default function ProjectManagement() {
     return sum + (Number(d.outstanding) > 0 ? Number(d.outstanding) : Math.max(0, val - paid));
   }, 0);
 
-  const totalOrderVal = orders.reduce((sum, o) => sum + (o.value || 0), 0);
-  const totalOrderPaid = orders.reduce((sum, o) => sum + (o.paid || 0), 0);
-  const totalOrderOutstanding = orders.reduce((sum, o) => {
+  // Determine if order is a Sub-Order
+  const isOrderSub = (ord) => {
+    if (!ord) return false;
+    if (typeof ord.is_sub_order === 'boolean') return ord.is_sub_order;
+    if (typeof ord.isSubOrder === 'boolean') return ord.isSubOrder;
+    if (ord.parent_po_number && String(ord.parent_po_number).trim() !== String(ord.id).trim()) return true;
+    if (ord.parent_order_id) return true;
+    return /-\d{3,}-\d{1,2}$/.test(String(ord.id || ord.po_number || '').trim());
+  };
+
+  const masterOrders = useMemo(() => {
+    const nonSubs = orders.filter(o => !isOrderSub(o));
+    return nonSubs.length > 0 ? nonSubs : orders;
+  }, [orders]);
+
+  const [expandedMasterOrders, setExpandedMasterOrders] = useState(new Set());
+
+  const toggleExpandMaster = (masterId, e) => {
+    if (e) e.stopPropagation();
+    setExpandedMasterOrders(prev => {
+      const next = new Set(prev);
+      if (next.has(masterId)) next.delete(masterId);
+      else next.add(masterId);
+      return next;
+    });
+  };
+
+  const subOrdersByParent = useMemo(() => {
+    const map = {};
+    orders.forEach(ord => {
+      if (isOrderSub(ord)) {
+        const parentKey = ord.parent_po_number || ord.parentPoNumber || (String(ord.id).includes('-') ? String(ord.id).replace(/-\d{1,2}$/, '') : ord.id);
+        if (!map[parentKey]) map[parentKey] = [];
+        map[parentKey].push(ord);
+      }
+    });
+    return map;
+  }, [orders]);
+
+  // Master orders sum prevents double counting child sub-orders
+  const totalOrderVal = masterOrders.reduce((sum, o) => sum + (o.value || 0), 0);
+  const totalOrderPaid = masterOrders.reduce((sum, o) => sum + (o.paid || 0), 0);
+  const totalOrderOutstanding = masterOrders.reduce((sum, o) => {
     const val = Number(o.value) || 0;
     const paid = Number(o.paid) || 0;
     return sum + (Number(o.outstanding) > 0 ? Number(o.outstanding) : Math.max(0, val - paid));
@@ -570,20 +610,21 @@ export default function ProjectManagement() {
   };
 
   // Dynamic Blended Profit Margin (computed solely on the hardware/product orders, excluding design fees)
+  // Dynamic Blended Profit Margin (computed solely on the hardware/product orders, excluding design fees)
   const blendedMargin = useMemo(() => {
     if (!p) return 18;
-    if (orders.length === 0) return p?.targetMargin || 18;
+    if (masterOrders.length === 0) return p?.targetMargin || 18;
     
-    const totalOrderVal = orders.reduce((sum, o) => sum + (o.value || 0), 0);
+    const totalOrderVal = masterOrders.reduce((sum, o) => sum + (o.value || 0), 0);
     if (totalOrderVal === 0) return p?.targetMargin || 18;
 
-    const orderCost = orders.reduce((sum, o) => {
+    const orderCost = masterOrders.reduce((sum, o) => {
       // If we have actual itemized costValue, use it! Otherwise assume 20% margin (80% cost price)
       return sum + (o.costValue !== undefined ? o.costValue : (o.value * 0.8));
     }, 0);
 
     return Math.round(((totalOrderVal - orderCost) / totalOrderVal) * 100);
-  }, [orders, p?.targetMargin]);
+  }, [masterOrders, p?.targetMargin]);
 
   // Sync blended margin back to database store when calculated (skip on drafts or during active saves)
   useEffect(() => {
@@ -1968,79 +2009,159 @@ export default function ProjectManagement() {
                              </tr>
                            </thead>
                            <tbody>
-                             {orders.map(o => {
+                             {masterOrders.map(o => {
                                const cost = o.costValue || 0;
                                const retail = o.value || 0;
                                const paidVal = o.paid || 0;
                                const outVal = Number(o.outstanding) > 0 ? Number(o.outstanding) : Math.max(0, retail - paidVal);
                                const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
                                const isLowMargin = margin < (p.targetMargin || 39);
- 
+                               const childSubs = subOrdersByParent[o.id] || subOrdersByParent[o.po_number] || [];
+                               const hasChildSubs = childSubs.length > 0;
+                               const isExpanded = expandedMasterOrders.has(o.id);
+
                                return (
-                                 <tr key={o.id}>
-                                   <td style={{ fontFamily: 'monospace', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                     <button 
-                                       className="btn-link"
-                                       style={{ 
-                                         background: 'none', 
-                                         border: 'none', 
-                                         padding: 0, 
-                                         fontFamily: 'inherit', 
-                                         fontWeight: 'inherit', 
-                                         color: 'var(--text-info)', 
-                                         cursor: 'pointer',
-                                         textDecoration: 'underline'
-                                       }}
-                                       onClick={() => navigate('/orders', { state: { projectKey: p.key, openOrderId: o.id } })}
-                                     >
-                                       {o.id}
-                                     </button>
-                                     {isAdmin && (
-                                       <button
-                                         className="btn btn-ghost btn-sm"
-                                         style={{ padding: '2px 4px', height: '20px', border: '1px solid var(--border)', fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: '2px', background: 'var(--bg-secondary)' }}
-                                         title="Link / Shift Project or Client"
-                                         onClick={(e) => {
-                                           e.stopPropagation();
-                                           setLinkModalItem(o);
-                                           setLinkClient(o.projectClient || o.clientContact || '');
-                                           setLinkProjectKey(o.projectKey || '');
-                                         }}
-                                       >
-                                         <Layers size={10} /> Link
-                                       </button>
-                                     )}
-                                   </td>
-                                   <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
-                                   <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey || p.key}`); }}>{o.projectName || p.name}</td>
-                                   <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: (o.projectClient || p.client) } }); }}>{(o.projectClient || p.client) || '—'}</td>
-                                   <td style={{ color: 'var(--text-secondary)' }}>{o.projectPm || p.pm || '—'}</td>
-                                   <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                                     {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
-                                   </td>
-                                   <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>
-                                   <td>R {paidVal.toLocaleString()}</td>
-                                   <td style={{ color: outVal > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
-                                     R {outVal.toLocaleString()}
-                                   </td>
-                                   <td>
-                                     <span className={`badge ${o.status === 'Complete' ? 'b-success' : o.status === 'Ongoing' || o.status === 'Processing' ? 'b-info' : o.status === 'Pending' ? 'b-warning' : 'b-default'}`}>
-                                       {o.status}
-                                     </span>
-                                   </td>
-                                   <td>
-                                     <span className={`badge ${
-                                       o.paymentStatus === 'Fully Paid' ? 'b-success' : o.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
-                                     }`}>{o.paymentStatus}</span>
-                                   </td>
-                                 </tr>
+                                 <React.Fragment key={o.id}>
+                                   <tr style={{ background: hasChildSubs ? 'rgba(59, 130, 246, 0.02)' : 'transparent' }}>
+                                     <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                         {hasChildSubs && (
+                                           <button
+                                             type="button"
+                                             className="btn btn-ghost btn-sm"
+                                             style={{ padding: 0, height: '20px', width: '20px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}
+                                             onClick={(e) => toggleExpandMaster(o.id, e)}
+                                             title={isExpanded ? "Collapse Sub-Orders" : `Expand ${childSubs.length} Sub-Orders`}
+                                           >
+                                             {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                           </button>
+                                         )}
+                                         <button 
+                                           className="btn-link"
+                                           style={{ 
+                                             background: 'none', 
+                                             border: 'none', 
+                                             padding: 0, 
+                                             fontFamily: 'inherit', 
+                                             fontWeight: 'inherit', 
+                                             color: 'var(--text-info)', 
+                                             cursor: 'pointer',
+                                             textDecoration: 'underline'
+                                           }}
+                                           onClick={() => navigate('/orders', { state: { projectKey: p.key, openOrderId: o.id } })}
+                                         >
+                                           {o.id}
+                                         </button>
+                                         {hasChildSubs && (
+                                           <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(59, 130, 246, 0.15)', color: '#2563eb', fontWeight: 700, borderRadius: '4px' }}>
+                                             👑 Master ({childSubs.length})
+                                           </span>
+                                         )}
+                                         {isAdmin && (
+                                           <button
+                                             className="btn btn-ghost btn-sm"
+                                             style={{ padding: '2px 4px', height: '20px', border: '1px solid var(--border)', fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: '2px', background: 'var(--bg-secondary)' }}
+                                             title="Link / Shift Project or Client"
+                                             onClick={(e) => {
+                                               e.stopPropagation();
+                                               setLinkModalItem(o);
+                                               setLinkClient(o.projectClient || o.clientContact || '');
+                                               setLinkProjectKey(o.projectKey || '');
+                                             }}
+                                           >
+                                             <Layers size={10} /> Link
+                                           </button>
+                                         )}
+                                       </div>
+                                     </td>
+                                     <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
+                                     <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey || p.key}`); }}>{o.projectName || p.name}</td>
+                                     <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: (o.projectClient || p.client) } }); }}>{(o.projectClient || p.client) || '—'}</td>
+                                     <td style={{ color: 'var(--text-secondary)' }}>{o.projectPm || p.pm || '—'}</td>
+                                     <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                                       {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
+                                     </td>
+                                     <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>
+                                     <td>R {paidVal.toLocaleString()}</td>
+                                     <td style={{ color: outVal > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
+                                       R {outVal.toLocaleString()}
+                                     </td>
+                                     <td>
+                                       <span className={`badge ${o.status === 'Complete' ? 'b-success' : o.status === 'Ongoing' || o.status === 'Processing' ? 'b-info' : o.status === 'Pending' ? 'b-warning' : 'b-default'}`}>
+                                         {o.status}
+                                       </span>
+                                     </td>
+                                     <td>
+                                       <span className={`badge ${
+                                         o.paymentStatus === 'Fully Paid' ? 'b-success' : o.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
+                                       }`}>{o.paymentStatus}</span>
+                                     </td>
+                                   </tr>
+                                   {hasChildSubs && isExpanded && childSubs.map(sub => {
+                                     const subCost = sub.costValue || 0;
+                                     const subRetail = sub.value || 0;
+                                     const subPaid = sub.paid || 0;
+                                     const subOut = Number(sub.outstanding) > 0 ? Number(sub.outstanding) : Math.max(0, subRetail - subPaid);
+                                     const subMargin = subRetail > 0 ? Math.round(((subRetail - subCost) / subRetail) * 100) : 0;
+                                     return (
+                                       <tr key={sub.id} style={{ background: 'rgba(139, 92, 246, 0.04)', borderLeft: '3px solid #8b5cf6' }}>
+                                         <td style={{ fontFamily: 'monospace', fontWeight: 600, paddingLeft: '28px' }}>
+                                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                             <span style={{ color: '#8b5cf6', fontWeight: 700 }}>↳</span>
+                                             <button 
+                                               className="btn-link"
+                                               style={{ 
+                                                 background: 'none', 
+                                                 border: 'none', 
+                                                 padding: 0, 
+                                                 fontFamily: 'inherit', 
+                                                 fontWeight: 'inherit', 
+                                                 color: '#8b5cf6', 
+                                                 cursor: 'pointer',
+                                                 textDecoration: 'underline'
+                                               }}
+                                               onClick={() => navigate('/orders', { state: { projectKey: p.key, openOrderId: sub.id } })}
+                                             >
+                                               {sub.id}
+                                             </button>
+                                             <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: 700, borderRadius: '4px' }}>
+                                               {sub.phase_name || sub.phaseName || `Phase ${sub.sub_order_index || 1}`}
+                                             </span>
+                                           </div>
+                                         </td>
+                                         <td style={{ fontWeight: 600 }}>{sub.quote_name || 'Phase Scope'}</td>
+                                         <td style={{ color: 'var(--text-secondary)' }}>{sub.projectName || p.name}</td>
+                                         <td style={{ color: 'var(--text-secondary)' }}>{(sub.projectClient || p.client) || '—'}</td>
+                                         <td style={{ color: 'var(--text-secondary)' }}>{sub.projectPm || p.pm || '—'}</td>
+                                         <td style={{ fontWeight: 700, color: subMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                                           {subMargin}%
+                                         </td>
+                                         <td style={{ fontWeight: 600 }}>R {subRetail.toLocaleString()}</td>
+                                         <td>R {subPaid.toLocaleString()}</td>
+                                         <td style={{ color: subOut > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
+                                           R {subOut.toLocaleString()}
+                                         </td>
+                                         <td>
+                                           <span className={`badge ${sub.status === 'Complete' ? 'b-success' : sub.status === 'Ongoing' || sub.status === 'Processing' ? 'b-info' : sub.status === 'Pending' ? 'b-warning' : 'b-default'}`}>
+                                             {sub.status || 'Draft'}
+                                           </span>
+                                         </td>
+                                         <td>
+                                           <span className={`badge ${
+                                             sub.paymentStatus === 'Fully Paid' ? 'b-success' : sub.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
+                                           }`}>{sub.paymentStatus || 'Unpaid'}</span>
+                                         </td>
+                                       </tr>
+                                     );
+                                   })}
+                                 </React.Fragment>
                                );
                              })}
                            </tbody>
                            <tfoot>
                              <tr style={{ background: 'var(--bg-secondary)', borderTop: '2px solid var(--border)', fontWeight: 700, fontSize: '12px' }}>
                                <td colSpan={6} style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '11px' }}>
-                                 TOTAL ({orders.length} {orders.length === 1 ? 'Order' : 'Orders'})
+                                 TOTAL ({masterOrders.length} {masterOrders.length === 1 ? 'Master Order' : 'Master Orders'}{orders.length > masterOrders.length ? ` • ${orders.length - masterOrders.length} Phases` : ''})
                                </td>
                                <td style={{ color: 'var(--text-primary)' }}>R {totalOrderVal.toLocaleString()}</td>
                                <td style={{ color: 'var(--text-success)' }}>R {totalOrderPaid.toLocaleString()}</td>

@@ -478,6 +478,7 @@ export default function OrdersPage() {
   const { widths, onResizeStart } = useResizableTable('orders_boq_spreadsheet_v2', {
     qty: 60,
     oneOneCode: 100,
+    subOrder: 110,
     type: 80,
     firstFix: 80,
     itemType: 90,
@@ -494,7 +495,7 @@ export default function OrdersPage() {
     margin: 60,
     stock: 90,
     actions: 70
-  }, ['qty', 'oneOneCode', 'type', 'firstFix', 'itemType', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'supplier', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
+  }, ['qty', 'oneOneCode', 'subOrder', 'type', 'firstFix', 'itemType', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'supplier', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
@@ -2719,7 +2720,10 @@ export default function OrdersPage() {
       item_type: item.itemType || item.item_type || "Hardware",
       sort_order: Math.round(Number(item.sortOrder !== undefined ? item.sortOrder : (item.sort_order !== undefined ? item.sort_order : 0)) || 0),
       notes: item.notes || null,
-      first_fix: item.firstFix || item.first_fix || 'No'
+      first_fix: item.firstFix || item.first_fix || 'No',
+      sub_order_ref: item.sub_order_ref || item.subOrderRef || null,
+      revision_status: item.revision_status || item.revisionStatus || 'Active',
+      swap_reason: item.swap_reason || item.swapReason || null
     }));
 
     try {
@@ -4752,7 +4756,8 @@ export default function OrdersPage() {
                               (o.parent_order_id && String(o.parent_order_id) === String(selectedOrderId)) ||
                               (o.parentOrderId && String(o.parentOrderId) === String(selectedOrderId)) ||
                               (o.parent_po_number && String(o.parent_po_number) === String(selectedOrderId)) ||
-                              (o.parentPoNumber && String(o.parentPoNumber) === String(selectedOrderId))
+                              (o.parentPoNumber && String(o.parentPoNumber) === String(selectedOrderId)) ||
+                              ((o.is_sub_order || o.isSubOrder) && String(o.po_number || o.id || '').startsWith(String(selectedOrderId) + '-'))
                             ).map(sub => (
                               <button
                                 key={sub.id || sub.po_number}
@@ -4828,6 +4833,10 @@ export default function OrdersPage() {
                                 <th style={{ width: widths.oneOneCode, position: 'relative' }}>
                                   1:1 Code
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('oneOneCode', e)} />
+                                </th>
+                                <th style={{ width: widths.subOrder, position: 'relative', textAlign: 'center' }}>
+                                  Sub-Order / Phase
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('subOrder', e)} />
                                 </th>
                                 <th style={{ width: widths.type, position: 'relative' }}>
                                   Type
@@ -4969,7 +4978,7 @@ export default function OrdersPage() {
                                       >
                                         <GripVertical size={9} style={{ verticalAlign: 'middle', opacity: 0.5 }} />
                                       </td>
-                                      <td colSpan={18} style={{ background: 'rgba(0, 0, 0, 0.04)', height: '9px', padding: 0, borderTop: '1px solid rgba(0,0,0,0.08)', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+                                      <td colSpan={19} style={{ background: 'rgba(0, 0, 0, 0.04)', height: '9px', padding: 0, borderTop: '1px solid rgba(0,0,0,0.08)', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
                                         <div style={{ height: '100%', width: '100%' }} />
                                       </td>
                                       <td style={{ textAlign: 'center', padding: '0 4px', verticalAlign: 'middle' }}>
@@ -5076,6 +5085,48 @@ export default function OrdersPage() {
                                           </span>
                                         )}
                                       </div>
+                                    </td>
+
+                                    {/* SUB-ORDER / PHASE ALLOCATION */}
+                                    <td style={{ textAlign: 'center', verticalAlign: 'middle', padding: '2px 4px' }}>
+                                      {(item.sub_order_ref || item.subOrderRef) ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => setScopeFilter(item.sub_order_ref || item.subOrderRef)}
+                                          className="btn btn-ghost"
+                                          title={`Filter BOQ to ${item.sub_order_ref || item.subOrderRef}`}
+                                          style={{
+                                            padding: '2px 6px',
+                                            height: 'auto',
+                                            borderRadius: '4px',
+                                            background: 'rgba(139, 92, 246, 0.12)',
+                                            border: '1px solid rgba(139, 92, 246, 0.3)',
+                                            color: '#8b5cf6',
+                                            fontSize: '10px',
+                                            fontWeight: 700,
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px',
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          <span>{(item.sub_order_ref || item.subOrderRef).replace(/^Q-\d{4}-\d+-?/, 'Phase ')}</span>
+                                        </button>
+                                      ) : (
+                                        <span 
+                                          style={{ 
+                                            fontSize: '10px', 
+                                            color: 'var(--text-tertiary)', 
+                                            background: 'var(--bg-secondary)', 
+                                            padding: '2px 6px', 
+                                            borderRadius: '4px',
+                                            border: '1px dashed var(--border)' 
+                                          }}
+                                          title="Unallocated to any phase"
+                                        >
+                                          Unallocated
+                                        </span>
+                                      )}
                                     </td>
 
                                     {/* TYPE CODE */}

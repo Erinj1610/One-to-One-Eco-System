@@ -349,8 +349,10 @@ export default function CrmPage() {
           }
         });
 
-        // Sum scoped product orders
+        // Sum scoped product orders (filter out sub-orders to prevent double counting with master order)
         (p.orders || []).forEach(o => {
+          const isSub = o.is_sub_order === true || o.isSubOrder === true || (o.parent_po_number && String(o.parent_po_number).trim() !== String(o.id).trim()) || /-\d{3,}-\d{1,2}$/.test(String(o.id || ''));
+          if (isSub) return;
           if (matchesThisClient(p.client) || matchesThisClient(o.client) || matchesThisClient(o.clientCompany) || matchesThisClient(o.clientContact) || matchesThisClient(o.companyName)) {
             const ordVal = Number(o.value || 0);
             dynamicLtv += ordVal;
@@ -694,10 +696,12 @@ export default function CrmPage() {
           let actualMargin = p.actualMargin || 18;
           if (p.scopedDesignFees && p.scopedOrders) {
             const dfVal = p.scopedDesignFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
-            const poVal = p.scopedOrders.reduce((sum, o) => sum + (o.value || 0), 0);
+            const masterOrders = p.scopedOrders.filter(o => !o.is_sub_order && !o.isSubOrder && !/-\d{3,}-\d{1,2}$/.test(String(o.id || '')));
+            const ordsToSum = masterOrders.length > 0 ? masterOrders : p.scopedOrders;
+            const poVal = ordsToSum.reduce((sum, o) => sum + (o.value || 0), 0);
             totalValue = dfVal + poVal;
             const totalCost = p.scopedDesignFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 18)/100)), 0) +
-                              p.scopedOrders.reduce((sum, o) => sum + (o.value * 0.8), 0);
+                              ordsToSum.reduce((sum, o) => sum + (o.value * 0.8), 0);
             actualMargin = totalValue > 0 ? Math.round(((totalValue - totalCost) / totalValue) * 100) : 18;
           }
           return actualMargin;
@@ -710,8 +714,10 @@ export default function CrmPage() {
           if (p.scopedDesignFees && p.scopedOrders) {
             const dfVal = p.scopedDesignFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
             const dfPaid = p.scopedDesignFees.reduce((sum, d) => sum + (d.paid || 0), 0);
-            const poVal = p.scopedOrders.reduce((sum, o) => sum + (o.value || 0), 0);
-            const poPaid = p.scopedOrders.reduce((sum, o) => sum + (o.paid || 0), 0);
+            const masterOrders = p.scopedOrders.filter(o => !o.is_sub_order && !o.isSubOrder && !/-\d{3,}-\d{1,2}$/.test(String(o.id || '')));
+            const ordsToSum = masterOrders.length > 0 ? masterOrders : p.scopedOrders;
+            const poVal = ordsToSum.reduce((sum, o) => sum + (o.value || 0), 0);
+            const poPaid = ordsToSum.reduce((sum, o) => sum + (o.paid || 0), 0);
             totalValue = dfVal + poVal;
             totalOutstanding = Math.max(0, totalValue - (dfPaid + poPaid));
           }
@@ -1727,10 +1733,13 @@ export default function CrmPage() {
                    let totalOutstanding = 0;
                    let actualMargin = p.actualMargin || 18;
 
-                   if (p.scopedOrders && p.scopedOrders.length > 0) {
-                      const totalOrderVal = p.scopedOrders.reduce((sum, o) => sum + (o.value || 0), 0);
+                   const pMasterOrders = (p.scopedOrders || []).filter(o => !o.is_sub_order && !o.isSubOrder && !/-\d{3,}-\d{1,2}$/.test(String(o.id || '')));
+                   const pOrdsToSum = pMasterOrders.length > 0 ? pMasterOrders : (p.scopedOrders || []);
+
+                   if (pOrdsToSum && pOrdsToSum.length > 0) {
+                      const totalOrderVal = pOrdsToSum.reduce((sum, o) => sum + (o.value || 0), 0);
                       if (totalOrderVal > 0) {
-                        const orderCost = p.scopedOrders.reduce((sum, o) => {
+                        const orderCost = pOrdsToSum.reduce((sum, o) => {
                           return sum + (o.costValue !== undefined ? o.costValue : (o.value * 0.8));
                         }, 0);
                         actualMargin = Math.round(((totalOrderVal - orderCost) / totalOrderVal) * 100);
@@ -1744,8 +1753,8 @@ export default function CrmPage() {
                    if (p.scopedDesignFees || p.scopedOrders) {
                      const dfVal = (p.scopedDesignFees || []).reduce((sum, d) => sum + (d.feeValue || 0), 0);
                      const dfPaid = (p.scopedDesignFees || []).reduce((sum, d) => sum + (d.paid || 0), 0);
-                     const poVal = (p.scopedOrders || []).reduce((sum, o) => sum + (o.value || 0), 0);
-                     const poPaid = (p.scopedOrders || []).reduce((sum, o) => sum + (o.paid || 0), 0);
+                     const poVal = pOrdsToSum.reduce((sum, o) => sum + (o.value || 0), 0);
+                     const poPaid = pOrdsToSum.reduce((sum, o) => sum + (o.paid || 0), 0);
 
                      totalValue = dfVal + poVal;
                      totalPaid = dfPaid + poPaid;
@@ -2237,7 +2246,9 @@ export default function CrmPage() {
                 designPaid += fp;
                 designOut += fo;
               });
-              const ords = p.scopedOrders || p.orders || [];
+              const rawOrds = p.scopedOrders || p.orders || [];
+              const masterOrds = rawOrds.filter(ord => !ord.is_sub_order && !ord.isSubOrder && !/-\d{3,}-\d{1,2}$/.test(String(ord.id || '')));
+              const ords = masterOrds.length > 0 ? masterOrds : rawOrds;
               ords.forEach(ord => {
                 const ov = Number(ord.value || 0);
                 const op = Number(ord.paid || 0);

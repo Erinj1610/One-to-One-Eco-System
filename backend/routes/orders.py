@@ -1120,6 +1120,28 @@ def create_order_items_batch(po_number: str, items_data: List[OrderItemSchema], 
             )
             db.add(new_item)
 
+    # Automatic Sync: Push specification & pricing updates from Master Order down to child Sub-Orders
+    sub_refs = {it.sub_order_ref for it in items_data if it.sub_order_ref}
+    if sub_refs:
+        master_by_code = {it.one_one_code: it for it in items_data if it.one_one_code}
+        for ref in sub_refs:
+            sub_items = db.query(OrderItem).filter(OrderItem.order_id == ref).all()
+            for s_it in sub_items:
+                m_match = master_by_code.get(s_it.one_one_code)
+                if m_match:
+                    s_it.code = m_match.code
+                    s_it.description = m_match.description
+                    s_it.brand = m_match.brand
+                    s_it.supplier = m_match.supplier
+                    s_it.unit_cost = m_match.unit_cost
+                    s_it.unit_retail = m_match.unit_retail
+                    s_it.unit_trade = m_match.unit_trade
+                    s_it.dimming = m_match.dimming
+                    s_it.first_fix = m_match.first_fix or m_match.firstFix or 'No'
+                    s_it.floor = m_match.floor
+                    s_it.area = m_match.area
+                    db.add(s_it)
+
     db.commit()
     return {"status": "ok", "saved_count": len(items_data)}
 
