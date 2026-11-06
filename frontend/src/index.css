@@ -32,15 +32,22 @@
   100% { transform: rotate(360deg) scale(0.96); }
 }
 
-/* Sticky Table Headers across all tables */
+/* Portal-Wide Sticky Table Headers across EVERY module and scroll container */
 table thead th,
 .table thead th,
-.tracker-table thead th {
+.tracker-table thead th,
+thead th {
   position: sticky !important;
   top: 0 !important;
   z-index: 10 !important;
+  background: var(--bg-secondary, #1e293b) !important;
   background-color: var(--bg-secondary, #1e293b) !important;
-  box-shadow: 0 1px 0 var(--border, rgba(255, 255, 255, 0.08)) !important;
+  box-shadow: 0 1.5px 0 var(--border, rgba(255, 255, 255, 0.12)) !important;
+}
+
+/* Ensure table container scrolls retain sticky headers */
+div:has(> table) {
+  overflow-y: auto;
 }
 
 /* Modal styling utilities */

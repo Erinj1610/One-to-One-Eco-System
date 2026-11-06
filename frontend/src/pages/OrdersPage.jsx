@@ -1,4 +1,3 @@
-import CopyBadge from '../components/common/CopyBadge';
 import EmptyStateBanner from '../components/common/EmptyStateBanner';
 import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -3374,10 +3373,7 @@ export default function OrdersPage() {
                             />
                           </td>
                           <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={e => e.stopPropagation()}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                              <span className="btn-link" style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => handleOpenWorkspace(o)}>{o.id}</span>
-                              <CopyBadge text={o.id} title="Copy Order ID" />
-                            </div>
+                            <span className="btn-link" style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => handleOpenWorkspace(o)}>{o.id}</span>
                             {isAdmin && (
                               <button
                                 className="btn btn-ghost btn-sm"

@@ -1,4 +1,3 @@
-import CopyBadge from '../components/common/CopyBadge';
 import EmptyStateBanner from '../components/common/EmptyStateBanner';
 import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -5022,7 +5021,6 @@ export default function SalesTracker() {
                                 </button>
                               )}
                               <span>{o.id}</span>
-                              <CopyBadge text={o.id} title="Copy Order ID" />
                               {hasChildSubs && (
                                 <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(59, 130, 246, 0.15)', color: '#2563eb', fontWeight: 700, borderRadius: '4px' }}>
                                   👑 Master ({childSubs.length})
@@ -5117,7 +5115,6 @@ export default function SalesTracker() {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                   <span style={{ color: '#8b5cf6', fontWeight: 700 }}>↳</span>
                                   <span style={{ color: '#8b5cf6' }}>{sub.id}</span>
-                                  <CopyBadge text={sub.id} title="Copy Sub-Order ID" />
                                   <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: 700, borderRadius: '4px' }}>
                                     {sub.phase_name || sub.phaseName || `Phase ${sub.sub_order_index || 1}`}
                                   </span>
