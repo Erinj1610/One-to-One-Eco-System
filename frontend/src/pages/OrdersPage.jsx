@@ -1517,9 +1517,15 @@ export default function OrdersPage() {
           totalDelQty += Number(delivered) || 0;
         });
 
-        const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
-        const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
-        const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
+        let procPct = o.procPct !== undefined ? Number(o.procPct) : null;
+        let invPct = o.invPct !== undefined ? Number(o.invPct) : null;
+        let delPct = o.delPct !== undefined ? Number(o.delPct) : null;
+
+        if (procPct === null || invPct === null || delPct === null) {
+          procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
+          invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
+          delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
+        }
 
         // Standalone Payment Status calculation
         const totalPaidVal = Number(o.paid) || 0;
@@ -1663,6 +1669,10 @@ export default function OrdersPage() {
   }, [allOrders, debouncedSearchQuery, filterStatus, projectFilterKey, clientFilter, pmFilter, paymentStatusFilter, startDate, endDate]);
 
   // Sort Logic for All Columns in Orders Module
+  // Pagination with Page Memory
+  const [ordersPageSize, setOrdersPageSize] = useState(50);
+  const [ordersCurrentPage, setOrdersCurrentPage] = useState(1);
+
   const sortedOrders = useMemo(() => {
     if (!sortField) return filteredOrders;
 
@@ -1713,6 +1723,20 @@ export default function OrdersPage() {
       return 0;
     });
   }, [filteredOrders, sortField, sortDirection]);
+
+  const ordersTotalPages = useMemo(() => {
+    if (ordersPageSize === 'All') return 1;
+    return Math.max(1, Math.ceil(sortedOrders.length / Number(ordersPageSize)));
+  }, [sortedOrders.length, ordersPageSize]);
+
+  const ordersActivePage = Math.min(ordersCurrentPage, ordersTotalPages);
+
+  const paginatedOrders = useMemo(() => {
+    if (ordersPageSize === 'All') return sortedOrders;
+    const size = Number(ordersPageSize);
+    const start = (ordersActivePage - 1) * size;
+    return sortedOrders.slice(start, start + size);
+  }, [sortedOrders, ordersActivePage, ordersPageSize]);
 
   const handleSort = (field) => {
     if (sortField === field) {
@@ -3356,7 +3380,7 @@ export default function OrdersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedOrders.map(o => {
+                    {paginatedOrders.map(o => {
                       const cost = o.costValue || 0;
                       const retail = o.value || 0;
                       const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
@@ -3459,6 +3483,81 @@ export default function OrdersPage() {
                     );
                   })()}
                 </table>
+              </div>
+
+              {/* High-Performance Paged Pagination Toolbar */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Showing <strong>{sortedOrders.length > 0 ? (ordersActivePage - 1) * (ordersPageSize === 'All' ? sortedOrders.length : Number(ordersPageSize)) + 1 : 0}</strong>–<strong>{Math.min(ordersActivePage * (ordersPageSize === 'All' ? sortedOrders.length : Number(ordersPageSize)), sortedOrders.length)}</strong> of <strong>{sortedOrders.length}</strong> orders
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    <span>Rows per page:</span>
+                    <select 
+                      value={ordersPageSize} 
+                      onChange={e => {
+                        const val = e.target.value === 'All' ? 'All' : Number(e.target.value);
+                        React.startTransition(() => {
+                          setOrdersPageSize(val);
+                          setOrdersCurrentPage(1);
+                        });
+                      }}
+                      style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 600 }}
+                    >
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value="All">All ({sortedOrders.length})</option>
+                    </select>
+                  </div>
+                  {ordersPageSize !== 'All' && ordersTotalPages > 1 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <button 
+                        type="button"
+                        className="btn btn-ghost btn-sm" 
+                        disabled={ordersActivePage <= 1} 
+                        onClick={() => React.startTransition(() => setOrdersCurrentPage(1))}
+                        style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 600 }}
+                        title="First Page"
+                      >
+                        ⏮ First
+                      </button>
+                      <button 
+                        type="button"
+                        className="btn btn-ghost btn-sm" 
+                        disabled={ordersActivePage <= 1} 
+                        onClick={() => React.startTransition(() => setOrdersCurrentPage(p => Math.max(1, p - 1)))}
+                        style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 600 }}
+                        title="Previous Page"
+                      >
+                        ◀ Prev
+                      </button>
+                      <span style={{ fontSize: '12px', fontWeight: 700, padding: '0 8px', color: 'var(--text-primary)' }}>
+                        Page {ordersActivePage} of {ordersTotalPages}
+                      </span>
+                      <button 
+                        type="button"
+                        className="btn btn-ghost btn-sm" 
+                        disabled={ordersActivePage >= ordersTotalPages} 
+                        onClick={() => React.startTransition(() => setOrdersCurrentPage(p => Math.min(ordersTotalPages, p + 1)))}
+                        style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 600 }}
+                        title="Next Page"
+                      >
+                        Next ▶
+                      </button>
+                      <button 
+                        type="button"
+                        className="btn btn-ghost btn-sm" 
+                        disabled={ordersActivePage >= ordersTotalPages} 
+                        onClick={() => React.startTransition(() => setOrdersCurrentPage(ordersTotalPages))}
+                        style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 600 }}
+                        title="Last Page"
+                      >
+                        Last ⏭
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
             </div>

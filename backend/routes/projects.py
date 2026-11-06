@@ -1205,6 +1205,43 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
 
             total_cost_value = sum((int(safe_num(item.get("qty"), 0)) * safe_num(item.get("unitCost"), 0.0)) for item in order_items_list)
 
+            # Pre-compute progress percentages on the server to prevent client-side main-thread freeze
+            total_qty_proc = 0.0
+            total_ordered_qty = 0.0
+            total_qty_inv = 0.0
+            total_invoiced_qty = 0.0
+            total_qty_del = 0.0
+            total_delivered_qty = 0.0
+
+            for it in order_items_list:
+                if it.get("is_credit"):
+                    continue
+                q = float(safe_num(it.get("qty"), 0.0))
+                if q <= 0:
+                    continue
+                is_svc = (it.get("itemType") == "Service")
+                inv_q = float(safe_num(it.get("invoiceQty"), 0.0))
+
+                if is_svc:
+                    total_qty_inv += q
+                    total_invoiced_qty += min(q, inv_q)
+                    continue
+
+                total_qty_proc += q
+                total_qty_inv += q
+                total_qty_del += q
+
+                ord_q = max(float(safe_num(it.get("poQtyOrdered"), 0.0)), float(safe_num(it.get("receivedQty"), 0.0)))
+                del_q = float(safe_num(it.get("deliveryQty"), 0.0))
+
+                total_ordered_qty += min(q, ord_q)
+                total_invoiced_qty += min(q, inv_q)
+                total_delivered_qty += min(q, del_q)
+
+            order_proc_pct = min(100, round((total_ordered_qty / total_qty_proc) * 100)) if total_qty_proc > 0 else 0
+            order_inv_pct = min(100, round((total_invoiced_qty / total_qty_inv) * 100)) if total_qty_inv > 0 else 0
+            order_del_pct = min(100, round((total_delivered_qty / total_qty_del) * 100)) if total_qty_del > 0 else 0
+
             try:
                 packing_lists_parsed = json.loads(order.packing_lists) if isinstance(order.packing_lists, str) else (order.packing_lists or [])
             except Exception:
@@ -1443,6 +1480,9 @@ def list_all_projects_relational(db: Session = Depends(get_db)):
                 "paid": effective_paid,
                 "outstanding": effective_outstanding,
                 "status": order.status,
+                "procPct": order_proc_pct,
+                "invPct": order_inv_pct,
+                "delPct": order_del_pct,
                 "eta": order.eta,
                 "quote_name": order.quote_name or "General Spec",
                 "itemsList": order_items_list,
