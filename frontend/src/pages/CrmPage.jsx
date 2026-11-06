@@ -1,3 +1,4 @@
+import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
@@ -1104,7 +1105,14 @@ export default function CrmPage() {
                       <td>{c.lastCompletedProjectDate !== '—' ? new Date(c.lastCompletedProjectDate).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
                     </tr>
                   ))}
-                  {directoryDisplayList.length === 0 && (
+                  {isStoreLoading && (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '48px' }}>
+                        <OneToOneLoader size="lg" text="Loading client directory..." />
+                      </td>
+                    </tr>
+                  )}
+                  {!isStoreLoading && directoryDisplayList.length === 0 && (
                     <tr>
                       <td colSpan={7} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
                         No clients match the selected filters.

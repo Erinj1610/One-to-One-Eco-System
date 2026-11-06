@@ -1,3 +1,4 @@
+import OneToOneLoader from '../../components/common/OneToOneLoader';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { useNavigate } from 'react-router-dom';
@@ -106,7 +107,7 @@ export function calculateProjectStageAndProgress(p) {
 }
 
 export default function ProjectList() {
-  const { projects, addProject, contacts, getModuleName, bulkDeleteProjects, refreshProjects } = useStore();
+  const { isStoreLoading, projects, addProject, contacts, getModuleName, bulkDeleteProjects, refreshProjects } = useStore();
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
@@ -985,7 +986,14 @@ export default function ProjectList() {
                   </tr>
                 );
               })}
-              {sortedProjects.length === 0 && (
+              {isStoreLoading && (
+                <tr>
+                  <td colSpan={12} style={{ textAlign: 'center', padding: '48px' }}>
+                    <OneToOneLoader size="lg" text="Loading live projects..." />
+                  </td>
+                </tr>
+              )}
+              {!isStoreLoading && sortedProjects.length === 0 && (
                 <tr>
                   <td colSpan={12} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-tertiary)' }}>
                     No converted projects matched the active filters.

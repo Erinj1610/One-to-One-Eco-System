@@ -1,3 +1,4 @@
+import OneToOneLoader from '../../components/common/OneToOneLoader';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { calculateProjectStageAndProgress } from './ProjectList';
@@ -68,7 +69,7 @@ export default function ProjectManagement() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { projects, updateProject, saveDraftProject, deleteProject, contacts, moveOrder, moveDesignFee, projectManagers, setProjectManagers, alertSettings } = useStore();
+  const { isStoreLoading, projects, updateProject, saveDraftProject, deleteProject, contacts, moveOrder, moveDesignFee, projectManagers, setProjectManagers, alertSettings } = useStore();
   const { user, isAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
@@ -622,6 +623,13 @@ export default function ProjectManagement() {
   }, [id, p?.status, p?.isDraft, orders, saveStatus, isSavingDraft]);
 
   if (!p) {
+    if (isStoreLoading) {
+      return (
+        <div style={{ height: '70vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <OneToOneLoader size="xl" text="Loading project details..." />
+        </div>
+      );
+    }
     if (isSavingDraft) {
       return (
         <div style={{ textAlign: 'center', padding: '4rem 2rem', color: 'var(--text-secondary)' }}>
