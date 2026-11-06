@@ -3212,7 +3212,7 @@ export default function OrdersPage() {
                   <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
                     <input 
-                      type="text"
+                      type="search"
                       placeholder="Search Order ID, Order name, Linked Project, Client or PM..."
                       className="form-control"
                       style={{ paddingLeft: '32px', fontSize: '13px', height: '34px' }}
@@ -5608,7 +5608,7 @@ export default function OrdersPage() {
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                 <div style={{ display: 'flex', gap: '6px' }}>
                                   <input
-                                    type="text"
+                                    type="search"
                                     className="form-control"
                                     style={{ height: '28px', fontSize: '11px', padding: '4px 8px', flex: 1 }}
                                     placeholder="Search catalog..."

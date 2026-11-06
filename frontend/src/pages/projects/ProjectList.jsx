@@ -702,7 +702,7 @@ export default function ProjectList() {
             <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
               <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
               <input 
-                type="text" 
+                type="search" 
                 placeholder="Search Project name, Client, or PM..." 
                 className="form-control"
                 style={{ paddingLeft: '32px', fontSize: '13px', height: '34px' }}

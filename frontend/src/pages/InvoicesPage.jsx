@@ -2321,7 +2321,7 @@ export default function InvoicesPage() {
                 <div style={{ position: 'relative', width: '240px' }}>
                   <Search size={13} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-tertiary)' }} />
                   <input
-                    type="text"
+                    type="search"
                     placeholder="Search Doc #, Client, Ref, SKU..."
                     className="form-control"
                     style={{ paddingLeft: '28px', height: '30px', fontSize: '11.5px' }}
@@ -2820,7 +2820,7 @@ export default function InvoicesPage() {
                     <div style={{ position: 'relative', width: '230px' }}>
                       <Search size={12} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
                       <input
-                        type="text"
+                        type="search"
                         placeholder="Search any order, PO#, client..."
                         value={batchSearch}
                         onChange={e => setBatchSearch(e.target.value)}
@@ -3394,7 +3394,7 @@ export default function InvoicesPage() {
                       <div style={{ position: 'relative', width: '200px' }}>
                         <Search size={12} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
                         <input
-                          type="text"
+                          type="search"
                           placeholder="Search orders, PO #..."
                           value={allocSearch}
                           onChange={e => setAllocSearch(e.target.value)}

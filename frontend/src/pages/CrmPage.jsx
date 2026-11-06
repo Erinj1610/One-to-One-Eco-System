@@ -1043,7 +1043,7 @@ export default function CrmPage() {
                   </select>
                   <div style={{ position: 'relative' }}>
                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-                    <input className="form-control" style={{ width: '220px', paddingLeft: '32px' }} placeholder="Search clients or projects..." value={search} onChange={e => setSearch(e.target.value)} />
+                    <input type="search" className="form-control" style={{ width: '220px', paddingLeft: '32px' }} placeholder="Search clients or projects..." value={search} onChange={e => setSearch(e.target.value)} />
                   </div>
                   <button className="btn btn-primary" onClick={() => setShowModal(true)}><Plus size={14} /> New Contact</button>
                 </div>

@@ -4706,7 +4706,7 @@ export default function SalesTracker() {
                   <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
                     <input 
-                      type="text"
+                      type="search"
                       placeholder="Search Order ID, Order name, Linked Project, Client or PM..."
                       className="form-control"
                       style={{ paddingLeft: '32px', fontSize: '13px', height: '34px' }}
@@ -5336,7 +5336,7 @@ export default function SalesTracker() {
                   <div style={{ position: 'relative', width: '100%', maxWidth: '320px' }}>
                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
                     <input 
-                      type="text"
+                      type="search"
                       placeholder="Search Quote, Order ID, Project, Client or PM..."
                       className="form-control"
                       style={{ paddingLeft: '32px', fontSize: '13px', height: '34px' }}
