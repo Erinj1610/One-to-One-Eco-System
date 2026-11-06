@@ -99,14 +99,28 @@ thead th {
 /* 2. Standardized High-End Table Row Hover State */
 table tbody tr,
 .table tbody tr,
-.tracker-table tbody tr {
-  transition: background-color 0.15s ease, border-left-color 0.15s ease;
+.tracker-table tbody tr,
+tr.clickable,
+tr.hover-row {
+  transition: background 0.15s ease, background-color 0.15s ease !important;
 }
 
 table tbody tr:hover,
 .table tbody tr:hover,
-.tracker-table tbody tr:hover {
-  background-color: rgba(224, 153, 36, 0.05) !important;
+.tracker-table tbody tr:hover,
+tr.clickable:hover,
+tr.hover-row:hover {
+  background: rgba(224, 153, 36, 0.10) !important;
+  background-color: rgba(224, 153, 36, 0.10) !important;
+}
+
+table tbody tr:hover td,
+.table tbody tr:hover td,
+.tracker-table tbody tr:hover td,
+tr.clickable:hover td,
+tr.hover-row:hover td {
+  background: rgba(224, 153, 36, 0.10) !important;
+  background-color: rgba(224, 153, 36, 0.10) !important;
 }
 
 /* 3. Number & Currency Tabular Monospace Alignment */
