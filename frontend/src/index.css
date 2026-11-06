@@ -71,6 +71,58 @@ thead th {
   user-select: auto !important;
 }
 
+/* 1. Global Modern Slim Scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 9999px;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(224, 153, 36, 0.6);
+}
+
+/* 2. Standardized High-End Table Row Hover State */
+table tbody tr,
+.table tbody tr,
+.tracker-table tbody tr {
+  transition: background-color 0.15s ease, border-left-color 0.15s ease;
+}
+
+table tbody tr:hover,
+.table tbody tr:hover,
+.tracker-table tbody tr:hover {
+  background-color: rgba(224, 153, 36, 0.05) !important;
+}
+
+/* 3. Number & Currency Tabular Monospace Alignment */
+td:has(> [data-numeric]),
+.tabular-nums,
+[class*="currency"],
+[class*="price"],
+[class*="amount"] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Auto-apply tabular alignment to monetary Rand values and percentage indicators */
+td, th {
+  font-feature-settings: "tnum";
+}
+
 /* In cards containing tables, remove overflow:hidden on intermediate wrappers that break sticky scrolling */
 .card:has(table) {
   overflow: visible !important;
