@@ -104,10 +104,14 @@ class DeliveryNoteCreateInput(BaseModel):
     dispatched_by: Optional[str] = "Logistics Team"
     backorder_etas: Optional[Dict[str, str]] = {}   # order_item_id or code -> ETA string
     items: Optional[List[DeliveryNoteItemInput]] = None  # Used for Quick Direct DN or explicit override
+    include_backorders: Optional[bool] = True
+    excluded_backorder_pls: Optional[List[str]] = []
+    outstanding_snapshot: Optional[List[Any]] = None
 
 
 class DeliveryNoteStatusInput(BaseModel):
     status: Optional[str] = None
+    delivery_type: Optional[str] = None
     dispatch_method: Optional[str] = None
     carrier_driver: Optional[str] = None
     vehicle_reg: Optional[str] = None
@@ -118,6 +122,10 @@ class DeliveryNoteStatusInput(BaseModel):
     site_instructions: Optional[str] = None
     received_by: Optional[str] = None
     notes: Optional[str] = None
+    source_packing_lists: Optional[List[str]] = None
+    include_backorders: Optional[bool] = None
+    excluded_backorder_pls: Optional[List[str]] = None
+    outstanding_snapshot: Optional[List[Any]] = None
 
 
 class DeliveryNotePodInput(BaseModel):
@@ -153,6 +161,13 @@ def _resolve_order(db: Session, order_ref: Any, project_key: Optional[str] = Non
             if proj_match:
                 return proj_match
         order_obj = q.first()
+    if not order_obj:
+        q_quote = db.query(Order).filter(Order.quote_name.ilike(ref_str))
+        if project_key:
+            proj_match = q_quote.filter(Order.project_key == project_key).first()
+            if proj_match:
+                return proj_match
+        order_obj = q_quote.first()
     return order_obj
 
 
@@ -269,6 +284,7 @@ def _serialize_dn_for_order_json(dn: LogisticsDeliveryNote) -> Dict[str, Any]:
         "document_number": dn.document_number,
         "date": date_str,
         "dispatched_at": dn.dispatched_at.isoformat() if dn.dispatched_at else None,
+        "created_at": dn.created_at.isoformat() if dn.created_at else (dn.dispatched_at.isoformat() if dn.dispatched_at else None),
         "status": dn.status or "Dispatched",
         "type": dn.delivery_type or "Full",
         "delivery_type": dn.delivery_type or "Full",
@@ -520,9 +536,18 @@ def recalc_order_item_logistics(db: Session, order_obj: Order):
                 is_match = False
                 if dn_it.order_item_id and str(dn_it.order_item_id) == str(oi.id):
                     is_match = True
+                elif dn_it.is_accessory or str(dn_it.order_item_id or "").startswith("acc_"):
+                    # Accessory matching: compare item codes & plan code / parent fitting
+                    oi_codes = {str(c).strip().upper() for c in [oi.one_one_code, oi.code] if c}
+                    dn_codes = {str(c).strip().upper() for c in [dn_it.one_one_code, dn_it.supplier_code, getattr(dn_it, 'code', None)] if c}
+                    if oi_codes and dn_codes and (oi_codes & dn_codes):
+                        oi_plan = str(oi.type or "").strip().upper()
+                        dn_plan = str(dn_it.plan_code or dn_it.parent_fitting_code or "").strip().upper()
+                        if not oi_plan or not dn_plan or oi_plan == dn_plan:
+                            is_match = True
                 elif not dn_it.order_item_id:
                     oi_codes = {str(c).strip().upper() for c in [oi.one_one_code, oi.code] if c}
-                    dn_codes = {str(c).strip().upper() for c in [dn_it.one_one_code, dn_it.supplier_code] if c}
+                    dn_codes = {str(c).strip().upper() for c in [dn_it.one_one_code, dn_it.supplier_code, getattr(dn_it, 'code', None)] if c}
                     if oi_codes and dn_codes and (oi_codes & dn_codes):
                         # Also match floor/area if present to avoid cross-room collisions
                         if not dn_it.area or not oi.area or dn_it.area.strip().lower() == oi.area.strip().lower():
@@ -617,19 +642,35 @@ def get_enriched_order_items_for_logistics(
                 prod_by_code[p.sku.strip().upper()] = p
 
     # Calculate already packed quantities across active Packing Lists for this order
+    recalc_order_item_logistics(db, order_obj)
+    db.commit()
+
     active_pls = db.query(LogisticsPackingList).filter(
         LogisticsPackingList.order_id == order_obj.id,
         LogisticsPackingList.status != "Cancelled"
     ).all()
 
     packed_by_item_id: Dict[str, int] = {}
+    packed_by_code_area: Dict[str, int] = {}
+    packed_by_code_total: Dict[str, int] = {}
     for pl in active_pls:
         if exclude_pl_id and pl.id == exclude_pl_id:
             continue
         for pl_it in pl.items:
-            if pl_it.order_item_id:
+            qty_p = int(pl_it.qty_packed or 0)
+            if qty_p <= 0:
+                continue
+            if pl_it.order_item_id and not str(pl_it.order_item_id).startswith("acc_"):
                 k = str(pl_it.order_item_id)
-                packed_by_item_id[k] = packed_by_item_id.get(k, 0) + int(pl_it.qty_packed or 0)
+                packed_by_item_id[k] = packed_by_item_id.get(k, 0) + qty_p
+            # Fallback matching by code + area
+            area_k = (pl_it.area or "").strip().lower()
+            for c in [pl_it.one_one_code, pl_it.supplier_code]:
+                if c and str(c).strip():
+                    c_clean = str(c).strip().upper()
+                    ck = f"{c_clean}:::{area_k}"
+                    packed_by_code_area[ck] = packed_by_code_area.get(ck, 0) + qty_p
+                    packed_by_code_total[c_clean] = packed_by_code_total.get(c_clean, 0) + qty_p
 
     # Also extract Project / Client site delivery contact details for DN pre-fill
     proj = db.query(Project).filter(Project.project_key == order_obj.project_key).first() if order_obj.project_key else None
@@ -681,6 +722,18 @@ def get_enriched_order_items_for_logistics(
 
         qty_ordered = int(oi.qty or 0)
         qty_packed_prev = int(packed_by_item_id.get(str(oi.id), 0))
+        if qty_packed_prev == 0:
+            area_k = (oi.area or "").strip().lower()
+            for c in [oi.one_one_code, oi.code]:
+                if c and str(c).strip():
+                    c_clean = str(c).strip().upper()
+                    ck = f"{c_clean}:::{area_k}"
+                    if ck in packed_by_code_area:
+                        qty_packed_prev = packed_by_code_area[ck]
+                        break
+                    elif not area_k and c_clean in packed_by_code_total:
+                        qty_packed_prev = min(qty_ordered, packed_by_code_total[c_clean])
+                        break
         qty_delivered = int(oi.delivery_qty or 0)
         remaining_to_pack = max(0, qty_ordered - qty_packed_prev)
         remaining_to_deliver = max(0, qty_ordered - qty_delivered)
@@ -912,6 +965,42 @@ def update_packing_list(pl_ref: str, payload: PackingListUpdateInput, db: Sessio
             )
             db.add(pl_item)
 
+        if pl_rec.delivery_note_id:
+            dn_rec = db.query(LogisticsDeliveryNote).filter(LogisticsDeliveryNote.id == pl_rec.delivery_note_id).first()
+            if dn_rec and (dn_rec.status or "").lower() not in ("cancelled", "voided"):
+                db.query(LogisticsDeliveryNoteItem).filter(
+                    LogisticsDeliveryNoteItem.delivery_note_id == dn_rec.id,
+                    LogisticsDeliveryNoteItem.packing_list_id == pl_rec.id
+                ).delete()
+                db.flush()
+                for it in active_items:
+                    dn_item = LogisticsDeliveryNoteItem(
+                        delivery_note_id=dn_rec.id,
+                        packing_list_id=pl_rec.id,
+                        packing_list_number=pl_rec.document_number,
+                        order_item_id=str(it.order_item_id) if it.order_item_id is not None else None,
+                        parent_item_id=str(it.parent_item_id) if it.parent_item_id is not None else None,
+                        parent_fitting_code=it.parent_fitting_code,
+                        one_one_code=it.one_one_code or it.supplier_code or "",
+                        plan_code=it.plan_code or "",
+                        supplier_code=it.supplier_code or it.one_one_code or "",
+                        description=it.description or "",
+                        floor=it.floor or "",
+                        area=it.area or "",
+                        material_colour=it.material_colour or "",
+                        first_fix=it.first_fix or "No",
+                        red_list=it.red_list or "No",
+                        box_number=str(it.box_number or "Box 1").strip(),
+                        qty_ordered=int(it.qty_ordered or 0),
+                        qty_delivered=int(it.qty_packed or 0),
+                        qty_remaining=max(0, int(it.qty_ordered or 0) - int(it.qty_packed or 0)),
+                        is_accessory=bool(it.is_accessory or it.parent_item_id),
+                    )
+                    db.add(dn_item)
+                db.flush()
+                all_dn_items = db.query(LogisticsDeliveryNoteItem).filter(LogisticsDeliveryNoteItem.delivery_note_id == dn_rec.id).all()
+                dn_rec.total_items = sum(int(dit.qty_delivered or 0) for dit in all_dn_items)
+
     db.flush()
     order_obj = db.query(Order).filter(Order.id == pl_rec.order_id).first()
     if order_obj:
@@ -1051,42 +1140,61 @@ def create_delivery_note(payload: DeliveryNoteCreateInput, db: Session = Depends
 
     outstanding_snapshot = []
     has_undelivered = False
-    for oi in all_order_items:
-        if oi.is_credit:
-            continue
-        ordered = int(oi.qty or 0)
-        prev_deliv = int(oi.delivery_qty or 0)
-        this_deliv = dispatched_in_this_dn_by_item.get(str(oi.id), 0)
-        remaining_after = max(0, ordered - (prev_deliv + this_deliv))
 
-        eta_val = (
-            (payload.backorder_etas or {}).get(str(oi.id))
-            or (payload.backorder_etas or {}).get(oi.one_one_code or "")
-            or oi.po_eta
-            or oi.eta
-            or "TBA"
-        )
-        if eta_val and eta_val != "TBA":
-            oi.eta = eta_val
+    if payload.outstanding_snapshot is not None:
+        outstanding_snapshot = payload.outstanding_snapshot
+    elif payload.include_backorders is False:
+        outstanding_snapshot = []
+    else:
+        excluded_deliv_by_item: Dict[str, int] = {}
+        if payload.excluded_backorder_pls:
+            ex_pls = db.query(LogisticsPackingList).filter(
+                LogisticsPackingList.order_id == order_obj.id,
+                LogisticsPackingList.document_number.in_(payload.excluded_backorder_pls)
+            ).all()
+            for pl in ex_pls:
+                for pit in pl.items:
+                    if pit.order_item_id:
+                        k = str(pit.order_item_id)
+                        excluded_deliv_by_item[k] = excluded_deliv_by_item.get(k, 0) + int(pit.qty_packed or 0)
 
-        if remaining_after > 0:
-            has_undelivered = True
-            outstanding_snapshot.append({
-                "order_item_id": oi.id,
-                "code": oi.one_one_code or oi.code or "",
-                "one_one_code": oi.one_one_code or oi.code or "",
-                "plan_code": oi.type or "",
-                "supplier_code": oi.code or "",
-                "description": oi.description or "",
-                "floor": oi.floor or "",
-                "area": oi.area or "",
-                "qty_ordered": ordered,
-                "qty_delivered_to_date": prev_deliv + this_deliv,
-                "qty_remaining": remaining_after,
-                "backorder_eta": eta_val,
-            })
+        for oi in all_order_items:
+            if oi.is_credit:
+                continue
+            ordered = int(oi.qty or 0)
+            prev_deliv = int(oi.delivery_qty or 0)
+            this_deliv = dispatched_in_this_dn_by_item.get(str(oi.id), 0)
+            excluded_deliv = excluded_deliv_by_item.get(str(oi.id), 0)
+            remaining_after = max(0, ordered - (prev_deliv + this_deliv + excluded_deliv))
 
-    computed_delivery_type = "Partial" if has_undelivered else "Full"
+            eta_val = (
+                (payload.backorder_etas or {}).get(str(oi.id))
+                or (payload.backorder_etas or {}).get(oi.one_one_code or "")
+                or oi.po_eta
+                or oi.eta
+                or "TBA"
+            )
+            if eta_val and eta_val != "TBA":
+                oi.eta = eta_val
+
+            if remaining_after > 0:
+                has_undelivered = True
+                outstanding_snapshot.append({
+                    "order_item_id": oi.id,
+                    "code": oi.one_one_code or oi.code or "",
+                    "one_one_code": oi.one_one_code or oi.code or "",
+                    "plan_code": oi.type or "",
+                    "supplier_code": oi.code or "",
+                    "description": oi.description or "",
+                    "floor": oi.floor or "",
+                    "area": oi.area or "",
+                    "qty_ordered": ordered,
+                    "qty_delivered_to_date": prev_deliv + this_deliv + excluded_deliv,
+                    "qty_remaining": remaining_after,
+                    "backorder_eta": eta_val,
+                })
+
+    computed_delivery_type = payload.delivery_type or "Full"
     initial_status = "Delivered" if payload.received_by else "Dispatched"
 
     dn_rec = LogisticsDeliveryNote(
@@ -1166,6 +1274,7 @@ def create_delivery_note(payload: DeliveryNoteCreateInput, db: Session = Depends
     }
 
 
+@router.put("/logistics/delivery-note/{dn_ref}")
 @router.put("/logistics/delivery-note/{dn_ref}/status")
 def update_delivery_note_status(dn_ref: str, payload: DeliveryNoteStatusInput, db: Session = Depends(get_db)):
     dn_rec = None
@@ -1187,6 +1296,7 @@ def update_delivery_note_status(dn_ref: str, payload: DeliveryNoteStatusInput, d
                 pl.status = "Delivered"
 
     for field in (
+        "delivery_type",
         "dispatch_method",
         "carrier_driver",
         "vehicle_reg",
@@ -1201,6 +1311,60 @@ def update_delivery_note_status(dn_ref: str, payload: DeliveryNoteStatusInput, d
         val = getattr(payload, field, None)
         if val is not None:
             setattr(dn_rec, field, val)
+
+    if payload.include_backorders is False:
+        dn_rec.outstanding_snapshot = []
+    elif payload.outstanding_snapshot is not None:
+        dn_rec.outstanding_snapshot = payload.outstanding_snapshot
+    elif payload.excluded_backorder_pls is not None:
+        order_obj = db.query(Order).filter(Order.id == dn_rec.order_id).first()
+        if order_obj:
+            order_keys = [k for k in [order_obj.po_number, str(order_obj.id)] if k]
+            all_order_items = db.query(OrderItem).filter(OrderItem.order_id.in_(order_keys)).order_by(OrderItem.sort_order.asc(), OrderItem.id.asc()).all()
+
+            dispatched_in_this_dn_by_item = {}
+            for dit in dn_rec.items:
+                if dit.order_item_id:
+                    k = str(dit.order_item_id)
+                    dispatched_in_this_dn_by_item[k] = dispatched_in_this_dn_by_item.get(k, 0) + int(dit.qty_delivered or 0)
+
+            excluded_deliv_by_item = {}
+            if payload.excluded_backorder_pls:
+                ex_pls = db.query(LogisticsPackingList).filter(
+                    LogisticsPackingList.order_id == order_obj.id,
+                    LogisticsPackingList.document_number.in_(payload.excluded_backorder_pls)
+                ).all()
+                for pl in ex_pls:
+                    for pit in pl.items:
+                        if pit.order_item_id:
+                            k = str(pit.order_item_id)
+                            excluded_deliv_by_item[k] = excluded_deliv_by_item.get(k, 0) + int(pit.qty_packed or 0)
+
+            new_snapshot = []
+            for oi in all_order_items:
+                if oi.is_credit:
+                    continue
+                ordered = int(oi.qty or 0)
+                prev_deliv = int(oi.delivery_qty or 0)
+                this_deliv = dispatched_in_this_dn_by_item.get(str(oi.id), 0)
+                excluded_deliv = excluded_deliv_by_item.get(str(oi.id), 0)
+                remaining_after = max(0, ordered - (prev_deliv + this_deliv + excluded_deliv))
+                if remaining_after > 0:
+                    new_snapshot.append({
+                        "order_item_id": oi.id,
+                        "code": oi.one_one_code or oi.code or "",
+                        "one_one_code": oi.one_one_code or oi.code or "",
+                        "plan_code": oi.type or "",
+                        "supplier_code": oi.code or "",
+                        "description": oi.description or "",
+                        "floor": oi.floor or "",
+                        "area": oi.area or "",
+                        "qty_ordered": ordered,
+                        "qty_delivered_to_date": prev_deliv + this_deliv + excluded_deliv,
+                        "qty_remaining": remaining_after,
+                        "backorder_eta": oi.eta or "TBA",
+                    })
+            dn_rec.outstanding_snapshot = new_snapshot
 
     db.flush()
     order_obj = db.query(Order).filter(Order.id == dn_rec.order_id).first()
@@ -1373,3 +1537,25 @@ def save_label_templates(payload: LabelTemplatesSaveInput, db: Session = Depends
 
     db.commit()
     return {"status": "ok", "count": len(payload.templates)}
+
+
+@router.post("/logistics/recalc/{order_ref}")
+def recalculate_order_logistics_endpoint(order_ref: str, db: Session = Depends(get_db)):
+    order_obj = None
+    if str(order_ref).isdigit():
+        order_obj = db.query(Order).filter(Order.id == int(order_ref)).first()
+    if not order_obj:
+        order_obj = db.query(Order).filter(Order.po_number == str(order_ref)).first()
+    if not order_obj:
+        raise HTTPException(status_code=404, detail=f"Order '{order_ref}' not found")
+
+    recalc_order_item_logistics(db, order_obj)
+    db.commit()
+    db.refresh(order_obj)
+
+    return {
+        "status": "ok",
+        "message": f"Logistics reconciled for Order {order_obj.po_number or order_obj.id}",
+        "packing_lists_count": len(order_obj.packing_lists or []),
+        "delivery_notes_count": len(order_obj.delivery_notes or []),
+    }

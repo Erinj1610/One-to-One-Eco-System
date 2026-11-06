@@ -2,13 +2,14 @@ import React, { useState, useMemo } from 'react';
 import { 
   X, Printer, Tag, Box, Settings, CheckSquare, Square, 
   ChevronLeft, ChevronRight, Layers, AlertCircle, Sparkles, Filter, RefreshCw,
-  RotateCw, Download, ExternalLink, CheckCircle
+  RotateCw, Download, ExternalLink, CheckCircle, Move, Maximize2
 } from 'lucide-react';
 import { 
   generateCode128Svg, 
   drawCode128OnCanvas, 
   renderLabelToDataUrl,
   generatePplbCommands,
+  generatePplbGraphicPrintUnits,
   evaluateTokens, 
   DEFAULT_LABEL_TEMPLATES 
 } from '../../utils/labelGenerator';
@@ -27,8 +28,6 @@ export default function PackingListLabelPrinterModal({
   onNextStage = null,
   nextStageLabel = 'Proceed to Boxing →'
 }) {
-  if (!isOpen || !packingList) return null;
-
   // Active print mode: 'item' (individual fittings) or 'box' (outer box manifest)
   const [mode, setMode] = useState(initialMode || 'item');
 
@@ -54,6 +53,32 @@ export default function PackingListLabelPrinterModal({
 
   // Print Rotation state (degrees: 0, 90, 180, 270)
   const [printRotation, setPrintRotation] = useState(currentTemplate?.rotation ?? 0);
+
+  // Hardware Roll Alignment Shift (compensates for printer guide & liner margin)
+  const [hardwareShiftX, setHardwareShiftX] = useState(() => {
+    try {
+      const saved = localStorage.getItem('oto_printer_offset_x');
+      if (saved !== null) return Number(saved);
+    } catch(e) {}
+    return 0.0; // Default exact center (0.0mm)
+  });
+  const [hardwareShiftY, setHardwareShiftY] = useState(() => {
+    try {
+      const saved = localStorage.getItem('oto_printer_offset_y');
+      if (saved !== null) return Number(saved);
+    } catch(e) {}
+    return 0.0;
+  });
+
+  // Hardware Print Scale Compensation:
+  // In Native PPLB/EPL2 mode, 1:1 hardware resolution is exactly 100%.
+  const [hardwareScalePercent, setHardwareScalePercent] = useState(() => {
+    try {
+      const saved = localStorage.getItem('oto_printer_scale_pct');
+      if (saved !== null) return Number(saved);
+    } catch(e) {}
+    return 100; // Default 100% 1:1 dot mapping
+  });
 
   // Available Windows printers discovered via QZ Tray
   const [printers, setPrinters] = useState([]);
@@ -117,9 +142,9 @@ export default function PackingListLabelPrinterModal({
     }
   };
 
-  // Raw items from the packing list, normalized so every item has a guaranteed unique id and packed qty
+  // Raw items from the packing list, normalized and batched by Product / Model Group
   const plItems = useMemo(() => {
-    return (packingList.items || []).map((item, idx) => {
+    const raw = ((packingList && packingList.items) || []).map((item, idx) => {
       const packedQty = Math.max(1, Number(item.qty_packed ?? item.qtyDelivered ?? item.qty ?? 1));
       const boxVal = item.box_number || item.box || item.boxNumber || 'Box 1';
       return {
@@ -136,6 +161,23 @@ export default function PackingListLabelPrinterModal({
         qty: packedQty,
         boxNumber: boxVal,
       };
+    });
+
+    // Clean Batching: Group by Plan Code, then Code/SKU, then Location
+    return [...raw].sort((a, b) => {
+      const planA = (a.planCode || a.plan_code || '').trim();
+      const planB = (b.planCode || b.plan_code || '').trim();
+      const pComp = planA.localeCompare(planB, undefined, { numeric: true });
+      if (pComp !== 0) return pComp;
+
+      const codeA = (a.code || a.oneOneCode || '').trim();
+      const codeB = (b.code || b.oneOneCode || '').trim();
+      const cComp = codeA.localeCompare(codeB, undefined, { numeric: true });
+      if (cComp !== 0) return cComp;
+
+      const locA = `${a.floor || ''} ${a.area || ''}`.trim();
+      const locB = `${b.floor || ''} ${b.area || ''}`.trim();
+      return locA.localeCompare(locB);
     });
   }, [packingList]);
 
@@ -264,10 +306,14 @@ export default function PackingListLabelPrinterModal({
   const activePreviewIndex = Math.min(previewIndex, Math.max(0, generatedLabels.length - 1));
   const activeLabel = generatedLabels[activePreviewIndex] || null;
 
-  // Real-time canvas rasterized preview matching exact 203 DPI print engine output
+  // Real-time canvas rasterized preview matching exact 203 DPI print engine output (un-shifted sticker origin)
   const previewDataUrl = useMemo(() => {
     if (!activeLabel || !currentTemplate) return null;
-    return renderLabelToDataUrl(currentTemplate, activeLabel.context, printRotation || 0);
+    return renderLabelToDataUrl(currentTemplate, activeLabel.context, printRotation || 0, {
+      isPhysicalPrint: false,
+      offsetMmX: 0,
+      offsetMmY: 0
+    });
   }, [activeLabel, currentTemplate, printRotation]);
 
   // Toggle item selection
@@ -331,13 +377,22 @@ export default function PackingListLabelPrinterModal({
       return;
     }
 
-    const printWidthMm = Number(currentTemplate.widthMm ?? currentTemplate.labelMm?.width ?? 50);
-    const printHeightMm = Number(currentTemplate.heightMm ?? currentTemplate.labelMm?.height ?? 30);
+    const baseWidthMm = Number(currentTemplate.widthMm ?? currentTemplate.labelMm?.width ?? 50);
+    const baseHeightMm = Number(currentTemplate.heightMm ?? currentTemplate.labelMm?.height ?? 30);
     const effectiveRotation = printRotation !== undefined ? printRotation : (currentTemplate.rotation || 0);
 
-    // Render 203 DPI rasterized base64 PNGs matching the 50mm x 30mm sticker
+    const scaleMult = (Number(hardwareScalePercent) || 100) / 100;
+    const printWidthMm = Number((baseWidthMm * scaleMult).toFixed(1));
+    const printHeightMm = Number((baseHeightMm * scaleMult).toFixed(1));
+
+    // Render 203 DPI rasterized base64 PNGs matching physical printhead alignment and scale compensation
     const dataUrls = generatedLabels.map(lbl => {
-      return renderLabelToDataUrl(currentTemplate, lbl.context, effectiveRotation);
+      return renderLabelToDataUrl(currentTemplate, lbl.context, effectiveRotation, {
+        isPhysicalPrint: true,
+        scalePercent: hardwareScalePercent,
+        offsetMmX: hardwareShiftX,
+        offsetMmY: hardwareShiftY
+      });
     });
 
     // 1. If QZ Tray is active and a printer is selected, print SILENTLY directly to the Windows Spooler!
@@ -346,12 +401,20 @@ export default function PackingListLabelPrinterModal({
         setIsDirectPrinting(true);
 
         if (usePplbRaw) {
-          // Native Argox PPLB / EPL2 command mode:
-          // Directly calibrates Q240,12 (gap 1.5mm) and prints via printer firmware with 0 driver offset
-          const rawCommands = generatedLabels.map(lbl => {
-            return generatePplbCommands(currentTemplate, lbl.context, 1);
+          // Native Argox PPLB / EPL2 command mode with 1-Bit Raw Graphic Streaming:
+          // Directly calibrates Q240,12 (gap 1.5mm) and prints via printer firmware with 0 driver offset.
+          // Full-bleed divider lines, TrueType designer typography, zero Windows driver margins or dithering!
+          const rawItems = [];
+          generatedLabels.forEach(lbl => {
+            const units = generatePplbGraphicPrintUnits(currentTemplate, lbl.context, 1, {
+              scalePercent: hardwareScalePercent,
+              shiftMmX: hardwareShiftX,
+              shiftMmY: hardwareShiftY,
+              rotation: effectiveRotation
+            });
+            rawItems.push(...units);
           });
-          await printRawDirect(selectedPrinter, rawCommands);
+          await printRawDirect(selectedPrinter, rawItems);
         } else {
           // Standard Raster PNG mode
           await printDirectLabels(selectedPrinter, dataUrls, { widthMm: printWidthMm, heightMm: printHeightMm });
@@ -483,7 +546,9 @@ export default function PackingListLabelPrinterModal({
     printWindow.document.close();
   };
 
-    const modalInner = (
+  if (!isOpen || !packingList) return null;
+
+  const modalInner = (
     <div
       style={{
         background: 'var(--bg-secondary)',
@@ -761,6 +826,152 @@ export default function PackingListLabelPrinterModal({
             </select>
           </div>
 
+          {/* Hardware Roll Calibration / Alignment Nudge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-primary)', padding: '3px 8px', borderRadius: '8px', border: '1px solid var(--border)' }} title="Compensates for printer roll guides & sticker inset on backing liner">
+            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Move size={12} /> Roll Shift:
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+              <button 
+                type="button" 
+                className="btn btn-ghost btn-xs" 
+                style={{ padding: '0 4px', height: '20px', minHeight: 'unset', fontSize: '10px' }}
+                onClick={() => {
+                  const next = Number((hardwareShiftX - 0.5).toFixed(1));
+                  setHardwareShiftX(next);
+                  try { localStorage.setItem('oto_printer_offset_x', next); } catch(e){}
+                }}
+                title="Nudge Left (-0.5mm)"
+              >
+                ◀
+              </button>
+              <span style={{ fontSize: '11px', fontWeight: 800, fontFamily: 'monospace', minWidth: '46px', textAlign: 'center', color: hardwareShiftX !== 0 ? 'var(--text-info)' : 'var(--text-primary)' }}>
+                {hardwareShiftX > 0 ? `+${hardwareShiftX}` : hardwareShiftX}mm
+              </span>
+              <button 
+                type="button" 
+                className="btn btn-ghost btn-xs" 
+                style={{ padding: '0 4px', height: '20px', minHeight: 'unset', fontSize: '10px' }}
+                onClick={() => {
+                  const next = Number((hardwareShiftX + 0.5).toFixed(1));
+                  setHardwareShiftX(next);
+                  try { localStorage.setItem('oto_printer_offset_x', next); } catch(e){}
+                }}
+                title="Nudge Right (+0.5mm)"
+              >
+                ▶
+              </button>
+            </div>
+          </div>
+
+          {/* Hardware Print Scale Calibration (Fixes printer shrinking 50x30 to 42x25) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-primary)', padding: '3px 8px', borderRadius: '8px', border: '1px solid var(--border)' }} title="Compensates when printer driver or Chrome shrinks 50x30mm to 42x25mm">
+            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Maximize2 size={12} /> Scale:
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+              <button 
+                type="button" 
+                className="btn btn-ghost btn-xs" 
+                style={{ padding: '0 4px', height: '20px', minHeight: 'unset', fontSize: '10px' }}
+                onClick={() => {
+                  const next = Math.max(80, Math.round(hardwareScalePercent - 1));
+                  setHardwareScalePercent(next);
+                  try { localStorage.setItem('oto_printer_scale_pct', next); } catch(e){}
+                }}
+                title="Decrease Scale (-1%)"
+              >
+                -
+              </button>
+              <span style={{ fontSize: '11px', fontWeight: 800, fontFamily: 'monospace', minWidth: '40px', textAlign: 'center', color: hardwareScalePercent !== 100 ? '#38bdf8' : 'var(--text-primary)' }}>
+                {hardwareScalePercent}%
+              </span>
+              <button 
+                type="button" 
+                className="btn btn-ghost btn-xs" 
+                style={{ padding: '0 4px', height: '20px', minHeight: 'unset', fontSize: '10px' }}
+                onClick={() => {
+                  const next = Math.min(150, Math.round(hardwareScalePercent + 1));
+                  setHardwareScalePercent(next);
+                  try { localStorage.setItem('oto_printer_scale_pct', next); } catch(e){}
+                }}
+                title="Increase Scale (+1%)"
+              >
+                +
+              </button>
+            </div>
+            <button
+              type="button"
+              className="btn btn-xs"
+              style={{
+                fontSize: '9.5px',
+                padding: '1px 6px',
+                height: '20px',
+                minHeight: 'unset',
+                background: hardwareScalePercent === 119 ? '#2563eb' : 'rgba(59, 130, 246, 0.1)',
+                color: hardwareScalePercent === 119 ? '#ffffff' : '#38bdf8',
+                border: '1px solid rgba(59, 130, 246, 0.4)',
+                borderRadius: '4px',
+                fontWeight: 700
+              }}
+              onClick={() => {
+                setHardwareScalePercent(119);
+                try { localStorage.setItem('oto_printer_scale_pct', 119); } catch(e){}
+              }}
+              title="Auto-Fit Full 50mm: Neutralizes printer driver 16% shrink"
+            >
+              Fit 50mm (119%)
+            </button>
+            {hardwareScalePercent !== 100 && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs"
+                style={{
+                  fontSize: '9.5px',
+                  padding: '1px 4px',
+                  height: '20px',
+                  minHeight: 'unset',
+                  color: 'var(--text-tertiary)'
+                }}
+                onClick={() => {
+                  setHardwareScalePercent(100);
+                  try { localStorage.setItem('oto_printer_scale_pct', 100); } catch(e){}
+                }}
+                title="Reset to 100% standard scaling"
+              >
+                100%
+              </button>
+            )}
+            {(hardwareShiftX !== 0 || hardwareShiftY !== 0 || hardwareScalePercent !== 100) && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs"
+                style={{
+                  fontSize: '9.5px',
+                  padding: '1px 6px',
+                  height: '20px',
+                  minHeight: 'unset',
+                  color: 'var(--text-info)',
+                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                  borderRadius: '4px'
+                }}
+                onClick={() => {
+                  setHardwareShiftX(0.0);
+                  setHardwareShiftY(0.0);
+                  setHardwareScalePercent(100);
+                  try {
+                    localStorage.removeItem('oto_printer_offset_x');
+                    localStorage.removeItem('oto_printer_offset_y');
+                    localStorage.removeItem('oto_printer_scale_pct');
+                  } catch(e){}
+                }}
+                title="Reset to factory calibration (0mm shift, 100% scale)"
+              >
+                Reset Calibration
+              </button>
+            )}
+          </div>
+
           {/* Printer Destination Selector */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-primary)', padding: '4px 10px', borderRadius: '8px', border: '1px solid var(--border)' }}>
             <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -832,11 +1043,11 @@ export default function PackingListLabelPrinterModal({
                   border: '1px solid currentColor'
                 }}
                 title={usePplbRaw 
-                  ? "Native Argox PPLB Mode: Sends raw EPL2/PPLB commands directly to printer hardware (exact 1.5mm gap detection, 0mm spooler offset, BarTender style)" 
-                  : "Raster Graphics Mode: Renders canvas PNG via Windows Spooler"
+                  ? "Native Argox Mode: Direct 1-bit streaming with hardware gap sensor calibration (Q240,12), 100% full-bleed divider lines, zero driver margins, and sharp TrueType typography." 
+                  : "Windows Spooler Mode: Renders canvas PNG via Windows GDI printer driver."
                 }
               >
-                {usePplbRaw ? '⚡ Native Argox (PPLB)' : '🖼️ Raster Graphic'}
+                {usePplbRaw ? '⚡ Native Argox 1-Bit' : '🖼️ Windows Spooler'}
               </button>
             </div>
           )}
@@ -1132,30 +1343,61 @@ export default function PackingListLabelPrinterModal({
             }}>
               {activeLabel && previewDataUrl ? (
                 <div>
-                  {/* Physical Label Canvas Preview */}
+                  {/* Thermal Carrier Roll Backing Paper Track */}
                   <div
                     style={{
-                      background: '#ffffff',
-                      borderRadius: '4px',
-                      boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
-                      padding: '4px',
+                      background: '#1e293b',
+                      borderRadius: '10px',
+                      padding: '20px 24px',
+                      boxShadow: '0 12px 36px rgba(0,0,0,0.6)',
                       display: 'flex',
+                      flexDirection: 'column',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      overflow: 'hidden'
+                      position: 'relative',
+                      borderLeft: '2px dashed #475569',
+                      borderRight: '2px dashed #475569'
                     }}
                   >
-                    <img 
-                      src={previewDataUrl} 
-                      alt="Thermal Label Preview" 
+                    <div style={{
+                      fontSize: '9px',
+                      fontFamily: 'monospace',
+                      color: '#94a3b8',
+                      textTransform: 'uppercase',
+                      letterSpacing: '1px',
+                      marginBottom: '10px',
+                      userSelect: 'none'
+                    }}>
+                      ◄ Continuous Carrier Roll Backing ►
+                    </div>
+
+                    {/* Physical Peel-Off Sticker Canvas */}
+                    <div
                       style={{
-                        maxWidth: '360px',
-                        maxHeight: '360px',
-                        display: 'block',
-                        imageRendering: 'pixelated',
-                        border: '1px solid #cbd5e1'
+                        background: '#ffffff',
+                        borderRadius: '4px',
+                        boxShadow: '0 6px 24px rgba(0,0,0,0.4)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        overflow: 'hidden'
                       }}
-                    />
+                    >
+                      <img 
+                        src={previewDataUrl} 
+                        alt="Thermal Label Preview" 
+                        style={{
+                          maxWidth: '360px',
+                          maxHeight: '360px',
+                          display: 'block',
+                          imageRendering: 'pixelated',
+                          border: 'none'
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ marginTop: '10px', textAlign: 'center', fontSize: '10px', color: '#64748b' }}>
+                      Peel-Off Sticker: <strong>{currentTemplate.widthMm}mm × {currentTemplate.heightMm}mm</strong> • Margins: <strong>Top 0mm, Left 0mm</strong>
+                    </div>
                   </div>
 
                   <div style={{ marginTop: '14px', textAlign: 'center', fontSize: '11px', color: '#94a3b8' }}>

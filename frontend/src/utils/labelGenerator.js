@@ -189,19 +189,37 @@ export function drawCode128OnCanvas(ctx, text, x, y, maxWidth, height, showText 
 // Render a complete label template onto an offscreen canvas at native 203 DPI (8 dots/mm)
 // Render a complete label template onto an offscreen canvas at native 203 DPI (8 dots/mm)
 // and return a PNG data URL.
-export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
+export function renderLabelToDataUrl(template, context, rotationDeg = 0, options = {}) {
   // Sticker Die-Cut Dimensions (actual peel-off label sticker, e.g. 50mm x 30mm)
   // The canvas sent to QZ Tray and thermal preview matches the physical sticker directly.
   const stickerW = Number(template.widthMm ?? template.labelMm?.width ?? 50);
   const stickerH = Number(template.heightMm ?? template.labelMm?.height ?? 30);
 
+  const isPhysical = !!options.isPhysicalPrint;
+  // Hardware Scale Compensation:
+  // When thermal printer drivers or Chrome enforce hardware unprintable margins,
+  // 50mm x 30mm shrinks to 42mm x 25mm (~16% shrink). Scaling by scalePercent (e.g. 119%)
+  // neutralizes driver shrinkage and prints at exactly 50.0mm x 30.0mm physical on paper.
+  const scaleMult = (isPhysical && options.scalePercent) ? (Number(options.scalePercent) / 100) : 1.0;
+
   // Thermal printers operate at ~8 dots per mm (203.2 DPI)
   const DOTS_PER_MM = 8;
-  const nominalW = Math.round(stickerW * DOTS_PER_MM);
-  const nominalH = Math.round(stickerH * DOTS_PER_MM);
+  const effectiveDotsPerMm = DOTS_PER_MM * scaleMult;
+  const nominalW = Math.round(stickerW * effectiveDotsPerMm);
+  const nominalH = Math.round(stickerH * effectiveDotsPerMm);
 
   const rot = ((Number(rotationDeg) || 0) % 360 + 360) % 360;
   const isSwap = rot === 90 || rot === 270;
+
+  // Hardware Roll & Carrier Liner Inset Offset:
+  const shiftMmX = Number(options?.offsetMmX !== undefined 
+    ? options.offsetMmX 
+    : (template.hardwareOffsetMm?.x ?? template.carrierLinerMm?.left ?? 0));
+  const shiftMmY = Number(options?.offsetMmY !== undefined 
+    ? options.offsetMmY 
+    : (template.hardwareOffsetMm?.y ?? template.carrierLinerMm?.top ?? 0));
+  const shiftDotsX = isPhysical ? Math.round(shiftMmX * effectiveDotsPerMm) : 0;
+  const shiftDotsY = isPhysical ? Math.round(shiftMmY * effectiveDotsPerMm) : 0;
 
   // The final media canvas dimensions that matches the physical sticker
   const outputCanvas = document.createElement('canvas');
@@ -232,10 +250,10 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
 
   // Internal safe margins inside the sticker
   const marginMm = template.marginMm || { top: 0, bottom: 0, left: 0, right: 0 };
-  const padLeft = Math.round((Number(marginMm.left) || 0) * DOTS_PER_MM);
-  const padRight = Math.round((Number(marginMm.right) || 0) * DOTS_PER_MM);
-  const padTop = Math.round((Number(marginMm.top) || 0) * DOTS_PER_MM);
-  const padBottom = Math.round((Number(marginMm.bottom) || 0) * DOTS_PER_MM);
+  const padLeft = Math.round((Number(marginMm.left) || 0) * effectiveDotsPerMm);
+  const padRight = Math.round((Number(marginMm.right) || 0) * effectiveDotsPerMm);
+  const padTop = Math.round((Number(marginMm.top) || 0) * effectiveDotsPerMm);
+  const padBottom = Math.round((Number(marginMm.bottom) || 0) * effectiveDotsPerMm);
 
   const stickerPixelW = nominalW;
   const contentWidth = Math.max(10, stickerPixelW - padLeft - padRight);
@@ -245,15 +263,15 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
     // Coordinate origin is the top-left of the peel-off sticker
     const isExplicit = field.xMm !== undefined && field.yMm !== undefined;
     const elemX = isExplicit 
-      ? Math.round(Number(field.xMm) * DOTS_PER_MM) 
+      ? Math.round(Number(field.xMm) * effectiveDotsPerMm) 
       : padLeft;
     const elemW = (field.wMm !== undefined && Number(field.wMm) > 0)
-      ? Math.round(Number(field.wMm) * DOTS_PER_MM)
+      ? Math.round(Number(field.wMm) * effectiveDotsPerMm)
       : contentWidth;
 
-    const marginTop = Math.round((field.marginTop || 0) * DOTS_PER_MM * 0.35);
+    const marginTop = Math.round((field.marginTop || 0) * effectiveDotsPerMm * 0.35);
     const curY = isExplicit 
-      ? Math.round(Number(field.yMm) * DOTS_PER_MM) 
+      ? Math.round(Number(field.yMm) * effectiveDotsPerMm) 
       : (flowY + marginTop);
 
     if (field.type === 'text') {
@@ -263,20 +281,22 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
       const isUnderline = !!field.underline;
       const fontStyleStr = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : 'normal '}`;
 
-      // 1:1 EXACT MATCH WITH DESIGNER STUDIO:
-      // In the designer studio: fontSize = (field.fontSize || 8) * 1.3 px on a 6.5 px/mm canvas (1pt = 0.2mm).
-      // On the 8 dots/mm thermal canvas: 0.2mm * 8 dots/mm = (field.fontSize || 8) * 1.6 px.
-      // However, font metrics on HTML canvas have larger glyph ascenders/descenders than web CSS fonts.
-      // Scaling by (field.fontSize || 8) * 1.3 matches the visible pixel width and height of the designer precisely!
-      let baseFontSize = (field.fontSize || 8) * 1.3;
+      // TRUE PHYSICAL TYPOGRAPHIC SCALE (203.2 DPI):
+      // 1 pt = 1/72 inch = 0.3528mm.
+      // At 203.2 DPI (8 dots/mm): 1 pt = 203.2 / 72 ≈ 2.822 dots.
+      const DOTS_PER_PT = 2.822;
+      const rawFs = Number(field.fontSize) || 8;
+      let baseFontSize = rawFs * DOTS_PER_PT * scaleMult;
       ctx.font = `${fontStyleStr}${Math.round(baseFontSize)}px Arial, Helvetica, sans-serif`;
       ctx.fillStyle = '#000000';
       ctx.textBaseline = 'top';
 
-      // Auto Shrink-to-Fit: If text overflows the box width, iteratively decrease font size
+      // Safe Thermal Legibility Floor: Minimum font height ~11 dots (~1.4mm)
+      // Never shrink text below 11 dots where thermal heat bleeding destroys legibility!
+      const MIN_THERMAL_FONT_DOTS = 11;
       if (field.shrinkToFit && !field.wrap) {
         let measuredW = ctx.measureText(text).width;
-        while (measuredW > (elemW - 4) && baseFontSize > 6) {
+        while (measuredW > (elemW - 4) && baseFontSize > MIN_THERMAL_FONT_DOTS) {
           baseFontSize -= 0.5;
           ctx.font = `${fontStyleStr}${Math.round(baseFontSize)}px Arial, Helvetica, sans-serif`;
           measuredW = ctx.measureText(text).width;
@@ -284,7 +304,7 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
       }
 
       const fontSizePx = Math.round(baseFontSize);
-      const boxH = field.hMm ? Math.round(field.hMm * DOTS_PER_MM) : (fontSizePx + 4);
+      const boxH = field.hMm ? Math.round(field.hMm * effectiveDotsPerMm) : (fontSizePx + 4);
 
       // Padding matching the DOM visual designer (1px 2px)
       const padX = 2;
@@ -342,11 +362,13 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
             if (field.align === 'center') uX = elemX + (elemW - lineTextW) / 2;
             else if (field.align === 'right') uX = elemX + elemW - padX - lineTextW;
 
+            // Dedicated thermal clearance gap (3 dots) so underline never fuses into text
+            const underlineGap = Math.max(3, Math.round(fontSizePx * 0.15));
             ctx.strokeStyle = '#000000';
-            ctx.lineWidth = Math.max(1, fontSizePx * 0.08);
+            ctx.lineWidth = Math.max(1, Math.round(fontSizePx * 0.08));
             ctx.beginPath();
-            ctx.moveTo(uX, lineY + fontSizePx + 1);
-            ctx.lineTo(uX + lineTextW, lineY + fontSizePx + 1);
+            ctx.moveTo(uX, lineY + fontSizePx + underlineGap);
+            ctx.lineTo(uX + lineTextW, lineY + fontSizePx + underlineGap);
             ctx.stroke();
           }
         });
@@ -361,6 +383,15 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
           startY = curY + Math.max(0, boxH - fontSizePx - 2);
         }
 
+        // Clean truncation with ellipsis if text still exceeds usable width at minimum font floor
+        let drawText = text;
+        if (ctx.measureText(drawText).width > usableW) {
+          while (drawText.length > 2 && ctx.measureText(drawText + '…').width > usableW) {
+            drawText = drawText.slice(0, -1);
+          }
+          drawText = drawText + '…';
+        }
+
         let drawX = elemX + padX;
         if (field.align === 'center') {
           ctx.textAlign = 'center';
@@ -373,7 +404,7 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
           drawX = elemX + padX;
         }
 
-        ctx.fillText(text, drawX, startY);
+        ctx.fillText(drawText, drawX, startY);
 
         if (isUnderline) {
           const textW = Math.min(usableW, ctx.measureText(text).width);
@@ -381,11 +412,13 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
           if (field.align === 'center') uX = elemX + (elemW - textW) / 2;
           else if (field.align === 'right') uX = elemX + elemW - padX - textW;
 
+          // Dedicated thermal clearance gap (3 dots) so underline never fuses into text
+          const underlineGap = Math.max(3, Math.round(fontSizePx * 0.15));
           ctx.strokeStyle = '#000000';
-          ctx.lineWidth = Math.max(1, fontSizePx * 0.08);
+          ctx.lineWidth = Math.max(1, Math.round(fontSizePx * 0.08));
           ctx.beginPath();
-          ctx.moveTo(uX, startY + fontSizePx + 1);
-          ctx.lineTo(uX + textW, startY + fontSizePx + 1);
+          ctx.moveTo(uX, startY + fontSizePx + underlineGap);
+          ctx.lineTo(uX + textW, startY + fontSizePx + underlineGap);
           ctx.stroke();
         }
 
@@ -411,14 +444,14 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
       }
     } else if (field.type === 'line') {
       // Vector Divider Line (Horizontal or Vertical)
-      const thickness = Math.max(1, Math.round((field.thicknessMm || 0.5) * DOTS_PER_MM));
+      const thickness = Math.max(1, Math.round((field.thicknessMm || 0.5) * effectiveDotsPerMm));
       const isSolid = !field.lineStyle || field.lineStyle === 'solid';
 
       if (isSolid) {
         // Crisp pixel-perfect solid rectangle rendering (no stroke expansion or subpixel fuzziness)
         ctx.fillStyle = '#000000';
         if (field.orientation === 'vertical') {
-          const lineH = Math.round((field.hMm || 10) * DOTS_PER_MM);
+          const lineH = Math.round((field.hMm !== undefined ? Number(field.hMm) : stickerH) * effectiveDotsPerMm);
           ctx.fillRect(elemX, curY, thickness, lineH);
         } else {
           ctx.fillRect(elemX, curY, elemW, thickness);
@@ -437,7 +470,7 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
 
         ctx.beginPath();
         if (field.orientation === 'vertical') {
-          const lineH = Math.round((field.hMm || 10) * DOTS_PER_MM);
+          const lineH = Math.round((field.hMm !== undefined ? Number(field.hMm) : stickerH) * effectiveDotsPerMm);
           ctx.moveTo(elemX + thickness / 2, curY);
           ctx.lineTo(elemX + thickness / 2, curY + lineH);
         } else {
@@ -453,8 +486,8 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
       }
     } else if (field.type === 'box_frame') {
       // Outline Box or Inverted Badge
-      const boxH = Math.round((field.hMm || 10) * DOTS_PER_MM);
-      const borderWidth = Math.max(1, Math.round((field.borderThicknessMm || 1) * DOTS_PER_MM * 0.5));
+      const boxH = Math.round((field.hMm || 10) * effectiveDotsPerMm);
+      const borderWidth = Math.max(1, Math.round((field.borderThicknessMm || 1) * effectiveDotsPerMm * 0.5));
 
       if (field.filled) {
         ctx.fillStyle = '#000000';
@@ -482,7 +515,7 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
       }
     } else if (field.type === 'barcode') {
       const barVal = evaluateTokens(field.barcodeValue || '{{item.code}}', context);
-      const barHeight = Math.round((field.barcodeHeight || 20) * DOTS_PER_MM * 0.35);
+      const barHeight = Math.round((field.barcodeHeight || 20) * effectiveDotsPerMm * 0.35);
       const drawnH = drawCode128OnCanvas(
         ctx,
         barVal,
@@ -529,25 +562,104 @@ export function renderLabelToDataUrl(template, context, rotationDeg = 0) {
     }
   });
 
-  // Stamp contentCanvas onto outputCanvas rotated by `rot`
+  // Stamp contentCanvas onto outputCanvas rotated by `rot` with hardware alignment shift
   outCtx.save();
-  outCtx.translate(outputCanvas.width / 2, outputCanvas.height / 2);
+  outCtx.translate(outputCanvas.width / 2 + shiftDotsX, outputCanvas.height / 2 + shiftDotsY);
   outCtx.rotate((rot * Math.PI) / 180);
   outCtx.drawImage(contentCanvas, -layoutW / 2, -layoutH / 2);
   outCtx.restore();
 
+  // 1-Bit Pure Thermal Binarization (Thresholding)
+  // Eliminates font antialiasing grayscale pixels that cause thermal dithering/stippling.
+  // Forces every letter and line to fire at 100% solid jet black (#000000) on the thermal printhead.
+  try {
+    const imgData = outCtx.getImageData(0, 0, outputCanvas.width, outputCanvas.height);
+    const d = imgData.data;
+    const len = d.length;
+    for (let i = 0; i < len; i += 4) {
+      // Fast integer luminance
+      const gray = (d[i] * 77 + d[i + 1] * 150 + d[i + 2] * 29) >> 8;
+      // High-contrast threshold: anything not pure white becomes solid black
+      const val = gray < 215 ? 0 : 255;
+      d[i] = val;
+      d[i + 1] = val;
+      d[i + 2] = val;
+      d[i + 3] = 255;
+    }
+    outCtx.putImageData(imgData, 0, 0);
+  } catch (threshErr) {
+    console.warn("Thermal binarization error:", threshErr);
+  }
+
   return outputCanvas.toDataURL('image/png');
+}
+
+/**
+ * Generate native Argox PPLB (EPL2) print units using 1-bit raw graphic streaming.
+ * Bypasses Windows GDI driver margins, delivers 100% full-bleed divider lines,
+ * preserves TrueType designer typography (Plan Code, 1-TO-1 Code, Floor, Area),
+ * and calibrates the Argox O4-250 hardware gap sensor (Q240,12).
+ */
+export function generatePplbGraphicPrintUnits(template, context, copies = 1, options = {}) {
+  const DOTS_PER_MM = 8;
+  const stickerW = Number(template.widthMm ?? 50);
+  const stickerH = Number(template.heightMm ?? 30);
+  const gapMm = Number(template.gapMm ?? 1.5);
+
+  const widthDots = Math.round(stickerW * DOTS_PER_MM);  // 400 dots for 50mm
+  const heightDots = Math.round(stickerH * DOTS_PER_MM); // 240 dots for 30mm
+  const gapDots = Math.max(8, Math.round(gapMm * DOTS_PER_MM)); // 12 dots for 1.5mm gap
+
+  const rot = options.rotation !== undefined ? options.rotation : (template.rotation || 0);
+
+  // Render 1-bit binarized 203 DPI canvas PNG
+  const dataUrl = renderLabelToDataUrl(template, context, rot, {
+    isPhysicalPrint: true,
+    scalePercent: options.scalePercent || 100,
+    offsetMmX: options.shiftMmX ?? 0,
+    offsetMmY: options.shiftMmY ?? 0
+  });
+
+  const cleanBase64 = (dataUrl || '').replace(/^data:image\/[a-z]+;base64,/, '');
+
+  const printUnits = [];
+  const count = Math.max(1, Number(copies) || 1);
+
+  for (let c = 0; c < count; c++) {
+    printUnits.push('\nN\n');
+    printUnits.push(`q${widthDots}\n`);
+    printUnits.push(`Q${heightDots},${gapDots}\n`);
+    printUnits.push('D11\n');
+    printUnits.push('S3\n');
+    printUnits.push({
+      type: 'raw',
+      format: 'image',
+      flavor: 'base64',
+      data: cleanBase64,
+      options: {
+        language: 'EPL',
+        x: 0,
+        y: 0
+      }
+    });
+    printUnits.push('\nP1\n');
+  }
+
+  return printUnits;
 }
 
 /**
  * Generate native Argox PPLB (EPL2) command sequence for hardware-accurate printing.
  * Tells the Argox printer its exact label length, gap length, and draws lines & fonts directly in firmware.
  */
-export function generatePplbCommands(template, context, copies = 1) {
+export function generatePplbCommands(template, context, copies = 1, options = {}) {
   const DOTS_PER_MM = 8;
   const stickerW = Number(template.widthMm ?? 50);
   const stickerH = Number(template.heightMm ?? 30);
   const gapMm = Number(template.gapMm ?? 1.5);
+
+  const shiftX = Math.round(Number(options.shiftMmX ?? 0) * DOTS_PER_MM);
+  const shiftY = Math.round(Number(options.shiftMmY ?? 0) * DOTS_PER_MM);
 
   const widthDots = Math.round(stickerW * DOTS_PER_MM);  // 400 dots for 50mm
   const heightDots = Math.round(stickerH * DOTS_PER_MM); // 240 dots for 30mm
@@ -567,18 +679,20 @@ export function generatePplbCommands(template, context, copies = 1) {
 
   (template.fields || template.elements || []).forEach(field => {
     const isExplicit = field.xMm !== undefined && field.yMm !== undefined;
-    const xDots = Math.max(0, Math.min(widthDots - 4, Math.round((isExplicit ? Number(field.xMm) : 1) * DOTS_PER_MM)));
-    const yDots = Math.max(0, Math.min(maxSafeY, isExplicit ? Math.round(Number(field.yMm) * DOTS_PER_MM) : flowY));
+    const rawX = Math.round((isExplicit ? Number(field.xMm) : 1) * DOTS_PER_MM) + shiftX;
+    const rawY = (isExplicit ? Math.round(Number(field.yMm) * DOTS_PER_MM) : flowY) + shiftY;
+    const xDots = Math.max(0, Math.min(widthDots - 2, rawX));
+    const yDots = Math.max(0, Math.min(maxSafeY, rawY));
     const wDots = Math.max(16, Math.min(widthDots - xDots, Math.round((field.wMm !== undefined ? Number(field.wMm) : (stickerW - 2)) * DOTS_PER_MM)));
 
     if (field.type === 'line') {
       const thickness = Math.max(1, Math.round((field.thicknessMm || 0.5) * DOTS_PER_MM));
       if (field.orientation === 'vertical') {
         const rawH = Math.round((field.hMm || stickerH) * DOTS_PER_MM);
-        const hDots = Math.max(4, Math.min(rawH, maxSafeY - yDots));
+        const hDots = Math.max(4, Math.min(rawH, heightDots - yDots));
         cmds.push(`LO${xDots},${yDots},${thickness},${hDots}`);
       } else {
-        const safeW = Math.max(4, Math.min(wDots, widthDots - xDots - 2));
+        const safeW = Math.max(4, Math.min(wDots, widthDots - xDots));
         cmds.push(`LO${xDots},${yDots},${safeW},${thickness}`);
         if (!isExplicit) flowY = Math.min(maxSafeY, yDots + thickness + 6);
       }
@@ -602,20 +716,28 @@ export function generatePplbCommands(template, context, copies = 1) {
       let vMul = 1;
 
       if (fs <= 7) {
-        fontNum = 1; // 8x12 dots (compact label headers)
+        fontNum = 1; // 8x12 dots (compact label headers: PLAN CODE, 1-TO-1 CODE)
       } else if (fs <= 9.5) {
-        fontNum = 2; // 10x16 dots
+        fontNum = 2; // 10x16 dots (Floor and Area text)
       } else if (fs <= 12) {
-        fontNum = 3; // 12x20 dots
+        fontNum = 3; // 12x20 dots (1-to-1 codes like SP-PXLB-B)
       } else {
-        fontNum = 4; // 14x24 dots
+        // Prominent Plan Codes (fs >= 13, like 15pt Plan Code)
+        fontNum = 4; // 14x24 dots base
+        hMul = 2;    // 28 dots wide
+        vMul = 2;    // 48 dots tall (bold ~6mm prominent text)
       }
 
-      // Shrink font if text is wider than box
-      const getCharW = (fn, hm) => (fn === 1 ? 10 : fn === 2 ? 12 : fn === 3 ? 14 : 16) * hm;
+      // Font character dimensions
+      const getCharW = (fn, hm) => (fn === 1 ? 8 : fn === 2 ? 10 : fn === 3 ? 12 : 14) * hm;
       const getCharH = (fn, vm) => (fn === 1 ? 12 : fn === 2 ? 16 : fn === 3 ? 20 : 24) * vm;
 
+      // Auto-scale down if text overflows available width wDots
       if (!field.wrap) {
+        while (hMul > 1 && text.length * getCharW(fontNum, hMul) > wDots) {
+          hMul -= 1;
+          vMul = Math.max(1, vMul - 1);
+        }
         while (fontNum > 1 && text.length * getCharW(fontNum, hMul) > wDots) {
           fontNum -= 1;
         }
@@ -643,16 +765,22 @@ export function generatePplbCommands(template, context, copies = 1) {
         lines.push(text.length > maxCharsPerLine ? text.slice(0, maxCharsPerLine) : text);
       }
 
+      // Exact Vertical Centering (vAlign: 'middle')
+      const boxHDots = field.hMm !== undefined ? Math.round(Number(field.hMm) * DOTS_PER_MM) : charH;
+      const totalTextHDots = lines.length * charH + (lines.length - 1) * 2;
+      const startY = (field.vAlign === 'middle' && boxHDots > totalTextHDots)
+        ? yDots + Math.floor((boxHDots - totalTextHDots) / 2)
+        : yDots;
+
       lines.slice(0, 2).forEach((lnText, idx) => {
-        const lnY = yDots + idx * (charH + 2);
+        const lnY = startY + idx * (charH + 2);
         if (lnY + charH > maxSafeY) return; // Never overflow bottom of label buffer!
         let drawX = xDots;
+        const totalTextW = lnText.length * charW;
         if (field.align === 'center') {
-          const totalTextW = lnText.length * charW;
-          drawX = Math.max(xDots, Math.round(xDots + (wDots - totalTextW) / 2));
+          drawX = Math.max(0, Math.min(widthDots - totalTextW, Math.round(xDots + (wDots - totalTextW) / 2)));
         } else if (field.align === 'right') {
-          const totalTextW = lnText.length * charW;
-          drawX = Math.max(xDots, Math.round(xDots + wDots - totalTextW));
+          drawX = Math.max(0, Math.min(widthDots - totalTextW, Math.round(xDots + wDots - totalTextW)));
         }
         cmds.push(`A${drawX},${lnY},0,${fontNum},${hMul},${vMul},N,"${lnText}"`);
       });
@@ -747,28 +875,29 @@ export const DEFAULT_LABEL_TEMPLATES = [
     heightMm: 30,
     orientation: 'landscape',
     rotation: 0,
+    carrierLinerMm: { left: 0.0, top: 0.0 },
     marginMm: { top: 0, bottom: 0, left: 0, right: 0 },
     type: 'item',
     fields: [
-      // Top-Left: Plan Code
-      { id: 'f_lbl_plancode', type: 'text', content: 'Plan Code', fontSize: 6.5, fontWeight: 700, underline: true, align: 'left', xMm: 1, yMm: 1, wMm: 23, hMm: 3.5 },
-      { id: 'f_val_plancode', type: 'text', content: '{{item.plan_code}}', fontSize: 13, fontWeight: 900, align: 'center', shrinkToFit: true, xMm: 1, yMm: 4.5, wMm: 23, hMm: 9.5 },
+      // Full-Bleed Center Divider Lines (touching all four sticker edges with exact 25/15mm symmetry)
+      { id: 'f_div_h', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', xMm: 0, yMm: 15.0, wMm: 50, hMm: 0.5 },
+      { id: 'f_div_v', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'vertical', xMm: 25.0, yMm: 0, wMm: 0.5, hMm: 30 },
+
+      // Top-Left: Plan Code (x: 1.5..23.5, y: 1.5..14)
+      { id: 'f_lbl_plancode', type: 'text', content: 'PLAN CODE', fontSize: 6.5, fontWeight: 800, underline: false, align: 'left', xMm: 1.5, yMm: 1.5, wMm: 22.0, hMm: 3.5 },
+      { id: 'f_val_plancode', type: 'text', content: '{{item.plan_code}}', fontSize: 15, fontWeight: 900, align: 'center', shrinkToFit: true, vAlign: 'middle', xMm: 1.5, yMm: 5.0, wMm: 22.0, hMm: 9.0 },
       
-      // Top-Right: 1-TO-1 Code
-      { id: 'f_lbl_code', type: 'text', content: '1-TO-1 Code', fontSize: 6.5, fontWeight: 700, underline: true, align: 'left', xMm: 26, yMm: 1, wMm: 23, hMm: 3.5 },
-      { id: 'f_val_code', type: 'text', content: '{{item.code}}', fontSize: 9.5, fontWeight: 800, align: 'center', shrinkToFit: true, xMm: 26, yMm: 4.5, wMm: 23, hMm: 9.5 },
+      // Top-Right: 1-TO-1 Code (x: 26.5..48.5, y: 1.5..14)
+      { id: 'f_lbl_code', type: 'text', content: '1-TO-1 CODE', fontSize: 6.5, fontWeight: 800, underline: false, align: 'left', xMm: 26.5, yMm: 1.5, wMm: 22.0, hMm: 3.5 },
+      { id: 'f_val_code', type: 'text', content: '{{item.code}}', fontSize: 11, fontWeight: 800, align: 'center', shrinkToFit: true, vAlign: 'middle', xMm: 26.5, yMm: 5.0, wMm: 22.0, hMm: 9.0 },
 
-      // Center Divider Lines
-      { id: 'f_div_h', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'horizontal', xMm: 0, yMm: 14.5, wMm: 50, hMm: 0.5 },
-      { id: 'f_div_v', type: 'line', thicknessMm: 0.5, lineStyle: 'solid', orientation: 'vertical', xMm: 24.75, yMm: 0, wMm: 0.5, hMm: 30 },
+      // Bottom-Left: Floor (x: 1.5..23.5, y: 16.5..29)
+      { id: 'f_lbl_floor', type: 'text', content: 'FLOOR', fontSize: 6.5, fontWeight: 800, underline: false, align: 'left', xMm: 1.5, yMm: 16.5, wMm: 22.0, hMm: 3.5 },
+      { id: 'f_val_floor', type: 'text', content: '{{item.floor}}', fontSize: 9.5, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 1.5, yMm: 20.0, wMm: 22.0, hMm: 9.0 },
 
-      // Bottom-Left: Floor
-      { id: 'f_lbl_floor', type: 'text', content: 'Floor', fontSize: 6.5, fontWeight: 700, underline: true, align: 'left', xMm: 1, yMm: 15.5, wMm: 23, hMm: 3.5 },
-      { id: 'f_val_floor', type: 'text', content: '{{item.floor}}', fontSize: 9, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 1, yMm: 19, wMm: 23, hMm: 10 },
-
-      // Bottom-Right: Area
-      { id: 'f_lbl_area', type: 'text', content: 'Area', fontSize: 6.5, fontWeight: 700, underline: true, align: 'left', xMm: 26, yMm: 15.5, wMm: 23, hMm: 3.5 },
-      { id: 'f_val_area', type: 'text', content: '{{item.area}}', fontSize: 9, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 26, yMm: 19, wMm: 23, hMm: 10 }
+      // Bottom-Right: Area (x: 26.5..48.5, y: 16.5..29)
+      { id: 'f_lbl_area', type: 'text', content: 'AREA', fontSize: 6.5, fontWeight: 800, underline: false, align: 'left', xMm: 26.5, yMm: 16.5, wMm: 22.0, hMm: 3.5 },
+      { id: 'f_val_area', type: 'text', content: '{{item.area}}', fontSize: 9.5, fontWeight: 700, align: 'center', shrinkToFit: true, wrap: true, vAlign: 'middle', xMm: 26.5, yMm: 20.0, wMm: 22.0, hMm: 9.0 }
     ]
   },
   {
@@ -846,9 +975,14 @@ export const DEFAULT_LABEL_TEMPLATES = [
 ];
 
 // Evaluate tokens into real values
-export function evaluateTokens(templateString, context) {
+export function evaluateTokens(templateString, context = {}) {
   if (!templateString) return '';
   let res = String(templateString);
+
+  // Literal static text fast-path: if no variable delimiters '{{' exist, return static text as-is!
+  if (!res.includes('{{')) {
+    return res;
+  }
 
   const { item = {}, project = {}, order = {}, packingList = {}, box = {} } = context;
   const todayStr = new Date().toLocaleDateString('en-GB');

@@ -289,6 +289,8 @@ class OrderItemSchema(BaseModel):
     item_type: Optional[str] = "Hardware"
     sort_order: Optional[int] = 0
     notes: Optional[str] = None
+    first_fix: Optional[str] = "No"
+    firstFix: Optional[str] = None
 
 
 class OrderSchema(BaseModel):
@@ -899,7 +901,8 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
             item_dict['product_category'] = prod.category
             item_dict['consignment'] = prod.consignment
             item_dict['red_list'] = prod.red_list
-            item_dict['first_fix'] = prod.first_fix
+            item_dict['first_fix'] = getattr(item, 'first_fix', None) or prod.first_fix or 'No'
+            item_dict['firstFix'] = item_dict['first_fix']
             item_dict['local_or_import'] = prod.local_or_import
             if item.stock_available is None:
                 item_dict['stock_available'] = getattr(prod, 'stock_available', None) if getattr(prod, 'stock_available', None) is not None else (getattr(prod, 'stock_on_hand', None) if getattr(prod, 'stock_on_hand', None) is not None else prod.stock_level or 0)
@@ -1013,6 +1016,7 @@ def create_order_items_batch(po_number: str, items_data: List[OrderItemSchema], 
             existing.item_type = item_data.item_type
             existing.sort_order = item_data.sort_order
             existing.notes = item_data.notes
+            existing.first_fix = item_data.first_fix or item_data.firstFix or "No"
         else:
             allow_inv = has_active_allocs or has_legacy_inv
             inv_qty_to_set = item_data.invoice_qty if allow_inv else 0
@@ -1063,7 +1067,8 @@ def create_order_items_batch(po_number: str, items_data: List[OrderItemSchema], 
                 is_credit=item_data.is_credit,
                 item_type=item_data.item_type,
                 sort_order=item_data.sort_order,
-                notes=item_data.notes
+                notes=item_data.notes,
+                first_fix=item_data.first_fix or item_data.firstFix or "No"
             )
             db.add(new_item)
 
@@ -1136,6 +1141,7 @@ def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = 
         existing.item_type = item_data.item_type
         existing.sort_order = item_data.sort_order
         existing.notes = item_data.notes
+        existing.first_fix = item_data.first_fix or item_data.firstFix or "No"
         db.commit()
         db.refresh(existing)
         return existing
@@ -1182,7 +1188,8 @@ def create_order_item(po_number: str, item_data: OrderItemSchema, db: Session = 
         is_credit=item_data.is_credit,
         item_type=item_data.item_type,
         sort_order=item_data.sort_order,
-        notes=item_data.notes
+        notes=item_data.notes,
+        first_fix=item_data.first_fix or item_data.firstFix or "No"
     )
     db.add(new_item)
     db.commit()

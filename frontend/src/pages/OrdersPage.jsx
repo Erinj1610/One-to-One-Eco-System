@@ -468,6 +468,7 @@ export default function OrdersPage() {
     qty: 60,
     oneOneCode: 100,
     type: 80,
+    firstFix: 80,
     itemType: 90,
     code: 165,
     description: 250,
@@ -482,7 +483,7 @@ export default function OrdersPage() {
     margin: 60,
     stock: 90,
     actions: 70
-  }, ['qty', 'oneOneCode', 'type', 'itemType', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'supplier', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
+  }, ['qty', 'oneOneCode', 'type', 'firstFix', 'itemType', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'supplier', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
@@ -737,6 +738,7 @@ export default function OrdersPage() {
 
   // Workspace View State (BOQ Spreadsheet vs Document Generator)
   const [workspaceSubTab, setWorkspaceSubTab] = useState('boq'); // 'boq' | 'doc_gen'
+  const [showVoidedLogisticsDocs, setShowVoidedLogisticsDocs] = useState(false);
   const [creditsSectionOpen, setCreditsSectionOpen] = useState(true);
   const [interactiveCreditsOpen, setInteractiveCreditsOpen] = useState(true);
   const [showAddCreditModal, setShowAddCreditModal] = useState(false);
@@ -1681,7 +1683,9 @@ export default function OrdersPage() {
         stock_available: item.stock_available ?? item.stockAvailable,
         stockAvailable: item.stock_available ?? item.stockAvailable,
         stock_on_hand: item.stock_on_hand ?? item.stockOnHand,
-        stockOnHand: item.stock_on_hand ?? item.stockOnHand
+        stockOnHand: item.stock_on_hand ?? item.stockOnHand,
+        firstFix: item.first_fix || item.firstFix || 'No',
+        first_fix: item.first_fix || item.firstFix || 'No'
       };
     });
     loadedItems.sort((a, b) => (a.sortOrder ?? a.sort_order ?? 0) - (b.sortOrder ?? b.sort_order ?? 0));
@@ -2589,7 +2593,8 @@ export default function OrdersPage() {
       is_credit: !!(item.isCredit || item.is_credit),
       item_type: item.itemType || item.item_type || "Hardware",
       sort_order: Math.round(Number(item.sortOrder !== undefined ? item.sortOrder : (item.sort_order !== undefined ? item.sort_order : 0)) || 0),
-      notes: item.notes || null
+      notes: item.notes || null,
+      first_fix: item.firstFix || item.first_fix || 'No'
     }));
 
     try {
@@ -4412,6 +4417,10 @@ export default function OrdersPage() {
                                   Type
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('type', e)} />
                                 </th>
+                                <th style={{ width: widths.firstFix, position: 'relative', textAlign: 'center' }}>
+                                  First Fix
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('firstFix', e)} />
+                                </th>
                                 <th style={{ width: widths.itemType, position: 'relative' }}>
                                   Item Type
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('itemType', e)} />
@@ -4528,7 +4537,7 @@ export default function OrdersPage() {
                                       >
                                         <GripVertical size={9} style={{ verticalAlign: 'middle', opacity: 0.5 }} />
                                       </td>
-                                      <td colSpan={17} style={{ background: 'rgba(0, 0, 0, 0.04)', height: '9px', padding: 0, borderTop: '1px solid rgba(0,0,0,0.08)', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+                                      <td colSpan={18} style={{ background: 'rgba(0, 0, 0, 0.04)', height: '9px', padding: 0, borderTop: '1px solid rgba(0,0,0,0.08)', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
                                         <div style={{ height: '100%', width: '100%' }} />
                                       </td>
                                       <td style={{ textAlign: 'center', padding: '0 4px', verticalAlign: 'middle' }}>
@@ -4630,6 +4639,43 @@ export default function OrdersPage() {
                                         data-col={2}
                                         data-field="type"
                                       />
+                                    </td>
+
+                                    {/* FIRST FIX TOGGLE */}
+                                    <td style={{ textAlign: 'center', verticalAlign: 'middle', padding: '2px 4px' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateSpreadsheetCell(
+                                          item.id,
+                                          'firstFix',
+                                          (item.firstFix || item.first_fix) === 'Yes' ? 'No' : 'Yes'
+                                        )}
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          padding: '2px 8px',
+                                          borderRadius: '12px',
+                                          fontSize: '10px',
+                                          fontWeight: 700,
+                                          cursor: 'pointer',
+                                          border: 'none',
+                                          letterSpacing: '0.3px',
+                                          transition: 'all 0.15s',
+                                          ...(((item.firstFix || item.first_fix) === 'Yes') ? {
+                                            background: 'rgba(245, 158, 11, 0.18)',
+                                            color: '#d97706',
+                                            outline: '1px solid rgba(245, 158, 11, 0.4)'
+                                          } : {
+                                            background: 'rgba(100, 116, 139, 0.1)',
+                                            color: 'var(--text-secondary)',
+                                            outline: '1px solid rgba(100, 116, 139, 0.2)'
+                                          })
+                                        }}
+                                        title="Click to toggle First Fix (Yes / No)"
+                                      >
+                                        {((item.firstFix || item.first_fix) === 'Yes') ? '⚡ Yes (FF)' : 'No'}
+                                      </button>
                                     </td>
 
                                     {/* ITEM TYPE - Styled badge toggle */}
@@ -6416,85 +6462,166 @@ export default function OrdersPage() {
               </div>
             )}
 
-            {workspaceSubTab === 'logistics' && (
+            {workspaceSubTab === 'logistics' && (() => {
               /* SUB-TAB 4: DELIVERY LOGISTICS & PACKING LISTS REFERENCE VIEW */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '20px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                    <div>
-                      <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-info)' }}>
-                        📦 Logistics Documents & Waybills
-                      </h4>
-                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Packing Lists and Delivery Notes issued for this quotation order.</span>
-                    </div>
-                    <button 
-                      type="button" 
-                      className="btn btn-sm btn-outline" 
-                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                      onClick={() => navigate('/logistics', { state: { filterOrderId: selectedOrderId } })}
-                    >
-                      <Truck size={14} /> Open Logistics Dashboard
-                    </button>
-                  </div>
+              const isDocVoided = (doc) => {
+                const s = String(doc?.status || '').toLowerCase();
+                return s === 'cancelled' || s === 'voided' || Boolean(doc?.voided_at);
+              };
 
-                  <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                          <th style={{ padding: '10px 12px' }}>Document ID</th>
-                          <th style={{ padding: '10px 12px' }}>Document Type</th>
-                          <th style={{ padding: '10px 12px' }}>Date Issued</th>
-                          <th style={{ padding: '10px 12px' }}>Items Count</th>
-                          <th style={{ padding: '10px 12px' }}>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(!activeOrderObject?.packingLists?.length && !activeOrderObject?.deliveryNotes?.length) ? (
-                          <tr>
-                            <td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                              No packing lists or delivery notes have been generated for this order yet. Go to Logistics to draft one.
-                            </td>
-                          </tr>
-                        ) : (
-                          <>
-                            {/* Render Packing Lists */}
-                            {(activeOrderObject?.packingLists || []).map((pl, idx) => (
-                              <tr key={`pl-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
-                                <td 
-                                  style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-info)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
-                                  onClick={() => navigate('/logistics', { state: { openDocId: pl.id, projectKey: pl.projectKey || activeOrderObject.projectKey } })}
-                                >
-                                  {pl.id}
-                                </td>
-                                <td style={{ padding: '10px 12px' }}>📋 Packing List / Box Label</td>
-                                <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{pl.date || '—'}</td>
-                                <td style={{ padding: '10px 12px' }}>{(pl.items || []).length} items</td>
-                                <td style={{ padding: '10px 12px' }}><span className="badge b-info">Issued</span></td>
-                              </tr>
-                            ))}
-                            {/* Render Delivery Notes */}
-                            {(activeOrderObject?.deliveryNotes || []).map((dn, idx) => (
-                              <tr key={`dn-${idx}`} style={{ borderBottom: '1px solid var(--border)', background: 'transparent' }}>
-                                <td 
-                                  style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-info)', fontFamily: 'monospace', cursor: 'pointer', textDecoration: 'underline' }}
-                                  onClick={() => navigate('/logistics', { state: { openDocId: dn.id, projectKey: dn.projectKey || activeOrderObject.projectKey } })}
-                                >
-                                  {dn.id}
-                                </td>
-                                <td style={{ padding: '10px 12px' }}>🚚 Delivery Note (Waybill)</td>
-                                <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{dn.date || '—'}</td>
-                                <td style={{ padding: '10px 12px' }}>{(dn.items || []).length} items</td>
-                                <td style={{ padding: '10px 12px' }}><span className="badge b-success">Delivered</span></td>
-                              </tr>
-                            ))}
-                          </>
+              const allPls = activeOrderObject?.packingLists || [];
+              const allDns = activeOrderObject?.deliveryNotes || [];
+              const voidedCount = allPls.filter(isDocVoided).length + allDns.filter(isDocVoided).length;
+              const displayedPackingLists = allPls.filter(pl => showVoidedLogisticsDocs || !isDocVoided(pl));
+              const displayedDeliveryNotes = allDns.filter(dn => showVoidedLogisticsDocs || !isDocVoided(dn));
+              const totalVisible = displayedPackingLists.length + displayedDeliveryNotes.length;
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-info)' }}>
+                          📦 Logistics Documents & Waybills
+                        </h4>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Packing Lists and Delivery Notes issued for this quotation order.</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        {voidedCount > 0 && (
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer', userSelect: 'none', background: 'var(--bg-primary)', border: '1px solid var(--border)', padding: '5px 10px', borderRadius: '4px' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={showVoidedLogisticsDocs} 
+                              onChange={(e) => setShowVoidedLogisticsDocs(e.target.checked)} 
+                              style={{ cursor: 'pointer' }}
+                            />
+                            Show Voided / Cancelled ({voidedCount})
+                          </label>
                         )}
-                      </tbody>
-                    </table>
+                        <button 
+                          type="button" 
+                          className="btn btn-sm btn-outline" 
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                          onClick={() => navigate('/logistics', { state: { filterOrderId: selectedOrderId } })}
+                        >
+                          <Truck size={14} /> Open Logistics Dashboard
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '6px' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                            <th style={{ padding: '10px 12px' }}>Document ID</th>
+                            <th style={{ padding: '10px 12px' }}>Document Type</th>
+                            <th style={{ padding: '10px 12px' }}>Date Issued</th>
+                            <th style={{ padding: '10px 12px' }}>Items Count</th>
+                            <th style={{ padding: '10px 12px' }}>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {totalVisible === 0 ? (
+                            <tr>
+                              <td colSpan={5} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                {voidedCount > 0 && !showVoidedLogisticsDocs
+                                  ? `All ${voidedCount} document(s) on this order are voided. Tick 'Show Voided / Cancelled' to view them.`
+                                  : 'No packing lists or delivery notes have been generated for this order yet. Go to Logistics to draft one.'}
+                              </td>
+                            </tr>
+                          ) : (
+                            <>
+                              {/* Render Packing Lists */}
+                              {displayedPackingLists.map((pl, idx) => {
+                                const isVoided = isDocVoided(pl);
+                                return (
+                                  <tr 
+                                    key={`pl-${idx}`} 
+                                    style={{ 
+                                      borderBottom: '1px solid var(--border)', 
+                                      background: isVoided ? 'rgba(239, 68, 68, 0.03)' : 'transparent',
+                                      opacity: isVoided ? 0.65 : 1
+                                    }}
+                                  >
+                                    <td 
+                                      style={{ 
+                                        padding: '10px 12px', 
+                                        fontWeight: 600, 
+                                        color: isVoided ? 'var(--text-secondary)' : 'var(--text-info)', 
+                                        fontFamily: 'monospace', 
+                                        cursor: 'pointer', 
+                                        textDecoration: isVoided ? 'line-through' : 'underline' 
+                                      }}
+                                      onClick={() => navigate('/logistics', { state: { openDocId: pl.id, projectKey: pl.projectKey || activeOrderObject.projectKey } })}
+                                    >
+                                      {pl.id}
+                                    </td>
+                                    <td style={{ padding: '10px 12px' }}>📋 Packing List / Box Label</td>
+                                    <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{pl.date || '—'}</td>
+                                    <td style={{ padding: '10px 12px' }}>{(pl.items || []).length} items</td>
+                                    <td style={{ padding: '10px 12px' }}>
+                                      {isVoided ? (
+                                        <span className="badge b-danger" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>Voided</span>
+                                      ) : pl.status === 'Delivered' ? (
+                                        <span className="badge b-success">Delivered</span>
+                                      ) : (
+                                        <span className="badge b-info">{pl.status || 'Issued'}</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                              {/* Render Delivery Notes */}
+                              {displayedDeliveryNotes.map((dn, idx) => {
+                                const isVoided = isDocVoided(dn);
+                                const dnStatusLower = String(dn.status || '').toLowerCase();
+                                const isDelivered = dnStatusLower === 'delivered';
+                                return (
+                                  <tr 
+                                    key={`dn-${idx}`} 
+                                    style={{ 
+                                      borderBottom: '1px solid var(--border)', 
+                                      background: isVoided ? 'rgba(239, 68, 68, 0.03)' : 'transparent',
+                                      opacity: isVoided ? 0.65 : 1
+                                    }}
+                                  >
+                                    <td 
+                                      style={{ 
+                                        padding: '10px 12px', 
+                                        fontWeight: 600, 
+                                        color: isVoided ? 'var(--text-secondary)' : 'var(--text-info)', 
+                                        fontFamily: 'monospace', 
+                                        cursor: 'pointer', 
+                                        textDecoration: isVoided ? 'line-through' : 'underline' 
+                                      }}
+                                      onClick={() => navigate('/logistics', { state: { openDocId: dn.id, projectKey: dn.projectKey || activeOrderObject.projectKey } })}
+                                    >
+                                      {dn.id}
+                                    </td>
+                                    <td style={{ padding: '10px 12px' }}>🚚 Delivery Note (Waybill)</td>
+                                    <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{dn.date || '—'}</td>
+                                    <td style={{ padding: '10px 12px' }}>{(dn.items || []).length} items</td>
+                                    <td style={{ padding: '10px 12px' }}>
+                                      {isVoided ? (
+                                        <span className="badge b-danger" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>Voided</span>
+                                      ) : isDelivered ? (
+                                        <span className="badge b-success" style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0' }}>Delivered</span>
+                                      ) : (
+                                        <span className="badge b-warning" style={{ background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' }}>🚚 Dispatched</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {workspaceSubTab === 'credits' && (() => {
               const totalErpCredited = orderCreditNotes.reduce((sum, cn) => sum + Math.abs(Number(cn.totalValue || cn.value || cn.amount || 0)), 0);

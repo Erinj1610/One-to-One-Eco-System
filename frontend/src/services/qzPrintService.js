@@ -80,11 +80,11 @@ export async function printDirectLabels(printerName, dataUrls, options = {}) {
     size: { width: widthMm, height: heightMm },
     units: 'mm',
     density: 203,
-    colorType: 'grayscale',
-    interpolation: 'nearest-neighbor',
+    colorType: 'black-and-white',
+    interpolation: 'bicubic',
     margins: { top: 0, right: 0, bottom: 0, left: 0 },
     scaleContent: true,
-    rasterize: false
+    rasterize: true
   });
 
   // Prepare each label data object
@@ -125,12 +125,17 @@ export async function printRawDirect(printerName, rawCommands) {
     forceRaw: true
   });
 
-  const printData = rawCommands.map(cmd => ({
-    type: 'raw',
-    format: 'command',
-    flavor: 'plain',
-    data: cmd
-  }));
+  const printData = rawCommands.map(cmd => {
+    if (typeof cmd === 'object' && cmd !== null && cmd.type === 'raw') {
+      return cmd;
+    }
+    return {
+      type: 'raw',
+      format: 'command',
+      flavor: 'plain',
+      data: String(cmd)
+    };
+  });
 
   await qz.print(config, printData);
   return true;

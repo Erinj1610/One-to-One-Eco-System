@@ -26,8 +26,10 @@ import {
   X,
   Info,
   Compass,
-  Zap
+  Zap,
+  Printer
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { API_BASE } from '../api_config';
 import CadImportModal from './CadImportModal';
 
@@ -92,6 +94,8 @@ export default function TakeoffSpecEngine({
 
   // UI & Feedback state
   const [isSaving, setIsSaving] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
@@ -692,6 +696,8 @@ export default function TakeoffSpecEngine({
       itemType: item.itemType || 'fixture',
       lengthMeters: Number(item.lengthMeters) || 0,
       runIndex: Number(item.runIndex) || 0,
+      firstFix: item.firstFix || (item.notes?.includes('First Fix') ? 'Yes' : 'No'),
+      level: item.level || 'HL',
       notes: item.notes || ''
     }));
 
@@ -1625,6 +1631,12 @@ export default function TakeoffSpecEngine({
           eta: '2 weeks'
         });
       }
+      items.forEach(it => {
+        if (!it.firstFix) {
+          it.firstFix = row.firstFix || "No";
+          it.first_fix = row.firstFix || "No";
+        }
+      });
       return items;
     };
 
@@ -1791,6 +1803,12 @@ export default function TakeoffSpecEngine({
           eta: '3 weeks'
         });
       }
+      items.forEach(it => {
+        if (!it.firstFix) {
+          it.firstFix = row.firstFix || "No";
+          it.first_fix = row.firstFix || "No";
+        }
+      });
       return items;
     };
 
@@ -1843,7 +1861,9 @@ export default function TakeoffSpecEngine({
           : (product.stock_level !== undefined ? Number(product.stock_level) : 0),
         stockOnHand: product.stock_on_hand !== undefined && product.stock_on_hand !== null
           ? Number(product.stock_on_hand)
-          : (product.stock_level !== undefined ? Number(product.stock_level) : 0)
+          : (product.stock_level !== undefined ? Number(product.stock_level) : 0),
+        firstFix: row.firstFix || 'No',
+        first_fix: row.firstFix || 'No'
       };
     };
 
@@ -1918,6 +1938,8 @@ export default function TakeoffSpecEngine({
         unitTrade: 0,
         unitRetail: 0,
         selection: 'Selection',
+        firstFix: row.firstFix || 'No',
+        first_fix: row.firstFix || 'No',
         stockStatus: 'Ordered',
         eta: '4 weeks',
         foh_code_description: '',
@@ -2251,6 +2273,373 @@ export default function TakeoffSpecEngine({
     });
   }, [matrixData, matrixFloorFilter, matrixSearch, hideEmptyRooms, activeMatrixTags]);
 
+  // -------------------------------------------------------------
+  // ROOM-BY-ROOM COUNT-UP EXPORT HANDLERS (EXCEL & PDF)
+  // -------------------------------------------------------------
+
+  // 1. Export Count-Up to Excel (.xlsx) with 3 rich worksheets
+  const handleExportCountUpExcel = () => {
+    if (!countUpRows || countUpRows.length === 0) {
+      alert("No count-up rows to export. Please add fixture counts first.");
+      return;
+    }
+
+    setIsExportingExcel(true);
+    try {
+      // --- Sheet 1: Full Room-by-Room Schedule ---
+      const scheduleData = countUpRows.map((row, idx) => {
+        const tag = (row.tag || '').trim().toUpperCase();
+        const spec = specifications[tag];
+        const currentType = spec?.itemType || row.itemType || 'fixture';
+        const typeLabel = currentType === 'linear_led' ? 'Linear LED' : (currentType === 'track_system' ? 'Track System' : 'Fitting');
+        const unit = row.unit || (currentType === 'linear_led' ? 'm' : 'pcs');
+        const catalogSku = spec?.product?.sku || spec?.ledConfig?.profileSku || spec?.trackConfig?.railSku || '';
+        const catalogName = spec?.product?.name || spec?.product?.title || spec?.ledConfig?.profileProduct?.name || spec?.trackConfig?.railProduct?.name || '';
+        const category = spec?.product?.category || '';
+        const qtyNum = Number(row.qty) || 0;
+
+        return {
+          'Line #': idx + 1,
+          'Plan Tag / Code': tag,
+          'Type': typeLabel,
+          'First Fix': row.firstFix === 'Yes' ? 'Yes (FF)' : 'No',
+          'Floor Level': row.floor || 'Ground Floor',
+          'Room / Area': row.area || 'General',
+          'Qty / Length': qtyNum,
+          'Unit': unit,
+          'Mounting & Notes': row.notes || '',
+          'Catalog SKU': catalogSku,
+          'Product Description': catalogName,
+          'Category': category
+        };
+      });
+
+      const wsSchedule = XLSX.utils.json_to_sheet(scheduleData);
+      wsSchedule['!cols'] = [
+        { wch: 8 },  // Line #
+        { wch: 16 }, // Plan Tag
+        { wch: 14 }, // Type
+        { wch: 12 }, // First Fix
+        { wch: 16 }, // Floor Level
+        { wch: 24 }, // Room / Area
+        { wch: 12 }, // Qty / Length
+        { wch: 8 },  // Unit
+        { wch: 32 }, // Mounting & Notes
+        { wch: 18 }, // Catalog SKU
+        { wch: 32 }, // Product Description
+        { wch: 16 }  // Category
+      ];
+
+      // --- Sheet 2: Summary by Room & Floor ---
+      const roomMap = new Map();
+      countUpRows.forEach(row => {
+        const fl = (row.floor || 'Ground Floor').trim();
+        const rm = (row.area || 'General').trim();
+        const key = `${fl}__${rm}`;
+        if (!roomMap.has(key)) {
+          roomMap.set(key, { floor: fl, room: rm, fittings: 0, ledMeters: 0, trackRuns: 0, tags: new Map() });
+        }
+        const rEntry = roomMap.get(key);
+        const tag = (row.tag || '').trim().toUpperCase();
+        const currentType = specifications[tag]?.itemType || row.itemType || 'fixture';
+        const q = Number(row.qty) || 0;
+        if (currentType === 'linear_led') {
+          rEntry.ledMeters += q;
+        } else if (currentType === 'track_system') {
+          rEntry.trackRuns += q;
+        } else {
+          rEntry.fittings += q;
+        }
+        const currentTagCount = rEntry.tags.get(tag) || 0;
+        rEntry.tags.set(tag, currentTagCount + q);
+      });
+
+      const roomSummaryData = Array.from(roomMap.values()).map(r => {
+        const tagBreakdown = Array.from(r.tags.entries()).map(([t, cnt]) => `${t} (${cnt})`).join(', ');
+        return {
+          'Floor Level': r.floor,
+          'Room / Area': r.room,
+          'Total Fittings (pcs)': Math.round(r.fittings * 100) / 100,
+          'Linear LED (m)': Math.round(r.ledMeters * 100) / 100,
+          'Track Runs': Math.round(r.trackRuns * 100) / 100,
+          'Distinct Tags Count': r.tags.size,
+          'Tag Breakdown': tagBreakdown
+        };
+      });
+
+      const wsRoom = XLSX.utils.json_to_sheet(roomSummaryData);
+      wsRoom['!cols'] = [
+        { wch: 16 }, // Floor Level
+        { wch: 24 }, // Room / Area
+        { wch: 18 }, // Total Fittings
+        { wch: 16 }, // Linear LED (m)
+        { wch: 14 }, // Track Runs
+        { wch: 18 }, // Distinct Tags Count
+        { wch: 38 }  // Tag Breakdown
+      ];
+
+      // --- Sheet 3: Summary by Tag / Code ---
+      const tagSummaryData = uniqueTags.map(ut => {
+        const tag = ut.tag;
+        const spec = specifications[tag];
+        const currentType = spec?.itemType || ut.itemType || 'fixture';
+        const typeLabel = currentType === 'linear_led' ? 'Linear LED' : (currentType === 'track_system' ? 'Track System' : 'Fitting');
+        const unit = ut.unit || (currentType === 'linear_led' ? 'm' : 'pcs');
+        const matchingRows = countUpRows.filter(r => (r.tag || '').trim().toUpperCase() === tag);
+        const totalQty = matchingRows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
+        const hasFF = matchingRows.some(r => r.firstFix === 'Yes');
+        const allFF = matchingRows.every(r => r.firstFix === 'Yes');
+        const ffStatus = allFF ? 'Yes (All FF)' : (hasFF ? 'Partial FF' : 'No');
+        const rooms = Array.from(new Set(matchingRows.map(r => (r.area || '').trim()).filter(Boolean))).join(', ');
+        const catalogSku = spec?.product?.sku || spec?.ledConfig?.profileSku || spec?.trackConfig?.railSku || '';
+        const catalogName = spec?.product?.name || spec?.product?.title || spec?.ledConfig?.profileProduct?.name || spec?.trackConfig?.railProduct?.name || '';
+
+        return {
+          'Plan Tag / Code': tag,
+          'Fixture Type': typeLabel,
+          'First Fix Status': ffStatus,
+          'Total Quantity': Math.round(totalQty * 100) / 100,
+          'Unit': unit,
+          'Catalog SKU': catalogSku,
+          'Product Description': catalogName,
+          'Rooms Located In': rooms,
+          'Room Count': matchingRows.length
+        };
+      });
+
+      const wsTag = XLSX.utils.json_to_sheet(tagSummaryData);
+      wsTag['!cols'] = [
+        { wch: 16 }, // Plan Tag / Code
+        { wch: 14 }, // Fixture Type
+        { wch: 16 }, // First Fix Status
+        { wch: 14 }, // Total Quantity
+        { wch: 8 },  // Unit
+        { wch: 18 }, // Catalog SKU
+        { wch: 32 }, // Product Description
+        { wch: 36 }, // Rooms Located In
+        { wch: 12 }  // Room Count
+      ];
+
+      // Create Workbook & Append Sheets
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, wsSchedule, 'Room_CountUp');
+      XLSX.utils.book_append_sheet(wb, wsRoom, 'Summary_By_Room');
+      XLSX.utils.book_append_sheet(wb, wsTag, 'Summary_By_Tag');
+
+      const cleanRef = (orderId || projectKey || 'Takeoff').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const dateStr = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `Takeoff_Room_CountUp_${cleanRef}_${dateStr}.xlsx`);
+    } catch (err) {
+      console.error("Excel export error:", err);
+      alert("Failed to export Excel file: " + err.message);
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
+  // 2. Download Count-Up as PDF (Calls backend route, with graceful browser fallback)
+  const handleDownloadCountUpPdf = async () => {
+    if (!countUpRows || countUpRows.length === 0) {
+      alert("No count-up rows to export. Please add fixture counts first.");
+      return;
+    }
+
+    setIsExportingPdf(true);
+    try {
+      const payload = {
+        orderId: orderId || '',
+        projectName: projectKey || 'One to One Project',
+        date: new Date().toLocaleDateString('en-ZA'),
+        rows: countUpRows.map((r, idx) => {
+          const tag = (r.tag || '').trim().toUpperCase();
+          const spec = specifications[tag];
+          return {
+            index: idx + 1,
+            tag,
+            itemType: spec?.itemType || r.itemType || 'fixture',
+            firstFix: r.firstFix || 'No',
+            floor: r.floor || 'Ground Floor',
+            area: r.area || 'General',
+            qty: Number(r.qty) || 1,
+            unit: r.unit || (r.itemType === 'linear_led' ? 'm' : 'pcs'),
+            notes: r.notes || '',
+            catalogSku: spec?.product?.sku || spec?.ledConfig?.profileSku || spec?.trackConfig?.railSku || '',
+            catalogName: spec?.product?.name || spec?.product?.title || ''
+          };
+        }),
+        summary: {
+          totalQty: stats.totalQty,
+          totalFittings: countUpRows.filter(r => (specifications[(r.tag || '').trim().toUpperCase()]?.itemType || r.itemType || 'fixture') === 'fixture').reduce((s, r) => s + (Number(r.qty) || 0), 0),
+          totalLedMeters: countUpRows.filter(r => (specifications[(r.tag || '').trim().toUpperCase()]?.itemType || r.itemType) === 'linear_led').reduce((s, r) => s + (Number(r.qty) || 0), 0),
+          totalTrackMeters: countUpRows.filter(r => (specifications[(r.tag || '').trim().toUpperCase()]?.itemType || r.itemType) === 'track_system').reduce((s, r) => s + (Number(r.qty) || 0), 0),
+          uniqueTagsCount: uniqueTags.length,
+          totalRoomsCount: Array.from(new Set(countUpRows.map(r => (r.area || '').trim()).filter(Boolean))).length
+        }
+      };
+
+      const res = await fetch(`${API_BASE}/api/cad/export-countup-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || 'Server PDF export failed, falling back to browser print...');
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const cleanRef = (orderId || projectKey || 'Takeoff').replace(/[^a-zA-Z0-9_-]/g, '_');
+      a.download = `Takeoff_Room_CountUp_${cleanRef}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      console.warn("Direct PDF download fallback to print preview:", err);
+      handlePrintCountUpPdf();
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
+  // 3. Print / Save as PDF Layout (Native browser print window with A4 landscape styling)
+  const handlePrintCountUpPdf = () => {
+    if (!countUpRows || countUpRows.length === 0) {
+      alert("No count-up rows to print.");
+      return;
+    }
+
+    const printWindow = window.open('', '_blank', 'width=1150,height=800');
+    if (!printWindow) {
+      alert('Please allow popups to open the PDF Print Preview.');
+      return;
+    }
+
+    const totalFittings = countUpRows.filter(r => (specifications[(r.tag || '').trim().toUpperCase()]?.itemType || r.itemType || 'fixture') === 'fixture').reduce((s, r) => s + (Number(r.qty) || 0), 0);
+    const totalLed = countUpRows.filter(r => (specifications[(r.tag || '').trim().toUpperCase()]?.itemType || r.itemType) === 'linear_led').reduce((s, r) => s + (Number(r.qty) || 0), 0);
+    const totalTrack = countUpRows.filter(r => (specifications[(r.tag || '').trim().toUpperCase()]?.itemType || r.itemType) === 'track_system').reduce((s, r) => s + (Number(r.qty) || 0), 0);
+    const uniqueRooms = Array.from(new Set(countUpRows.map(r => (r.area || '').trim()).filter(Boolean))).length;
+
+    const rowsHtml = countUpRows.map((r, idx) => {
+      const tag = (r.tag || '').trim().toUpperCase();
+      const spec = specifications[tag];
+      const currentType = spec?.itemType || r.itemType || 'fixture';
+      const typeBadge = currentType === 'linear_led' ? 'Linear LED' : (currentType === 'track_system' ? 'Track System' : 'Fitting');
+      const ffBadge = r.firstFix === 'Yes' 
+        ? '<span style="color:#b45309;font-weight:700;background:#fef3c7;padding:2px 6px;border-radius:3px;">Yes (FF)</span>' 
+        : '<span style="color:#64748b;">No</span>';
+      const qtyStr = `${r.qty} ${r.unit || (currentType === 'linear_led' ? 'm' : 'pcs')}`;
+      const mapping = spec?.product?.sku || spec?.ledConfig?.profileSku || spec?.trackConfig?.railSku || '-';
+      const notes = r.notes || '-';
+      const bg = idx % 2 === 0 ? '#ffffff' : '#f8fafc';
+
+      return `
+        <tr style="background:${bg};border-bottom:1px solid #e2e8f0;">
+          <td style="padding:6px 8px;text-align:center;color:#64748b;font-size:8pt;">${idx + 1}</td>
+          <td style="padding:6px 8px;font-family:monospace;font-weight:700;color:#1d4ed8;font-size:9pt;">${tag}</td>
+          <td style="padding:6px 8px;font-size:8.5pt;">${typeBadge}</td>
+          <td style="padding:6px 8px;text-align:center;font-size:8pt;">${ffBadge}</td>
+          <td style="padding:6px 8px;font-size:8.5pt;">${r.floor || '-'}</td>
+          <td style="padding:6px 8px;font-size:8.5pt;font-weight:600;color:#0f172a;">${r.area || '-'}</td>
+          <td style="padding:6px 8px;text-align:center;font-weight:700;font-size:9pt;">${qtyStr}</td>
+          <td style="padding:6px 8px;font-size:8pt;color:#334155;">${notes}</td>
+          <td style="padding:6px 8px;font-size:8pt;color:#475569;">${mapping}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Room-by-Room Count-Up - ${projectKey || orderId || 'Takeoff'}</title>
+        <meta charset="utf-8" />
+        <style>
+          @page { size: A4 landscape; margin: 10mm 12mm 12mm 12mm; }
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #0f172a; margin: 0; padding: 15px; }
+          .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #2563eb; padding-bottom: 8px; margin-bottom: 12px; }
+          .title { font-size: 18px; font-weight: 800; color: #1e3a8a; }
+          .sub { font-size: 11px; color: #64748b; margin-top: 2px; }
+          .kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 12px; }
+          .kpi { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 10px; }
+          .kpi-lbl { font-size: 9px; font-weight: 700; color: #64748b; text-transform: uppercase; }
+          .kpi-val { font-size: 13px; font-weight: 800; color: #0f172a; margin-top: 2px; }
+          table { width: 100%; border-collapse: collapse; font-size: 11px; }
+          th { background: #1e293b; color: #ffffff; text-align: left; padding: 7px 8px; font-size: 9.5px; text-transform: uppercase; font-weight: 700; }
+          @media print {
+            body { padding: 0; }
+            .no-print { display: none !important; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="no-print" style="margin-bottom: 15px; display: flex; justify-content: flex-end; gap: 10px;">
+          <button onclick="window.print()" style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-weight:700;cursor:pointer;font-size:12px;">🖨️ Print / Save as PDF</button>
+          <button onclick="window.close()" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:12px;">Close</button>
+        </div>
+
+        <div class="header">
+          <div>
+            <div class="title">ONE TO ONE ECO SYSTEM • ROOM-BY-ROOM COUNT-UP</div>
+            <div class="sub">Lighting Schedule & Spatial Fixture Takeoff • Project: ${projectKey || 'General'}</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-weight: 700; font-size: 12px;">Order Ref: ${orderId || 'TAKEOFF-DRAFT'}</div>
+            <div style="font-size: 10px; color: #64748b;">Date: ${new Date().toLocaleDateString('en-ZA')}</div>
+          </div>
+        </div>
+
+        <div class="kpis">
+          <div class="kpi"><div class="kpi-lbl">Total Items</div><div class="kpi-val">${stats.totalQty} Units</div></div>
+          <div class="kpi"><div class="kpi-lbl">Fittings (pcs)</div><div class="kpi-val">${totalFittings} pcs</div></div>
+          <div class="kpi"><div class="kpi-lbl">Linear LED</div><div class="kpi-val">${totalLed} m</div></div>
+          <div class="kpi"><div class="kpi-lbl">Track Runs</div><div class="kpi-val">${totalTrack} m</div></div>
+          <div class="kpi"><div class="kpi-lbl">Unique Tags</div><div class="kpi-val">${uniqueTags.length} Codes</div></div>
+          <div class="kpi"><div class="kpi-lbl">Rooms Counted</div><div class="kpi-val">${uniqueRooms} Rooms</div></div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width:4%;text-align:center;">#</th>
+              <th style="width:9%;">Tag</th>
+              <th style="width:11%;">Type</th>
+              <th style="width:8%;text-align:center;">First Fix</th>
+              <th style="width:13%;">Floor</th>
+              <th style="width:18%;">Room / Area</th>
+              <th style="width:10%;text-align:center;">Qty / Length</th>
+              <th style="width:16%;">Mounting & Notes</th>
+              <th style="width:11%;">Catalog Mapping</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+
+        <div style="margin-top: 15px; border-top: 1px solid #cbd5e1; padding-top: 6px; display: flex; justify-content: space-between; font-size: 9px; color: #64748b;">
+          <span>One to One Eco System • Takeoff & Specification Engine • Confidential</span>
+          <span>Generated on ${new Date().toLocaleString()}</span>
+        </div>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() { window.print(); }, 250);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
   // Export Matrix to CSV (Category-aware)
   const handleExportMatrixCSV = (targetSubTab = summarySubTab) => {
     let exportTags = activeMatrixTags;
@@ -2456,6 +2845,58 @@ export default function TakeoffSpecEngine({
               >
                 <Compass size={12} /> 📐 Import CAD Plan (.dwg)
               </button>
+
+              {/* DOWNLOAD PDF & EXPORT EXCEL ACTIONS */}
+              <button 
+                type="button"
+                className="btn btn-secondary btn-xs" 
+                onClick={handleDownloadCountUpPdf}
+                disabled={isExportingPdf || countUpRows.length === 0}
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '4px', 
+                  fontWeight: 600,
+                  color: '#dc2626',
+                  borderColor: 'rgba(220, 38, 38, 0.35)',
+                  background: 'rgba(220, 38, 38, 0.06)'
+                }}
+                title="Download official Room-by-Room Count-Up PDF"
+              >
+                {isExportingPdf ? <RefreshCw size={12} className="animate-spin" /> : <Download size={12} />}
+                <span>{isExportingPdf ? 'Generating PDF...' : '📄 Download PDF'}</span>
+              </button>
+
+              <button 
+                type="button"
+                className="btn btn-secondary btn-xs" 
+                onClick={handlePrintCountUpPdf}
+                disabled={countUpRows.length === 0}
+                style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                title="Open A4 Print Layout / Save as PDF in browser"
+              >
+                <Printer size={12} /> 🖨️ Print
+              </button>
+
+              <button 
+                type="button"
+                className="btn btn-secondary btn-xs" 
+                onClick={handleExportCountUpExcel}
+                disabled={isExportingExcel || countUpRows.length === 0}
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '4px', 
+                  fontWeight: 600,
+                  color: '#16a34a',
+                  borderColor: 'rgba(22, 163, 74, 0.35)',
+                  background: 'rgba(22, 163, 74, 0.06)'
+                }}
+                title="Export Room-by-Room Count-Up and Room/Tag summaries to Excel (.xlsx)"
+              >
+                <FileSpreadsheet size={12} />
+                <span>{isExportingExcel ? 'Exporting...' : '📊 Export Excel'}</span>
+              </button>
               {countUpRows.length > 0 && (
                 <button className="btn btn-ghost btn-xs" onClick={handleClearAllRows} style={{ color: 'var(--text-danger)' }}>
                   Clear All
@@ -2515,7 +2956,8 @@ export default function TakeoffSpecEngine({
                 <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1.5px solid var(--border)', color: 'var(--text-secondary)', fontSize: '11.5px' }}>
                   <th style={{ padding: '8px 10px', width: '36px', textAlign: 'center' }}>#</th>
                   <th style={{ padding: '8px 10px', width: '120px' }}>Plan Tag / Code</th>
-                  <th style={{ padding: '8px 10px', width: '135px' }}>Type</th>
+                  <th style={{ padding: '8px 10px', width: '120px' }}>Type</th>
+                  <th style={{ padding: '8px 10px', width: '85px', textAlign: 'center' }}>First Fix</th>
                   <th style={{ padding: '8px 10px', width: '130px' }}>Floor Level</th>
                   <th style={{ padding: '8px 10px', width: '210px' }}>Room / Area</th>
                   <th style={{ padding: '8px 10px', width: '110px', textAlign: 'center' }}>Qty / Length</th>
@@ -2527,7 +2969,7 @@ export default function TakeoffSpecEngine({
               <tbody>
                 {filteredCountUpRows.length === 0 ? (
                   <tr>
-                    <td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    <td colSpan={10} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                       No count-up lines recorded. Click <strong>+ Add Row</strong>, <strong>📐 Import CAD Plan (.dwg)</strong>, or <strong>📋 Paste from Excel / CSV</strong> to start your takeoff.
                     </td>
                   </tr>
@@ -2613,6 +3055,30 @@ export default function TakeoffSpecEngine({
                             <option value="fixture">💡 Fitting</option>
                             <option value="linear_led">〰️ Linear LED</option>
                             <option value="track_system">🛤️ Track</option>
+                          </select>
+                        </td>
+
+                        {/* FIRST FIX SELECTOR */}
+                        <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                          <select
+                            value={row.firstFix === 'Yes' ? 'Yes' : 'No'}
+                            onChange={e => handleUpdateRow(row.id, 'firstFix', e.target.value)}
+                            style={{
+                              width: '100%',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              padding: '3px 4px',
+                              borderRadius: '4px',
+                              border: '1px solid var(--border)',
+                              background: row.firstFix === 'Yes' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-secondary)',
+                              color: row.firstFix === 'Yes' ? '#f59e0b' : 'var(--text-secondary)',
+                              cursor: 'pointer',
+                              outline: 'none'
+                            }}
+                            title="Specify whether this item is First Fix (rough-in / pre-install)"
+                          >
+                            <option value="No">No</option>
+                            <option value="Yes">Yes (FF)</option>
                           </select>
                         </td>
 

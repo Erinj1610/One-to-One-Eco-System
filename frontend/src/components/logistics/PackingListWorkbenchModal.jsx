@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   X, ClipboardList, Tag, Box, Package, Sparkles, Filter, Printer,
   ChevronDown, Check, ArrowUpDown, ArrowUp, ArrowDown, Split, Link2,
-  CheckCircle2, AlertCircle, RefreshCw, Layers, ChevronRight, Plus, Trash2, Unlink
+  CheckCircle2, AlertCircle, RefreshCw, Layers, ChevronRight, Plus, Trash2, Unlink,
+  Search
 } from 'lucide-react';
 import PackingListLabelPrinterModal from './PackingListLabelPrinterModal';
 import { API_BASE } from '../../api_config';
@@ -62,6 +63,11 @@ export default function PackingListWorkbenchModal({
   const [attachingToModelKey, setAttachingToModelKey] = useState(null); // modelKey receiving an attachment
   const [attachSelectedItemKey, setAttachSelectedItemKey] = useState('');
   const [attachRatioInput, setAttachRatioInput] = useState(1);
+  const [attachModalSearch, setAttachModalSearch] = useState('');
+  const [hideFullyPacked, setHideFullyPacked] = useState(false);
+  const [plFilterFloor, setPlFilterFloor] = useState('ALL');
+  const [expandedKitKeys, setExpandedKitKeys] = useState(() => new Set());
+  const [expandedAreaKeys, setExpandedAreaKeys] = useState({});
 
   // Step 2 & 4: Exploded Room Pick Sheet rows
   const [plRows, setPlRows] = useState([]);
@@ -96,27 +102,38 @@ export default function PackingListWorkbenchModal({
     }).slice(0, 50);
   }, [allOrders, plOrderSearchQuery]);
 
-  // Helper: clean description by stripping room quantity suffixes like " — 5 units", " - 1 units"
+  // Helper: clean description by stripping room quantity suffixes like " — 5 units - HL", " - 1 units", " (4 units)"
   const cleanDescription = (desc) => {
     if (!desc) return '';
-    return desc
-      .replace(/\s*[\u2010-\u2015\u2212\-]\s*\d+\s*(?:units?|pcs?|m?|fixtures?|items?)\s*$/i, '')
-      .replace(/\s*\(\s*\d+\s*(?:units?|pcs?|m?|fixtures?|items?)\s*\)\s*$/i, '')
-      .trim();
+    let d = desc;
+    // Strip trailing suffixes like " — 4 units - HL", " - 2 pcs", etc.
+    d = d.replace(/\s*[\u2010-\u2015\u2212\-]+\s*\d+\s*(?:units?|pcs?|m?|fixtures?|items?)(?:\s*[\u2010-\u2015\u2212\-].*)?$/i, '');
+    // Strip parenthetical/bracketed quantities like "(4 units)", "[4 units - HL]"
+    d = d.replace(/\s*[\(\[]\s*\d+\s*(?:units?|pcs?|m?|fixtures?|items?)(?:[^\)\]]*)?[\)\]]\s*$/i, '');
+    return d.trim();
   };
 
-  // Helper: generate unique model key based on (plan_code, clean_desc, supplier_code, one_one_code)
+  // Helper: generate unique model key based on (plan_code, supplier_code, one_one_code, clean_desc)
   const getModelKey = (item) => {
     const plan = (item.plan_code || '').trim().toUpperCase();
-    const desc = cleanDescription(item.description || item.name || '').toUpperCase();
     const sup = (item.supplier_code || '').trim().toUpperCase();
     const oto = (item.one_one_code || '').trim().toUpperCase();
+    const desc = cleanDescription(item.description || item.name || '').toUpperCase();
 
-    // If item has a Plan Code and Description, group by Plan + Clean Description
-    if (plan && desc) {
-      return `${plan}:::${desc}`;
+    // 1. If item has Plan Code + (Supplier SKU or 1:1 Code), that defines the exact unique product model
+    if (plan && (sup || oto)) {
+      return `${plan}:::${sup || oto}`;
     }
-    return `${plan}:::${sup}:::${oto}:::${desc}`;
+    // 2. If item has Plan Code, group by Plan + Clean Base Description
+    if (plan) {
+      return `${plan}:::${desc || 'FIXTURE'}`;
+    }
+    // 3. If no Plan Code, group by SKU/1:1 Code + Clean Description
+    if (sup || oto) {
+      return `NO_PLAN:::${sup || oto}:::${desc}`;
+    }
+    // 4. Fallback for generic lines
+    return `NO_PLAN:::GENERIC:::${desc || 'ITEM'}`;
   };
 
   // ─── BUILD CONSOLIDATED SUMMARY MODELS FROM RAW ITEMS ─────────────────────
@@ -133,13 +150,18 @@ export default function PackingListWorkbenchModal({
           supplier_code: (it.supplier_code || '').trim(),
           description: cleanedDesc,
           total_ordered: 0,
+          total_already_packed: 0,
+          total_remaining_to_pack: 0,
           room_instances: [],
           attachedItems: [], // user-defined attachments
         };
       }
       if (!map[key].one_one_code && it.one_one_code) map[key].one_one_code = it.one_one_code.trim();
       if (!map[key].supplier_code && it.supplier_code) map[key].supplier_code = it.supplier_code.trim();
-      map[key].total_ordered += Number(it.qty_ordered || it.qty_packed || 0);
+      if (!map[key].description && cleanedDesc) map[key].description = cleanedDesc;
+      map[key].total_ordered += Number(it.qty_ordered || 0);
+      map[key].total_already_packed += Number(it.qty_already_packed || 0);
+      map[key].total_remaining_to_pack += Number(it.remaining_to_pack !== undefined ? it.remaining_to_pack : (it.qty_ordered || 0));
       map[key].room_instances.push({
         ...it,
         description: cleanedDesc,
@@ -226,21 +248,28 @@ export default function PackingListWorkbenchModal({
         const apiItems = (data.items || []).filter(
           it => (it.plan_code || '').trim() !== 'SPACER' && ((it.description || '').trim() !== '' || it.one_one_code || it.supplier_code)
         );
-        const builtRaw = apiItems.map((it, idx) => ({
-          order_item_id: String(it.order_item_id || `item_${idx}`),
-          one_one_code: it.one_one_code || '',
-          plan_code: it.plan_code || '',
-          supplier_code: it.supplier_code || '',
-          description: it.description || '',
-          floor: it.floor || '',
-          area: it.area || '',
-          material_colour: it.material_colour || '',
-          first_fix: it.first_fix || 'No',
-          red_list: it.red_list || 'No',
-          qty_ordered: Number(it.qty_ordered || 0),
-          qty_packed: Number(it.remaining_to_pack ?? it.qty_ordered ?? 0),
-          box_number: 'Box 1',
-        }));
+        const builtRaw = apiItems.map((it, idx) => {
+          const ord = Number(it.qty_ordered || 0);
+          const prevPacked = Number(it.qty_already_packed || 0);
+          const rem = Math.max(0, it.remaining_to_pack !== undefined ? Number(it.remaining_to_pack) : ord - prevPacked);
+          return {
+            order_item_id: String(it.order_item_id || `item_${idx}`),
+            one_one_code: it.one_one_code || '',
+            plan_code: it.plan_code || '',
+            supplier_code: it.supplier_code || '',
+            description: it.description || '',
+            floor: it.floor || '',
+            area: it.area || '',
+            material_colour: it.material_colour || '',
+            first_fix: it.first_fix || 'No',
+            red_list: it.red_list || 'No',
+            qty_ordered: ord,
+            qty_already_packed: prevPacked,
+            remaining_to_pack: rem,
+            qty_packed: rem, // Default to packing remaining unfulfilled balance!
+            box_number: 'Box 1',
+          };
+        });
         setRawItems(builtRaw);
         const initialModels = buildSummaryModelsFromItems(builtRaw);
         setSummaryModels(initialModels);
@@ -272,6 +301,7 @@ export default function PackingListWorkbenchModal({
   // ─── STEP 1 ACTIONS: MANUAL & PLAN CODE LINKING ────────────────────────────
   // Auto-link items that share the exact same Plan Code (optional user-triggered shortcut)
   const handleAutoLinkByPlanCode = () => {
+    const parentKeysToExpand = [];
     setSummaryModels(prev => {
       const planGroups = {};
       prev.forEach(m => {
@@ -293,6 +323,7 @@ export default function PackingListWorkbenchModal({
 
           const targetModel = updated.find(m => m.modelKey === primary.modelKey);
           if (targetModel) {
+            parentKeysToExpand.push(targetModel.modelKey);
             const newAtts = [...targetModel.attachedItems];
             secondaries.forEach(sec => {
               if (!newAtts.some(att => att.itemKey === sec.modelKey)) {
@@ -313,10 +344,17 @@ export default function PackingListWorkbenchModal({
       });
       return updated;
     });
+
+    setExpandedKitKeys(prev => {
+      const next = new Set(prev);
+      parentKeysToExpand.forEach(k => next.add(k));
+      return next;
+    });
   };
 
   const handleClearAllPairings = () => {
     setSummaryModels(prev => prev.map(m => ({ ...m, attachedItems: [] })));
+    setExpandedKitKeys(new Set());
   };
 
   const handleRemoveAttachmentFromModel = (parentModelKey, attachedItemKey) => {
@@ -350,12 +388,105 @@ export default function PackingListWorkbenchModal({
         ]
       };
     }));
+    // Auto-expand the parent kit
+    setExpandedKitKeys(prev => {
+      const next = new Set(prev);
+      next.add(attachingToModelKey);
+      return next;
+    });
     setAttachingToModelKey(null);
     setAttachSelectedItemKey('');
     setAttachRatioInput(1);
+    setAttachModalSearch('');
   };
 
-  // Helper: map of which items have been attached underneath a parent
+  // Toggle single kit expand/collapse in tree view
+  const toggleKitExpand = (modelKey) => {
+    setExpandedKitKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(modelKey)) next.delete(modelKey);
+      else next.add(modelKey);
+      return next;
+    });
+  };
+
+  // Toggle all kits expand/collapse
+  const toggleAllKits = () => {
+    const kitKeys = summaryModels
+      .filter(m => m.attachedItems && m.attachedItems.length > 0)
+      .map(m => m.modelKey);
+    const allExpanded = kitKeys.length > 0 && kitKeys.every(k => expandedKitKeys.has(k));
+    if (allExpanded) {
+      setExpandedKitKeys(new Set());
+    } else {
+      setExpandedKitKeys(new Set(kitKeys));
+    }
+  };
+
+  // Toggle room breakdown drawer
+  const toggleAreaBreakdown = (modelKey) => {
+    setExpandedAreaKeys(prev => ({
+      ...prev,
+      [modelKey]: !prev[modelKey],
+    }));
+  };
+
+  // Open rich attach modal with smart defaults
+  const handleOpenAttachModal = (parentKey) => {
+    const parent = summaryModels.find(m => m.modelKey === parentKey);
+    if (!parent) return;
+
+    setAttachingToModelKey(parentKey);
+    setAttachModalSearch('');
+
+    const candidates = summaryModels.filter(m =>
+      m.modelKey !== parentKey &&
+      !(parent.attachedItems || []).some(a => a.itemKey === m.modelKey)
+    );
+
+    const parentPlan = (parent.plan_code || '').trim().toUpperCase();
+    const matchingPlanCandidate = candidates.find(m =>
+      parentPlan && m.plan_code && m.plan_code.trim().toUpperCase() === parentPlan
+    );
+
+    if (matchingPlanCandidate) {
+      setAttachSelectedItemKey(matchingPlanCandidate.modelKey);
+      const ratio = parent.total_ordered > 0
+        ? Math.max(1, Math.round(matchingPlanCandidate.total_ordered / parent.total_ordered))
+        : 1;
+      setAttachRatioInput(ratio);
+    } else if (candidates.length > 0) {
+      setAttachSelectedItemKey(candidates[0].modelKey);
+      setAttachRatioInput(1);
+    } else {
+      setAttachSelectedItemKey('');
+      setAttachRatioInput(1);
+    }
+  };
+
+  // Helper: map of which items have been allocated/consumed under parent kits
+  const childAllocationStats = useMemo(() => {
+    const stats = {};
+    summaryModels.forEach(parent => {
+      (parent.attachedItems || []).forEach(att => {
+        if (!stats[att.itemKey]) {
+          stats[att.itemKey] = { consumedTotal: 0, parentRefs: [] };
+        }
+        const consumed = (Number(parent.total_ordered) || 0) * (Number(att.ratio) || 1);
+        stats[att.itemKey].consumedTotal += consumed;
+        stats[att.itemKey].parentRefs.push({
+          parentKey: parent.modelKey,
+          parentPlan: parent.plan_code,
+          parentDesc: parent.description,
+          ratio: att.ratio,
+          consumedCount: consumed,
+        });
+      });
+    });
+    return stats;
+  }, [summaryModels]);
+
+  // Backward-compatible attachedItemKeyToParentMap for Step 2 Pick Sheet
   const attachedItemKeyToParentMap = useMemo(() => {
     const map = {};
     summaryModels.forEach(parent => {
@@ -370,6 +501,21 @@ export default function PackingListWorkbenchModal({
     });
     return map;
   }, [summaryModels]);
+
+  // Top-level summary models for Step 1:
+  // - Parent models with attached components
+  // - Standalone items not attached to anything
+  // - Items with remaining leftover spares (total_ordered > consumedTotal)
+  const topLevelSummaryModels = useMemo(() => {
+    return summaryModels.filter(m => {
+      if (m.attachedItems && m.attachedItems.length > 0) return true;
+      const stats = childAllocationStats[m.modelKey];
+      if (!stats || stats.parentRefs.length === 0) return true;
+      const totalOrdered = Number(m.total_ordered) || 0;
+      const leftover = totalOrdered - stats.consumedTotal;
+      return leftover > 0;
+    });
+  }, [summaryModels, childAllocationStats]);
 
   // ─── AREA / ROOM ORDERING CONTROLS ─────────────────────────────────────────
   const handleMoveArea = (areaName, direction) => {
@@ -415,7 +561,6 @@ export default function PackingListWorkbenchModal({
   const generatePickSheetRows = () => {
     if (rawItems.length === 0) return;
 
-    // Set of itemKeys that are attached to another item
     const attachedKeysSet = new Set(Object.keys(attachedItemKeyToParentMap));
     const explodedRows = [];
 
@@ -431,7 +576,6 @@ export default function PackingListWorkbenchModal({
       roomsMap[room].push(it);
     });
 
-    // Resolve active room sequence
     let activeAreaOrder = customAreaOrder.length > 0 ? [...customAreaOrder] : [...rawAreasOrder];
     rawAreasOrder.forEach(r => {
       if (!activeAreaOrder.includes(r)) activeAreaOrder.push(r);
@@ -445,7 +589,6 @@ export default function PackingListWorkbenchModal({
       ...Object.keys(roomsMap).filter(a => !activeAreaOrder.includes(a))
     ];
 
-    // In each room, list primary items and nest their attached accessories
     orderedRooms.forEach(roomName => {
       const itemsInRoom = roomsMap[roomName];
 
@@ -454,12 +597,13 @@ export default function PackingListWorkbenchModal({
         const modelDef = summaryModels.find(m => m.modelKey === itModelKey);
         const isAttachedToOther = attachedKeysSet.has(itModelKey);
 
-        // If this item was designated as an attachment to another fitting,
-        // it will be nested directly underneath its parent fitting per room!
         if (isAttachedToOther) return;
 
-        // Primary Item Row
         const parentRowKey = `row_${it.order_item_id}_${roomName}_${Math.random().toString(36).slice(2, 6)}`;
+        const ord = Number(it.qty_ordered || 0);
+        const prevPacked = Number(it.qty_already_packed || 0);
+        const rem = it.remaining_to_pack !== undefined ? Number(it.remaining_to_pack) : Math.max(0, ord - prevPacked);
+
         explodedRows.push({
           rowKey: parentRowKey,
           order_item_id: it.order_item_id,
@@ -474,8 +618,10 @@ export default function PackingListWorkbenchModal({
           material_colour: it.material_colour || '',
           first_fix: it.first_fix || 'No',
           red_list: it.red_list || 'No',
-          qty_ordered: Number(it.qty_ordered || 0),
-          qty_packed: Number(it.qty_packed ?? it.qty_ordered ?? 0),
+          qty_ordered: ord,
+          qty_already_packed: prevPacked,
+          remaining_to_pack: rem,
+          qty_packed: rem, // default to remaining unfulfilled balance!
           box_number: 'Box 1',
           is_accessory: false,
           is_split_child: false,
@@ -486,12 +632,18 @@ export default function PackingListWorkbenchModal({
           modelDef.attachedItems.forEach((att, attIdx) => {
             const attModel = summaryModels.find(m => m.modelKey === att.itemKey);
             if (!attModel) return;
-            const parentQty = Number(it.qty_ordered || 0);
-            const nestedQty = parentQty * (Number(att.ratio) || 1);
+            const ratio = Number(att.ratio) || 1;
+            const nestedTotalQty = ord * ratio;
+            const nestedRemQty = rem * ratio;
+            const nestedPrevPacked = Math.max(0, nestedTotalQty - nestedRemQty);
+
+            // Find matching raw accessory item in this room if it existed
+            const matchingRawInRoom = itemsInRoom.find(x => getModelKey(x) === att.itemKey);
+            const rawAccId = matchingRawInRoom?.order_item_id ? String(matchingRawInRoom.order_item_id) : `acc_${it.order_item_id}_${attIdx}`;
 
             explodedRows.push({
               rowKey: `att_${parentRowKey}_${attIdx}_${Math.random().toString(36).slice(2, 6)}`,
-              order_item_id: `acc_${it.order_item_id}_${attIdx}`,
+              order_item_id: rawAccId,
               parent_item_id: String(it.order_item_id),
               parent_fitting_code: it.plan_code || it.description || 'Parent Fitting',
               one_one_code: attModel.one_one_code || '',
@@ -503,8 +655,10 @@ export default function PackingListWorkbenchModal({
               material_colour: '',
               first_fix: 'No',
               red_list: 'No',
-              qty_ordered: nestedQty,
-              qty_packed: nestedQty,
+              qty_ordered: nestedTotalQty,
+              qty_already_packed: nestedPrevPacked,
+              remaining_to_pack: nestedRemQty,
+              qty_packed: nestedRemQty,
               box_number: 'Box 1',
               is_accessory: true,
               is_split_child: false,
@@ -512,14 +666,6 @@ export default function PackingListWorkbenchModal({
           });
         }
       });
-    });
-
-    // Add any standalone items that were NOT attached to any other item
-    rawItems.forEach(it => {
-      const itModelKey = getModelKey(it);
-      if (!attachedKeysSet.has(itModelKey)) {
-        // Already processed above in roomsMap
-      }
     });
 
     setPlRows(explodedRows);
@@ -561,17 +707,72 @@ export default function PackingListWorkbenchModal({
     });
   }, [plRows, customAreaOrder]);
 
+  const plUniqueFloors = useMemo(() => {
+    const s = new Set();
+    plRows.forEach(r => {
+      const f = (r.floor || '').trim();
+      if (f) s.add(f);
+    });
+    return Array.from(s);
+  }, [plRows]);
+
   const visiblePlRows = useMemo(() => {
     let rows = [...sortedPlRows];
+    if (plFilterFloor !== 'ALL') {
+      rows = rows.filter(r => (r.floor || '').trim().toLowerCase() === plFilterFloor.trim().toLowerCase());
+    }
     if (plFilterArea !== 'ALL') {
       rows = rows.filter(r => (r.area || '').trim().toLowerCase() === plFilterArea.trim().toLowerCase());
     }
     return rows;
-  }, [sortedPlRows, plFilterArea]);
+  }, [sortedPlRows, plFilterFloor, plFilterArea]);
 
-  const handlePackAll = () => {
-    setPlRows(prev => prev.map(r => ({ ...r, qty_packed: Number(r.qty_ordered || 0) })));
+  const handleToggleRoom = (roomName) => {
+    const roomRows = plRows.filter(r => (r.area || 'General / Unspecified').trim() === roomName.trim());
+    const totalRemaining = roomRows.reduce((sum, r) => sum + Number(r.remaining_to_pack || 0), 0);
+    if (totalRemaining <= 0) {
+      alert(`Notice: All items in "${roomName}" were already packed in previous packing lists (0 pcs remaining to pack).\n\nTo repack items from this room, please edit or void the existing packing list from the main Logistics table.`);
+      return;
+    }
+    setPlRows(prev => {
+      const isAnyPacked = roomRows.some(r => Number(r.qty_packed || 0) > 0);
+      return prev.map(r => {
+        if ((r.area || 'General / Unspecified').trim() !== roomName.trim()) return r;
+        const targetVal = isAnyPacked ? 0 : (r.remaining_to_pack !== undefined ? r.remaining_to_pack : r.qty_ordered);
+        return { ...r, qty_packed: targetVal };
+      });
+    });
   };
+
+  const handlePackRoom = (roomName) => {
+    const roomRows = plRows.filter(r => (r.area || 'General / Unspecified').trim() === roomName.trim());
+    const totalRemaining = roomRows.reduce((sum, r) => sum + Number(r.remaining_to_pack || 0), 0);
+    if (totalRemaining <= 0) {
+      alert(`Notice: All items in "${roomName}" were already packed in previous packing lists (0 pcs remaining to pack).\n\nTo repack items from this room, please edit or void the existing packing list from the main Logistics table.`);
+      return;
+    }
+    setPlRows(prev => prev.map(r => {
+      if ((r.area || 'General / Unspecified').trim() !== roomName.trim()) return r;
+      const targetVal = r.remaining_to_pack !== undefined ? r.remaining_to_pack : r.qty_ordered;
+      return { ...r, qty_packed: targetVal };
+    }));
+  };
+
+  const handleZeroRoom = (roomName) => {
+    setPlRows(prev => prev.map(r => {
+      if ((r.area || 'General / Unspecified').trim() !== roomName.trim()) return r;
+      return { ...r, qty_packed: 0 };
+    }));
+  };
+
+  const handlePackAllRemaining = () => {
+    setPlRows(prev => prev.map(r => ({
+      ...r,
+      qty_packed: r.remaining_to_pack !== undefined ? r.remaining_to_pack : r.qty_ordered,
+    })));
+  };
+
+  const handlePackAll = () => handlePackAllRemaining();
 
   const handleZeroAll = () => {
     setPlRows(prev => prev.map(r => ({ ...r, qty_packed: 0 })));
@@ -863,14 +1064,18 @@ export default function PackingListWorkbenchModal({
 
   // Filtered summary models for search in Step 1
   const visibleSummaryModels = useMemo(() => {
-    if (!summarySearchQuery.trim()) return summaryModels;
+    let list = topLevelSummaryModels;
+    if (hideFullyPacked) {
+      list = list.filter(m => m.total_remaining_to_pack > 0 || (m.attachedItems && m.attachedItems.length > 0));
+    }
+    if (!summarySearchQuery.trim()) return list;
     const q = summarySearchQuery.toLowerCase();
-    return summaryModels.filter(m =>
+    return list.filter(m =>
       (m.plan_code || '').toLowerCase().includes(q) ||
       (m.supplier_code || '').toLowerCase().includes(q) ||
       (m.description || '').toLowerCase().includes(q)
     );
-  }, [summaryModels, summarySearchQuery]);
+  }, [topLevelSummaryModels, hideFullyPacked, summarySearchQuery]);
 
   return (
     <div
@@ -1164,11 +1369,38 @@ export default function PackingListWorkbenchModal({
                     onChange={e => setSummarySearchQuery(e.target.value)}
                   />
                   <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 600 }}>
-                    {summaryModels.length} unique summarized products
+                    {topLevelSummaryModels.length} top-level items ({summaryModels.length} total products)
                   </span>
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{
+                      border: hideFullyPacked ? '1px solid var(--text-info)' : '1px solid var(--border)',
+                      background: hideFullyPacked ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                      color: hideFullyPacked ? 'var(--text-info)' : 'var(--text-secondary)',
+                      fontSize: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}
+                    onClick={() => setHideFullyPacked(!hideFullyPacked)}
+                    title="Toggle between showing remaining unfulfilled products vs all products"
+                  >
+                    <CheckCircle2 size={13} />
+                    {hideFullyPacked ? 'Unpacked Only' : 'All Products'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ border: '1px solid var(--border)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px' }}
+                    onClick={toggleAllKits}
+                    title="Expand or collapse all assembled kit hierarchies"
+                  >
+                    <Layers size={13} /> Toggle Kits
+                  </button>
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
@@ -1215,109 +1447,358 @@ export default function PackingListWorkbenchModal({
                   ) : (
                     visibleSummaryModels.map(model => {
                       const hasAttachments = model.attachedItems && model.attachedItems.length > 0;
-                      const attachedInfo = attachedItemKeyToParentMap[model.modelKey];
+                      const isKitExp = expandedKitKeys.has(model.modelKey);
+                      const isAreasExp = !!expandedAreaKeys[model.modelKey];
+                      const stats = childAllocationStats[model.modelKey];
+                      const consumedByOthers = stats ? stats.consumedTotal : 0;
+                      const hasLeftover = stats && stats.parentRefs.length > 0 && !hasAttachments;
+                      const remainingUnallocated = Math.max(0, (Number(model.total_ordered) || 0) - consumedByOthers);
 
                       return (
-                        <tr
-                          key={model.modelKey}
-                          style={{
-                            borderBottom: '1px solid var(--border)',
-                            background: attachedInfo ? 'rgba(168, 85, 247, 0.03)' : 'transparent',
-                          }}
-                        >
-                          {/* Plan Code */}
-                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                            {model.plan_code ? (
-                              <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, fontFamily: 'monospace', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                                {model.plan_code}
-                              </span>
-                            ) : (
-                              <span style={{ color: 'var(--text-tertiary)' }}>—</span>
-                            )}
-                          </td>
+                        <React.Fragment key={model.modelKey}>
+                          {/* Top-Level Product Row */}
+                          <tr
+                            style={{
+                              borderBottom: '1px solid var(--border)',
+                              background: hasAttachments
+                                ? 'rgba(168, 85, 247, 0.04)'
+                                : hasLeftover
+                                ? 'rgba(59, 130, 246, 0.03)'
+                                : 'transparent',
+                            }}
+                          >
+                            {/* Plan Code & Kit Expander */}
+                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                {hasAttachments && (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleKitExpand(model.modelKey)}
+                                    style={{
+                                      background: 'transparent',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      padding: '2px',
+                                      color: '#a855f7',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                    }}
+                                    title={isKitExp ? 'Collapse Kit Components' : 'Expand Kit Components'}
+                                  >
+                                    {isKitExp ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                  </button>
+                                )}
+                                {model.plan_code ? (
+                                  <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, fontFamily: 'monospace', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                                    {model.plan_code}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+                                )}
+                              </div>
+                            </td>
 
-                          {/* One to One Code */}
-                          <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '12px', fontWeight: 650, color: 'var(--text-primary)' }}>
-                            {model.one_one_code || '—'}
-                          </td>
+                            {/* One to One Code */}
+                            <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '12px', fontWeight: 650, color: 'var(--text-primary)' }}>
+                              {model.one_one_code || '—'}
+                            </td>
 
-                          {/* Supplier / SKU */}
-                          <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                            {model.supplier_code || '—'}
-                          </td>
+                            {/* Supplier / SKU */}
+                            <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                              {model.supplier_code || '—'}
+                            </td>
 
-                          {/* Description */}
-                          <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {model.description}
-                          </td>
+                            {/* Description & Specification */}
+                            <td style={{ padding: '10px 12px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 650, color: 'var(--text-primary)' }}>
+                                  {model.description}
+                                </span>
+                                {hasAttachments && (
+                                  <span style={{
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    background: 'rgba(168, 85, 247, 0.14)',
+                                    color: '#a855f7',
+                                    padding: '1px 7px',
+                                    borderRadius: '4px',
+                                    border: '1px solid rgba(168, 85, 247, 0.35)',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                  }}>
+                                    <Package size={11} /> Assembled Kit ({model.attachedItems.length} component{model.attachedItems.length === 1 ? '' : 's'})
+                                  </span>
+                                )}
+                                {hasLeftover && (
+                                  <span style={{
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    background: 'rgba(234, 179, 8, 0.14)',
+                                    color: 'var(--text-warning)',
+                                    padding: '1px 7px',
+                                    borderRadius: '4px',
+                                    border: '1px solid rgba(234, 179, 8, 0.35)',
+                                  }}>
+                                    Spare Units ({consumedByOthers} absorbed into kits)
+                                  </span>
+                                )}
+                              </div>
 
-                          {/* Total Order Qty */}
-                          <td style={{ padding: '10px', textAlign: 'center', fontWeight: 800, fontSize: '14px', color: 'var(--text-primary)' }}>
-                            {model.total_ordered}
-                          </td>
-
-                          {/* Attached Items / Accessories Column */}
-                          <td style={{ padding: '10px 12px' }}>
-                            {hasAttachments ? (
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-                                {model.attachedItems.map(att => (
-                                  <span
-                                    key={att.itemKey}
+                              {/* Clickable Used in X rooms / areas button */}
+                              {model.room_instances && model.room_instances.length > 0 && (
+                                <div style={{ marginTop: '4px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleAreaBreakdown(model.modelKey)}
                                     style={{
                                       display: 'inline-flex',
                                       alignItems: 'center',
                                       gap: '5px',
-                                      background: 'rgba(168, 85, 247, 0.12)',
-                                      color: '#a855f7',
-                                      border: '1px solid rgba(168, 85, 247, 0.35)',
-                                      borderRadius: '6px',
-                                      padding: '3px 8px',
-                                      fontSize: '11.5px',
+                                      background: isAreasExp ? 'rgba(59, 130, 246, 0.16)' : 'rgba(59, 130, 246, 0.08)',
+                                      color: 'var(--text-info)',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      fontSize: '10.5px',
                                       fontWeight: 650,
+                                      border: isAreasExp ? '1px solid var(--text-info)' : '1px solid rgba(59, 130, 246, 0.25)',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.15s ease',
                                     }}
+                                    title="Click to toggle room & floor breakdown"
                                   >
-                                    <strong style={{ background: '#a855f7', color: '#fff', borderRadius: '3px', padding: '1px 4px', fontSize: '10.5px' }}>
-                                      {att.ratio}x
-                                    </strong>
-                                    <span>{att.name}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveAttachmentFromModel(model.modelKey, att.itemKey)}
-                                      style={{ background: 'transparent', border: 'none', color: '#a855f7', cursor: 'pointer', padding: '0 2px' }}
-                                      title="Remove attachment"
-                                    >
-                                      <X size={12} />
-                                    </button>
-                                  </span>
-                                ))}
-                              </div>
-                            ) : attachedInfo ? (
-                              <div style={{ fontSize: '11.5px', color: '#a855f7', fontWeight: 650 }}>
-                                ↳ Attached to [{attachedInfo.parentPlan || 'Item'}] {attachedInfo.parentDesc} ({attachedInfo.ratio}x per unit)
-                              </div>
-                            ) : (
-                              <span style={{ fontSize: '11.5px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
-                                Standalone item
-                              </span>
-                            )}
-                          </td>
+                                    <Layers size={11} />
+                                    <span>Used in {model.room_instances.length} room{model.room_instances.length === 1 ? '' : 's'} / area{model.room_instances.length === 1 ? '' : 's'}</span>
+                                    {isAreasExp ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                                  </button>
+                                </div>
+                              )}
+                            </td>
 
-                          {/* Actions Column */}
-                          <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-xs"
-                              style={{ border: '1px solid rgba(59, 130, 246, 0.4)', color: 'var(--text-info)', fontSize: '11px', padding: '3px 8px' }}
-                              onClick={() => {
-                                setAttachingToModelKey(model.modelKey);
-                                const candidates = summaryModels.filter(m => m.modelKey !== model.modelKey && !model.attachedItems?.some(att => att.itemKey === m.modelKey));
-                                if (candidates.length > 0) setAttachSelectedItemKey(candidates[0].modelKey);
-                              }}
-                            >
-                              <Plus size={12} /> Attach Item
-                            </button>
-                          </td>
-                        </tr>
+                            {/* Total Order & Remaining Balance Qty */}
+                            <td style={{ padding: '10px', textAlign: 'center' }}>
+                              <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--text-primary)' }}>
+                                {model.total_ordered}
+                              </div>
+                              {hasLeftover ? (
+                                <div style={{ fontSize: '10px', color: 'var(--text-warning)', fontWeight: 650, marginTop: '2px' }}>
+                                  {remainingUnallocated} spare unassigned
+                                </div>
+                              ) : model.total_already_packed > 0 ? (
+                                model.total_remaining_to_pack === 0 ? (
+                                  <span style={{ fontSize: '9.5px', fontWeight: 700, color: 'var(--text-success)', background: 'rgba(16, 185, 129, 0.12)', padding: '1px 5px', borderRadius: '4px', display: 'inline-block', marginTop: '2px' }}>
+                                    ✓ All {model.total_ordered} packed
+                                  </span>
+                                ) : (
+                                  <div style={{ fontSize: '10px', color: 'var(--text-info)', fontWeight: 650, marginTop: '2px' }}>
+                                    {model.total_remaining_to_pack} rem • {model.total_already_packed} prev
+                                  </div>
+                                )
+                              ) : (
+                                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                                  ordered
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Attached Items / Accessories Column */}
+                            <td style={{ padding: '10px 12px' }}>
+                              {hasAttachments ? (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                                  {model.attachedItems.map(att => (
+                                    <span
+                                      key={att.itemKey}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        background: 'rgba(168, 85, 247, 0.12)',
+                                        color: '#a855f7',
+                                        border: '1px solid rgba(168, 85, 247, 0.35)',
+                                        borderRadius: '6px',
+                                        padding: '2px 8px',
+                                        fontSize: '11px',
+                                        fontWeight: 650,
+                                      }}
+                                    >
+                                      <strong style={{ background: '#a855f7', color: '#fff', borderRadius: '3px', padding: '1px 4px', fontSize: '10px' }}>
+                                        {att.ratio}x
+                                      </strong>
+                                      <span>{att.name}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveAttachmentFromModel(model.modelKey, att.itemKey)}
+                                        style={{ background: 'transparent', border: 'none', color: '#a855f7', cursor: 'pointer', padding: '0 2px' }}
+                                        title="Remove attachment"
+                                      >
+                                        <X size={11} />
+                                      </button>
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : hasLeftover ? (
+                                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                                  ↳ {consumedByOthers} pcs absorbed into parent kits; {remainingUnallocated} spare pcs unassigned
+                                </div>
+                              ) : (
+                                <span style={{ fontSize: '11.5px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                                  Standalone item
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Actions Column */}
+                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs"
+                                style={{ border: '1px solid rgba(59, 130, 246, 0.4)', color: 'var(--text-info)', fontSize: '11px', padding: '3px 8px' }}
+                                onClick={() => handleOpenAttachModal(model.modelKey)}
+                              >
+                                <Plus size={12} /> Attach Item
+                              </button>
+                            </td>
+                          </tr>
+
+                          {/* Room Breakdown Accordion Row */}
+                          {isAreasExp && model.room_instances && (
+                            <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                              <td colSpan={7} style={{ padding: '10px 16px 14px 44px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                  <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Layers size={13} color="var(--text-info)" />
+                                    <span>Room & Area Distribution: <strong style={{ color: 'var(--text-primary)' }}>{model.plan_code ? `[${model.plan_code}] ` : ''}{model.description}</strong></span>
+                                  </div>
+                                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                                    {model.total_ordered} pcs total across {model.room_instances.length} room{model.room_instances.length === 1 ? '' : 's'}
+                                  </span>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' }}>
+                                  {model.room_instances.map((r, idx) => (
+                                    <div
+                                      key={idx}
+                                      style={{
+                                        background: 'var(--bg-primary)',
+                                        border: '1px solid var(--border)',
+                                        borderRadius: '6px',
+                                        padding: '7px 10px',
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        fontSize: '11.5px',
+                                      }}
+                                    >
+                                      <div>
+                                        <div style={{ fontWeight: 650, color: 'var(--text-primary)' }}>
+                                          {r.area || 'General / Unspecified'}
+                                        </div>
+                                        {r.floor && (
+                                          <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                                            Floor: {r.floor}
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div style={{ fontWeight: 800, fontSize: '12px', color: 'var(--text-info)', background: 'rgba(59, 130, 246, 0.1)', padding: '2px 8px', borderRadius: '4px' }}>
+                                        {r.qty_ordered || r.qty_packed || 0} pcs
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+
+                          {/* Nested Kit Child Rows in Tree View */}
+                          {isKitExp && hasAttachments && model.attachedItems.map(att => {
+                            const childModel = summaryModels.find(m => m.modelKey === att.itemKey);
+                            const childTotalConsumed = (Number(model.total_ordered) || 0) * (Number(att.ratio) || 1);
+
+                            return (
+                              <tr
+                                key={`${model.modelKey}__child__${att.itemKey}`}
+                                style={{
+                                  background: 'rgba(168, 85, 247, 0.035)',
+                                  borderBottom: '1px dashed rgba(168, 85, 247, 0.25)',
+                                }}
+                              >
+                                {/* Tree marker & Plan Code */}
+                                <td style={{ padding: '8px 12px 8px 30px', textAlign: 'left' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ color: '#a855f7', fontWeight: 800, fontSize: '14px', lineHeight: 1 }}>↳</span>
+                                    {att.plan_code ? (
+                                      <span style={{ display: 'inline-block', padding: '1px 6px', borderRadius: '4px', fontSize: '10.5px', fontWeight: 800, fontFamily: 'monospace', background: 'rgba(168, 85, 247, 0.15)', color: '#a855f7', border: '1px solid rgba(168, 85, 247, 0.3)' }}>
+                                        {att.plan_code}
+                                      </span>
+                                    ) : (
+                                      <span style={{ color: 'var(--text-tertiary)', fontSize: '10px' }}>—</span>
+                                    )}
+                                  </div>
+                                </td>
+
+                                {/* One to One Code */}
+                                <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                                  {childModel?.one_one_code || '—'}
+                                </td>
+
+                                {/* Supplier SKU */}
+                                <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                                  {childModel?.supplier_code || '—'}
+                                </td>
+
+                                {/* Child Description */}
+                                <td style={{ padding: '8px 12px' }}>
+                                  <div style={{ fontSize: '12px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <span>{childModel?.description || att.name}</span>
+                                    <span style={{
+                                      fontSize: '10px',
+                                      fontWeight: 700,
+                                      background: 'rgba(168, 85, 247, 0.15)',
+                                      color: '#a855f7',
+                                      padding: '1px 6px',
+                                      borderRadius: '4px',
+                                      border: '1px solid rgba(168, 85, 247, 0.3)'
+                                    }}>
+                                      Kit Component ({att.ratio}x per fitting)
+                                    </span>
+                                  </div>
+                                </td>
+
+                                {/* Consumed Qty */}
+                                <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800, fontSize: '12.5px', color: '#a855f7' }}>
+                                  {childTotalConsumed}
+                                </td>
+
+                                {/* Note */}
+                                <td style={{ padding: '8px 12px' }}>
+                                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                    Absorbed into [{model.plan_code || 'Kit'}] ({att.ratio} × {model.total_ordered} = {childTotalConsumed} pcs)
+                                  </span>
+                                </td>
+
+                                {/* Detach Action */}
+                                <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-xs"
+                                    style={{
+                                      border: '1px solid rgba(239, 68, 68, 0.35)',
+                                      color: 'var(--text-danger)',
+                                      fontSize: '11px',
+                                      padding: '2px 8px',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                    }}
+                                    onClick={() => handleRemoveAttachmentFromModel(model.modelKey, att.itemKey)}
+                                    title="Detach component from this kit"
+                                  >
+                                    <Unlink size={11} /> Detach
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </React.Fragment>
                       );
                     })
                   )}
@@ -1325,91 +1806,389 @@ export default function PackingListWorkbenchModal({
               </table>
             </div>
 
-            {/* Manual Attach Modal / Popover */}
-            {attachingToModelKey && (
-              <div
-                style={{
-                  position: 'fixed',
-                  inset: 0,
-                  zIndex: 1300,
-                  background: 'rgba(0,0,0,0.65)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '16px',
-                }}
-                onClick={() => setAttachingToModelKey(null)}
-              >
+            {/* Rich Component / Accessory Picker Modal */}
+            {attachingToModelKey && (() => {
+              const parentModel = summaryModels.find(m => m.modelKey === attachingToModelKey);
+              if (!parentModel) return null;
+
+              const candidateModels = summaryModels.filter(m =>
+                m.modelKey !== parentModel.modelKey &&
+                !(parentModel.attachedItems || []).some(a => a.itemKey === m.modelKey)
+              );
+
+              const parentPlan = (parentModel.plan_code || '').trim().toUpperCase();
+              const recommendedModels = parentPlan
+                ? candidateModels.filter(m => (m.plan_code || '').trim().toUpperCase() === parentPlan)
+                : [];
+
+              const q = attachModalSearch.toLowerCase().trim();
+              const filteredCandidates = q
+                ? candidateModels.filter(m =>
+                    (m.plan_code || '').toLowerCase().includes(q) ||
+                    (m.supplier_code || '').toLowerCase().includes(q) ||
+                    (m.one_one_code || '').toLowerCase().includes(q) ||
+                    (m.description || '').toLowerCase().includes(q)
+                  )
+                : candidateModels;
+
+              const selectedCandidate = summaryModels.find(m => m.modelKey === attachSelectedItemKey);
+              const parentUnits = Number(parentModel.total_ordered) || 0;
+              const ratio = Math.max(1, Number(attachRatioInput) || 1);
+              const totalRequired = parentUnits * ratio;
+              const selectedStats = selectedCandidate ? childAllocationStats[selectedCandidate.modelKey] : null;
+              const alreadyConsumed = selectedStats ? selectedStats.consumedTotal : 0;
+              const totalCandidateUnits = selectedCandidate ? Number(selectedCandidate.total_ordered || 0) : 0;
+              const unallocatedAvailable = Math.max(0, totalCandidateUnits - alreadyConsumed);
+              const remainingAfter = totalCandidateUnits - (alreadyConsumed + totalRequired);
+
+              return (
                 <div
                   style={{
-                    background: 'var(--bg-secondary)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '12px',
-                    width: '480px',
-                    padding: '20px',
-                    boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+                    position: 'fixed',
+                    inset: 0,
+                    zIndex: 1300,
+                    background: 'rgba(0,0,0,0.72)',
+                    backdropFilter: 'blur(4px)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '16px',
                   }}
-                  onClick={e => e.stopPropagation()}
+                  onClick={() => setAttachingToModelKey(null)}
                 >
-                  <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 800, color: 'var(--text-primary)' }}>
-                    Attach Accessory / Component to Product
-                  </h4>
-                  <div style={{ marginBottom: '12px' }}>
-                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                      Select Item to Attach:
-                    </label>
-                    <select
-                      className="form-control"
-                      style={{ width: '100%', height: '34px', fontSize: '12px', background: 'var(--bg-primary)' }}
-                      value={attachSelectedItemKey}
-                      onChange={e => setAttachSelectedItemKey(e.target.value)}
-                    >
-                      {summaryModels.filter(m => m.modelKey !== attachingToModelKey).map(item => (
-                        <option key={item.modelKey} value={item.modelKey}>
-                          {item.plan_code ? `[${item.plan_code}] ` : ''}{item.description} ({item.total_ordered} pcs available)
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <div
+                    style={{
+                      background: 'var(--bg-secondary)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '14px',
+                      width: '640px',
+                      maxWidth: '95vw',
+                      maxHeight: '90vh',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      boxShadow: '0 25px 50px -12px rgba(0,0,0,0.7)',
+                      overflow: 'hidden',
+                    }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    {/* Header */}
+                    <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Package size={17} color="#a855f7" /> Attach Component / Accessory to Kit
+                        </h3>
+                        <p style={{ margin: '3px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          Group accessories (e.g. lamps, drivers, bezels) directly under their parent fitting.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-xs"
+                        onClick={() => setAttachingToModelKey(null)}
+                        style={{ color: 'var(--text-secondary)', padding: '4px' }}
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
 
-                  <div style={{ marginBottom: '18px' }}>
-                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                      Quantity Ratio (Units of this item per 1 unit of parent):
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={100}
-                      className="form-control"
-                      style={{ width: '100px', height: '34px', fontSize: '13px', fontWeight: 700, textAlign: 'center', background: 'var(--bg-primary)' }}
-                      value={attachRatioInput}
-                      onChange={e => setAttachRatioInput(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                    />
-                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginLeft: '8px' }}>
-                      e.g. 2 for 2 lamps per pendant, or 1 for 1 driver per fitting
-                    </span>
-                  </div>
+                    {/* Body */}
+                    <div style={{ padding: '18px 20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      {/* Target Parent Summary Card */}
+                      <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <span style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-tertiary)', display: 'block', marginBottom: '2px' }}>
+                            Target Parent Fitting
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {parentModel.plan_code && (
+                              <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, fontFamily: 'monospace', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                                {parentModel.plan_code}
+                              </span>
+                            )}
+                            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                              {parentModel.description}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                            SKU: {parentModel.supplier_code || '—'} • 1:1: {parentModel.one_one_code || '—'}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', display: 'block' }}>Parent Units</span>
+                          <span style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                            {parentUnits}
+                          </span>
+                        </div>
+                      </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setAttachingToModelKey(null)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-sm"
-                      style={{ fontWeight: 700 }}
-                      onClick={handleConfirmManualAttach}
-                    >
-                      Attach Item ✓
-                    </button>
+                      {/* Smart Recommendations */}
+                      {recommendedModels.length > 0 && (
+                        <div style={{ background: 'rgba(168, 85, 247, 0.08)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '8px', padding: '10px 12px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: '#a855f7', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                            <Sparkles size={13} />
+                            <span>Recommended Accessories (Matching Plan Code [{parentPlan}]):</span>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {recommendedModels.map(rec => {
+                              const recStats = childAllocationStats[rec.modelKey];
+                              const recConsumed = recStats ? recStats.consumedTotal : 0;
+                              const recAvail = Math.max(0, (Number(rec.total_ordered) || 0) - recConsumed);
+                              const suggestedRatio = parentUnits > 0 ? Math.max(1, Math.round(rec.total_ordered / parentUnits)) : 1;
+                              const isSelected = attachSelectedItemKey === rec.modelKey;
+
+                              return (
+                                <div
+                                  key={rec.modelKey}
+                                  style={{
+                                    background: isSelected ? 'rgba(168, 85, 247, 0.15)' : 'var(--bg-primary)',
+                                    border: isSelected ? '1px solid #a855f7' : '1px solid var(--border)',
+                                    borderRadius: '6px',
+                                    padding: '6px 10px',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    cursor: 'pointer',
+                                  }}
+                                  onClick={() => {
+                                    setAttachSelectedItemKey(rec.modelKey);
+                                    setAttachRatioInput(suggestedRatio);
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <input
+                                      type="radio"
+                                      name="attach_rec_select"
+                                      checked={isSelected}
+                                      onChange={() => {
+                                        setAttachSelectedItemKey(rec.modelKey);
+                                        setAttachRatioInput(suggestedRatio);
+                                      }}
+                                    />
+                                    <div>
+                                      <div style={{ fontSize: '12px', fontWeight: 650, color: 'var(--text-primary)' }}>
+                                        {rec.description}
+                                      </div>
+                                      <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                                        SKU: {rec.supplier_code || '—'} • {recAvail} pcs unallocated (of {rec.total_ordered})
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-xs"
+                                    style={{
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      color: '#a855f7',
+                                      border: '1px solid rgba(168, 85, 247, 0.4)',
+                                      padding: '2px 8px',
+                                    }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setAttachSelectedItemKey(rec.modelKey);
+                                      setAttachRatioInput(suggestedRatio);
+                                    }}
+                                  >
+                                    Select ({suggestedRatio}x)
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Component Search & Selector */}
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                            Select Component to Attach:
+                          </label>
+                          <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                            {filteredCandidates.length} available items
+                          </span>
+                        </div>
+
+                        <div style={{ position: 'relative', marginBottom: '8px' }}>
+                          <Search size={13} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
+                          <input
+                            type="text"
+                            placeholder="Search candidates by SKU, Plan Code, or name..."
+                            className="form-control"
+                            style={{ height: '32px', fontSize: '12px', paddingLeft: '30px', width: '100%', background: 'var(--bg-primary)' }}
+                            value={attachModalSearch}
+                            onChange={e => setAttachModalSearch(e.target.value)}
+                          />
+                        </div>
+
+                        <div
+                          style={{
+                            border: '1px solid var(--border)',
+                            borderRadius: '8px',
+                            maxHeight: '190px',
+                            overflowY: 'auto',
+                            background: 'var(--bg-primary)',
+                          }}
+                        >
+                          {filteredCandidates.length === 0 ? (
+                            <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '12px' }}>
+                              No matching components found.
+                            </div>
+                          ) : (
+                            filteredCandidates.map(c => {
+                              const isSelected = attachSelectedItemKey === c.modelKey;
+                              const cStats = childAllocationStats[c.modelKey];
+                              const cConsumed = cStats ? cStats.consumedTotal : 0;
+                              const cAvail = Math.max(0, (Number(c.total_ordered) || 0) - cConsumed);
+
+                              return (
+                                <div
+                                  key={c.modelKey}
+                                  style={{
+                                    padding: '8px 12px',
+                                    borderBottom: '1px solid var(--border)',
+                                    background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '10px',
+                                    transition: 'background 0.1s ease',
+                                  }}
+                                  onClick={() => {
+                                    setAttachSelectedItemKey(c.modelKey);
+                                    if (parentUnits > 0 && c.total_ordered > 0) {
+                                      const suggested = Math.max(1, Math.round(c.total_ordered / parentUnits));
+                                      setAttachRatioInput(suggested);
+                                    }
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                                    <input
+                                      type="radio"
+                                      name="attach_cand_select"
+                                      checked={isSelected}
+                                      onChange={() => {
+                                        setAttachSelectedItemKey(c.modelKey);
+                                        if (parentUnits > 0 && c.total_ordered > 0) {
+                                          const suggested = Math.max(1, Math.round(c.total_ordered / parentUnits));
+                                          setAttachRatioInput(suggested);
+                                        }
+                                      }}
+                                    />
+                                    <div style={{ minWidth: '40px' }}>
+                                      {c.plan_code ? (
+                                        <span style={{ padding: '1px 5px', borderRadius: '3px', fontSize: '10px', fontWeight: 800, fontFamily: 'monospace', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--text-info)' }}>
+                                          {c.plan_code}
+                                        </span>
+                                      ) : (
+                                        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>—</span>
+                                      )}
+                                    </div>
+                                    <div style={{ minWidth: 0 }}>
+                                      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                                        {c.description}
+                                      </div>
+                                      <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
+                                        SKU: {c.supplier_code || '—'} • 1:1: {c.one_one_code || '—'}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                    <span style={{ fontSize: '11px', fontWeight: 700, color: cAvail > 0 ? 'var(--text-primary)' : 'var(--text-danger)' }}>
+                                      {cAvail} pcs unallocated
+                                    </span>
+                                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                                      (of {c.total_ordered} total)
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Quantity Ratio & Live Calculation Box */}
+                      {selectedCandidate && (
+                        <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px 14px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                            <label style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                              Quantity Ratio (Units of this component per 1 parent fitting):
+                            </label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <input
+                                type="number"
+                                min={1}
+                                max={100}
+                                className="form-control"
+                                style={{ width: '70px', height: '32px', fontSize: '13px', fontWeight: 800, textAlign: 'center', background: 'var(--bg-secondary)' }}
+                                value={attachRatioInput}
+                                onChange={e => setAttachRatioInput(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                              />
+                              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>x</span>
+                            </div>
+                          </div>
+
+                          {/* Math Breakdown */}
+                          <div style={{ background: 'var(--bg-secondary)', borderRadius: '6px', padding: '8px 12px', fontSize: '11.5px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Formula:</span>
+                              <span style={{ fontWeight: 650, color: 'var(--text-primary)' }}>
+                                {parentUnits} parent fittings × {ratio} = <strong style={{ color: '#a855f7' }}>{totalRequired} pcs required</strong>
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Available in Order:</span>
+                              <span style={{ fontWeight: 650, color: 'var(--text-primary)' }}>
+                                {totalCandidateUnits} pcs total ({unallocatedAvailable} currently unallocated)
+                              </span>
+                            </div>
+                            <div style={{ borderTop: '1px dashed var(--border)', paddingTop: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ color: 'var(--text-secondary)' }}>Result after attach:</span>
+                              {remainingAfter === 0 ? (
+                                <span style={{ fontWeight: 700, color: 'var(--text-success)' }}>
+                                  ✓ 100% absorbed into kit (0 spare leftover)
+                                </span>
+                              ) : remainingAfter > 0 ? (
+                                <span style={{ fontWeight: 700, color: 'var(--text-info)' }}>
+                                  ✓ {remainingAfter} pcs remaining as unallocated spares
+                                </span>
+                              ) : (
+                                <span style={{ fontWeight: 700, color: 'var(--text-danger)' }}>
+                                  ⚠️ Exceeds order quantity by {Math.abs(remainingAfter)} pcs!
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Modal Footer */}
+                    <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: '8px', background: 'var(--bg-primary)' }}>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setAttachingToModelKey(null)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                        disabled={!selectedCandidate}
+                        onClick={handleConfirmManualAttach}
+                      >
+                        <Check size={14} /> Attach Component ✓
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Step 1 Footer */}
             <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
@@ -1435,15 +2214,35 @@ export default function PackingListWorkbenchModal({
           <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
             {/* Top Toolbar */}
             <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                {/* Floor Filter (if floors exist) */}
+                {plUniqueFloors.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                      Floor:
+                    </span>
+                    <select
+                      className="form-control"
+                      style={{ height: '30px', fontSize: '12px', fontWeight: 650, width: '130px', background: 'var(--bg-secondary)' }}
+                      value={plFilterFloor}
+                      onChange={e => setPlFilterFloor(e.target.value)}
+                    >
+                      <option value="ALL">All Floors</option>
+                      {plUniqueFloors.map(f => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 {/* Filter by Area */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                   <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <Filter size={12} style={{ color: 'var(--text-info)' }} /> Area:
                   </span>
                   <select
                     className="form-control"
-                    style={{ height: '30px', fontSize: '12px', fontWeight: 650, width: '200px', background: 'var(--bg-secondary)' }}
+                    style={{ height: '30px', fontSize: '12px', fontWeight: 650, width: '180px', background: 'var(--bg-secondary)' }}
                     value={plFilterArea}
                     onChange={e => setPlFilterArea(e.target.value)}
                   >
@@ -1455,11 +2254,11 @@ export default function PackingListWorkbenchModal({
                   <button
                     type="button"
                     className="btn btn-ghost btn-xs"
-                    style={{ border: '1px solid rgba(59, 130, 246, 0.4)', background: 'rgba(59, 130, 246, 0.08)', color: 'var(--text-info)', fontSize: '11.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 10px', height: '30px' }}
+                    style={{ border: '1px solid rgba(59, 130, 246, 0.4)', background: 'rgba(59, 130, 246, 0.08)', color: 'var(--text-info)', fontSize: '11.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 8px', height: '30px' }}
                     onClick={() => setShowAreaReorderModal(true)}
                     title="Control and arrange the walking sequence of areas and rooms"
                   >
-                    <ArrowUpDown size={13} /> Reorder Areas ({customAreaOrder.length || plUniqueAreas.length})
+                    <ArrowUpDown size={12} /> Sequence ({customAreaOrder.length || plUniqueAreas.length})
                   </button>
                 </div>
 
@@ -1467,24 +2266,33 @@ export default function PackingListWorkbenchModal({
                   <button
                     type="button"
                     className="btn btn-ghost btn-xs"
-                    style={{ border: '1px solid var(--border)', fontSize: '11px' }}
-                    onClick={handlePackAll}
+                    style={{ border: '1px solid var(--border)', fontSize: '11px', padding: '4px 8px' }}
+                    onClick={handlePackAllRemaining}
+                    title="Pack remaining balance for all visible lines"
                   >
-                    Pack All
+                    Pack All Remaining
                   </button>
                   <button
                     type="button"
                     className="btn btn-ghost btn-xs"
-                    style={{ border: '1px solid var(--border)', fontSize: '11px' }}
+                    style={{ border: '1px solid var(--border)', fontSize: '11px', padding: '4px 8px' }}
                     onClick={handleZeroAll}
+                    title="Zero out packed quantities for all lines"
                   >
                     Zero All
                   </button>
                 </div>
 
-                <span style={{ fontSize: '11.5px', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.25)', fontWeight: 650 }}>
-                  ✓ Auto-Organized: Attached items are proportionally nested per room
-                </span>
+                {/* Live Count Pill */}
+                {(() => {
+                  const packedUnits = visiblePlRows.reduce((sum, r) => sum + Number(r.qty_packed || 0), 0);
+                  const remUnits = visiblePlRows.reduce((sum, r) => sum + Number(r.remaining_to_pack || 0), 0);
+                  return (
+                    <span style={{ fontSize: '11.5px', color: 'var(--text-info)', background: 'rgba(59, 130, 246, 0.09)', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.25)', fontWeight: 650 }}>
+                      Selected: <strong>{packedUnits}</strong> of {remUnits} pcs remaining
+                    </span>
+                  );
+                })()}
               </div>
 
               {/* Print Pick Sheet Button */}
@@ -1501,31 +2309,52 @@ export default function PackingListWorkbenchModal({
               </div>
             </div>
 
-            {/* Room Pick Sheet Table (NO SPLIT BUTTON HERE) */}
+            {/* Room Pick Sheet Table */}
             <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-primary)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-primary)', boxShadow: '0 1px 0 var(--border)' }}>
                   <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 650 }}>
-                    <th style={{ padding: '9px 10px', minWidth: '115px' }}>One to One Code</th>
-                    <th style={{ padding: '9px 8px', width: '90px', textAlign: 'center' }}>Plan Code</th>
-                    <th style={{ padding: '9px 10px', minWidth: '115px' }}>Supplier / SKU</th>
-                    <th style={{ padding: '9px 10px', minWidth: '260px' }}>Description & Spec</th>
-                    <th style={{ padding: '9px 10px', minWidth: '130px' }}>Area / Room</th>
-                    <th style={{ padding: '9px 8px', width: '55px', textAlign: 'center' }}>Ord</th>
-                    <th style={{ padding: '9px 8px', width: '75px', textAlign: 'center' }}>Packed</th>
-                    <th style={{ padding: '9px 8px', width: '55px', textAlign: 'center' }}>B/O</th>
+                    <th style={{ padding: '9px 10px', width: '45px', textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={visiblePlRows.length > 0 && visiblePlRows.every(r => Number(r.qty_packed || 0) > 0)}
+                        ref={el => {
+                          if (el) {
+                            const some = visiblePlRows.some(r => Number(r.qty_packed || 0) > 0);
+                            const all = visiblePlRows.length > 0 && visiblePlRows.every(r => Number(r.qty_packed || 0) > 0);
+                            el.indeterminate = some && !all;
+                          }
+                        }}
+                        onChange={e => {
+                          if (e.target.checked) handlePackAllRemaining();
+                          else handleZeroAll();
+                        }}
+                        style={{ cursor: 'pointer', width: '15px', height: '15px' }}
+                        title="Toggle all items in view"
+                      />
+                    </th>
+                    <th style={{ padding: '9px 8px', width: '85px', textAlign: 'center' }}>Plan Code</th>
+                    <th style={{ padding: '9px 10px', minWidth: '110px' }}>One to One Code</th>
+                    <th style={{ padding: '9px 10px', minWidth: '110px' }}>Supplier / SKU</th>
+                    <th style={{ padding: '9px 10px', minWidth: '240px' }}>Description & Spec</th>
+                    <th style={{ padding: '9px 10px', minWidth: '120px' }}>Area / Room</th>
+                    <th style={{ padding: '9px 6px', width: '50px', textAlign: 'center' }} title="Quotation Total Order Quantity">Ord</th>
+                    <th style={{ padding: '9px 6px', width: '50px', textAlign: 'center' }} title="Quantity Already Packed in Other Packing Lists">Prev</th>
+                    <th style={{ padding: '9px 6px', width: '55px', textAlign: 'center' }} title="Remaining Quantity Unpacked in Order">Rem</th>
+                    <th style={{ padding: '9px 8px', width: '75px', textAlign: 'center' }} title="Quantity Packed in THIS Packing List">Packed</th>
+                    <th style={{ padding: '9px 6px', width: '50px', textAlign: 'center' }} title="Backorder Left After This Packing List">B/O</th>
                   </tr>
                 </thead>
                 <tbody>
                   {visiblePlRows.length === 0 ? (
                     <tr>
-                      <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                      <td colSpan={11} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
                         No items found for area "{plFilterArea}".
                       </td>
                     </tr>
                   ) : (
                     visiblePlRows.map((row, rowIdx) => {
-                      const backorder = Math.max(0, Number(row.qty_ordered || 0) - Number(row.qty_packed || 0));
+                      const backorder = Math.max(0, Number(row.remaining_to_pack || 0) - Number(row.qty_packed || 0));
                       const currentAreaName = (row.area || 'General / Unspecified').trim();
                       const prevRow = rowIdx > 0 ? visiblePlRows[rowIdx - 1] : null;
                       const prevAreaName = prevRow ? (prevRow.area || 'General / Unspecified').trim() : null;
@@ -1535,43 +2364,83 @@ export default function PackingListWorkbenchModal({
                       const displayRoomNum = areaIdx >= 0 ? areaIdx + 1 : (rowIdx + 1);
                       const totalAreas = customAreaOrder.length || plUniqueAreas.length;
 
+                      const roomRows = visiblePlRows.filter(r => (r.area || 'General / Unspecified').trim() === currentAreaName);
+                      const roomPackedCount = roomRows.reduce((sum, r) => sum + Number(r.qty_packed || 0), 0);
+                      const roomRemCount = roomRows.reduce((sum, r) => sum + Number(r.remaining_to_pack || 0), 0);
+                      const isRoomAllPacked = roomRows.length > 0 && roomRows.every(r => Number(r.qty_packed || 0) > 0);
+                      const isRoomPartiallyPacked = roomRows.some(r => Number(r.qty_packed || 0) > 0) && !isRoomAllPacked;
+
                       return (
                         <React.Fragment key={row.rowKey}>
                           {isNewArea && (
                             <tr style={{ background: 'var(--bg-secondary)', borderTop: '2px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
-                              <td colSpan={8} style={{ padding: '7px 12px' }}>
+                              <td colSpan={11} style={{ padding: '8px 12px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={roomRemCount > 0 ? isRoomAllPacked : true}
+                                      disabled={roomRemCount === 0}
+                                      ref={el => { if (el) el.indeterminate = roomRemCount > 0 && isRoomPartiallyPacked; }}
+                                      onChange={() => handleToggleRoom(currentAreaName)}
+                                      style={{ cursor: roomRemCount === 0 ? 'not-allowed' : 'pointer', width: '16px', height: '16px' }}
+                                      title={roomRemCount === 0 ? `All items in ${currentAreaName} were already packed in previous packing lists` : `Toggle all items in ${currentAreaName}`}
+                                    />
                                     <span style={{ fontSize: '10.5px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', background: 'var(--text-info)', color: '#fff', letterSpacing: '0.5px' }}>
                                       ROOM #{displayRoomNum}
                                     </span>
                                     <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'uppercase' }}>
                                       {currentAreaName}
                                     </span>
-                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                      ({visiblePlRows.filter(r => (r.area || 'General / Unspecified').trim() === currentAreaName).length} items)
-                                    </span>
+                                    {roomRemCount === 0 ? (
+                                      <span style={{ fontSize: '10.5px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.12)', color: 'var(--text-success)', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                                        ✓ 100% Fulfilled in Prior Packing List ({roomRows.length} items • 0 pcs remaining)
+                                      </span>
+                                    ) : (
+                                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                        ({roomRows.length} items • <strong style={{ color: 'var(--text-primary)' }}>{roomPackedCount} of {roomRemCount} pcs selected</strong>)
+                                      </span>
+                                    )}
                                   </div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePackRoom(currentAreaName)}
+                                      disabled={roomRemCount === 0}
+                                      className="btn btn-ghost btn-xs"
+                                      style={{ padding: '3px 8px', fontSize: '11px', border: '1px solid var(--border)', background: 'var(--bg-primary)', opacity: roomRemCount === 0 ? 0.5 : 1, cursor: roomRemCount === 0 ? 'not-allowed' : 'pointer' }}
+                                      title={roomRemCount === 0 ? "All items in this room were already packed in previous packing lists" : "Pack remaining balance for this room"}
+                                    >
+                                      {roomRemCount === 0 ? 'Fully Packed' : `Pack Room (${roomRemCount})`}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleZeroRoom(currentAreaName)}
+                                      className="btn btn-ghost btn-xs"
+                                      style={{ padding: '3px 8px', fontSize: '11px', border: '1px solid var(--border)', background: 'var(--bg-primary)' }}
+                                      title="Zero out this room"
+                                    >
+                                      Zero Room
+                                    </button>
                                     <button
                                       type="button"
                                       disabled={areaIdx <= 0}
                                       onClick={() => handleMoveArea(currentAreaName, 'up')}
                                       className="btn btn-ghost btn-xs"
-                                      style={{ padding: '2px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid var(--border)', opacity: areaIdx <= 0 ? 0.35 : 1, cursor: areaIdx <= 0 ? 'not-allowed' : 'pointer' }}
-                                      title="Move this room UP in the sequence"
+                                      style={{ padding: '3px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid var(--border)', opacity: areaIdx <= 0 ? 0.35 : 1, cursor: areaIdx <= 0 ? 'not-allowed' : 'pointer', background: 'var(--bg-primary)' }}
+                                      title="Move this room UP in the walking sequence"
                                     >
-                                      <ArrowUp size={12} /> Move Room Up
+                                      <ArrowUp size={12} />
                                     </button>
                                     <button
                                       type="button"
                                       disabled={areaIdx >= totalAreas - 1}
                                       onClick={() => handleMoveArea(currentAreaName, 'down')}
                                       className="btn btn-ghost btn-xs"
-                                      style={{ padding: '2px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid var(--border)', opacity: areaIdx >= totalAreas - 1 ? 0.35 : 1, cursor: areaIdx >= totalAreas - 1 ? 'not-allowed' : 'pointer' }}
-                                      title="Move this room DOWN in the sequence"
+                                      style={{ padding: '3px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid var(--border)', opacity: areaIdx >= totalAreas - 1 ? 0.35 : 1, cursor: areaIdx >= totalAreas - 1 ? 'not-allowed' : 'pointer', background: 'var(--bg-primary)' }}
+                                      title="Move this room DOWN in the walking sequence"
                                     >
-                                      <ArrowDown size={12} /> Move Room Down
+                                      <ArrowDown size={12} />
                                     </button>
                                   </div>
                                 </div>
@@ -1581,78 +2450,124 @@ export default function PackingListWorkbenchModal({
                           <tr
                             style={{
                               borderBottom: '1px solid var(--border)',
-                              background: row.is_accessory ? 'rgba(168, 85, 247, 0.04)' : 'transparent',
+                              background: row.is_accessory
+                                ? 'rgba(168, 85, 247, 0.04)'
+                                : Number(row.qty_packed || 0) > 0
+                                ? 'rgba(59, 130, 246, 0.02)'
+                                : 'transparent',
+                              opacity: row.remaining_to_pack <= 0 ? 0.55 : 1,
                             }}
                           >
-                          {/* One to One Code */}
-                          <td style={{ padding: '8px 10px', fontWeight: 700, fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-primary)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              {row.is_accessory && (
-                                <span style={{ color: '#a855f7', fontWeight: 800, fontSize: '13px' }}>↳</span>
+                            {/* Checkbox */}
+                            <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                              <input
+                                type="checkbox"
+                                checked={Number(row.qty_packed || 0) > 0}
+                                disabled={row.remaining_to_pack <= 0}
+                                onChange={e => {
+                                  const willPack = e.target.checked;
+                                  const targetVal = willPack ? (row.remaining_to_pack || row.qty_ordered || 0) : 0;
+                                  setPlRows(prev => prev.map(r => r.rowKey === row.rowKey ? { ...r, qty_packed: targetVal } : r));
+                                }}
+                                style={{ cursor: row.remaining_to_pack <= 0 ? 'not-allowed' : 'pointer', width: '15px', height: '15px' }}
+                              />
+                            </td>
+
+                            {/* Plan Code */}
+                            <td style={{ padding: '8px', textAlign: 'center' }}>
+                              {row.plan_code ? (
+                                <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, fontFamily: 'monospace', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                                  {row.plan_code}
+                                </span>
+                              ) : (
+                                <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>—</span>
                               )}
-                              <span>{row.one_one_code || '—'}</span>
-                            </div>
-                          </td>
+                            </td>
 
-                          {/* Plan Code */}
-                          <td style={{ padding: '8px', textAlign: 'center' }}>
-                            {row.plan_code ? (
-                              <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 800, fontFamily: 'monospace', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--text-info)', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                                {row.plan_code}
-                              </span>
-                            ) : (
-                              <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>—</span>
-                            )}
-                          </td>
+                            {/* One to One Code */}
+                            <td style={{ padding: '8px 10px', fontWeight: 700, fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-primary)' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {row.is_accessory && (
+                                  <span style={{ color: '#a855f7', fontWeight: 800, fontSize: '13px' }}>↳</span>
+                                )}
+                                <span>{row.one_one_code || '—'}</span>
+                              </div>
+                            </td>
 
-                          {/* Supplier / SKU */}
-                          <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-                            {row.supplier_code || '—'}
-                          </td>
+                            {/* Supplier SKU */}
+                            <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                              {row.supplier_code || '—'}
+                            </td>
 
-                          {/* Description */}
-                          <td style={{ padding: '8px 10px' }}>
-                            <div style={{ fontWeight: row.is_accessory ? 500 : 650, color: row.is_accessory ? '#a855f7' : 'var(--text-primary)' }}>
-                              {row.description}
-                            </div>
-                            {row.is_accessory && row.parent_fitting_code && (
-                              <span style={{ fontSize: '10.5px', color: '#a855f7', opacity: 0.85 }}>
-                                ↳ Attached to {row.parent_fitting_code}
-                              </span>
-                            )}
-                          </td>
+                            {/* Description */}
+                            <td style={{ padding: '8px 10px' }}>
+                              <div style={{ fontWeight: row.is_accessory ? 500 : 650, color: row.is_accessory ? '#a855f7' : 'var(--text-primary)' }}>
+                                {row.description}
+                              </div>
+                              {row.is_accessory && row.parent_fitting_code && (
+                                <span style={{ fontSize: '10.5px', color: '#a855f7', opacity: 0.85 }}>
+                                  ↳ Attached to {row.parent_fitting_code}
+                                </span>
+                              )}
+                            </td>
 
-                          {/* Area / Room */}
-                          <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {row.area || 'General / Unspecified'}
-                          </td>
+                            {/* Area / Room */}
+                            <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                              <div>{row.area || 'General / Unspecified'}</div>
+                              {row.floor && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Floor: {row.floor}</div>}
+                            </td>
 
-                          {/* Ord */}
-                          <td style={{ padding: '8px', textAlign: 'center', fontWeight: 650, color: 'var(--text-secondary)' }}>
-                            {row.qty_ordered || 0}
-                          </td>
+                            {/* Ord (Quotation Total) */}
+                            <td style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                              {row.qty_ordered || 0}
+                            </td>
 
-                          {/* Packed Input */}
-                          <td style={{ padding: '8px', textAlign: 'center' }}>
-                            <input
-                              type="number"
-                              min={0}
-                              max={Number(row.qty_ordered || 999)}
-                              className="form-control"
-                              style={{ width: '65px', height: '28px', padding: '2px 4px', fontSize: '12px', fontWeight: 800, textAlign: 'center', borderColor: Number(row.qty_packed || 0) > 0 ? 'var(--text-info)' : 'var(--border)' }}
-                              value={row.qty_packed ?? 0}
-                              onChange={e => {
-                                const val = Math.max(0, parseInt(e.target.value, 10) || 0);
-                                setPlRows(prev => prev.map(r => (r.rowKey === row.rowKey ? { ...r, qty_packed: val } : r)));
-                              }}
-                            />
-                          </td>
+                            {/* Prev (Already Packed in other PLs) */}
+                            <td style={{ padding: '8px 6px', textAlign: 'center', fontSize: '11px', color: Number(row.qty_already_packed || 0) > 0 ? 'var(--text-info)' : 'var(--text-tertiary)' }}>
+                              {row.qty_already_packed || 0}
+                            </td>
 
-                          {/* Backorder */}
-                          <td style={{ padding: '8px', textAlign: 'center', fontSize: '11.5px', fontWeight: backorder > 0 ? 800 : 400, color: backorder > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
-                            {backorder}
-                          </td>
-                        </tr>
+                            {/* Rem (Remaining Unfulfilled Balance) */}
+                            <td style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 700, fontSize: '12px', color: row.remaining_to_pack > 0 ? 'var(--text-primary)' : 'var(--text-success)' }}>
+                              {row.remaining_to_pack !== undefined ? row.remaining_to_pack : row.qty_ordered}
+                            </td>
+
+                            {/* Packed Input */}
+                            <td style={{ padding: '8px', textAlign: 'center' }}>
+                              {row.remaining_to_pack <= 0 ? (
+                                <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-success)', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                                  ✓ Done
+                                </span>
+                              ) : (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={Number(row.remaining_to_pack || 999)}
+                                  className="form-control"
+                                  style={{
+                                    width: '65px',
+                                    height: '28px',
+                                    padding: '2px 4px',
+                                    fontSize: '12px',
+                                    fontWeight: 800,
+                                    textAlign: 'center',
+                                    borderColor: Number(row.qty_packed || 0) > 0 ? 'var(--text-info)' : 'var(--border)',
+                                    background: Number(row.qty_packed || 0) > 0 ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-secondary)',
+                                  }}
+                                  value={row.qty_packed ?? 0}
+                                  onChange={e => {
+                                    const val = Math.max(0, Math.min(row.remaining_to_pack || 999, parseInt(e.target.value, 10) || 0));
+                                    setPlRows(prev => prev.map(r => (r.rowKey === row.rowKey ? { ...r, qty_packed: val } : r)));
+                                  }}
+                                />
+                              )}
+                            </td>
+
+                            {/* Backorder: remaining_to_pack - qty_packed */}
+                            <td style={{ padding: '8px 6px', textAlign: 'center', fontSize: '11.5px', fontWeight: backorder > 0 ? 800 : 400, color: backorder > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
+                              {backorder}
+                            </td>
+                          </tr>
                         </React.Fragment>
                       );
                     })

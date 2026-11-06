@@ -340,6 +340,7 @@ class OrderItem(Base):
     item_type = Column(String, default="Hardware", nullable=True)
     sort_order = Column(Integer, default=0, nullable=True)
     notes = Column(Text, nullable=True)
+    first_fix = Column(String, default="No", nullable=True)
 
 
 
