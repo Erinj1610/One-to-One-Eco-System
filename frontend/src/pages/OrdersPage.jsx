@@ -3386,8 +3386,17 @@ export default function OrdersPage() {
                       const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
                       const isLowMargin = margin < 39;
 
+                      const isSelected = selectedPoNumbers.has(o.id);
                       return (
-                        <tr key={o.id} className="clickable" onClick={() => handleOpenWorkspace(o)}>
+                        <tr 
+                          key={o.id} 
+                          className="clickable" 
+                          onClick={() => handleOpenWorkspace(o)}
+                          style={{
+                            background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
+                            borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent'
+                          }}
+                        >
                           <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
                             <input 
                               type="checkbox" 
