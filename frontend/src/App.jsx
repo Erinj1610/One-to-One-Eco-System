@@ -42,6 +42,8 @@ import './index.css';
 import OneToOneLoader from './components/common/OneToOneLoader';
 import GlobalKeyboardShortcuts from './components/common/GlobalKeyboardShortcuts';
 import GlobalQuickCopyListener from './components/common/GlobalQuickCopyListener';
+import UniversalTruncationTooltip from './components/common/UniversalTruncationTooltip';
+import GlobalConfirmModal from './components/common/GlobalConfirmModal';
 
 const ModuleLoadingFallback = () => (
   <div style={{
@@ -84,6 +86,8 @@ function AppInner({ devBypass, setDevBypass }) {
     <BrowserRouter>
       <GlobalKeyboardShortcuts />
       <GlobalQuickCopyListener />
+      <UniversalTruncationTooltip />
+      <GlobalConfirmModal />
       <Suspense fallback={<ModuleLoadingFallback />}>
         <Routes>
           {/* Public Routes */}
