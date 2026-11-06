@@ -437,7 +437,7 @@ export default function OrdersPage() {
 
   const handleBulkDeleteOrders = async () => {
     if (selectedPoNumbers.size === 0) return;
-    if (window.confirm(`Are you sure you want to delete the ${selectedPoNumbers.size} selected orders and all their items? This cannot be undone.`)) {
+    if (await window.otoConfirm(`Are you sure you want to delete the ${selectedPoNumbers.size} selected orders and all their items? This cannot be undone.`, { title: "Delete Orders", confirmText: "Delete Orders" })) {
       await bulkDeleteOrders(Array.from(selectedPoNumbers));
       setSelectedPoNumbers(new Set());
     }
@@ -447,7 +447,7 @@ export default function OrdersPage() {
     if (selectedPoNumbers.size === 0 || !targetProjectKey) return;
     const targetProject = Object.values(projects).find(p => p.key === targetProjectKey);
     if (!targetProject) return;
-    if (window.confirm(`Are you sure you want to shift/re-link the ${selectedPoNumbers.size} selected orders to project '${targetProject.name}'?`)) {
+    if (await window.otoConfirm(`Are you sure you want to shift/re-link the ${selectedPoNumbers.size} selected orders to project '${targetProject.name}'?`, { title: "Re-link Orders", confirmText: "Re-link" })) {
       await bulkRelinkOrders(Array.from(selectedPoNumbers), targetProjectKey);
       setSelectedPoNumbers(new Set());
     }

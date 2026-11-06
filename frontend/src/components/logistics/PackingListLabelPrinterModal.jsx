@@ -425,7 +425,7 @@ export default function PackingListLabelPrinterModal({
       } catch (err) {
         setIsDirectPrinting(false);
         console.error("Direct printing failed, falling back to browser window:", err);
-        const proceed = window.confirm(`Direct print to "${selectedPrinter}" encountered an issue: ${err.message || err}.\n\nWould you like to open the browser print dialog instead?`);
+        const proceed = await window.otoConfirm(`Direct print to "${selectedPrinter}" encountered an issue: ${err.message || err}.\n\nWould you like to open the browser print dialog instead?`, { title: "Print Fallback", isDanger: false, confirmText: "Open Browser Print" });
         if (!proceed) return;
       }
     }

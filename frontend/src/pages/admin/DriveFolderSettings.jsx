@@ -223,14 +223,14 @@ export default function DriveFolderSettings() {
     setShowAddRow(false);
   };
 
-  const handleDeleteFolder = (idx) => {
+  const handleDeleteFolder = async (idx) => {
     const target = currentSubfolders[idx];
     if (!target) return;
     if (currentSubfolders.length <= 1) {
       alert('At least one folder is required.');
       return;
     }
-    if (!window.confirm(`Delete folder "${target.name}"?`)) return;
+    if (!(await window.otoConfirm(`Delete folder "${target.name}"?`))) return;
 
     const updated = currentSubfolders.filter((_, i) => i !== idx).map((sf, i) => ({ ...sf, sort: i + 1 }));
     const updatedMatrix = { ...config.routing_matrix };
@@ -312,8 +312,8 @@ export default function DriveFolderSettings() {
     setShowAddDocForm(false);
   };
 
-  const handleDeleteCustomDocCategory = (key) => {
-    if (!window.confirm('Delete this custom category?')) return;
+  const handleDeleteCustomDocCategory = async (key) => {
+    if (!(await window.otoConfirm('Delete this custom category?'))) return;
     setConfig(prev => {
       const updatedCustom = (prev.custom_doc_categories || []).filter(c => c.key !== key);
       const updatedMatrix = { ...prev.routing_matrix };
@@ -327,7 +327,7 @@ export default function DriveFolderSettings() {
   };
 
   const handleConsolidateDuplicates = async () => {
-    if (!window.confirm('Scan Google Drive for duplicate folders and merge files into canonical folders?')) return;
+    if (!(await window.otoConfirm('Scan Google Drive for duplicate folders and merge files into canonical folders?', { title: "Consolidate Duplicates", isDanger: false, confirmText: "Consolidate" }))) return;
     setConsolidating(true);
     setConsolidateMsg(null);
     try {

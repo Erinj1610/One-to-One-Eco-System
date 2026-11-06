@@ -826,7 +826,7 @@ export default function PurchasingPage() {
   };
 
   const handleUnallocate = async (allocationId, docNo) => {
-    if (!window.confirm(`Release this allocation from ${docNo}? The quantity will return to Unallocated.`)) {
+    if (!(await window.otoConfirm(`Release this allocation from ${docNo}? The quantity will return to Unallocated.`))) {
       return;
     }
     try {
@@ -855,7 +855,7 @@ export default function PurchasingPage() {
   // Unallocate Entire Line (All allocations for a specific line item)
   const handleUnallocateLine = async (line, docNo) => {
     const allocIds = (line.allocations || []).map(a => a.id).filter(Boolean);
-    if (!window.confirm(`Unallocate ${line.item_code} from ${docNo}? All allocated quantities for this item will return to unallocated.`)) {
+    if (!(await window.otoConfirm(`Unallocate ${line.item_code} from ${docNo}? All allocated quantities for this item will return to unallocated.`))) {
       return;
     }
     try {
@@ -908,7 +908,7 @@ export default function PurchasingPage() {
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to unallocate all active allocations for the ${selectedLines.length} selected item(s)?`)) {
+    if (!(await window.otoConfirm(`Are you sure you want to unallocate all active allocations for the ${selectedLines.length} selected item(s)?`))) {
       return;
     }
 
@@ -941,7 +941,7 @@ export default function PurchasingPage() {
   // Bulk Unallocate Entire Document
   const handleUnallocateEntireDocument = async (docNo) => {
     if (!docNo) return;
-    if (!window.confirm(`Are you sure you want to unallocate ALL items from ${docNo}? Every item in this document will return to unallocated.`)) {
+    if (!(await window.otoConfirm(`Are you sure you want to unallocate ALL items from ${docNo}? Every item in this document will return to unallocated.`))) {
       return;
     }
     try {
@@ -1137,7 +1137,7 @@ export default function PurchasingPage() {
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to delete manual ${doc.doc_type} '${doc.document_no}'?\n\nThis will remove the manual record and roll back any allocations and order line progress.`)) {
+    if (!(await window.otoConfirm(`Are you sure you want to delete manual ${doc.doc_type} '${doc.document_no}'?\n\nThis will remove the manual record and roll back any allocations and order line progress.`))) {
       return;
     }
 
@@ -1265,7 +1265,7 @@ export default function PurchasingPage() {
       return;
     }
 
-    if (!window.confirm(`Allocate ${selectedDocs.length} Purchase Orders to their selected projects and update ETAs?`)) {
+    if (!(await window.otoConfirm(`Allocate ${selectedDocs.length} Purchase Orders to their selected projects and update ETAs?`, { title: "Allocate Purchase Orders", confirmText: "Allocate" }))) {
       return;
     }
 
@@ -1364,7 +1364,7 @@ export default function PurchasingPage() {
     const docNo = docOrLine.document_no;
     const moduleType = (docOrLine.document_type || docOrLine.doc_type || (docNo?.startsWith('GRN') ? 'GRN' : 'PO')).toUpperCase();
 
-    if (!window.confirm(`Mark ${moduleType} "${docNo}" as Internal Company Purchase / Office Expense?\n\nThis will remove it from the unallocated and issues lists and place it under the "Internal / Office" tab.`)) {
+    if (!(await window.otoConfirm(`Mark ${moduleType} "${docNo}" as Internal Company Purchase / Office Expense?\n\nThis will remove it from the unallocated and issues lists and place it under the "Internal / Office" tab.`, { title: "Mark Internal", confirmText: "Mark Internal" }))) {
       return;
     }
 
@@ -1398,7 +1398,7 @@ export default function PurchasingPage() {
     const docNo = docOrLine.document_no;
     const moduleType = (docOrLine.document_type || docOrLine.doc_type || (docNo?.startsWith('GRN') ? 'GRN' : 'PO')).toUpperCase();
 
-    if (!window.confirm(`Archive ${moduleType} "${docNo}"?\n\nChoose this for old purchase orders/GRNs whose client orders are no longer on the portal. It will be moved into the "Archived / Old Orders" tab and cleared from all active counters.`)) {
+    if (!(await window.otoConfirm(`Archive ${moduleType} "${docNo}"?\n\nChoose this for old purchase orders/GRNs whose client orders are no longer on the portal. It will be moved into the "Archived / Old Orders" tab and cleared from all active counters.`, { title: "Archive Order", confirmText: "Archive" }))) {
       return;
     }
 
@@ -1432,7 +1432,7 @@ export default function PurchasingPage() {
     const docNo = docOrLine.document_no;
     const moduleType = (docOrLine.document_type || docOrLine.doc_type || (docNo?.startsWith('GRN') ? 'GRN' : 'PO')).toUpperCase();
 
-    if (!window.confirm(`Restore ${moduleType} "${docNo}" back to active unallocated queue?`)) {
+    if (!(await window.otoConfirm(`Restore ${moduleType} "${docNo}" back to active unallocated queue?`, { title: "Restore Order", confirmText: "Restore" }))) {
       return;
     }
 

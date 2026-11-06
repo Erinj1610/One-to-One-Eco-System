@@ -1923,7 +1923,7 @@ export default function CrmPage() {
           };
 
           const handleDeleteActivity = async (entry) => {
-            if (!window.confirm('Delete this interaction entry?')) return;
+            if (!(await window.otoConfirm('Delete this interaction entry?'))) return;
             const updated = clientActivities.filter(item => item.id !== entry.id);
             await persistActivities(updated);
             showToast('Interaction removed');
@@ -2605,7 +2605,7 @@ export default function CrmPage() {
               className="btn btn-ghost"
               style={{ color: 'var(--text-danger)', display: 'flex', alignItems: 'center', gap: '6px' }}
               onClick={async () => {
-                if (!window.confirm(`Are you sure you want to delete "${currentContact.name}"?`)) return;
+                if (!(await window.otoConfirm(`Are you sure you want to delete "${currentContact.name}"?`))) return;
                 if (deleteClient) {
                   await deleteClient(selectedClient.id);
                 }

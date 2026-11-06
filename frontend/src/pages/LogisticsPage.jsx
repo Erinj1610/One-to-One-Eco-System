@@ -844,7 +844,7 @@ export default function LogisticsPage() {
         alert(`Packing List ${doc.id} is linked to Delivery Note ${doc.deliveryNoteId}. Void the Delivery Note first to release this Packing List.`);
         return;
       }
-      if (!window.confirm(`Delete Packing List ${doc.id}?`)) return;
+      if (!(await window.otoConfirm(`Delete Packing List ${doc.id}?`))) return;
       try {
         const res = await fetch(`${API_BASE}/api/logistics/packing-list/${encodeURIComponent(doc.id)}`, {
           method: 'DELETE',

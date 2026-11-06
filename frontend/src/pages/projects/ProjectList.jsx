@@ -150,7 +150,7 @@ export default function ProjectList() {
 
   const handleBulkDelete = async () => {
     if (selectedKeys.size === 0) return;
-    if (window.confirm(`Are you sure you want to delete the ${selectedKeys.size} selected projects and all their associated orders, items, and files? This cannot be undone.`)) {
+    if (await window.otoConfirm(`Are you sure you want to delete the ${selectedKeys.size} selected projects and all their associated orders, items, and files? This cannot be undone.`, { title: "Delete Projects", confirmText: "Delete Projects" })) {
       await bulkDeleteProjects(Array.from(selectedKeys));
       setSelectedKeys(new Set());
     }

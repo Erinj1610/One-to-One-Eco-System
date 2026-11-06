@@ -642,8 +642,8 @@ export default function TakeoffSpecEngine({
     setCountUpRows(updated);
   };
 
-  const handleClearAllRows = () => {
-    if (window.confirm("Are you sure you want to clear all Takeoff count-up rows?")) {
+  const handleClearAllRows = async () => {
+    if (await window.otoConfirm("Are you sure you want to clear all Takeoff count-up rows?")) {
       setCountUpRows([]);
     }
   };

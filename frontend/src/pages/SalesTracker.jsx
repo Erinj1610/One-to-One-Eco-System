@@ -2337,8 +2337,8 @@ export default function SalesTracker() {
     }));
   };
 
-  const handleDeleteWaybill = (groupedItem, waybillRef, waybillDate) => {
-    if (!window.confirm(`Are you sure you want to remove waybill "${waybillRef}"?`)) return;
+  const handleDeleteWaybill = async (groupedItem, waybillRef, waybillDate) => {
+    if (!(await window.otoConfirm(`Are you sure you want to remove waybill "${waybillRef}"?`))) return;
     
     setActiveOrderItems(prev => {
       return prev.map(item => {

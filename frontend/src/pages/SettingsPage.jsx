@@ -520,7 +520,7 @@ function ReleasesDeploymentManager() {
   };
 
   const handleCloneProdToStaging = async () => {
-    if (!window.confirm("Are you sure you want to clone the live Production database into Staging? This will overwrite Staging data with the latest Production tables.")) return;
+    if (!(await window.otoConfirm("Are you sure you want to clone the live Production database into Staging? This will overwrite Staging data with the latest Production tables.", { title: "Clone Production to Staging", confirmText: "Clone Database" }))) return;
     setCloningDb(true);
     setActionMsg(null);
     try {
@@ -594,7 +594,7 @@ function ReleasesDeploymentManager() {
   };
 
   const handleRollback = async (rev) => {
-    if (!window.confirm(`Are you sure you want to rollback live Production traffic to revision ${rev.version_tag} (${rev.release_name})?`)) return;
+    if (!(await window.otoConfirm(`Are you sure you want to rollback live Production traffic to revision ${rev.version_tag} (${rev.release_name})?`, { title: "Rollback Production", confirmText: "Rollback" }))) return;
     setActionLoading(true);
     try {
       let res = await fetch(`${API_BASE}/api/admin/deployments/rollback/${rev.id}`, {
@@ -1112,7 +1112,7 @@ export default function SettingsPage() {
 
   const handleResetUserToRoleDefaults = async () => {
     if (!userPermissionsModalUser) return;
-    if (!window.confirm(`Reset all custom overrides for ${userPermissionsModalUser.name}? All permissions will cleanly inherit from ${userPermissionsModalUser.role}.`)) return;
+    if (!(await window.otoConfirm(`Reset all custom overrides for ${userPermissionsModalUser.name}? All permissions will cleanly inherit from ${userPermissionsModalUser.role}.`))) return;
     setSavingUserPerms(true);
     try {
       const res = await fetch(`${API_BASE}/admin/users/${userPermissionsModalUser.id}/permissions`, {
@@ -1180,7 +1180,7 @@ export default function SettingsPage() {
     const confirmMsg = newStatus 
       ? `Disable account access for ${user.name} (${user.email})?`
       : `Re-activate account for ${user.name} (${user.email})?`;
-    if (!window.confirm(confirmMsg)) return;
+    if (!(await window.otoConfirm(confirmMsg))) return;
 
     try {
       const res = await fetch(`${API_BASE}/admin/users/${user.id}`, {
@@ -1242,8 +1242,8 @@ export default function SettingsPage() {
     setHasUnsavedPerms(true);
   };
 
-  const handleBulkSetRolePermissions = (roleId, level) => {
-    if (!window.confirm(`Set all modules for this role to '${level}'?`)) return;
+  const handleBulkSetRolePermissions = async (roleId, level) => {
+    if (!(await window.otoConfirm(`Set all modules for this role to '${level}'?`))) return;
     setPermissionsData(prev => {
       const newMatrix = { ...prev.matrix };
       const roleKey = String(roleId);
@@ -1372,7 +1372,7 @@ export default function SettingsPage() {
   };
 
   const handleDeleteLookup = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this option?')) return;
+    if (!(await window.otoConfirm('Are you sure you want to delete this option?'))) return;
     setLookupError('');
     setLookupSuccess('');
     try {
@@ -1421,7 +1421,7 @@ export default function SettingsPage() {
   };
 
   const handleDeleteUser = async (userId) => {
-    if (!window.confirm("Are you sure you want to delete this user? This will also remove them from Firebase Auth.")) return;
+    if (!(await window.otoConfirm("Are you sure you want to delete this user? This will also remove them from Firebase Auth."))) return;
     try {
       const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
         method: 'DELETE'
@@ -1479,7 +1479,7 @@ export default function SettingsPage() {
   };
 
   const handleResetPassword = async (userId, userEmail) => {
-    if (!window.confirm(`Trigger password reset email/link for ${userEmail}?`)) return;
+    if (!(await window.otoConfirm(`Trigger password reset email/link for ${userEmail}?`, { title: "Reset Password", isDanger: false, confirmText: "Send Reset Link" }))) return;
     setResetPwLink('');
     try {
       const res = await fetch(`${API_BASE}/admin/users/${userId}/reset-password`, {
@@ -3079,8 +3079,8 @@ export default function SettingsPage() {
                               <button 
                                 className="btn btn-sm btn-ghost" 
                                 style={{ color: '#ef4444' }}
-                                onClick={() => {
-                                  if (window.confirm(`Are you sure you want to delete ${pm.name}? This will remove them from settings, but existing projects referencing their name will keep the reference.`)) {
+                                onClick={async () => {
+                                  if (await window.otoConfirm(`Are you sure you want to delete ${pm.name}? This will remove them from settings, but existing projects referencing their name will keep the reference.`)) {
                                     setProjectManagers(prev => prev.filter(p => p.id !== pm.id));
                                   }
                                 }}
@@ -3252,7 +3252,7 @@ export default function SettingsPage() {
                     type="button" 
                     className="btn btn-primary"
                     style={{ flex: 1 }}
-                    onClick={() => {
+                    onClick={async () => {
                       const selectVal = document.getElementById('bulk-order-select').value;
                       if (!selectVal) {
                         alert('Please select an order reference first.');
@@ -3278,7 +3278,7 @@ export default function SettingsPage() {
                       const dnId = `${prefixPart}DN-${order.id}`;
                       const invId = `${prefixPart}INV-${order.id}`;
 
-                      if (!window.confirm(`This tool will automatically create:\n- PO: ${poId}\n- GRN: ${grnId}\n- Packing List: ${plId}\n- Delivery Note: ${dnId}\n- Client Invoice: ${invId}\n\nFor all items in this order, updating all tracking history logs. Proceed?`)) return;
+                      if (!(await window.otoConfirm(`This tool will automatically create:\n- PO: ${poId}\n- GRN: ${grnId}\n- Packing List: ${plId}\n- Delivery Note: ${dnId}\n- Client Invoice: ${invId}\n\nFor all items in this order, updating all tracking history logs. Proceed?`, { title: "Create Sample Documents", isDanger: false, confirmText: "Create Documents" }))) return;
 
                       // 1. Generate lists of document items
                       const hardwareItems = (order.itemsList || []).filter(item => (item.itemType || item.item_type) !== 'Service');

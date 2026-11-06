@@ -949,7 +949,7 @@ export default function InvoicesPage() {
 
   // Unallocate Single Allocation Handler
   const handleUnallocate = async (allocationId, docNo) => {
-    if (!window.confirm(`Release this invoice allocation from ${docNo}? The quantity will return to Unallocated.`)) {
+    if (!(await window.otoConfirm(`Release this invoice allocation from ${docNo}? The quantity will return to Unallocated.`))) {
       return;
     }
     try {
@@ -978,7 +978,7 @@ export default function InvoicesPage() {
   // Unallocate Entire Line (All allocations for a specific line item)
   const handleUnallocateLine = async (line, docNo) => {
     const allocIds = (line.allocations || []).map(a => a.id || a.allocation_id).filter(Boolean);
-    if (!window.confirm(`Unallocate ${line.item_code} from ${docNo}? All allocated quantities for this item will return to unallocated.`)) {
+    if (!(await window.otoConfirm(`Unallocate ${line.item_code} from ${docNo}? All allocated quantities for this item will return to unallocated.`))) {
       return;
     }
     try {
@@ -1034,7 +1034,7 @@ export default function InvoicesPage() {
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to unallocate all active allocations for the ${selectedLines.length} selected item(s)?`)) {
+    if (!(await window.otoConfirm(`Are you sure you want to unallocate all active allocations for the ${selectedLines.length} selected item(s)?`))) {
       return;
     }
 
@@ -1067,7 +1067,7 @@ export default function InvoicesPage() {
   // Bulk Unallocate Entire Document
   const handleUnallocateEntireDocument = async (docNo) => {
     if (!docNo) return;
-    if (!window.confirm(`Are you sure you want to unallocate ALL items from invoice ${docNo}? Every item in this document will return to unallocated.`)) {
+    if (!(await window.otoConfirm(`Are you sure you want to unallocate ALL items from invoice ${docNo}? Every item in this document will return to unallocated.`))) {
       return;
     }
     try {
@@ -1168,7 +1168,7 @@ export default function InvoicesPage() {
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to delete manual Tax Invoice '${doc.document_no}'?\n\nThis will remove the manual record and roll back any invoicing allocations and order line progress.`)) {
+    if (!(await window.otoConfirm(`Are you sure you want to delete manual Tax Invoice '${doc.document_no}'?\n\nThis will remove the manual record and roll back any invoicing allocations and order line progress.`))) {
       return;
     }
 

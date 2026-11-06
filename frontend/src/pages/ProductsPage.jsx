@@ -975,7 +975,7 @@ export default function ProductsPage() {
       alert("Please enter a percentage shift for cost or retail price.");
       return;
     }
-    if (!window.confirm(`Are you sure you want to apply a ${bulkCostShift}% cost shift and ${bulkRetailShift}% retail shift for '${bulkSupplier}' / '${bulkCategory}'? This will update all matching products in Cloud SQL.`)) return;
+    if (!(await window.otoConfirm(`Are you sure you want to apply a ${bulkCostShift}% cost shift and ${bulkRetailShift}% retail shift for '${bulkSupplier}' / '${bulkCategory}'? This will update all matching products in Cloud SQL.`, { title: "Apply Repricing Shift", confirmText: "Apply Shift" }))) return;
 
     try {
       triggerToast("Executing bulk re-pricing in Cloud SQL...");
@@ -1083,7 +1083,7 @@ export default function ProductsPage() {
 
   const handleBulkArchive = async () => {
     if (selectedProductIds.length === 0) return;
-    if (!window.confirm(`Are you sure you want to safely archive ${selectedProductIds.length} selected product(s) as Discontinued?`)) return;
+    if (!(await window.otoConfirm(`Are you sure you want to safely archive ${selectedProductIds.length} selected product(s) as Discontinued?`, { title: "Archive Products", confirmText: "Archive" }))) return;
 
     try {
       triggerToast(`Archiving ${selectedProductIds.length} products...`);
@@ -1564,7 +1564,7 @@ export default function ProductsPage() {
   };
 
   const handleDeleteFile = async (productId, fileId) => {
-    if (!window.confirm("Are you sure you want to delete this document?")) return;
+    if (!(await window.otoConfirm("Are you sure you want to delete this document?"))) return;
     try {
       const res = await fetch(`${API_BASE}/api/products/${productId}/files/${fileId}`, {
         method: 'DELETE'
