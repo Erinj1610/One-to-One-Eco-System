@@ -4,37 +4,69 @@ import { Copy, Check } from 'lucide-react';
 /**
  * GlobalQuickCopyListener
  * 
- * Provides a dedicated custom right-click context menu across the entire portal:
- * Whenever you right-click on ANY text, order ID, table cell, or reference:
- * - A clean, sleek 1-to-1 branded context menu pops up right at your cursor: "Copy [text]"
- * - Clicking it copies the text directly to your clipboard and flashes "✓ Copied!"
- * - Left-clicking anywhere or pressing Escape closes the menu.
+ * High-precision, professional quick-copy context menu:
+ * - Triggers ONLY when right-clicking on specific data entities:
+ *   1. Active user selection (highlighted text)
+ *   2. Data cells (td, table cell values, codes, IDs, references, badges, monospace text)
+ * - Ignores page headers, toolbars, buttons, cards, empty whitespace, and structural elements so native browser behavior is preserved.
+ * - Features clean typography: concise "Copy Code" / "Copy [Label]" with subtle shadow, border, and 60fps micro-animation.
  */
 export default function GlobalQuickCopyListener() {
-  const [menu, setMenu] = useState(null); // { x, y, text }
+  const [menu, setMenu] = useState(null); // { x, y, text, label }
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const handleContextMenu = (e) => {
-      // 1. Check if user already highlighted text
-      let textToCopy = window.getSelection()?.toString()?.trim();
+      // 1. Check if user actively highlighted text
+      const selection = window.getSelection()?.toString()?.trim();
+      let textToCopy = '';
+      let copyLabel = 'Selection';
 
-      // 2. If nothing is actively selected, extract text from clicked element or its nearest cell/badge
-      if (!textToCopy) {
+      if (selection) {
+        textToCopy = selection;
+        copyLabel = 'Selected Text';
+      } else {
         const target = e.target;
-        if (target) {
-          // If input or textarea, take value
-          if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-            textToCopy = target.value?.trim();
-          } else {
-            // Find cleanest text in cell or badge
-            const cell = target.closest('td, th, [class*="badge"], [class*="code"], a, span, p');
-            textToCopy = (cell || target).innerText?.trim();
-          }
+        if (!target) return;
+
+        // Never trigger on page headers, main containers, topbars, buttons, or navbars
+        if (target.closest('h1, h2, h3, .topbar, .sidebar, .nav-item, button, .sb-logo, .portal-toggle-bar')) {
+          setMenu(null);
+          return;
+        }
+
+        // Only trigger on explicit data containers: table data cells, code elements, badges, or monospace references
+        const dataCell = target.closest('td, code, pre, .badge, [data-copyable="true"]');
+        if (!dataCell) {
+          // If right-clicked on empty page background, card body, or whitespace, do not show custom menu
+          setMenu(null);
+          return;
+        }
+
+        // Determine specific label based on data cell
+        const rawText = (target.textContent || dataCell.textContent || '').trim();
+        // Ignore cells with excessive multiline content (e.g. whole tables or large text blocks)
+        if (!rawText || rawText.length > 120 || rawText.includes('\n\n')) {
+          setMenu(null);
+          return;
+        }
+
+        textToCopy = rawText;
+
+        // Detect smart labels
+        if (/^(\d{4}|Q-\d+|PO-|DN-|PL-|INV-|CN-|REC-|RC-)/i.test(textToCopy)) {
+          copyLabel = 'Reference ID';
+        } else if (/^R\s?[\d,]+(\.\d{2})?$/i.test(textToCopy)) {
+          copyLabel = 'Amount';
+        } else if (/\S+@\S+\.\S+/.test(textToCopy)) {
+          copyLabel = 'Email';
+        } else if (textToCopy.length < 20 && !textToCopy.includes(' ')) {
+          copyLabel = 'Code';
+        } else {
+          copyLabel = 'Value';
         }
       }
 
-      // Don't show menu if target is totally empty
       if (!textToCopy) {
         setMenu(null);
         return;
@@ -43,17 +75,14 @@ export default function GlobalQuickCopyListener() {
       e.preventDefault();
       setCopied(false);
 
-      // Keep menu within screen boundaries
+      // Bound to viewport
       const x = Math.min(e.clientX, window.innerWidth - 220);
-      const y = Math.min(e.clientY, window.innerHeight - 100);
+      const y = Math.min(e.clientY, window.innerHeight - 80);
 
-      setMenu({ x, y, text: textToCopy });
+      setMenu({ x, y, text: textToCopy, label: copyLabel });
     };
 
-    const handleClickOutside = () => {
-      setMenu(null);
-    };
-
+    const handleClickOutside = () => setMenu(null);
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') setMenu(null);
     };
@@ -88,12 +117,12 @@ export default function GlobalQuickCopyListener() {
     setTimeout(() => {
       setMenu(null);
       setCopied(false);
-    }, 800);
+    }, 600);
   };
 
   if (!menu) return null;
 
-  const displayText = menu.text.length > 28 ? menu.text.slice(0, 25) + '...' : menu.text;
+  const displaySnippet = menu.text.length > 22 ? menu.text.slice(0, 19) + '…' : menu.text;
 
   return (
     <div
@@ -103,15 +132,16 @@ export default function GlobalQuickCopyListener() {
         left: `${menu.x}px`,
         top: `${menu.y}px`,
         zIndex: 9999999,
-        background: '#18181b',
-        border: '1px solid rgba(255, 255, 255, 0.15)',
+        background: 'rgba(24, 24, 27, 0.95)',
+        backdropFilter: 'blur(8px)',
+        border: '1px solid rgba(255, 255, 255, 0.12)',
         borderRadius: '8px',
-        padding: '5px',
-        boxShadow: '0 12px 30px rgba(0, 0, 0, 0.6), 0 0 1px rgba(255, 255, 255, 0.2)',
-        minWidth: '180px',
-        maxWidth: '260px',
+        padding: '3px',
+        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 0 1px 1px rgba(255, 255, 255, 0.1)',
+        minWidth: '160px',
+        maxWidth: '240px',
         fontFamily: "'Inter', sans-serif",
-        animation: 'fadeIn 0.12s ease-out'
+        animation: 'fadeIn 0.08s ease-out'
       }}
     >
       <button
@@ -120,14 +150,15 @@ export default function GlobalQuickCopyListener() {
           width: '100%',
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'space-between',
           gap: '8px',
-          padding: '8px 12px',
+          padding: '6px 10px',
           background: copied ? 'rgba(34, 197, 94, 0.15)' : 'transparent',
           border: 'none',
-          borderRadius: '6px',
+          borderRadius: '5px',
           color: copied ? '#4ade80' : '#f4f4f5',
           fontSize: '12px',
-          fontWeight: 600,
+          fontWeight: 500,
           cursor: 'pointer',
           textAlign: 'left',
           transition: 'all 0.1s ease'
@@ -139,18 +170,16 @@ export default function GlobalQuickCopyListener() {
           if (!copied) e.currentTarget.style.background = 'transparent';
         }}
       >
-        {copied ? (
-          <>
-            <Check size={14} color="#4ade80" />
-            <span>Copied to Clipboard!</span>
-          </>
-        ) : (
-          <>
-            <Copy size={13} color="#a1a1aa" />
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              Copy "{displayText}"
-            </span>
-          </>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', overflow: 'hidden' }}>
+          {copied ? <Check size={13} color="#4ade80" /> : <Copy size={13} color="#e09924" />}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {copied ? 'Copied!' : `Copy ${menu.label}`}
+          </span>
+        </div>
+        {!copied && (
+          <span style={{ fontSize: '10px', color: '#a1a1aa', fontFamily: 'monospace', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {displaySnippet}
+          </span>
         )}
       </button>
     </div>
