@@ -356,3 +356,25 @@ select.input {
   cursor: pointer;
 }
 
+/* 5. Tactile Micro-Feedback on Action Buttons */
+.btn,
+button:not(:disabled),
+.button {
+  transition: transform 0.08s ease, filter 0.1s ease, box-shadow 0.15s ease !important;
+}
+
+.btn:active:not(:disabled),
+button:active:not(:disabled),
+.button:active:not(:disabled) {
+  transform: scale(0.975) translateY(1px) !important;
+  filter: brightness(0.94) !important;
+}
+
+/* 6. Silky Table Filter & Transition Rendering */
+table tbody,
+.table tbody,
+.tracker-table tbody {
+  transition: opacity 0.12s ease-out;
+}
+
+

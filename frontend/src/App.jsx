@@ -44,6 +44,7 @@ import GlobalKeyboardShortcuts from './components/common/GlobalKeyboardShortcuts
 import GlobalQuickCopyListener from './components/common/GlobalQuickCopyListener';
 import UniversalTruncationTooltip from './components/common/UniversalTruncationTooltip';
 import GlobalConfirmModal from './components/common/GlobalConfirmModal';
+import GlobalToastNotification from './components/common/GlobalToastNotification';
 
 const ModuleLoadingFallback = () => (
   <div style={{
@@ -88,6 +89,7 @@ function AppInner({ devBypass, setDevBypass }) {
       <GlobalQuickCopyListener />
       <UniversalTruncationTooltip />
       <GlobalConfirmModal />
+      <GlobalToastNotification />
       <Suspense fallback={<ModuleLoadingFallback />}>
         <Routes>
           {/* Public Routes */}
