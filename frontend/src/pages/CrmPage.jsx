@@ -1,3 +1,4 @@
+import EmptyStateBanner from '../components/common/EmptyStateBanner';
 import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../context/StoreContext';
@@ -1113,11 +1114,13 @@ export default function CrmPage() {
                     </tr>
                   )}
                   {!isStoreLoading && directoryDisplayList.length === 0 && (
-                    <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
-                        No clients match the selected filters.
-                      </td>
-                    </tr>
+                    <EmptyStateBanner
+                      colSpan={7}
+                      title="No clients found in directory"
+                      subtitle="No client accounts match your current search query or active tags."
+                      onClear={() => { setSearch(''); }}
+                      clearLabel="Clear search"
+                    />
                   )}
                 </tbody>
               </table>

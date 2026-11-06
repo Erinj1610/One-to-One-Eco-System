@@ -1,3 +1,4 @@
+import EmptyStateBanner from '../components/common/EmptyStateBanner';
 import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
@@ -5144,11 +5145,13 @@ export default function SalesTracker() {
                       </tr>
                     )}
                     {!isStoreLoading && filteredOrders.length === 0 && (
-                      <tr>
-                        <td colSpan={14} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
-                          No active quotations or Bills of Quantity found.
-                        </td>
-                      </tr>
+                      <EmptyStateBanner
+                        colSpan={14}
+                        title="No sales tracker records found"
+                        subtitle="No active quotations or Bills of Quantity match your selected search or filters."
+                        onClear={() => { setSearchQuery(''); setFilterStatus('All'); setSubOrderFilter('All'); setProjectFilterKey('All'); }}
+                        clearLabel="Reset filters"
+                      />
                     )}
                   </tbody>
                 </table>

@@ -1,3 +1,4 @@
+import EmptyStateBanner from '../../components/common/EmptyStateBanner';
 import OneToOneLoader from '../../components/common/OneToOneLoader';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../../context/StoreContext';
@@ -994,11 +995,13 @@ export default function ProjectList() {
                 </tr>
               )}
               {!isStoreLoading && sortedProjects.length === 0 && (
-                <tr>
-                  <td colSpan={12} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-tertiary)' }}>
-                    No converted projects matched the active filters.
-                  </td>
-                </tr>
+                <EmptyStateBanner
+                  colSpan={12}
+                  title="No converted projects found"
+                  subtitle="Try adjusting your project name search, PM assignment, or status filter."
+                  onClear={() => { setSearchQuery(''); setStatusFilter('All'); setPmFilter('All'); }}
+                  clearLabel="Reset filters"
+                />
               )}
             </tbody>
             {sortedProjects.length > 0 && (() => {

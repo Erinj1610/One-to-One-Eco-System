@@ -40,6 +40,7 @@ const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 
 import './index.css';
 import OneToOneLoader from './components/common/OneToOneLoader';
+import GlobalKeyboardShortcuts from './components/common/GlobalKeyboardShortcuts';
 
 const ModuleLoadingFallback = () => (
   <div style={{
@@ -80,6 +81,7 @@ function AppInner({ devBypass, setDevBypass }) {
 
   return (
     <BrowserRouter>
+      <GlobalKeyboardShortcuts />
       <Suspense fallback={<ModuleLoadingFallback />}>
         <Routes>
           {/* Public Routes */}

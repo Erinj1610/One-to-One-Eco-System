@@ -1,3 +1,4 @@
+import EmptyStateBanner from '../components/common/EmptyStateBanner';
 import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '../context/StoreContext';
@@ -3389,11 +3390,13 @@ export default function OrdersPage() {
                       </tr>
                     )}
                     {!isStoreLoading && filteredOrders.length === 0 && (
-                      <tr>
-                        <td colSpan={12} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
-                          No active quotations or Bills of Quantity found.
-                        </td>
-                      </tr>
+                      <EmptyStateBanner
+                        colSpan={12}
+                        title="No orders or quotations found"
+                        subtitle="No records matched your search terms or active status filters."
+                        onClear={() => { setSearchQuery(''); setFilterStatus('All'); setSubOrderFilter('All'); }}
+                        clearLabel="Reset search & filters"
+                      />
                     )}
                   </tbody>
                   {sortedOrders.length > 0 && (() => {
