@@ -1,3 +1,4 @@
+import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { useStore } from '../context/StoreContext';
@@ -264,7 +265,7 @@ const getItemDefaults = (item) => {
 export default function SalesTracker() {
   const { user, isAdmin } = useAuth();
   const [marginMode, setMarginMode] = useState('pm'); // 'pm' (internal cost) | 'supplier' (confidential true factory cost)
-  const { projects, updateProject, contacts, getModuleName, projectManagers, setProjectManagers, setInvoices, refreshProjects } = useStore();
+  const { isStoreLoading, projects, updateProject, contacts, getModuleName, projectManagers, setProjectManagers, setInvoices, refreshProjects } = useStore();
   const location = useLocation();
   const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
@@ -5131,7 +5132,14 @@ export default function SalesTracker() {
                       );
                     })}
 
-                    {filteredOrders.length === 0 && (
+                    {isStoreLoading && (
+                      <tr>
+                        <td colSpan={14} style={{ textAlign: 'center', padding: '48px' }}>
+                          <OneToOneLoader size="lg" text="Loading live sales tracker..." />
+                        </td>
+                      </tr>
+                    )}
+                    {!isStoreLoading && filteredOrders.length === 0 && (
                       <tr>
                         <td colSpan={14} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
                           No active quotations or Bills of Quantity found.

@@ -1250,6 +1250,7 @@ export function StoreProvider({ children }) {
     projectManagers: false,
     activity_logs: false
   });
+  const [isStoreLoading, setIsStoreLoading] = React.useState(true);
 
   const getModuleName = (moduleId, fallback) => {
     const found = moduleConfig?.modules?.find(m => m.id === moduleId);
@@ -1406,6 +1407,7 @@ export function StoreProvider({ children }) {
           setter(defaultPMs);
         }
         isLoaded.current[key] = true;
+        if (key === 'projects') setIsStoreLoading(false);
       })
       .catch(err => {
         console.error(`Error loading ${key}:`, err);
@@ -2501,6 +2503,7 @@ export function StoreProvider({ children }) {
 
   return (
     <StoreContext.Provider value={{ 
+      isStoreLoading,
       projects, 
       setProjects,
       updateProject, 

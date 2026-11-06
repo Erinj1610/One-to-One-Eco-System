@@ -39,27 +39,16 @@ const ManagementAiPage = lazy(() => import('./pages/ManagementAiPage'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 
 import './index.css';
+import OneToOneLoader from './components/common/OneToOneLoader';
 
 const ModuleLoadingFallback = () => (
   <div style={{
     height: '60vh',
     display: 'flex',
-    flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: '12px',
-    color: 'var(--text-secondary)',
-    fontSize: '13px'
+    justifyContent: 'center'
   }}>
-    <div style={{
-      width: '28px',
-      height: '28px',
-      border: '2px solid rgba(255,255,255,0.1)',
-      borderTopColor: 'var(--accent, #6366f1)',
-      borderRadius: '50%',
-      animation: 'spin 0.8s linear infinite'
-    }} />
-    <span>Loading module…</span>
+    <OneToOneLoader size="lg" text="Loading module..." />
   </div>
 );
 
@@ -83,8 +72,8 @@ function AppInner({ devBypass, setDevBypass }) {
 
   if (authLoading) {
     return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', fontSize: 13 }}>
-        Loading 1-to-1 World…
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-tertiary)' }}>
+        <OneToOneLoader size="xl" text="Loading 1-to-1 World..." />
       </div>
     );
   }

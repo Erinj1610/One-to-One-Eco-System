@@ -1,3 +1,4 @@
+import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
@@ -390,7 +391,7 @@ function SearchableCodeSelect({ value, onChange, onSelect, onOpenCreateProduct, 
 
 export default function OrdersPage() {
   const { 
-    projects, setProjects, updateProject, contacts, setContacts, logAttrition, moveOrder, getModuleName, projectManagers, logActivity,
+    isStoreLoading, projects, setProjects, updateProject, contacts, setContacts, logAttrition, moveOrder, getModuleName, projectManagers, logActivity,
     refreshProjects, bulkDeleteOrders, bulkRelinkOrders, bulkRenameOrders 
   } = useStore();
   const { isAdmin } = useAuth();
@@ -3376,7 +3377,14 @@ export default function OrdersPage() {
                       );
                     })}
 
-                    {filteredOrders.length === 0 && (
+                    {isStoreLoading && (
+                      <tr>
+                        <td colSpan={12} style={{ textAlign: 'center', padding: '48px' }}>
+                          <OneToOneLoader size="lg" text="Loading live orders & quotations..." />
+                        </td>
+                      </tr>
+                    )}
+                    {!isStoreLoading && filteredOrders.length === 0 && (
                       <tr>
                         <td colSpan={12} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
                           No active quotations or Bills of Quantity found.
