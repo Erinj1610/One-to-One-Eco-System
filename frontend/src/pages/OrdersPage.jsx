@@ -527,17 +527,37 @@ export default function OrdersPage() {
   }, [projects, selectedOrderId]);
 
   const isSubOrderWorkspace = useMemo(() => {
-    return Boolean(
-      currentOrderObj?.is_sub_order || 
-      currentOrderObj?.isSubOrder || 
-      (currentOrderObj?.parent_po_number && currentOrderObj.parent_po_number !== currentOrderObj.id) ||
-      (currentOrderObj?.parentPoNumber && currentOrderObj.parentPoNumber !== currentOrderObj.id) ||
-      (selectedOrderId && /-0\d+$/.test(selectedOrderId))
-    );
+    if (!selectedOrderId) return false;
+    // 1. Explicit database boolean (highest authority)
+    if (currentOrderObj && typeof currentOrderObj.is_sub_order === 'boolean') {
+      if (currentOrderObj.is_sub_order === false) return false;
+      if (currentOrderObj.is_sub_order === true) return true;
+    }
+    if (currentOrderObj && typeof currentOrderObj.isSubOrder === 'boolean') {
+      if (currentOrderObj.isSubOrder === false) return false;
+      if (currentOrderObj.isSubOrder === true) return true;
+    }
+    // 2. Parent PO check
+    const parent = currentOrderObj?.parent_po_number || currentOrderObj?.parentPoNumber;
+    if (parent && String(parent).trim() !== String(selectedOrderId).trim()) {
+      return true;
+    }
+    // 3. Fallback regex: sub-order IDs strictly end with a 1-2 digit phase suffix (-01, -02) following a quote number
+    // Format: e.g. Q-2026-0667-01 (master Q-2026-0667 will NEVER match)
+    return /-\d{3,}-\d{1,2}$/.test(String(selectedOrderId).trim());
   }, [currentOrderObj, selectedOrderId]);
 
   const masterPoRef = useMemo(() => {
-    return currentOrderObj?.parent_po_number || currentOrderObj?.parentPoNumber || (selectedOrderId ? String(selectedOrderId).replace(/-0\d+$/, '') : null);
+    if (!selectedOrderId) return null;
+    const parent = currentOrderObj?.parent_po_number || currentOrderObj?.parentPoNumber;
+    if (parent && String(parent).trim() !== String(selectedOrderId).trim()) {
+      return String(parent).trim();
+    }
+    const id = String(selectedOrderId).trim();
+    if (/-\d{3,}-\d{1,2}$/.test(id)) {
+      return id.replace(/-\d{1,2}$/, '');
+    }
+    return id;
   }, [currentOrderObj, selectedOrderId]);
 
   const fetchCurrentOrderItems = async (orderId) => {

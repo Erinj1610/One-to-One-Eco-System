@@ -497,7 +497,7 @@ export default function TechnicalPackModal({
               }}>
                 ORDER {orderId}
               </span>
-              {orderId && /-0\d+$/.test(orderId) && (
+              {orderId && /-\d{3,}-\d{1,2}$/.test(orderId) && (
                 <span style={{
                   background: 'rgba(139, 92, 246, 0.15)',
                   color: '#8b5cf6',

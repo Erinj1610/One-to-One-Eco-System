@@ -1048,8 +1048,23 @@ export default function SalesTracker() {
   };
 
   const checkIsSubOrder = React.useCallback((ord) => {
-    if (!ord || !ord.id) return false;
-    return /-0\d+$/.test(String(ord.id).trim());
+    if (!ord) return false;
+    // 1. Explicit database boolean (highest authority)
+    if (typeof ord.is_sub_order === 'boolean') {
+      if (ord.is_sub_order === false) return false;
+      if (ord.is_sub_order === true) return true;
+    }
+    if (typeof ord.isSubOrder === 'boolean') {
+      if (ord.isSubOrder === false) return false;
+      if (ord.isSubOrder === true) return true;
+    }
+    // 2. Parent PO check
+    const parent = ord.parent_po_number || ord.parentPoNumber;
+    const id = String(ord.id || ord.po_number || ord.poNumber || '').trim();
+    if (parent && String(parent).trim() !== id) return true;
+    // 3. Fallback regex: sub-order IDs strictly end with a 1-2 digit phase suffix (-01, -02) following a quote number
+    // Format: e.g. Q-2026-0667-01 (master Q-2026-0667 will NEVER match)
+    return /-\d{3,}-\d{1,2}$/.test(id);
   }, []);
   const [projectFilterKey, setProjectFilterKey] = useState('All');
   const [clientFilter, setClientFilter] = useState('All');
@@ -1317,7 +1332,7 @@ export default function SalesTracker() {
     const map = {};
     allOrders.forEach(ord => {
       if (checkIsSubOrder(ord)) {
-        const parentKey = ord.parent_po_number || ord.parentPoNumber || String(ord.id).replace(/-0\d+$/, '');
+        const parentKey = ord.parent_po_number || ord.parentPoNumber || (String(ord.id).includes('-') ? String(ord.id).replace(/-\d{1,2}$/, '') : ord.id);
         if (!map[parentKey]) map[parentKey] = [];
         map[parentKey].push(ord);
       }
@@ -1421,7 +1436,7 @@ export default function SalesTracker() {
         // In 'All' view, top-level rows are master orders. Sub-orders are nested under their master order.
         // If a sub-order directly matches search or its parent is not present, display it in root.
         if (isSub) {
-          const parentKey = o.parent_po_number || o.parentPoNumber || String(o.id).replace(/-0\d+$/, '');
+          const parentKey = o.parent_po_number || o.parentPoNumber || (String(o.id).includes('-') ? String(o.id).replace(/-\d{1,2}$/, '') : o.id);
           const hasParent = dateFilteredOrders.some(p => String(p.id) === String(parentKey));
           matchesSubOrder = Boolean((debouncedSearchQuery && matchesSearch) || !hasParent);
         } else {
