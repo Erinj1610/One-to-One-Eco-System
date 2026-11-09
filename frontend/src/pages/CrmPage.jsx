@@ -1,6 +1,7 @@
 import EmptyStateBanner from '../components/common/EmptyStateBanner';
 import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useMemo, useEffect } from 'react';
+import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -1031,17 +1032,13 @@ export default function CrmPage() {
                       Clear Metric Filter ({activeKpiFilter})
                     </button>
                   )}
-                  <select
-                    className="form-control"
-                    style={{ width: '145px', fontSize: '12px', padding: '5px 8px' }}
+                  <SearchableFilterDropdown
                     value={filterType}
-                    onChange={e => setFilterType(e.target.value)}
-                  >
-                    <option value="All">All Categories</option>
-                    {clientTypes.map(t => (
-                      <option key={t.id || t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
+                    onChange={setFilterType}
+                    options={clientTypes.map(t => ({ value: t.value, label: t.label }))}
+                    allLabel="All Categories"
+                    width="150px"
+                  />
                   <div style={{ position: 'relative' }}>
                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
                     <input type="search" className="form-control" style={{ width: '220px', paddingLeft: '32px' }} placeholder="Search clients or projects..." value={search} onChange={e => setSearch(e.target.value)} />

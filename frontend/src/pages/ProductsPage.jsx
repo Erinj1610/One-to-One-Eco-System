@@ -1,3 +1,4 @@
+import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
@@ -2222,35 +2223,27 @@ export default function ProductsPage() {
                   />
                 </div>
 
-                <select
-                  className="form-control"
-                  style={{ width: '180px', height: '34px', fontSize: '12.5px' }}
+                <SearchableFilterDropdown
                   value={categoryFilter}
-                  onChange={e => {
-                    setCategoryFilter(e.target.value);
+                  onChange={val => {
+                    setCategoryFilter(val);
                     setCurrentPage(1);
                   }}
-                >
-                  <option value="All Categories">All Categories {filterOptions.categories.length > 0 ? `(${filterOptions.categories.length})` : ''}</option>
-                  {filterOptions.categories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
+                  options={filterOptions.categories}
+                  allLabel="All Categories"
+                  width="180px"
+                />
 
-                <select
-                  className="form-control"
-                  style={{ width: '180px', height: '34px', fontSize: '12.5px' }}
+                <SearchableFilterDropdown
                   value={supplierFilter}
-                  onChange={e => {
-                    setSupplierFilter(e.target.value);
+                  onChange={val => {
+                    setSupplierFilter(val);
                     setCurrentPage(1);
                   }}
-                >
-                  <option value="All Suppliers">All Suppliers {filterOptions.suppliers.length > 0 ? `(${filterOptions.suppliers.length})` : ''}</option>
-                  {filterOptions.suppliers.map(sup => (
-                    <option key={sup} value={sup}>{sup}</option>
-                  ))}
-                </select>
+                  options={filterOptions.suppliers}
+                  allLabel="All Suppliers"
+                  width="180px"
+                />
 
                 <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   {isLoadingProducts ? (

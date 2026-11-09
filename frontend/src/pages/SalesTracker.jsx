@@ -1,3 +1,4 @@
+import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
 import EmptyStateBanner from '../components/common/EmptyStateBanner';
 import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -4767,67 +4768,45 @@ export default function SalesTracker() {
                     </button>
                   </div>
 
-                  <select 
-                    className="form-control"
-                    style={{ width: '130px', height: '34px', fontSize: '13px' }}
+                  <SearchableFilterDropdown 
                     value={filterStatus}
-                    onChange={e => setFilterStatus(e.target.value)}
-                  >
-                    <option value="All">All Statuses</option>
-                    <option value="Draft">Draft</option>
-                    <option value="Pending">Pending</option>
-                    <option value="Ongoing">Ongoing</option>
-                    <option value="Complete">Complete</option>
-                    <option value="Cancelled">Cancelled</option>
-                  </select>
+                    onChange={setFilterStatus}
+                    options={['Draft', 'Pending', 'Ongoing', 'Complete', 'Cancelled']}
+                    allLabel="All Statuses"
+                    width="135px"
+                  />
 
-                  <select 
-                    className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                  <SearchableFilterDropdown 
                     value={projectFilterKey}
-                    onChange={e => setProjectFilterKey(e.target.value)}
-                  >
-                    <option value="All">All Projects</option>
-                    {projectOptions.map(p => (
-                      <option key={p.key} value={p.key}>{p.name}</option>
-                    ))}
-                  </select>
+                    onChange={setProjectFilterKey}
+                    options={projectOptions}
+                    allLabel="All Projects"
+                    width="155px"
+                  />
 
-                  <select 
-                    className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                  <SearchableFilterDropdown 
                     value={clientFilter}
-                    onChange={e => setClientFilter(e.target.value)}
-                  >
-                    <option value="All">All Clients</option>
-                    {clientOptions.map(client => (
-                      <option key={client} value={client}>{client}</option>
-                    ))}
-                  </select>
+                    onChange={setClientFilter}
+                    options={clientOptions}
+                    allLabel="All Clients"
+                    width="155px"
+                  />
 
-                  <select 
-                    className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                  <SearchableFilterDropdown 
                     value={pmFilter}
-                    onChange={e => setPmFilter(e.target.value)}
-                  >
-                    <option value="All">All PMs</option>
-                    {pmOptions.map(pm => (
-                      <option key={pm} value={pm}>{pm}</option>
-                    ))}
-                  </select>
+                    onChange={setPmFilter}
+                    options={pmOptions}
+                    allLabel="All PMs"
+                    width="140px"
+                  />
 
-                  <select 
-                    className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                  <SearchableFilterDropdown 
                     value={paymentStatusFilter}
-                    onChange={e => setPaymentStatusFilter(e.target.value)}
-                  >
-                    <option value="All">All Payments</option>
-                    <option value="Fully Paid">Fully Paid</option>
-                    <option value="Partially Paid">Partially Paid</option>
-                    <option value="Unpaid">Unpaid</option>
-                  </select>
+                    onChange={setPaymentStatusFilter}
+                    options={['Fully Paid', 'Partially Paid', 'Unpaid']}
+                    allLabel="All Payments"
+                    width="140px"
+                  />
                 </div>
 
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
@@ -5037,23 +5016,63 @@ export default function SalesTracker() {
                               {hasChildSubs && (
                                 <button
                                   type="button"
-                                  className="btn btn-ghost btn-sm"
-                                  style={{ padding: '0', height: '22px', width: '22px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}
+                                  className="btn-ghost"
+                                  style={{
+                                    padding: 0,
+                                    height: '18px',
+                                    width: '18px',
+                                    borderRadius: '4px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: isExpanded ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                                    background: isExpanded ? 'rgba(255, 255, 255, 0.06)' : 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                  }}
                                   onClick={(e) => toggleExpandMaster(o.id, e)}
                                   title={isExpanded ? "Collapse Sub-Orders" : `Expand ${childSubs.length} Sub-Orders`}
                                 >
-                                  {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                  <ChevronRight 
+                                    size={12} 
+                                    style={{ 
+                                      transform: isExpanded ? 'rotate(90deg)' : 'none', 
+                                      transition: 'transform 0.15s ease' 
+                                    }} 
+                                  />
                                 </button>
                               )}
                               <span>{o.id}</span>
                               {hasChildSubs && (
-                                <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(59, 130, 246, 0.15)', color: '#2563eb', fontWeight: 700, borderRadius: '4px' }}>
-                                  👑 Master ({childSubs.length})
+                                <span 
+                                  style={{ 
+                                    fontSize: '9.5px', 
+                                    padding: '1px 6px', 
+                                    borderRadius: '3px', 
+                                    border: '1px solid var(--border)', 
+                                    background: 'var(--bg-secondary)', 
+                                    color: 'var(--text-secondary)', 
+                                    fontWeight: 600,
+                                    letterSpacing: '0.02em'
+                                  }}
+                                >
+                                  Master · {childSubs.length} {childSubs.length === 1 ? 'Phase' : 'Phases'}
                                 </span>
                               )}
                               {isSub && (
-                                <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: 700, borderRadius: '4px' }}>
-                                  ↳ Sub
+                                <span 
+                                  style={{ 
+                                    fontSize: '9.5px', 
+                                    padding: '1px 6px', 
+                                    borderRadius: '3px', 
+                                    border: '1px solid var(--border)', 
+                                    background: 'var(--bg-secondary)', 
+                                    color: 'var(--text-secondary)', 
+                                    fontWeight: 600 
+                                  }}
+                                >
+                                  Phase
                                 </span>
                               )}
                             </div>
@@ -5121,8 +5140,8 @@ export default function SalesTracker() {
                               className="clickable"
                               onClick={() => handleOpenWorkspace(sub)}
                               style={{
-                                background: subIsSelected ? 'rgba(139, 92, 246, 0.12)' : 'rgba(139, 92, 246, 0.04)',
-                                borderLeft: '3px solid #8b5cf6'
+                                background: subIsSelected ? 'rgba(59, 130, 246, 0.08)' : 'rgba(255, 255, 255, 0.015)',
+                                borderLeft: subIsSelected ? '3px solid #3b82f6' : '3px solid transparent'
                               }}
                             >
                               <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
@@ -5136,11 +5155,21 @@ export default function SalesTracker() {
                                   }}
                                 />
                               </td>
-                              <td style={{ fontFamily: 'monospace', fontWeight: 600, paddingLeft: '24px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                  <span style={{ color: '#8b5cf6', fontWeight: 700 }}>↳</span>
-                                  <span style={{ color: '#8b5cf6' }}>{sub.id}</span>
-                                  <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: 700, borderRadius: '4px' }}>
+                              <td style={{ fontFamily: 'monospace', fontWeight: 600, paddingLeft: '32px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  <span style={{ color: 'var(--text-tertiary)', fontSize: '11px', userSelect: 'none' }}>↳</span>
+                                  <span style={{ color: 'var(--text-secondary)' }}>{sub.id}</span>
+                                  <span 
+                                    style={{ 
+                                      fontSize: '9.5px', 
+                                      padding: '1px 6px', 
+                                      borderRadius: '3px', 
+                                      border: '1px solid var(--border)', 
+                                      background: 'var(--bg-secondary)', 
+                                      color: 'var(--text-secondary)', 
+                                      fontWeight: 600 
+                                    }}
+                                  >
                                     {sub.phase_name || sub.phaseName || `Phase ${sub.sub_order_index || 1}`}
                                   </span>
                                 </div>

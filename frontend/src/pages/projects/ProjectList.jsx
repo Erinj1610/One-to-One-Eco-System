@@ -1,3 +1,4 @@
+import SearchableFilterDropdown from '../../components/common/SearchableFilterDropdown';
 import EmptyStateBanner from '../../components/common/EmptyStateBanner';
 import OneToOneLoader from '../../components/common/OneToOneLoader';
 import React, { useState, useMemo, useEffect } from 'react';
@@ -721,38 +722,29 @@ export default function ProjectList() {
               </button>
             )}
 
-            <select 
-              className="form-control" 
-              style={{ width: '130px', height: '34px', fontSize: '13px' }} 
+            <SearchableFilterDropdown 
               value={statusFilter} 
-              onChange={e => setStatusFilter(e.target.value)}
-            >
-              {statusesList.map(st => (
-                <option key={st} value={st === 'All Statuses' ? 'All Statuses' : st}>{st}</option>
-              ))}
-            </select>
+              onChange={setStatusFilter}
+              options={statusesList.filter(s => s !== 'All Statuses')}
+              allLabel="All Statuses"
+              width="135px"
+            />
 
-            <select 
-              className="form-control" 
-              style={{ width: '150px', height: '34px', fontSize: '13px' }} 
+            <SearchableFilterDropdown 
               value={clientFilter} 
-              onChange={e => setClientFilter(e.target.value)}
-            >
-              {clientsList.map(c => (
-                <option key={c} value={c === 'All Clients' ? 'All Clients' : c}>{c === 'All Clients' ? 'All Clients' : c}</option>
-              ))}
-            </select>
+              onChange={setClientFilter}
+              options={clientsList.filter(c => c !== 'All Clients')}
+              allLabel="All Clients"
+              width="155px"
+            />
 
-            <select 
-              className="form-control" 
-              style={{ width: '150px', height: '34px', fontSize: '13px' }} 
+            <SearchableFilterDropdown 
               value={pmFilter} 
-              onChange={e => setPmFilter(e.target.value)}
-            >
-              {pmList.map(pm => (
-                <option key={pm} value={pm === 'All PMs' ? 'All PMs' : pm}>{pm === 'All PMs' ? 'All PMs' : pm}</option>
-              ))}
-            </select>
+              onChange={setPmFilter}
+              options={pmList.filter(p => p !== 'All PMs')}
+              allLabel="All PMs"
+              width="140px"
+            />
           </div>
 
           <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>

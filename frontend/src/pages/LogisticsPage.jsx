@@ -1,3 +1,4 @@
+import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
@@ -1135,17 +1136,13 @@ export default function LogisticsPage() {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>PM:</span>
-            <select
-              className="form-control"
-              style={{ height: '32px', padding: '2px 8px', fontSize: '12px', background: 'var(--bg-primary)' }}
+            <SearchableFilterDropdown
               value={filterPm}
-              onChange={e => setFilterPm(e.target.value)}
-            >
-              <option value="All">All Project Managers</option>
-              {uniquePms.map(pm => (
-                <option key={pm} value={pm}>{pm}</option>
-              ))}
-            </select>
+              onChange={setFilterPm}
+              options={uniquePms.filter(p => p !== 'All')}
+              allLabel="All PMs"
+              width="140px"
+            />
           </div>
         </div>
       </div>

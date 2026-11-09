@@ -1,3 +1,4 @@
+import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -2258,7 +2259,7 @@ export default function PurchasingPage() {
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '2px' }}
                                 title="View allocated projects & orders"
                               >
-                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                <ChevronRight size={12} style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease', color: isExpanded ? 'var(--text-primary)' : 'var(--text-tertiary)' }} />
                               </button>
                             )}
                           </td>
@@ -2633,17 +2634,13 @@ export default function PurchasingPage() {
                     )}
                   </div>
 
-                  <select
-                    className="form-control"
-                    style={{ height: '30px', fontSize: '11.5px', padding: '2px 8px', maxWidth: '160px' }}
+                  <SearchableFilterDropdown
                     value={supplierFilter}
-                    onChange={(e) => setSupplierFilter(e.target.value)}
-                  >
-                    <option value="All Suppliers">All Suppliers</option>
-                    {uniqueSuppliers.map(s => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
+                    onChange={setSupplierFilter}
+                    options={uniqueSuppliers.filter(s => s !== 'All Suppliers')}
+                    allLabel="All Suppliers"
+                    width="160px"
+                  />
                 </div>
 
               </div>

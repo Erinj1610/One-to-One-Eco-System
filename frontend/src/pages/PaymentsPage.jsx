@@ -1,3 +1,4 @@
+import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -1083,17 +1084,13 @@ export default function PaymentsPage() {
               </div>
 
               {activeFilterTab !== 'AUDIT' && (
-                <select
+                <SearchableFilterDropdown
                   value={customerFilter}
-                  onChange={(e) => setCustomerFilter(e.target.value)}
-                  className="input input-sm"
-                  style={{ height: '32px', fontSize: '11.5px', borderRadius: '6px', maxWidth: '170px' }}
-                >
-                  <option value="All Clients">All Clients</option>
-                  {uniqueCustomers.map(cust => (
-                    <option key={cust} value={cust}>{cust}</option>
-                  ))}
-                </select>
+                  onChange={setCustomerFilter}
+                  options={uniqueCustomers.filter(c => c !== 'All Clients')}
+                  allLabel="All Clients"
+                  width="160px"
+                />
               )}
             </div>
           </div>
