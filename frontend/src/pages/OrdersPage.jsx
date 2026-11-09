@@ -1666,15 +1666,36 @@ export default function OrdersPage() {
     setEndDate('');
   };
 
+  // Map all sub-orders by their parent PO number / ID (defined first so filteredOrders & tree can use it)
+  const subOrdersByParent = useMemo(() => {
+    const map = {};
+    (allOrders || []).forEach(ord => {
+      if (checkIsSubOrder(ord)) {
+        const parentKey = ord.parent_po_number || ord.parentPoNumber || (String(ord.id).includes('-') ? String(ord.id).replace(/-\d{1,2}$/, '') : ord.id);
+        if (!map[parentKey]) map[parentKey] = [];
+        map[parentKey].push(ord);
+      }
+    });
+    return map;
+  }, [allOrders]);
+
   const filteredOrders = useMemo(() => {
     const query = debouncedSearchQuery.toLowerCase().trim();
     return allOrders.filter(o => {
+      const childSubs = subOrdersByParent[o.id] || subOrdersByParent[o.po_number] || [];
+      const childMatch = query && childSubs.some(sub => 
+        (sub.id || '').toLowerCase().includes(query) ||
+        (sub.quote_name || '').toLowerCase().includes(query) ||
+        (sub.phase_name || '').toLowerCase().includes(query)
+      );
+
       const matchesSearch = !query ||
         (o.id || '').toLowerCase().includes(query) ||
         (o.quote_name || '').toLowerCase().includes(query) ||
         (o.projectName || '').toLowerCase().includes(query) ||
         (o.projectClient || '').toLowerCase().includes(query) ||
-        (o.projectPm || '').toLowerCase().includes(query);
+        (o.projectPm || '').toLowerCase().includes(query) ||
+        childMatch;
         
       const matchesStatus = filterStatus === 'All' || o.status === filterStatus;
       const matchesProject = projectFilterKey === 'All' || o.projectKey === projectFilterKey || o.projectName === projectFilterKey;
@@ -1706,7 +1727,39 @@ export default function OrdersPage() {
       
       return matchesSearch && matchesStatus && matchesProject && matchesClient && matchesPm && matchesPaymentStatus && matchesDate;
     });
-  }, [allOrders, debouncedSearchQuery, filterStatus, projectFilterKey, clientFilter, pmFilter, paymentStatusFilter, startDate, endDate]);
+  }, [allOrders, debouncedSearchQuery, filterStatus, projectFilterKey, clientFilter, pmFilter, paymentStatusFilter, startDate, endDate, subOrdersByParent]);
+
+  // Primary rows for the ledger: master orders + orphan sub-orders (if any)
+  const topLevelOrders = useMemo(() => {
+    return filteredOrders.filter(o => {
+      if (!checkIsSubOrder(o)) return true;
+      const parentKey = o.parent_po_number || o.parentPoNumber || (String(o.id).includes('-') ? String(o.id).replace(/-\d{1,2}$/, '') : o.id);
+      const parentExists = (allOrders || []).some(p => p.id === parentKey || p.po_number === parentKey);
+      return !parentExists;
+    });
+  }, [filteredOrders, allOrders]);
+
+  // Dynamic statistics - calculate strictly from master orders to eliminate double-counting
+  const { totalCostCompany, totalValueCompany, blendedMarginCompany, lowMarginPoCount, masterOrdersCount } = useMemo(() => {
+    const masterOnly = filteredOrders.filter(o => !checkIsSubOrder(o));
+    const cost = masterOnly.reduce((sum, o) => sum + (o.costValue || 0), 0);
+    const value = masterOnly.reduce((sum, o) => sum + (o.value || 0), 0);
+    const margin = value > 0 ? Math.round(((value - cost) / value) * 100) : 0;
+    const lowMargin = masterOnly.filter(o => {
+      const c = o.costValue || 0;
+      const r = o.value || 0;
+      if (r === 0) return false;
+      return ((r - c) / r) * 100 < 39;
+    }).length;
+
+    return {
+      totalCostCompany: cost,
+      totalValueCompany: value,
+      blendedMarginCompany: margin,
+      lowMarginPoCount: lowMargin,
+      masterOrdersCount: masterOnly.length
+    };
+  }, [filteredOrders]);
 
   // Sort Logic for All Columns in Orders Module
   // Pagination with Page Memory
@@ -1793,51 +1846,6 @@ export default function OrdersPage() {
       ? <ArrowUp size={12} style={{ marginLeft: '4px', color: 'var(--text-info)' }} />
       : <ArrowDown size={12} style={{ marginLeft: '4px', color: 'var(--text-info)' }} />;
   };
-
-  // Map all sub-orders by their parent PO number / ID
-  const subOrdersByParent = useMemo(() => {
-    const map = {};
-    (allOrders || []).forEach(ord => {
-      if (checkIsSubOrder(ord)) {
-        const parentKey = ord.parent_po_number || ord.parentPoNumber || (String(ord.id).includes('-') ? String(ord.id).replace(/-\d{1,2}$/, '') : ord.id);
-        if (!map[parentKey]) map[parentKey] = [];
-        map[parentKey].push(ord);
-      }
-    });
-    return map;
-  }, [allOrders]);
-
-  // Primary rows for the ledger: master orders + orphan sub-orders (if any)
-  const topLevelOrders = useMemo(() => {
-    return filteredOrders.filter(o => {
-      if (!checkIsSubOrder(o)) return true;
-      const parentKey = o.parent_po_number || o.parentPoNumber || (String(o.id).includes('-') ? String(o.id).replace(/-\d{1,2}$/, '') : ord.id);
-      const parentExists = (allOrders || []).some(p => p.id === parentKey || p.po_number === parentKey);
-      return !parentExists;
-    });
-  }, [filteredOrders, allOrders]);
-
-  // Dynamic statistics - calculate strictly from master orders to eliminate double-counting
-  const { totalCostCompany, totalValueCompany, blendedMarginCompany, lowMarginPoCount, masterOrdersCount } = useMemo(() => {
-    const masterOnly = filteredOrders.filter(o => !checkIsSubOrder(o));
-    const cost = masterOnly.reduce((sum, o) => sum + (o.costValue || 0), 0);
-    const value = masterOnly.reduce((sum, o) => sum + (o.value || 0), 0);
-    const margin = value > 0 ? Math.round(((value - cost) / value) * 100) : 0;
-    const lowMargin = masterOnly.filter(o => {
-      const c = o.costValue || 0;
-      const r = o.value || 0;
-      if (r === 0) return false;
-      return ((r - c) / r) * 100 < 39;
-    }).length;
-
-    return {
-      totalCostCompany: cost,
-      totalValueCompany: value,
-      blendedMarginCompany: margin,
-      lowMarginPoCount: lowMargin,
-      masterOrdersCount: masterOnly.length
-    };
-  }, [filteredOrders]);
 
   // Open the spreadsheet workspace
   const handleOpenWorkspace = (order) => {
