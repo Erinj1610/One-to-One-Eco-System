@@ -6,6 +6,7 @@ import { API_BASE } from '../api_config';
 import TemplateEditor from './admin/TemplateEditor';
 import WorkflowManager from './admin/WorkflowManager';
 import DriveFolderSettings from './admin/DriveFolderSettings';
+import CompanyProfileSettings from './admin/CompanyProfileSettings';
 import { 
   Users, Shield, Key, Plus, Search, Check, AlertTriangle, 
   Trash2, Edit3, RefreshCw, Copy, CheckCircle2, Lock, Unlock,
@@ -918,12 +919,43 @@ export default function SettingsPage() {
   const hostname = typeof window !== 'undefined' ? (window.location.hostname || '') : '';
   const isStaging = hostname.includes('staging') || hostname.includes('localhost') || hostname.includes('127.0.0.1');
 
-  const availableTabs = isAdmin
-    ? (isStaging 
-        ? ['General', 'Users & Permissions', 'Workflow Stages', 'Drive & Folders', 'Releases & Deployments', 'Activity log', 'Project managers', 'Dropdowns', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
-        : ['General', 'Users & Permissions', 'Workflow Stages', 'Drive & Folders', 'Activity log', 'Project managers', 'Dropdowns', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
-      )
-    : ['General', 'Users & Permissions', 'Workflow Stages', 'Rate card', 'Alerts', 'Integrations'];
+  const SETTINGS_CATEGORIES = [
+    {
+      group: 'Organization & Brand',
+      tabs: [
+        { id: 'General', label: 'Company Profile & Branding', icon: 'Building2' },
+        { id: 'Rate card', label: 'Rate Cards & Margins', icon: 'Percent' }
+      ]
+    },
+    {
+      group: 'Team & Governance',
+      tabs: [
+        { id: 'Users & Permissions', label: 'Users & Permissions', icon: 'Shield', adminOnly: true },
+        { id: 'Project managers', label: 'Project Managers & Leads', icon: 'Briefcase', adminOnly: true },
+        { id: 'Activity log', label: 'Activity Audit Log', icon: 'List', adminOnly: true }
+      ]
+    },
+    {
+      group: 'Workflow & Operations',
+      tabs: [
+        { id: 'Workflow Stages', label: 'Workflow Stages', icon: 'SlidersHorizontal' },
+        { id: 'Drive & Folders', label: 'Google Drive Routing', icon: 'Layers', adminOnly: true },
+        { id: 'Dropdowns', label: 'Dropdowns & Lookups', icon: 'Grid', adminOnly: true },
+        { id: 'Templates', label: 'Document Templates', icon: 'Copy', adminOnly: true }
+      ]
+    },
+    {
+      group: 'System & Releases',
+      tabs: [
+        ...(isStaging ? [{ id: 'Releases & Deployments', label: 'Releases & Deployments', icon: 'Sparkles', adminOnly: true }] : []),
+        { id: 'Alerts', label: 'System Alerts & Rules', icon: 'AlertTriangle' },
+        { id: 'Modules', label: 'Modules & Navigation', icon: 'Sliders', adminOnly: true },
+        { id: 'Integrations', label: 'API Integrations', icon: 'ExternalLink' }
+      ]
+    }
+  ];
+
+  const availableTabs = SETTINGS_CATEGORIES.flatMap(c => c.tabs).filter(t => !t.adminOnly || isAdmin).map(t => t.id);
 
 
   const [activeTab, setActiveTab] = useState('General');
@@ -1523,68 +1555,91 @@ export default function SettingsPage() {
 
   return (
     <div className="animation-fade-in">
-      <div className="tabs" style={{ marginBottom: 18 }}>
-        {availableTabs.map(t => (
-          <button key={t} className={`tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>{t}</button>
-        ))}
+      {/* Modern Grouped Executive Navigation Header */}
+      <div 
+        style={{ 
+          background: 'var(--bg-secondary)', 
+          border: '1px solid var(--border)', 
+          borderRadius: '12px', 
+          padding: '8px 12px', 
+          marginBottom: '24px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '16px',
+          alignItems: 'center',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+        }}
+      >
+        {SETTINGS_CATEGORIES.map(cat => {
+          const visibleTabs = cat.tabs.filter(t => !t.adminOnly || isAdmin);
+          if (visibleTabs.length === 0) return null;
+
+          return (
+            <div key={cat.group} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-tertiary)', paddingRight: '4px', userSelect: 'none' }}>
+                {cat.group}:
+              </span>
+              <div style={{ display: 'flex', gap: '3px', background: 'rgba(0,0,0,0.03)', padding: '2px', borderRadius: '7px' }}>
+                {visibleTabs.map(t => {
+                  const isActive = activeTab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setActiveTab(t.id)}
+                      style={{
+                        border: 'none',
+                        background: isActive ? '#ffffff' : 'transparent',
+                        color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        fontWeight: isActive ? 600 : 500,
+                        fontSize: '12px',
+                        padding: '5px 10px',
+                        borderRadius: '5px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        boxShadow: isActive ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                        whiteSpace: 'nowrap'
+                      }}
+                      onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = 'var(--text-primary)'; }}
+                      onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {activeTab === 'General' && (
-        <div>
-          <div className="section-label">Company details</div>
-          <div className="card" style={{ marginBottom: 14, maxWidth: 560 }}>
-            <div className="card-body">
-              <div className="row-2">
-                <div className="form-row"><label className="form-label">Company name</label><input className="form-control" value={general.companyName} onChange={e => setGeneral(g => ({...g, companyName: e.target.value}))} /></div>
-                <div className="form-row"><label className="form-label">Studio email</label><input className="form-control" value={general.email} onChange={e => setGeneral(g => ({...g, email: e.target.value}))} /></div>
-              </div>
-              <div className="row-2">
-                <div className="form-row"><label className="form-label">Phone</label><input className="form-control" value={general.phone} onChange={e => setGeneral(g => ({...g, phone: e.target.value}))} /></div>
-                <div className="form-row"><label className="form-label">VAT number</label><input className="form-control" value={general.vat} onChange={e => setGeneral(g => ({...g, vat: e.target.value}))} /></div>
-              </div>
-              <div className="form-row"><label className="form-label">Address</label><input className="form-control" value={general.address} onChange={e => setGeneral(g => ({...g, address: e.target.value}))} /></div>
-              <div className="row-2">
-                <div className="form-row">
-                  <label className="form-label">Currency</label>
-                  <select className="form-control" value={general.currency} onChange={e => setGeneral(g => ({...g, currency: e.target.value}))}>
-                    <option>ZAR</option><option>USD</option><option>EUR</option><option>GBP</option>
-                  </select>
-                </div>
-                <div className="form-row">
-                  <label className="form-label">Default Target Margin (%)</label>
-                  <input 
-                    type="number" 
-                    className="form-control" 
-                    value={general.defaultTargetMargin || 39} 
-                    onChange={e => setGeneral(g => ({...g, defaultTargetMargin: parseInt(e.target.value) || 39}))} 
-                  />
-                </div>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-                <button 
-                  className="btn btn-primary" 
-                  onClick={() => {
-                    setAlertSettings(prev => ({
-                      ...prev,
-                      general: {
-                        companyName: general.companyName,
-                        email: general.email,
-                        phone: general.phone,
-                        address: general.address,
-                        vat: general.vat,
-                        currency: general.currency
-                      },
-                      defaultTargetMargin: Number(general.defaultTargetMargin) || 39
-                    }));
-                    alert('General settings & target margins saved successfully!');
-                  }}
-                >
-                  Save changes
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <CompanyProfileSettings 
+          general={general} 
+          setGeneral={setGeneral} 
+          onSave={() => {
+            setAlertSettings(prev => ({
+              ...prev,
+              general: {
+                companyName: general.companyName,
+                email: general.email,
+                phone: general.phone,
+                address: general.address,
+                vat: general.vat,
+                regNumber: general.regNumber,
+                bankingDetails: general.bankingDetails,
+                currency: general.currency,
+                paymentTerms: general.paymentTerms
+              },
+              defaultTargetMargin: Number(general.defaultTargetMargin) || 39
+            }));
+            if (window.otoToast) {
+              window.otoToast('Company Profile & document branding synchronized successfully!', 'success');
+            } else {
+              alert('Company Profile & document branding synchronized successfully!');
+            }
+          }} 
+        />
       )}
 
       {activeTab === 'Workflow Stages' && (
