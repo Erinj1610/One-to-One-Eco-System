@@ -7,7 +7,7 @@ import { API_BASE } from '../api_config';
 import MobileInvoicesViewer from '../components/mobile/MobileInvoicesViewer';
 import { 
   FileText, Search, RefreshCw, AlertTriangle, Check, Layers, ExternalLink, Filter, 
-  ArrowLeft, ArrowRight, ShieldCheck, ChevronDown, ChevronRight, X, Sparkles, Box, 
+  ArrowLeft, ArrowRight, ShieldCheck, ChevronDown, ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight, X, Sparkles, Box, 
   CheckCircle2, Clock, Trash2, Package, CheckSquare, Square, DollarSign, Receipt,
   ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';

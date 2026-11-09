@@ -6,7 +6,7 @@ import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
 import { 
   ClipboardList, Search, RefreshCw, AlertTriangle, Check, Layers, ExternalLink, Filter, 
-  ArrowLeft, ArrowRight, ShieldCheck, ChevronDown, ChevronRight, X, Sparkles, Box, 
+  ArrowLeft, ArrowRight, ShieldCheck, ChevronDown, ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight, X, Sparkles, Box, 
   CheckCircle2, Clock, Trash2, FileText, Package, CheckSquare, Square,
   ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
