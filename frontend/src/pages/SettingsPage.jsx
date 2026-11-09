@@ -3188,124 +3188,225 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'Activity log' && isAdmin && (
-        <div>
-          <div className="section-label">User Activity & Audit Logs</div>
-          <div className="card" style={{ marginBottom: '20px' }}>
-            <div className="card-body">
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '18px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
-                  <input 
-                    type="text" 
-                    placeholder="Search logs by user, action, details..." 
-                    className="form-control"
-                    value={activitySearch}
-                    onChange={e => setActivitySearch(e.target.value)}
-                    style={{ paddingLeft: '32px' }}
-                  />
-                  <span style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }}>🔍</span>
-                </div>
-                <div>
-                  <select 
-                    className="form-control" 
-                    value={activityFilterType}
-                    onChange={e => setActivityFilterType(e.target.value)}
-                    style={{ width: '180px' }}
-                  >
-                    <option value="All">All Activity Types</option>
-                    <option value="login">Logins</option>
-                    <option value="logout">Logouts</option>
-                    <option value="page_view">Page Views</option>
-                    <option value="document_generation">Document Compiles</option>
-                    <option value="document_export">Document Exports</option>
-                    <option value="invoice_issue">Invoice Issues</option>
-                    <option value="waybill_edit">Logistics Edits</option>
-                  </select>
-                </div>
-                <div>
-                  <select 
-                    className="form-control" 
-                    value={selectedUserFilter}
-                    onChange={e => setSelectedUserFilter(e.target.value)}
-                    style={{ width: '220px' }}
-                  >
-                    <option value="All">All Users</option>
-                    {uniqueUsers.map(email => (
-                      <option key={email} value={email}>{email}</option>
-                    ))}
-                  </select>
-                </div>
+        <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
+          {/* Top Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '18px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>
+                  Team & Governance
+                </span>
               </div>
+              <h1 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 6px 0', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                Activity Audit Log
+              </h1>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
+                Real-time chronological telemetry, user navigation, document issuance, and security session events across the studio.
+              </p>
+            </div>
+            
+            <span style={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: '6px', 
+              fontSize: '12px', 
+              fontWeight: 500, 
+              color: '#15803d', 
+              background: '#f0fdf4', 
+              border: '1px solid #bbf7d0', 
+              padding: '6px 12px', 
+              borderRadius: '20px' 
+            }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#16a34a' }} />
+              Live Telemetry Active
+            </span>
+          </div>
 
-              <div style={{ overflowX: 'auto' }}>
-                <table className="table" style={{ fontSize: '12px', margin: 0 }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '160px' }}>Timestamp</th>
-                      <th style={{ width: '220px' }}>User Email</th>
-                      <th style={{ width: '150px' }}>Action Type</th>
-                      <th>Activity Details</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredActivityLogs.map(log => {
-                      const badgeColor = {
-                        login: 'rgba(74, 222, 128, 0.15)',
-                        logout: 'rgba(156, 163, 175, 0.15)',
-                        page_view: 'rgba(96, 165, 250, 0.15)',
-                        document_generation: 'rgba(251, 146, 60, 0.15)',
-                        document_export: 'rgba(139, 92, 246, 0.15)',
-                        invoice_issue: 'rgba(245, 158, 11, 0.15)',
-                        waybill_edit: 'rgba(239, 68, 68, 0.15)'
-                      }[log.type] || 'var(--bg-secondary)';
+          {/* Metric Summary Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px' }}>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Total Events Logged</div>
+              <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>{(activityLogs || []).length}</div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Recorded session telemetry</div>
+            </div>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Active Team Operators</div>
+              <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
+                {uniqueUsers.length}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Unique studio accounts</div>
+            </div>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Matching Current Filter</div>
+              <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
+                {filteredActivityLogs.length}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Display events</div>
+            </div>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Commercial Operations</div>
+              <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
+                {(activityLogs || []).filter(l => l.type === 'invoice_issue' || l.type === 'document_generation' || l.type === 'document_export').length}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Document & billing events</div>
+            </div>
+          </div>
 
-                      const textColor = {
-                        login: '#4ade80',
-                        logout: '#9ca3af',
-                        page_view: '#60a5fa',
-                        document_generation: '#fb923c',
-                        document_export: '#a78bfa',
-                        invoice_issue: '#f59e0b',
-                        waybill_edit: '#ef4444'
-                      }[log.type] || 'var(--text-secondary)';
+          {/* Filter & Search Bar */}
+          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 18px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ position: 'relative', flex: '1 1 280px' }}>
+              <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+              <input 
+                type="search" 
+                placeholder="Search logs by user, action, details..." 
+                value={activitySearch}
+                onChange={e => setActivitySearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  paddingLeft: '34px',
+                  paddingRight: '12px',
+                  fontSize: '13px',
+                  color: '#0f172a',
+                  background: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  outline: 'none'
+                }}
+              />
+            </div>
+            <div style={{ minWidth: '190px' }}>
+              <select 
+                value={activityFilterType}
+                onChange={e => setActivityFilterType(e.target.value)}
+                style={{
+                  height: '36px',
+                  width: '100%',
+                  fontSize: '12.5px',
+                  fontWeight: 500,
+                  color: '#334155',
+                  background: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  padding: '0 10px',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="All">All Activity Types</option>
+                <option value="login">Logins</option>
+                <option value="logout">Logouts</option>
+                <option value="page_view">Page Views</option>
+                <option value="document_generation">Document Compiles</option>
+                <option value="document_export">Document Exports</option>
+                <option value="invoice_issue">Invoice Issues</option>
+                <option value="waybill_edit">Logistics Edits</option>
+              </select>
+            </div>
+            <div style={{ minWidth: '220px' }}>
+              <select 
+                value={selectedUserFilter}
+                onChange={e => setSelectedUserFilter(e.target.value)}
+                style={{
+                  height: '36px',
+                  width: '100%',
+                  fontSize: '12.5px',
+                  fontWeight: 500,
+                  color: '#334155',
+                  background: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  padding: '0 10px',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="All">All Users ({uniqueUsers.length})</option>
+                {uniqueUsers.map(email => (
+                  <option key={email} value={email}>{email}</option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-                      return (
-                        <tr key={log.id}>
-                          <td style={{ color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
-                            {new Date(log.timestamp).toLocaleString('en-ZA')}
-                          </td>
-                          <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {log.userEmail}
-                          </td>
-                          <td>
-                            <span style={{ 
-                              padding: '2px 8px', 
-                              borderRadius: '4px', 
-                              fontSize: '10px', 
-                              fontWeight: 700, 
-                              textTransform: 'uppercase',
-                              background: badgeColor,
-                              color: textColor
-                            }}>
-                              {log.type.replace('_', ' ')}
-                            </span>
-                          </td>
-                          <td style={{ color: 'var(--text-primary)' }}>
-                            {log.details}
-                          </td>
-                        </tr>
-                      );
-                    })}
+          {/* Activity Log Table */}
+          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ margin: 0, width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <th style={{ padding: '14px 20px', fontWeight: 600, width: '180px' }}>Timestamp</th>
+                    <th style={{ padding: '14px 16px', fontWeight: 600, width: '240px' }}>User Email</th>
+                    <th style={{ padding: '14px 16px', fontWeight: 600, width: '160px' }}>Action Type</th>
+                    <th style={{ padding: '14px 20px', fontWeight: 600 }}>Activity Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredActivityLogs.map((log, idx, arr) => {
+                    const typeConfig = {
+                      login: { label: 'Login', bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
+                      logout: { label: 'Logout', bg: '#f8fafc', color: '#64748b', border: '#e2e8f0' },
+                      page_view: { label: 'Page View', bg: '#f1f5f9', color: '#334155', border: '#cbd5e1' },
+                      document_generation: { label: 'Doc Compiled', bg: '#fffbeb', color: '#92400e', border: '#fde68a' },
+                      document_export: { label: 'Doc Export', bg: '#faf5ff', color: '#6b21a8', border: '#e9d5ff' },
+                      invoice_issue: { label: 'Invoice Issued', bg: '#ecfdf5', color: '#047857', border: '#a7f3d0' },
+                      waybill_edit: { label: 'Logistics Edit', bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' }
+                    }[log.type] || { label: (log.type || 'Event').replace('_', ' '), bg: '#f8fafc', color: '#475569', border: '#e2e8f0' };
 
-                    {filteredActivityLogs.length === 0 && (
-                      <tr>
-                        <td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
-                          No activity logs found matching the filter criteria.
+                    return (
+                      <tr 
+                        key={log.id}
+                        style={{ 
+                          borderBottom: idx < arr.length - 1 ? '1px solid #f1f5f9' : 'none',
+                          backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafafa',
+                          transition: 'background-color 0.15s ease'
+                        }}
+                      >
+                        <td style={{ padding: '12px 20px', color: '#64748b', fontSize: '12px', fontFamily: 'monospace' }}>
+                          {new Date(log.timestamp).toLocaleString('en-ZA', { 
+                            year: 'numeric', 
+                            month: '2-digit', 
+                            day: '2-digit', 
+                            hour: '2-digit', 
+                            minute: '2-digit', 
+                            second: '2-digit' 
+                          })}
+                        </td>
+                        <td style={{ padding: '12px 16px', fontWeight: 600, color: '#0f172a' }}>
+                          {log.userEmail}
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{ 
+                            display: 'inline-block',
+                            padding: '3px 8px', 
+                            borderRadius: '6px', 
+                            fontSize: '11px', 
+                            fontWeight: 600, 
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                            background: typeConfig.bg,
+                            color: typeConfig.color,
+                            border: `1px solid ${typeConfig.border}`
+                          }}>
+                            {typeConfig.label}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 20px', color: '#334155' }}>
+                          {log.details}
                         </td>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    );
+                  })}
+
+                  {filteredActivityLogs.length === 0 && (
+                    <tr>
+                      <td colSpan={4} style={{ textAlign: 'center', padding: '36px', color: '#64748b', fontSize: '13px' }}>
+                        No activity logs found matching the filter criteria.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
