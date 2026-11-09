@@ -40,21 +40,21 @@ const PERMISSION_LEVELS = ['Full access', 'Can edit', 'View only', 'No access'];
 const getRoleBadgeStyle = (roleName) => {
   const norm = (roleName || '').toLowerCase();
   if (norm.includes('admin')) {
-    return { bg: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.3)' };
+    return { bg: '#f8fafc', color: '#0f172a', border: '1px solid #cbd5e1' };
   }
   if (norm.includes('senior')) {
-    return { bg: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)' };
+    return { bg: '#f1f5f9', color: '#1e293b', border: '1px solid #cbd5e1' };
   }
   if (norm.includes('designer')) {
-    return { bg: 'rgba(52, 211, 153, 0.15)', color: '#34d399', border: '1px solid rgba(52, 211, 153, 0.3)' };
+    return { bg: '#f8fafc', color: '#334155', border: '1px solid #e2e8f0' };
   }
   if (norm.includes('coordinator')) {
-    return { bg: 'rgba(251, 191, 36, 0.15)', color: '#fbbf24', border: '1px solid rgba(251, 191, 36, 0.3)' };
+    return { bg: '#ffffff', color: '#475569', border: '1px solid #cbd5e1' };
   }
   if (norm.includes('showroom')) {
-    return { bg: 'rgba(244, 114, 182, 0.15)', color: '#f472b6', border: '1px solid rgba(244, 114, 182, 0.3)' };
+    return { bg: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0' };
   }
-  return { bg: 'rgba(148, 163, 184, 0.15)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.3)' };
+  return { bg: '#f8fafc', color: '#64748b', border: '1px solid #e2e8f0' };
 };
 
 const getPermLevelStyle = (level) => {
@@ -1800,28 +1800,35 @@ export default function SettingsPage() {
         <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Main Top Header & Sub-View Switcher */}
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', paddingBottom: '18px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: '16px' }}>
               <div>
-                <h3 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 4px 0', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Shield size={20} color="var(--accent)" /> Users, Access & Permissions
-                </h3>
-                <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>
+                    Team & Governance
+                  </span>
+                </div>
+                <h1 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 6px 0', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                  Users, Access & Permissions
+                </h1>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
                   Manage team accounts, assign standard role templates, customize individual user permissions, and configure system matrices.
                 </p>
               </div>
 
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                 {/* Sub-View Switcher (Members vs Role Matrix) */}
-                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '3px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', background: '#f1f5f9', padding: '3px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                   <button
                     type="button"
                     onClick={() => setTeamSubView('members')}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '6px',
-                      padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                      padding: '6px 14px', borderRadius: '6px', fontSize: '12.5px', fontWeight: 600,
                       border: 'none', cursor: 'pointer',
-                      background: teamSubView === 'members' ? 'var(--accent)' : 'transparent',
-                      color: teamSubView === 'members' ? '#fff' : 'var(--text-secondary)'
+                      background: teamSubView === 'members' ? '#ffffff' : 'transparent',
+                      color: teamSubView === 'members' ? '#0f172a' : '#64748b',
+                      boxShadow: teamSubView === 'members' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
+                      transition: 'all 0.15s ease'
                     }}
                   >
                     <Users size={14} /> Team Members & Access
@@ -1831,10 +1838,12 @@ export default function SettingsPage() {
                     onClick={() => setTeamSubView('roles')}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '6px',
-                      padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                      padding: '6px 14px', borderRadius: '6px', fontSize: '12.5px', fontWeight: 600,
                       border: 'none', cursor: 'pointer',
-                      background: teamSubView === 'roles' ? 'var(--accent)' : 'transparent',
-                      color: teamSubView === 'roles' ? '#fff' : 'var(--text-secondary)'
+                      background: teamSubView === 'roles' ? '#ffffff' : 'transparent',
+                      color: teamSubView === 'roles' ? '#0f172a' : '#64748b',
+                      boxShadow: teamSubView === 'roles' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
+                      transition: 'all 0.15s ease'
                     }}
                   >
                     <Shield size={14} /> Role Presets & Matrix
@@ -1854,7 +1863,6 @@ export default function SettingsPage() {
                     </button>
                     <button
                       type="button"
-                      className="btn btn-primary"
                       onClick={() => {
                         setInviteForm({ name: '', email: '', role_id: (dbRoles[0]?.id || 3), department: 'Design' });
                         setInviteError('');
@@ -1862,7 +1870,23 @@ export default function SettingsPage() {
                         setGeneratedLink('');
                         setShowInviteModal(true);
                       }}
-                      style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600 }}
+                      style={{ 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        gap: '8px', 
+                        padding: '8px 16px', 
+                        fontSize: '12.5px', 
+                        fontWeight: 600,
+                        backgroundColor: '#0f172a',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '7px',
+                        cursor: 'pointer',
+                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#1e293b'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#0f172a'; }}
                     >
                       <UserPlus size={14} /> + Invite Team Member
                     </button>
@@ -1898,88 +1922,129 @@ export default function SettingsPage() {
             </div>
 
             {/* KPI Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '16px' }}>
-              <div className="card" style={{ padding: '14px 18px', borderLeft: '3px solid #38bdf8' }}>
-                <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>Total Members</div>
-                <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px' }}>{users.length}</div>
-                <div style={{ fontSize: '11px', color: '#38bdf8', marginTop: '2px' }}>Active in database</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Total Members</div>
+                <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>{users.length}</div>
+                <div style={{ fontSize: '12px', color: '#64748b' }}>Registered team identities</div>
               </div>
-              <div className="card" style={{ padding: '14px 18px', borderLeft: '3px solid #10b981' }}>
-                <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>Active Accounts</div>
-                <div style={{ fontSize: '24px', fontWeight: 800, color: '#10b981', marginTop: '4px' }}>
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Active Accounts</div>
+                <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
                   {users.filter(u => !u.disabled).length}
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Operational logins</div>
+                <div style={{ fontSize: '12px', color: '#16a34a', fontWeight: 500 }}>● Fully operational logins</div>
               </div>
-              <div className="card" style={{ padding: '14px 18px', borderLeft: '3px solid #a855f7' }}>
-                <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>Role Presets</div>
-                <div style={{ fontSize: '24px', fontWeight: 800, color: '#c084fc', marginTop: '4px' }}>
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Role Presets</div>
+                <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
                   {dbRoles.length || 5}
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Standard company baselines</div>
+                <div style={{ fontSize: '12px', color: '#64748b' }}>Standard company baselines</div>
               </div>
-              <div className="card" style={{ padding: '14px 18px', borderLeft: '3px solid #f59e0b' }}>
-                <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>Customized Access</div>
-                <div style={{ fontSize: '24px', fontWeight: 800, color: '#fbbf24', marginTop: '4px' }}>
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Customized Access</div>
+                <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
                   {users.filter(u => (u.custom_override_count || 0) > 0).length}
                 </div>
-                <div style={{ fontSize: '11px', color: '#fbbf24', marginTop: '2px' }}>Members with custom overrides</div>
+                <div style={{ fontSize: '12px', color: '#b45309', fontWeight: 500 }}>Members with bespoke overrides</div>
               </div>
             </div>
 
             {/* Filter & Search Bar for Members View */}
             {teamSubView === 'members' && (
-              <div className="card" style={{ marginBottom: '16px' }}>
-                <div className="card-body" style={{ padding: '12px 16px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-                  <div style={{ position: 'relative', flex: '1 1 240px' }}>
-                    <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="Search members by name, email, or department..."
-                      value={userSearch}
-                      onChange={e => setUserSearch(e.target.value)}
-                      style={{ paddingLeft: '32px', height: '36px', fontSize: '13px', width: '100%' }}
-                    />
-                  </div>
-                  <div style={{ minWidth: '150px' }}>
-                    <select
-                      className="form-control"
-                      value={userRoleFilter}
-                      onChange={e => setUserRoleFilter(e.target.value)}
-                      style={{ height: '36px', fontSize: '12.5px', width: '100%' }}
-                    >
-                      <option value="All">All Roles ({dbRoles.length})</option>
-                      {dbRoles.map(r => (
-                        <option key={r.id} value={r.name}>{r.name} ({r.user_count})</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div style={{ minWidth: '150px' }}>
-                    <select
-                      className="form-control"
-                      value={userDeptFilter}
-                      onChange={e => setUserDeptFilter(e.target.value)}
-                      style={{ height: '36px', fontSize: '12.5px', width: '100%' }}
-                    >
-                      <option value="All">All Departments</option>
-                      {Array.from(new Set(users.map(u => u.department).filter(d => d && d !== 'None' && d !== 'General'))).map(dept => (
-                        <option key={dept} value={dept}>{dept}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div style={{ minWidth: '170px' }}>
-                    <select
-                      className="form-control"
-                      value={userOverrideFilter}
-                      onChange={e => setUserOverrideFilter(e.target.value)}
-                      style={{ height: '36px', fontSize: '12.5px', width: '100%' }}
-                    >
-                      <option value="All">All Permission Levels</option>
-                      <option value="Custom">Custom Overrides Only</option>
-                      <option value="Standard">Role Defaults Only</option>
-                    </select>
-                  </div>
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 18px', marginBottom: '20px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                <div style={{ position: 'relative', flex: '1 1 260px' }}>
+                  <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                  <input
+                    type="search"
+                    placeholder="Search members by name, email, or department..."
+                    value={userSearch}
+                    onChange={e => setUserSearch(e.target.value)}
+                    style={{
+                      width: '100%',
+                      height: '36px',
+                      paddingLeft: '34px',
+                      paddingRight: '12px',
+                      fontSize: '13px',
+                      color: '#0f172a',
+                      background: '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+                <div style={{ minWidth: '160px' }}>
+                  <select
+                    value={userRoleFilter}
+                    onChange={e => setUserRoleFilter(e.target.value)}
+                    style={{
+                      height: '36px',
+                      width: '100%',
+                      fontSize: '12.5px',
+                      fontWeight: 500,
+                      color: '#334155',
+                      background: '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      padding: '0 10px',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="All">All Roles ({dbRoles.length})</option>
+                    {dbRoles.map(r => (
+                      <option key={r.id} value={r.name}>{r.name} ({r.user_count})</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ minWidth: '160px' }}>
+                  <select
+                    value={userDeptFilter}
+                    onChange={e => setUserDeptFilter(e.target.value)}
+                    style={{
+                      height: '36px',
+                      width: '100%',
+                      fontSize: '12.5px',
+                      fontWeight: 500,
+                      color: '#334155',
+                      background: '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      padding: '0 10px',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="All">All Departments</option>
+                    {Array.from(new Set(users.map(u => u.department).filter(d => d && d !== 'None' && d !== 'General'))).map(dept => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ minWidth: '180px' }}>
+                  <select
+                    value={userOverrideFilter}
+                    onChange={e => setUserOverrideFilter(e.target.value)}
+                    style={{
+                      height: '36px',
+                      width: '100%',
+                      fontSize: '12.5px',
+                      fontWeight: 500,
+                      color: '#334155',
+                      background: '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      padding: '0 10px',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="All">All Permission Levels</option>
+                    <option value="Custom">Custom Overrides Only</option>
+                    <option value="Standard">Role Defaults Only</option>
+                  </select>
                 </div>
               </div>
             )}
@@ -1988,250 +2053,275 @@ export default function SettingsPage() {
 
           {/* Sub-View: Team Members & Access Table */}
           {teamSubView === 'members' && (
-            <div className="card" style={{ overflow: 'hidden' }}>
-              <div className="card-body" style={{ padding: 0 }}>
-                {usersLoading ? (
-                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                    <RefreshCw size={20} className="spin" style={{ margin: '0 auto 10px auto', display: 'block', color: 'var(--accent)' }} />
-                    Loading team members...
-                  </div>
-                ) : (
-                  <div style={{ overflowX: 'auto' }}>
-                    <table className="table" style={{ margin: 0, width: '100%' }}>
-                      <thead>
-                        <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--border)' }}>
-                          <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Member</th>
-                          <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Department</th>
-                          <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>System Role (1-Click Reassign)</th>
-                          <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Access Privileges</th>
-                          <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</th>
-                          <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {users
-                          .filter(u => {
-                            const q = userSearch.toLowerCase();
-                            const matchesSearch = !userSearch || 
-                              (u.name || '').toLowerCase().includes(q) ||
-                              (u.email || '').toLowerCase().includes(q) ||
-                              (u.department || '').toLowerCase().includes(q) ||
-                              (u.role || '').toLowerCase().includes(q);
-                            const matchesRole = userRoleFilter === 'All' || (u.role || '').toLowerCase() === userRoleFilter.toLowerCase();
-                            const matchesDept = userDeptFilter === 'All' || (u.department || '').toLowerCase() === userDeptFilter.toLowerCase();
-                            const matchesOverride = userOverrideFilter === 'All' || 
-                              (userOverrideFilter === 'Custom' ? (u.custom_override_count || 0) > 0 : (u.custom_override_count || 0) === 0);
-                            return matchesSearch && matchesRole && matchesDept && matchesOverride;
-                          })
-                          .map(u => {
-                            const roleStyle = getRoleBadgeStyle(u.role);
-                            const isUpdatingRole = roleUpdatingUserId === u.id;
-                            const overrideCount = u.custom_override_count || 0;
-                            return (
-                              <tr 
-                                key={u.id} 
-                                style={{ 
-                                  opacity: u.disabled ? 0.6 : 1,
-                                  borderBottom: '1px solid rgba(255,255,255,0.04)',
-                                  transition: 'background 0.15s ease'
-                                }}
-                              >
-                                {/* User Info & Avatar */}
-                                <td style={{ padding: '14px 18px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <div 
-                                      style={{
-                                        width: '38px',
-                                        height: '38px',
-                                        borderRadius: '50%',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        fontSize: '13px',
-                                        fontWeight: 700,
-                                        background: roleStyle.bg,
-                                        color: roleStyle.color,
-                                        border: roleStyle.border,
-                                        flexShrink: 0
-                                      }}
-                                    >
-                                      {getInitials(u.name, u.email)}
-                                    </div>
-                                    <div>
-                                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '13.5px' }}>{u.name}</div>
-                                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{u.email}</div>
-                                    </div>
-                                  </div>
-                                </td>
-
-                                {/* Department */}
-                                <td style={{ padding: '14px 18px' }}>
-                                  <span style={{
-                                    display: 'inline-block',
-                                    padding: '3px 8px',
-                                    borderRadius: '4px',
-                                    fontSize: '11.5px',
-                                    fontWeight: 500,
-                                    background: 'rgba(255,255,255,0.05)',
-                                    color: 'var(--text-primary)',
-                                    border: '1px solid rgba(255,255,255,0.08)'
-                                  }}>
-                                    {u.department || 'General'}
-                                  </span>
-                                </td>
-
-                                {/* Interactive Inline Role Switcher */}
-                                <td style={{ padding: '14px 18px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <select
-                                      className="form-control"
-                                      value={u.role_id || ''}
-                                      onChange={e => handleInlineRoleChange(u.id, e.target.value)}
-                                      disabled={isUpdatingRole}
-                                      style={{
-                                        fontSize: '12px',
-                                        fontWeight: 600,
-                                        padding: '4px 8px',
-                                        height: '32px',
-                                        borderRadius: '6px',
-                                        background: roleStyle.bg,
-                                        color: roleStyle.color,
-                                        border: roleStyle.border,
-                                        cursor: 'pointer',
-                                        minWidth: '150px'
-                                      }}
-                                    >
-                                      {dbRoles.map(r => (
-                                        <option key={r.id} value={r.id} style={{ background: '#1e293b', color: '#fff' }}>
-                                          {r.name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    {isUpdatingRole && <RefreshCw size={12} className="spin" style={{ color: roleStyle.color }} />}
-                                  </div>
-                                </td>
-
-                                {/* Access Privileges & Custom Overrides */}
-                                <td style={{ padding: '14px 18px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                    {overrideCount > 0 ? (
-                                      <span style={{
-                                        padding: '3px 9px',
-                                        borderRadius: '12px',
-                                        fontSize: '11px',
-                                        fontWeight: 600,
-                                        background: 'rgba(245, 158, 11, 0.15)',
-                                        color: '#fbbf24',
-                                        border: '1px solid rgba(245, 158, 11, 0.3)',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                      }}>
-                                        ⚡ {overrideCount} Custom Override{overrideCount > 1 ? 's' : ''}
-                                      </span>
-                                    ) : (
-                                      <span style={{
-                                        padding: '3px 9px',
-                                        borderRadius: '12px',
-                                        fontSize: '11px',
-                                        fontWeight: 500,
-                                        background: 'rgba(255,255,255,0.05)',
-                                        color: 'var(--text-secondary)',
-                                        border: '1px solid rgba(255,255,255,0.08)',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                      }}>
-                                        Role Default ({u.role || 'Standard'})
-                                      </span>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenUserPermissions(u)}
-                                      className="btn btn-sm"
-                                      style={{
-                                        fontSize: '11px',
-                                        padding: '3px 8px',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px',
-                                        background: overrideCount > 0 ? 'rgba(245, 158, 11, 0.12)' : 'rgba(255,255,255,0.06)',
-                                        color: overrideCount > 0 ? '#fbbf24' : 'var(--text-primary)',
-                                        borderColor: overrideCount > 0 ? 'rgba(245, 158, 11, 0.3)' : 'var(--border)'
-                                      }}
-                                      title="Customize individual permissions for this user"
-                                    >
-                                      <SlidersHorizontal size={11} />
-                                      {overrideCount > 0 ? 'Edit Overrides' : 'Customize'}
-                                    </button>
-                                  </div>
-                                </td>
-
-                                {/* Access Status */}
-                                <td style={{ padding: '14px 18px' }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleToggleUserStatus(u)}
-                                    title={u.disabled ? "Click to enable account" : "Click to suspend account"}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              {usersLoading ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
+                  <RefreshCw size={20} className="spin" style={{ margin: '0 auto 10px auto', display: 'block', color: '#0f172a' }} />
+                  Loading team members...
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ margin: 0, width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <th style={{ padding: '14px 20px', fontWeight: 600 }}>Member Identity</th>
+                        <th style={{ padding: '14px 16px', fontWeight: 600 }}>Department</th>
+                        <th style={{ padding: '14px 16px', fontWeight: 600, width: '190px' }}>Assigned System Role</th>
+                        <th style={{ padding: '14px 16px', fontWeight: 600 }}>Access Privileges</th>
+                        <th style={{ padding: '14px 16px', fontWeight: 600 }}>Account Status</th>
+                        <th style={{ padding: '14px 20px', fontWeight: 600, textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users
+                        .filter(u => {
+                          const q = userSearch.toLowerCase();
+                          const matchesSearch = !userSearch || 
+                            (u.name || '').toLowerCase().includes(q) ||
+                            (u.email || '').toLowerCase().includes(q) ||
+                            (u.department || '').toLowerCase().includes(q) ||
+                            (u.role || '').toLowerCase().includes(q);
+                          const matchesRole = userRoleFilter === 'All' || (u.role || '').toLowerCase() === userRoleFilter.toLowerCase();
+                          const matchesDept = userDeptFilter === 'All' || (u.department || '').toLowerCase() === userDeptFilter.toLowerCase();
+                          const matchesOverride = userOverrideFilter === 'All' || 
+                            (userOverrideFilter === 'Custom' ? (u.custom_override_count || 0) > 0 : (u.custom_override_count || 0) === 0);
+                          return matchesSearch && matchesRole && matchesDept && matchesOverride;
+                        })
+                        .map((u, idx, arr) => {
+                          const isUpdatingRole = roleUpdatingUserId === u.id;
+                          const overrideCount = u.custom_override_count || 0;
+                          return (
+                            <tr 
+                              key={u.id} 
+                              style={{ 
+                                opacity: u.disabled ? 0.6 : 1,
+                                borderBottom: idx < arr.length - 1 ? '1px solid #f1f5f9' : 'none',
+                                backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafafa',
+                                transition: 'background-color 0.15s ease'
+                              }}
+                            >
+                              {/* User Info & Neutral Avatar */}
+                              <td style={{ padding: '14px 20px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  <div 
                                     style={{
+                                      width: '36px',
+                                      height: '36px',
+                                      borderRadius: '50%',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontSize: '12px',
+                                      fontWeight: 700,
+                                      background: '#f1f5f9',
+                                      color: '#334155',
+                                      border: '1px solid #cbd5e1',
+                                      flexShrink: 0
+                                    }}
+                                  >
+                                    {getInitials(u.name, u.email)}
+                                  </div>
+                                  <div>
+                                    <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '13.5px' }}>{u.name}</div>
+                                    <div style={{ fontSize: '12px', color: '#64748b' }}>{u.email}</div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Department */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <span style={{
+                                  display: 'inline-block',
+                                  padding: '3px 9px',
+                                  borderRadius: '6px',
+                                  fontSize: '11.5px',
+                                  fontWeight: 500,
+                                  background: '#f8fafc',
+                                  color: '#334155',
+                                  border: '1px solid #e2e8f0'
+                                }}>
+                                  {u.department || 'General'}
+                                </span>
+                              </td>
+
+                              {/* Interactive Inline Role Switcher (Clean Dropdown) */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <select
+                                    value={u.role_id || ''}
+                                    onChange={e => handleInlineRoleChange(u.id, e.target.value)}
+                                    disabled={isUpdatingRole}
+                                    style={{
+                                      fontSize: '12px',
+                                      fontWeight: 600,
+                                      padding: '4px 10px',
+                                      height: '32px',
+                                      borderRadius: '6px',
+                                      background: '#ffffff',
+                                      color: '#0f172a',
+                                      border: '1px solid #cbd5e1',
+                                      cursor: 'pointer',
+                                      width: '100%',
+                                      outline: 'none'
+                                    }}
+                                  >
+                                    {dbRoles.map(r => (
+                                      <option key={r.id} value={r.id}>
+                                        {r.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {isUpdatingRole && <RefreshCw size={12} className="spin" style={{ color: '#0f172a' }} />}
+                                </div>
+                              </td>
+
+                              {/* Access Privileges & Custom Overrides */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  {overrideCount > 0 ? (
+                                    <span style={{
+                                      padding: '3px 9px',
+                                      borderRadius: '6px',
+                                      fontSize: '11.5px',
+                                      fontWeight: 600,
+                                      background: '#fef3c7',
+                                      color: '#92400e',
+                                      border: '1px solid #fde68a',
                                       display: 'inline-flex',
                                       alignItems: 'center',
-                                      gap: '6px',
-                                      padding: '4px 10px',
-                                      borderRadius: '12px',
-                                      fontSize: '11px',
-                                      fontWeight: 600,
-                                      background: u.disabled ? 'rgba(239, 68, 68, 0.12)' : 'rgba(34, 197, 94, 0.12)',
-                                      color: u.disabled ? '#ef4444' : '#10b981',
-                                      border: u.disabled ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(34, 197, 94, 0.3)',
+                                      gap: '4px'
+                                    }}>
+                                      ⚡ {overrideCount} Custom Override{overrideCount > 1 ? 's' : ''}
+                                    </span>
+                                  ) : (
+                                    <span style={{
+                                      padding: '3px 9px',
+                                      borderRadius: '6px',
+                                      fontSize: '11.5px',
+                                      fontWeight: 500,
+                                      background: '#f8fafc',
+                                      color: '#64748b',
+                                      border: '1px solid #e2e8f0',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}>
+                                      Role Default ({u.role || 'Standard'})
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenUserPermissions(u)}
+                                    style={{
+                                      fontSize: '11.5px',
+                                      fontWeight: 500,
+                                      padding: '3px 9px',
+                                      borderRadius: '6px',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      background: overrideCount > 0 ? '#fffbeb' : '#ffffff',
+                                      color: overrideCount > 0 ? '#92400e' : '#334155',
+                                      border: overrideCount > 0 ? '1px solid #fde68a' : '1px solid #cbd5e1',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.15s ease'
+                                    }}
+                                    title="Customize individual permissions for this user"
+                                  >
+                                    <SlidersHorizontal size={11} />
+                                    {overrideCount > 0 ? 'Edit Overrides' : 'Customize'}
+                                  </button>
+                                </div>
+                              </td>
+
+                              {/* Access Status (Clean Pill) */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleUserStatus(u)}
+                                  title={u.disabled ? "Click to enable account" : "Click to suspend account"}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '4px 10px',
+                                    borderRadius: '12px',
+                                    fontSize: '11.5px',
+                                    fontWeight: 600,
+                                    background: u.disabled ? '#fef2f2' : '#f0fdf4',
+                                    color: u.disabled ? '#b91c1c' : '#15803d',
+                                    border: u.disabled ? '1px solid #fecaca' : '1px solid #bbf7d0',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: u.disabled ? '#ef4444' : '#16a34a' }} />
+                                  {u.disabled ? 'Suspended' : 'Active'}
+                                </button>
+                              </td>
+
+                              {/* Actions */}
+                              <td style={{ padding: '14px 20px', textAlign: 'right' }}>
+                                <div style={{ display: 'inline-flex', gap: '6px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResetPassword(u.id, u.email)}
+                                    title="Trigger password reset link"
+                                    style={{
+                                      fontSize: '11.5px',
+                                      fontWeight: 500,
+                                      color: '#2563eb',
+                                      background: '#ffffff',
+                                      border: '1px solid #cbd5e1',
+                                      borderRadius: '6px',
+                                      padding: '4px 9px',
                                       cursor: 'pointer'
                                     }}
                                   >
-                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: u.disabled ? '#ef4444' : '#10b981' }} />
-                                    {u.disabled ? 'Suspended' : 'Active'}
+                                    Reset PW
                                   </button>
-                                </td>
-
-                                {/* Actions */}
-                                <td style={{ padding: '14px 18px', textAlign: 'right' }}>
-                                  <div style={{ display: 'inline-flex', gap: '6px' }}>
-                                    <button
-                                      type="button"
-                                      className="btn btn-sm"
-                                      onClick={() => handleResetPassword(u.id, u.email)}
-                                      title="Trigger password reset link"
-                                      style={{ fontSize: '11.5px', color: '#38bdf8', padding: '4px 8px' }}
-                                    >
-                                      Reset PW
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="btn btn-sm"
-                                      onClick={() => { handleEditClick(u); setShowEditModal(true); }}
-                                      title="Edit user details"
-                                      style={{ fontSize: '11.5px', padding: '4px 8px' }}
-                                    >
-                                      Edit
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="btn btn-sm"
-                                      onClick={() => handleDeleteUser(u.id)}
-                                      title="Delete user"
-                                      style={{ fontSize: '11.5px', color: '#ef4444', padding: '4px 8px' }}
-                                    >
-                                      Delete
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => { handleEditClick(u); setShowEditModal(true); }}
+                                    title="Edit user details"
+                                    style={{
+                                      fontSize: '11.5px',
+                                      fontWeight: 500,
+                                      color: '#334155',
+                                      background: '#ffffff',
+                                      border: '1px solid #cbd5e1',
+                                      borderRadius: '6px',
+                                      padding: '4px 9px',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteUser(u.id)}
+                                    title="Delete user"
+                                    style={{
+                                      fontSize: '11.5px',
+                                      fontWeight: 500,
+                                      color: '#dc2626',
+                                      background: '#ffffff',
+                                      border: '1px solid #fecaca',
+                                      borderRadius: '6px',
+                                      padding: '4px 9px',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
