@@ -7,6 +7,7 @@ import TemplateEditor from './admin/TemplateEditor';
 import WorkflowManager from './admin/WorkflowManager';
 import DriveFolderSettings from './admin/DriveFolderSettings';
 import CompanyProfileSettings from './admin/CompanyProfileSettings';
+import RateCardSettings from './admin/RateCardSettings';
 import { 
   Users, Shield, Key, Plus, Search, Check, AlertTriangle, 
   Trash2, Edit3, RefreshCw, Copy, CheckCircle2, Lock, Unlock,
@@ -3391,7 +3392,7 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'Rate card' && (
-        <DesignFeeCostingsSettings />
+        <RateCardSettings />
       )}
 
       {activeTab === 'Integrations' && (
