@@ -2693,34 +2693,55 @@ export default function ProductsPage() {
                 </div>
               </div>
 
-              {/* TABS CONTROLLER */}
-              <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--border)', paddingBottom: '0px', marginBottom: '20px', flexWrap: 'wrap' }}>
+              {/* TABS CONTROLLER (Segmented Architectural Pill Control) */}
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '10px',
+                padding: '4px',
+                marginBottom: '24px',
+                gap: '4px',
+                flexWrap: 'wrap'
+              }}>
                 {[
-                  { id: 'specs', label: 'Specifications' },
-                  { id: 'costing', label: 'Costing' },
-                  { id: 'history', label: 'Stock History' },
+                  { id: 'specs', label: 'Specifications & Assets' },
+                  { id: 'costing', label: 'Costing & Warehouses' },
+                  { id: 'history', label: 'Stock Movement History' },
                   { id: 'accessories', label: '⚡ Linked Drivers & Accessories' }
-                ].map(t => (
-                  <button
-                    key={t.id}
-                    className={`btn ${activeTab === t.id ? 'btn-primary' : 'btn-ghost'}`}
-                    style={{
-                      borderRadius: '8px 8px 0 0',
-                      borderBottom: activeTab === t.id ? 'none' : '1px solid transparent',
-                      padding: '8px 16px',
-                      fontSize: '13px',
-                      fontWeight: 600,
-                      height: '38px'
-                    }}
-                    onClick={() => {
-                      setActiveTab(t.id);
-                      if (t.id === 'history' && activeProduct?.sku) fetchStockHistory(activeProduct.sku);
-                      if (t.id === 'accessories' && activeProduct?.id) fetchAccessories(activeProduct.id);
-                    }}
-                  >
-                    {t.label}
-                  </button>
-                ))}
+                ].map(t => {
+                  const isActive = activeTab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      style={{
+                        padding: '7px 16px',
+                        borderRadius: '7px',
+                        fontSize: '12.5px',
+                        fontWeight: isActive ? 700 : 500,
+                        color: isActive ? '#ffffff' : '#64748b',
+                        background: isActive ? '#0f172a' : 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseOver={(e) => {
+                        if (!isActive) e.currentTarget.style.color = '#0f172a';
+                      }}
+                      onMouseOut={(e) => {
+                        if (!isActive) e.currentTarget.style.color = '#64748b';
+                      }}
+                      onClick={() => {
+                        setActiveTab(t.id);
+                        if (t.id === 'history' && activeProduct?.sku) fetchStockHistory(activeProduct.sku);
+                        if (t.id === 'accessories' && activeProduct?.id) fetchAccessories(activeProduct.id);
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* ACTIVE TAB CONTENT */}
@@ -2728,37 +2749,72 @@ export default function ProductsPage() {
                 {activeTab === 'specs' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                     {/* Google Sheets Specs Master Toolbar */}
-                    <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.12)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '16px' }}>
+                    <div style={{ 
+                      background: '#f8fafc', 
+                      border: '1px solid #e2e8f0', 
+                      borderRadius: '12px', 
+                      padding: '14px 20px', 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      flexWrap: 'wrap', 
+                      gap: '12px' 
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#ffffff', border: '1px solid #e2e8f0', color: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '16px' }}>
                           📊
                         </div>
                         <div>
-                          <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                          <div style={{ fontSize: '13.5px', fontWeight: 800, color: '#0f172a' }}>
                             Specifications & Digital Assets Master
                           </div>
-                          <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                            Synchronized with 31-Column Master Google Sheet • Tab: <code>ITEM DATABASE</code> (Col AE: Linked Accessories)
+                          <div style={{ fontSize: '12px', color: '#64748b' }}>
+                            Synchronized with 31-Column Master Google Sheet • Tab: <code>ITEM DATABASE</code>
                           </div>
                         </div>
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <button 
-                          className="btn btn-primary btn-sm" 
-                          style={{ fontSize: '11px', padding: '6px 14px', height: '32px' }}
+                          style={{ 
+                            fontSize: '12px', 
+                            fontWeight: 700,
+                            padding: '0 16px', 
+                            height: '34px',
+                            background: '#0f172a',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '8px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            cursor: isSyncingSheetSpecs ? 'not-allowed' : 'pointer'
+                          }}
                           onClick={handleSyncSheetSpecs}
                           disabled={isSyncingSheetSpecs}
                         >
-                          <RefreshCw size={13} className={isSyncingSheetSpecs ? 'spin' : ''} /> {isSyncingSheetSpecs ? 'Syncing...' : 'Sync From Google Sheet'}
+                          <RefreshCw size={13} className={isSyncingSheetSpecs ? 'spin' : ''} />
+                          <span>{isSyncingSheetSpecs ? 'Syncing...' : 'Sync Product Specs'}</span>
                         </button>
                         
                         <a 
                           href={specsSheetInfo.spreadsheet_url || "https://docs.google.com/spreadsheets/d/15A8TQ-BAXITQy7-BWfg6O8zeg71K3_lRITuWxIDYMYU/edit"} 
                           target="_blank" 
                           rel="noopener noreferrer" 
-                          className="btn btn-ghost btn-sm" 
-                          style={{ border: '1px solid var(--border)', fontSize: '11px', padding: '6px 14px', height: '32px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                          style={{ 
+                            border: '1px solid #cbd5e1', 
+                            fontSize: '12px', 
+                            fontWeight: 600,
+                            padding: '0 14px', 
+                            height: '34px', 
+                            display: 'inline-flex', 
+                            alignItems: 'center', 
+                            gap: '6px',
+                            background: '#ffffff',
+                            color: '#0f172a',
+                            borderRadius: '8px',
+                            textDecoration: 'none'
+                          }}
                         >
                           <ExternalLink size={13} /> Open Master Sheet ↗
                         </a>
@@ -2842,7 +2898,7 @@ export default function ProductsPage() {
                           ======================================================== */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                         {/* Product Photo Card */}
-                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                             <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
                               📷 Product Visual Asset
@@ -2869,7 +2925,7 @@ export default function ProductsPage() {
                         </div>
 
                         {/* Technical / CAD Drawing Card */}
-                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+                        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                             <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
                               📐 Technical Dimension / CAD Drawing
@@ -2964,7 +3020,7 @@ export default function ProductsPage() {
                         </div>
 
                         {/* Dimming, Driver & Light Source Specifications */}
-                        <div className="card" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '18px' }}>
+                        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
                           <h4 style={{ margin: '0 0 14px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text-warning)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                             ⚡ Dimming, Drivers & Light Source
                           </h4>
@@ -3102,14 +3158,14 @@ export default function ProductsPage() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
                       
                       {/* PM Cost Price */}
-                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
-                          📦 PM Internal Cost Price
+                      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                        <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>
+                          PM Internal Cost Price
                         </span>
-                        <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '6px' }}>
+                        <div style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', marginTop: '6px', fontFamily: 'monospace' }}>
                           R {(activeProduct.unitCost || activeProduct.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
-                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        <span style={{ fontSize: '11.5px', color: '#64748b' }}>
                           Base Cost for PMs & Quoting
                         </span>
                       </div>
@@ -3130,14 +3186,14 @@ export default function ProductsPage() {
                       )}
 
                       {/* RRP Selling Price */}
-                      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 18px' }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
-                          🏷️ RRP Selling Price (Excl. VAT)
+                      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                        <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>
+                          RRP Selling Price (Excl. VAT)
                         </span>
-                        <div style={{ fontSize: '22px', fontWeight: 700, color: 'var(--text-info)', marginTop: '6px' }}>
+                        <div style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', marginTop: '6px', fontFamily: 'monospace' }}>
                           R {(activeProduct.retailPrice || activeProduct.retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
-                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        <span style={{ fontSize: '11.5px', color: '#64748b' }}>
                           R {((activeProduct.retailPrice || activeProduct.retail_price || 0) * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (Incl. 15% VAT)
                         </span>
                       </div>
@@ -3178,7 +3234,7 @@ export default function ProductsPage() {
                     </div>
 
                     {/* 2. VENDOR & COMMERCIAL PROCUREMENT DETAILS (LIST TABLE) */}
-                    <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', background: 'var(--bg-primary)' }}>
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                         <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
                           🏢 Vendor & Commercial Procurement List
@@ -3207,9 +3263,9 @@ export default function ProductsPage() {
 
                         return (
                           <div style={{ overflowX: 'auto' }}>
-                            <table className="table" style={{ width: '100%', fontSize: '11.5px', margin: 0, textAlign: 'left', whiteSpace: 'nowrap' }}>
+                            <table className="table" style={{ width: '100%', fontSize: '12px', margin: 0, textAlign: 'left', whiteSpace: 'nowrap' }}>
                               <thead>
-                                <tr style={{ background: 'var(--bg-secondary)' }}>
+                                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>
                                   <th style={{ padding: '8px 12px' }}>Number</th>
                                   <th style={{ padding: '8px 12px' }}>Vendor Name</th>
                                   <th style={{ padding: '8px 12px' }}>Vendor Item Code</th>
