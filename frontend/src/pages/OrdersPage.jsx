@@ -863,7 +863,7 @@ export default function OrdersPage() {
   };
 
   // Workspace View State (BOQ Spreadsheet vs Document Generator)
-  const [workspaceSubTab, setWorkspaceSubTab] = useState('boq'); // 'boq' | 'doc_gen'
+  const [workspaceSubTab, setWorkspaceSubTab] = useState('takeoff'); // 'boq' | 'doc_gen'
   const [showVoidedLogisticsDocs, setShowVoidedLogisticsDocs] = useState(false);
   const [creditsSectionOpen, setCreditsSectionOpen] = useState(true);
   const [interactiveCreditsOpen, setInteractiveCreditsOpen] = useState(true);
@@ -1854,7 +1854,8 @@ export default function OrdersPage() {
   const handleOpenWorkspace = (order) => {
     React.startTransition(() => {
       setSelectedOrderId(order.id);
-    setSelectedProjectKey(order.projectKey);
+      setSelectedProjectKey(order.projectKey);
+      setWorkspaceSubTab('takeoff');
     const loadedItems = (order.itemsList || []).map(item => {
       let etaVal = item.eta;
       if (!etaVal) {
@@ -3751,6 +3752,7 @@ export default function OrdersPage() {
             onNavigate={(path, state) => {
               if (path === '/orders' && state?.selectedOrderId) {
                 setSelectedOrderId(state.selectedOrderId);
+                setWorkspaceSubTab('takeoff');
                 if (state.selectedProjectKey) setSelectedProjectKey(state.selectedProjectKey);
               } else {
                 navigate(path, { state });
