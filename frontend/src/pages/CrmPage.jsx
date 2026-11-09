@@ -1019,9 +1019,13 @@ export default function CrmPage() {
         <div className="crm-grid" style={{ marginTop: '20px' }}>
           {/* Main List */}
           <div>
-            <div className="card">
-              <div className="card-head" style={{ background: 'none', borderBottom: 'none', flexWrap: 'wrap', gap: '10px' }}>
-                <div className="card-title">Client directory database</div>
+            <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+              
+              {/* TIER 1: TOP FILTER TOOLBAR */}
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)', letterSpacing: '0.02em' }}>
+                  Client Directory Database
+                </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                   {activeKpiFilter && (
                     <button 
@@ -1046,18 +1050,21 @@ export default function CrmPage() {
                   <button className="btn btn-primary" onClick={() => setShowModal(true)}><Plus size={14} /> New Contact</button>
                 </div>
               </div>
-              <table className="table" style={{ fontSize: '13px' }}>
-                <thead>
-                  <tr>
-                    <th>Client Name</th>
-                    <th>Projects (Lifetime)</th>
-                    <th>Lifetime Revenue</th>
-                    <th>Status</th>
-                    <th>Current Project</th>
-                    <th>Last Completed Project</th>
-                    <th>Last Completed Date</th>
-                  </tr>
-                </thead>
+
+              {/* TIER 2: FULL-BLEED LEDGER TABLE */}
+              <div style={{ overflowX: 'auto', maxHeight: '68vh', position: 'relative' }}>
+                <table className="table" style={{ margin: 0, width: '100%', fontSize: '12.5px', borderCollapse: 'collapse' }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                    <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Client Name</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap', textAlign: 'center' }}>Projects (Lifetime)</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Lifetime Revenue</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Status</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Current Project</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Last Completed Project</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Last Completed Date</th>
+                    </tr>
+                  </thead>
                 <tbody>
                   {directoryDisplayList.map(c => (
                     <tr key={c.id} className="clickable hover-row" onClick={() => setSelectedClient(c)}>
@@ -1129,8 +1136,10 @@ export default function CrmPage() {
                 </tbody>
               </table>
 
-              {/* View All / Full List toggle */}
-              <div style={{ padding: '12px 16px', borderTop: '0.5px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              </div>
+
+              {/* TIER 3: INTEGRATED FOOTER */}
+              <div style={{ padding: '11px 20px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
                   Showing {directoryDisplayList.length} of {kpiFilteredClients.length} clients
                 </span>

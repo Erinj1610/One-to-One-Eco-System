@@ -37,6 +37,9 @@ import {
   Layers,
   ChevronRight,
   ChevronDown,
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
   Sparkles,
   ClipboardList,
   Calendar,
@@ -4699,10 +4702,10 @@ export default function SalesTracker() {
 
 
           {/* SEARCH, FILTER & LEDGER GRID */}
-          <div className="card" style={{ border: '1.5px solid var(--border)' }}>
-            <div className="card-body" style={{ padding: '20px' }}>
-              
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+          <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+            
+            {/* TIER 1: TOP FILTER TOOLBAR */}
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', gap: '10px', flex: 1, minWidth: '300px' }}>
                   <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
@@ -4911,11 +4914,11 @@ export default function SalesTracker() {
 
               </div>
 
-              {/* ORDERS LEDGER LIST */}
-              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', position: 'relative' }}>
-                <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
-                  <thead>
-                    <tr>
+              {/* TIER 2: ORDERS LEDGER FULL-BLEED TABLE */}
+              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '68vh', position: 'relative' }}>
+                <table className="table" style={{ margin: 0, width: '100%', fontSize: '12.5px', borderCollapse: 'collapse' }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                    <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
                       <th style={{ width: '40px', textAlign: 'center' }}>
                         <input 
                           type="checkbox" 
@@ -5238,8 +5241,8 @@ export default function SalesTracker() {
                 </table>
               </div>
 
-              {/* High-Performance Paged Pagination Toolbar */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: '12px' }}>
+              {/* TIER 3: INTEGRATED CARD FOOTER (High-Performance Paged Pagination Toolbar) */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 20px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: '12px' }}>
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                   Showing <strong>{sortedOrders.length > 0 ? (activePage - 1) * (pageSize === 'All' ? sortedOrders.length : Number(pageSize)) + 1 : 0}</strong>–<strong>{Math.min(activePage * (pageSize === 'All' ? sortedOrders.length : Number(pageSize)), sortedOrders.length)}</strong> of <strong>{sortedOrders.length}</strong> orders
                 </div>
@@ -5270,22 +5273,22 @@ export default function SalesTracker() {
                         className="btn btn-ghost btn-sm" 
                         disabled={activePage <= 1} 
                         onClick={() => React.startTransition(() => setCurrentPage(1))}
-                        style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 600 }}
+                        style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                         title="First Page"
                       >
-                        ⏮ First
+                        <ChevronsLeft size={13} /> First
                       </button>
                       <button 
                         type="button"
                         className="btn btn-ghost btn-sm" 
                         disabled={activePage <= 1} 
                         onClick={() => React.startTransition(() => setCurrentPage(p => Math.max(1, p - 1)))}
-                        style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 600 }}
+                        style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                         title="Previous Page"
                       >
-                        ◀ Prev
+                        <ChevronLeft size={13} /> Prev
                       </button>
-                      <span style={{ fontSize: '12px', fontWeight: 700, padding: '0 8px', color: 'var(--text-primary)' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 600, padding: '0 8px', color: 'var(--text-primary)' }}>
                         Page {activePage} of {totalPages}
                       </span>
                       <button 
@@ -5293,33 +5296,32 @@ export default function SalesTracker() {
                         className="btn btn-ghost btn-sm" 
                         disabled={activePage >= totalPages} 
                         onClick={() => React.startTransition(() => setCurrentPage(p => Math.min(totalPages, p + 1)))}
-                        style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 600 }}
+                        style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                         title="Next Page"
                       >
-                        Next ▶
+                        Next <ChevronRight size={13} />
                       </button>
                       <button 
                         type="button"
                         className="btn btn-ghost btn-sm" 
                         disabled={activePage >= totalPages} 
                         onClick={() => React.startTransition(() => setCurrentPage(totalPages))}
-                        style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 600 }}
+                        style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                         title="Last Page"
                       >
-                        Last ⏭
+                        Last <ChevronsRight size={13} />
                       </button>
                     </div>
                   )}
                 </div>
               </div>
 
-            </div>
           </div>
         </>
         ) : (
           /* DEPOSIT PIPELINE MANAGER VIEW */
-          <div className="card" style={{ border: '1.5px solid var(--border)' }}>
-            <div className="card-body" style={{ padding: '20px' }}>
+          <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+            <div style={{ padding: '16px 20px' }}>
               {/* Pipeline Header Summary & Info Banner */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', padding: '16px 20px', background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(217, 119, 6, 0.03) 100%)', borderRadius: '12px', border: '1px solid rgba(245, 158, 11, 0.25)' }}>
                 <div>
@@ -5448,11 +5450,13 @@ export default function SalesTracker() {
                 </div>
               </div>
 
-              {/* Pipeline Orders Table */}
-              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', position: 'relative' }}>
-                <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
-                  <thead>
-                    <tr>
+            </div>
+
+            {/* TIER 2: Pipeline Orders Full-Bleed Table */}
+            <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '68vh', position: 'relative' }}>
+              <table className="table" style={{ margin: 0, width: '100%', fontSize: '12.5px', borderCollapse: 'collapse' }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
                       <th onClick={() => handlePipelineSort('id')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order ID {renderPipelineSortIcon('id')}</div>
                       </th>
@@ -5587,7 +5591,6 @@ export default function SalesTracker() {
                   </tbody>
                 </table>
               </div>
-            </div>
           </div>
         )}
         </>

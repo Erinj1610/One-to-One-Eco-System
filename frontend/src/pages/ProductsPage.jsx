@@ -4,7 +4,7 @@ import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE } from '../api_config';
 import { 
-  ArrowLeft, Search, Plus, FileText, Download, ShieldCheck, ShieldAlert, Check, Edit, Mail, Globe, Phone, MapPin, 
+  ArrowLeft, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Plus, FileText, Download, ShieldCheck, ShieldAlert, Check, Edit, Mail, Globe, Phone, MapPin, 
   Truck, CreditCard, Clock, Star, TrendingUp, AlertTriangle, Package, Percent, Info, Settings,
   RefreshCw, ExternalLink, ArrowUp, ArrowDown, ArrowUpDown, Lock, Unlock, Eye, EyeOff
 } from 'lucide-react';
@@ -2107,8 +2107,11 @@ export default function ProductsPage() {
             </div>
           </div>
 
-          {/* VIEW TABS & FILTER CONTROL BAR */}
-          <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', padding: '16px 20px', background: 'var(--bg-primary)', marginBottom: '20px' }}>
+          {/* INTEGRATED PRODUCTS CATALOG CARD */}
+          <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)', marginBottom: '20px' }}>
+            
+            {/* TIER 1: VIEW TABS & FILTER CONTROL BAR */}
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             
             {/* VIEW TABS (All vs Pending Palladium vs Low Stock vs Out of Stock) */}
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '14px', marginBottom: '14px', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
@@ -2257,11 +2260,13 @@ export default function ProductsPage() {
               </div>
             </div>
 
-            {/* PRODUCT LEDGER TABLE */}
-            <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: '8px' }}>
-              <table className="table" style={{ margin: 0, fontSize: '12px', width: '100%' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-strong)' }}>
+            </div>
+
+            {/* TIER 2: PRODUCT LEDGER FULL-BLEED TABLE */}
+            <div style={{ overflowX: 'auto', maxHeight: '68vh', position: 'relative' }}>
+              <table className="table" style={{ margin: 0, fontSize: '12px', width: '100%', borderCollapse: 'collapse' }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
                     <th style={{ width: '38px', textAlign: 'center' }}>
                       <input 
                         type="checkbox" 
@@ -2513,34 +2518,36 @@ export default function ProductsPage() {
               </table>
             </div>
 
-            {/* PAGINATION CONTROLS */}
+            {/* TIER 3: INTEGRATED PAGINATION FOOTER */}
             {totalCount > PAGE_SIZE && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', padding: '8px 4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 20px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}>
                 <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                   Page <strong>{currentPage}</strong> of <strong>{Math.ceil(totalCount / PAGE_SIZE)}</strong>
                 </span>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '6px' }}>
                   <button
-                    className="btn btn-secondary btn-sm"
+                    className="btn btn-ghost btn-sm"
                     disabled={currentPage === 1 || isLoadingProducts}
                     onClick={() => {
                       const nextP = currentPage - 1;
                       setCurrentPage(nextP);
                       fetchPage({ page: nextP, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection, palladium_status: activeFilterTab === 'pending_palladium' ? 'PENDING_PALLADIUM' : undefined });
                     }}
+                    style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                   >
-                    Previous
+                    <ChevronLeft size={13} /> Prev
                   </button>
                   <button
-                    className="btn btn-secondary btn-sm"
+                    className="btn btn-ghost btn-sm"
                     disabled={currentPage >= Math.ceil(totalCount / PAGE_SIZE) || isLoadingProducts}
                     onClick={() => {
                       const nextP = currentPage + 1;
                       setCurrentPage(nextP);
                       fetchPage({ page: nextP, q: searchQuery, cat: categoryFilter, sup: supplierFilter, sort_by: sortField, sort_dir: sortDirection, palladium_status: activeFilterTab === 'pending_palladium' ? 'PENDING_PALLADIUM' : undefined });
                     }}
+                    style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                   >
-                    Next
+                    Next <ChevronRight size={13} />
                   </button>
                 </div>
               </div>

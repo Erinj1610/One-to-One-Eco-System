@@ -2247,9 +2247,9 @@ export default function InvoicesPage() {
         /* ============================================================ */
         /* VIEW B: PRIMARY DOCUMENT LIST (One row per Invoice Document) */
         /* ============================================================ */
-        <>
-          {/* FILTER TABS & SEARCH BAR */}
-          <div className="card" style={{ padding: '12px 16px', marginBottom: '14px', borderRadius: '10px' }}>
+        <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+          {/* TIER 1: FILTER TABS & SEARCH BAR */}
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
               
               {/* Tab Filters */}
@@ -2354,12 +2354,11 @@ export default function InvoicesPage() {
             </div>
           </div>
 
-          {/* DOCUMENTS LIST TABLE */}
-          <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: '10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ overflowX: 'auto', flex: 1 }}>
-              <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+          {/* TIER 2: DOCUMENTS LIST FULL-BLEED TABLE */}
+          <div style={{ overflowX: 'auto', maxHeight: '68vh', position: 'relative' }}>
+            <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
                     <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('document_no')}>
                       <div style={{ display: 'inline-flex', alignItems: 'center' }}>
                         Document #{renderDocSortIcon('document_no')}
@@ -2641,17 +2640,19 @@ export default function InvoicesPage() {
               </table>
             </div>
 
-            {/* Pagination Controls */}
-            <div style={{ 
-              padding: '10px 16px', 
-              borderTop: '1px solid var(--border)', 
-              background: 'var(--bg-secondary)', 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '10px'
-            }}>
+            {/* TIER 3: PAGINATION FOOTER */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '11px 20px',
+            borderTop: '1px solid var(--border)',
+            background: 'var(--bg-secondary)',
+            fontSize: '12px',
+            color: 'var(--text-secondary)',
+            flexWrap: 'wrap',
+            gap: '12px'
+          }}>
               <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
                 Showing <strong>{invoicingDocs.length}</strong> of <strong>{totalCount}</strong> documents
               </div>
@@ -2665,9 +2666,8 @@ export default function InvoicesPage() {
                   disabled={page <= 1}
                   className="btn btn-xs btn-ghost"
                   style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
-                  title="Jump to First Page"
-                >
-                  ⏮ First
+                  title="Jump to First Page" style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <ChevronsLeft size={13} /> First
                 </button>
 
                 <button
@@ -2677,10 +2677,8 @@ export default function InvoicesPage() {
                     fetchInvoicingDocuments(prev, activeFilterTab, customerFilter, searchQuery, limit);
                   }}
                   disabled={page <= 1}
-                  className="btn btn-xs btn-ghost"
-                  style={{ border: '1px solid var(--border)', padding: '4px 8px' }}
-                >
-                  ◀ Prev
+                  className="btn btn-xs btn-ghost" style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <ChevronLeft size={13} /> Prev
                 </button>
 
                 <span style={{ fontSize: '11.5px', fontWeight: 700, padding: '0 8px', color: 'var(--text-primary)' }}>
@@ -2694,10 +2692,8 @@ export default function InvoicesPage() {
                     fetchInvoicingDocuments(next, activeFilterTab, customerFilter, searchQuery, limit);
                   }}
                   disabled={page >= totalPages}
-                  className="btn btn-xs btn-ghost"
-                  style={{ border: '1px solid var(--border)', padding: '4px 8px' }}
-                >
-                  Next ▶
+                  className="btn btn-xs btn-ghost" style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                Next <ChevronRight size={13} />
                 </button>
 
                 <button
@@ -2708,9 +2704,8 @@ export default function InvoicesPage() {
                   disabled={page >= totalPages}
                   className="btn btn-xs btn-ghost"
                   style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
-                  title="Jump to Last Page"
-                >
-                  Last ⏭
+                  title="Jump to Last Page" style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                Last <ChevronsRight size={13} />
                 </button>
 
                 <form
@@ -2747,7 +2742,6 @@ export default function InvoicesPage() {
               </div>
             </div>
           </div>
-        </>
       )}
 
       {/* ============================================================ */}
