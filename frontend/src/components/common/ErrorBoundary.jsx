@@ -15,10 +15,15 @@ export default class ErrorBoundary extends Component {
     console.error("ErrorBoundary caught an uncaught rendering error:", error, errorInfo);
     // If a new deployment replaced chunk hashes, automatically reload once to fetch the latest bundle
     const errorStr = String(error?.message || error || '');
-    if (errorStr.includes('Failed to fetch dynamically imported module') || errorStr.includes('dynamically imported module')) {
+    if (
+      errorStr.includes('Failed to fetch dynamically imported module') ||
+      errorStr.includes('dynamically imported module') ||
+      errorStr.includes('Loading chunk') ||
+      errorStr.includes('error loading')
+    ) {
       const now = Date.now();
       const lastReload = parseInt(sessionStorage.getItem('chunk_reload_timestamp') || '0', 10);
-      if (now - lastReload > 8000) {
+      if (now - lastReload > 3000) {
         sessionStorage.setItem('chunk_reload_timestamp', String(now));
         window.location.reload();
       }
@@ -26,7 +31,15 @@ export default class ErrorBoundary extends Component {
   }
 
   handleReload = () => {
-    window.location.reload();
+    try {
+      sessionStorage.clear();
+      if ('caches' in window) {
+        caches.keys().then(names => {
+          names.forEach(name => caches.delete(name));
+        });
+      }
+    } catch (_) {}
+    window.location.href = window.location.pathname + (window.location.search ? window.location.search + '&_r=' : '?_r=') + Date.now();
   };
 
   render() {

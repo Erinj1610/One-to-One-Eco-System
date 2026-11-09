@@ -8,35 +8,58 @@ import AccessDenied from './components/common/AccessDenied';
 import Login from './Login';
 import AppLayout from './components/layout/AppLayout';
 
-// Lazy loaded page modules to prevent tab memory crashes and monolithic bundle lockup
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const DesignTracker = lazy(() => import('./pages/DesignTracker'));
-const ProjectList = lazy(() => import('./pages/projects/ProjectList'));
-const ProjectManagement = lazy(() => import('./pages/projects/ProjectManagement'));
-const DesignFeePage = lazy(() => import('./pages/DesignFeePage'));
-const DesignPage = lazy(() => import('./pages/DesignPage'));
-const TemplateEditor = lazy(() => import('./pages/admin/TemplateEditor'));
-const SalesTracker = lazy(() => import('./pages/SalesTracker'));
-const MyWorkspace = lazy(() => import('./pages/MyWorkspace'));
+// Lazy loaded page modules with auto-retry on new deployments to eliminate dynamic import hash mismatch crashes
+const lazyWithRetry = (componentImport) => lazy(async () => {
+  try {
+    return await componentImport();
+  } catch (error) {
+    const errorStr = String(error?.message || error || '');
+    const isChunkError = errorStr.includes('Failed to fetch dynamically imported module') ||
+      errorStr.includes('dynamically imported module') ||
+      errorStr.includes('Loading chunk') ||
+      errorStr.includes('error loading');
 
-const CrmPage = lazy(() => import('./pages/CrmPage'));
-const PipelinePage = lazy(() => import('./pages/PipelinePage'));
-const TimePage = lazy(() => import('./pages/TimePage'));
-const ProductsPage = lazy(() => import('./pages/ProductsPage'));
-const BoqPage = lazy(() => import('./pages/BoqPage'));
-const OrdersPage = lazy(() => import('./pages/OrdersPage'));
-const LogisticsPage = lazy(() => import('./pages/LogisticsPage'));
-const PurchasingPage = lazy(() => import('./pages/PurchasingPage'));
-const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
-const PaymentsPage = lazy(() => import('./pages/PaymentsPage'));
-const DocsPage = lazy(() => import('./pages/DocsPage'));
-const HrPage = lazy(() => import('./pages/HrPage'));
-const ReportsPage = lazy(() => import('./pages/ReportsPage'));
-const SupportPage = lazy(() => import('./pages/SupportPage'));
-const TicketLoggerPage = lazy(() => import('./pages/TicketLoggerPage'));
-const SettingsPage = lazy(() => import('./pages/SettingsPage'));
-const ManagementAiPage = lazy(() => import('./pages/ManagementAiPage'));
-const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+    if (isChunkError) {
+      const now = Date.now();
+      const lastRetry = parseInt(sessionStorage.getItem('chunk_retry_timestamp') || '0', 10);
+      if (now - lastRetry > 4000) {
+        sessionStorage.setItem('chunk_retry_timestamp', String(now));
+        window.location.reload();
+        return new Promise(() => {});
+      }
+    }
+    throw error;
+  }
+});
+
+const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'));
+const DesignTracker = lazyWithRetry(() => import('./pages/DesignTracker'));
+const ProjectList = lazyWithRetry(() => import('./pages/projects/ProjectList'));
+const ProjectManagement = lazyWithRetry(() => import('./pages/projects/ProjectManagement'));
+const DesignFeePage = lazyWithRetry(() => import('./pages/DesignFeePage'));
+const DesignPage = lazyWithRetry(() => import('./pages/DesignPage'));
+const TemplateEditor = lazyWithRetry(() => import('./pages/admin/TemplateEditor'));
+const SalesTracker = lazyWithRetry(() => import('./pages/SalesTracker'));
+const MyWorkspace = lazyWithRetry(() => import('./pages/MyWorkspace'));
+
+const CrmPage = lazyWithRetry(() => import('./pages/CrmPage'));
+const PipelinePage = lazyWithRetry(() => import('./pages/PipelinePage'));
+const TimePage = lazyWithRetry(() => import('./pages/TimePage'));
+const ProductsPage = lazyWithRetry(() => import('./pages/ProductsPage'));
+const BoqPage = lazyWithRetry(() => import('./pages/BoqPage'));
+const OrdersPage = lazyWithRetry(() => import('./pages/OrdersPage'));
+const LogisticsPage = lazyWithRetry(() => import('./pages/LogisticsPage'));
+const PurchasingPage = lazyWithRetry(() => import('./pages/PurchasingPage'));
+const InvoicesPage = lazyWithRetry(() => import('./pages/InvoicesPage'));
+const PaymentsPage = lazyWithRetry(() => import('./pages/PaymentsPage'));
+const DocsPage = lazyWithRetry(() => import('./pages/DocsPage'));
+const HrPage = lazyWithRetry(() => import('./pages/HrPage'));
+const ReportsPage = lazyWithRetry(() => import('./pages/ReportsPage'));
+const SupportPage = lazyWithRetry(() => import('./pages/SupportPage'));
+const TicketLoggerPage = lazyWithRetry(() => import('./pages/TicketLoggerPage'));
+const SettingsPage = lazyWithRetry(() => import('./pages/SettingsPage'));
+const ManagementAiPage = lazyWithRetry(() => import('./pages/ManagementAiPage'));
+const ResetPassword = lazyWithRetry(() => import('./pages/ResetPassword'));
 
 import './index.css';
 import OneToOneLoader from './components/common/OneToOneLoader';
