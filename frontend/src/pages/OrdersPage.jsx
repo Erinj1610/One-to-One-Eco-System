@@ -3277,19 +3277,13 @@ export default function OrdersPage() {
                     />
                   </div>
                   
-                  <select 
-                    className="form-control"
-                    style={{ width: '130px', height: '34px', fontSize: '13px' }}
+                  <SearchableFilterDropdown 
                     value={filterStatus}
-                    onChange={e => setFilterStatus(e.target.value)}
-                  >
-                    <option value="All">All Statuses</option>
-                    <option value="Draft">Draft</option>
-                    <option value="Pending">Pending</option>
-                    <option value="Ongoing">Ongoing</option>
-                    <option value="Complete">Complete</option>
-                    <option value="Cancelled">Cancelled</option>
-                  </select>
+                    onChange={setFilterStatus}
+                    options={['Draft', 'Pending', 'Ongoing', 'Complete', 'Cancelled']}
+                    allLabel="All Statuses"
+                    width="135px"
+                  />
 
                   <SearchableFilterDropdown 
                     value={projectFilterKey}
@@ -3315,17 +3309,13 @@ export default function OrdersPage() {
                     width="140px"
                   />
 
-                  <select 
-                    className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                  <SearchableFilterDropdown 
                     value={paymentStatusFilter}
-                    onChange={e => setPaymentStatusFilter(e.target.value)}
-                  >
-                    <option value="All">All Payments</option>
-                    <option value="Fully Paid">Fully Paid</option>
-                    <option value="Partially Paid">Partially Paid</option>
-                    <option value="Unpaid">Unpaid</option>
-                  </select>
+                    onChange={setPaymentStatusFilter}
+                    options={['Fully Paid', 'Partially Paid', 'Unpaid']}
+                    allLabel="All Payments"
+                    width="140px"
+                  />
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -3478,24 +3468,54 @@ export default function OrdersPage() {
                                 {hasChildSubs && (
                                   <button
                                     type="button"
-                                    className="btn btn-ghost btn-sm"
-                                    style={{ padding: 0, height: '20px', width: '20px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}
+                                    className="btn-ghost"
+                                    style={{
+                                      padding: 0,
+                                      height: '18px',
+                                      width: '18px',
+                                      borderRadius: '4px',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      color: isExpanded ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                                      background: isExpanded ? 'rgba(255, 255, 255, 0.06)' : 'transparent',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.15s ease'
+                                    }}
                                     onClick={(e) => toggleExpandMaster(o.id, e)}
                                     title={isExpanded ? "Collapse Sub-Orders" : `Expand ${childSubs.length} Sub-Orders`}
                                   >
-                                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                    <ChevronRight 
+                                      size={12} 
+                                      style={{ 
+                                        transform: isExpanded ? 'rotate(90deg)' : 'none', 
+                                        transition: 'transform 0.15s ease' 
+                                      }} 
+                                    />
                                   </button>
                                 )}
                                 <span 
                                   className="btn-link" 
-                                  style={{ cursor: 'pointer', textDecoration: 'none' }} 
+                                  style={{ cursor: 'pointer', textDecoration: 'none', color: 'var(--text-info)' }} 
                                   onClick={() => handleOpenWorkspace(o)}
                                 >
                                   {o.id}
                                 </span>
                                 {hasChildSubs && (
-                                  <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(59, 130, 246, 0.15)', color: '#2563eb', fontWeight: 700, borderRadius: '4px' }}>
-                                    👑 Master ({childSubs.length})
+                                  <span 
+                                    style={{ 
+                                      fontSize: '9.5px', 
+                                      padding: '1px 6px', 
+                                      borderRadius: '3px', 
+                                      border: '1px solid var(--border)', 
+                                      background: 'var(--bg-secondary)', 
+                                      color: 'var(--text-secondary)', 
+                                      fontWeight: 600,
+                                      letterSpacing: '0.02em'
+                                    }}
+                                  >
+                                    Master · {childSubs.length} {childSubs.length === 1 ? 'Phase' : 'Phases'}
                                   </span>
                                 )}
                                 {isAdmin && (
@@ -3551,8 +3571,8 @@ export default function OrdersPage() {
                                 className="clickable" 
                                 onClick={() => handleOpenWorkspace(sub)}
                                 style={{
-                                  background: isSubSelected ? 'rgba(139, 92, 246, 0.12)' : 'rgba(139, 92, 246, 0.04)',
-                                  borderLeft: isSubSelected ? '3px solid #8b5cf6' : '3px solid rgba(139, 92, 246, 0.4)'
+                                  background: isSubSelected ? 'rgba(59, 130, 246, 0.08)' : 'rgba(255, 255, 255, 0.015)',
+                                  borderLeft: isSubSelected ? '3px solid #3b82f6' : '3px solid transparent'
                                 }}
                               >
                                 <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
@@ -3563,26 +3583,36 @@ export default function OrdersPage() {
                                     style={{ cursor: 'pointer' }}
                                   />
                                 </td>
-                                <td style={{ fontFamily: 'monospace', fontWeight: 600, paddingLeft: '28px' }} onClick={e => e.stopPropagation()}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                    <span style={{ color: '#8b5cf6', fontWeight: 700 }}>↳</span>
+                                <td style={{ fontFamily: 'monospace', fontWeight: 600, paddingLeft: '32px' }} onClick={e => e.stopPropagation()}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <span style={{ color: 'var(--text-tertiary)', fontSize: '11px', userSelect: 'none' }}>↳</span>
                                     <span 
                                       className="btn-link" 
-                                      style={{ cursor: 'pointer', color: '#8b5cf6', textDecoration: 'none' }} 
+                                      style={{ cursor: 'pointer', color: 'var(--text-secondary)', textDecoration: 'none' }} 
                                       onClick={() => handleOpenWorkspace(sub)}
                                     >
                                       {sub.id}
                                     </span>
-                                    <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: 700, borderRadius: '4px' }}>
+                                    <span 
+                                      style={{ 
+                                        fontSize: '9.5px', 
+                                        padding: '1px 6px', 
+                                        borderRadius: '3px', 
+                                        border: '1px solid var(--border)', 
+                                        background: 'var(--bg-secondary)', 
+                                        color: 'var(--text-secondary)', 
+                                        fontWeight: 600 
+                                      }}
+                                    >
                                       {sub.phase_name || sub.phaseName || `Phase ${sub.sub_order_index || 1}`}
                                     </span>
                                   </div>
                                 </td>
-                                <td style={{ fontWeight: 600 }}>{sub.quote_name || 'Phase Scope'}</td>
-                                <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${sub.projectKey || o.projectKey}`); }}>{sub.projectName || o.projectName}</td>
-                                <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: sub.projectClient || o.projectClient } }); }}>{(sub.projectClient || o.projectClient) || '—'}</td>
-                                <td style={{ color: 'var(--text-secondary)' }}>{sub.projectPm || o.projectPm || '—'}</td>
-                                <td style={{ fontWeight: 700, color: subMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                                <td style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{sub.quote_name || 'Phase Scope'}</td>
+                                <td style={{ fontWeight: 500, color: 'var(--text-secondary)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${sub.projectKey || o.projectKey}`); }}>{sub.projectName || o.projectName}</td>
+                                <td style={{ color: 'var(--text-secondary)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: sub.projectClient || o.projectClient } }); }}>{(sub.projectClient || o.projectClient) || '—'}</td>
+                                <td style={{ color: 'var(--text-tertiary)' }}>{sub.projectPm || o.projectPm || '—'}</td>
+                                <td style={{ fontWeight: 600, color: subMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
                                   {subMargin}% {subMargin < 39 && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
                                 </td>
                                 <td style={{ fontWeight: 600 }}>R {subRetail.toLocaleString()}</td>

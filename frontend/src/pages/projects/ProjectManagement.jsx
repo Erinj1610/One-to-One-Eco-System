@@ -2029,11 +2029,11 @@ export default function ProjectManagement() {
                                            <button
                                              type="button"
                                              className="btn btn-ghost btn-sm"
-                                             style={{ padding: 0, height: '20px', width: '20px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}
+                                             style={{ padding: 0, height: '20px', width: '20px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: isExpanded ? 'var(--text-primary)' : 'var(--text-tertiary)', background: 'transparent' }}
                                              onClick={(e) => toggleExpandMaster(o.id, e)}
                                              title={isExpanded ? "Collapse Sub-Orders" : `Expand ${childSubs.length} Sub-Orders`}
                                            >
-                                             {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                             <ChevronRight size={12} style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease' }} />
                                            </button>
                                          )}
                                          <button 
@@ -2053,8 +2053,8 @@ export default function ProjectManagement() {
                                            {o.id}
                                          </button>
                                          {hasChildSubs && (
-                                           <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(59, 130, 246, 0.15)', color: '#2563eb', fontWeight: 700, borderRadius: '4px' }}>
-                                             👑 Master ({childSubs.length})
+                                           <span style={{ fontSize: '9.5px', padding: '1px 6px', borderRadius: '3px', border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                             Master · {childSubs.length} {childSubs.length === 1 ? 'Phase' : 'Phases'}
                                            </span>
                                          )}
                                          {isAdmin && (
@@ -2104,10 +2104,10 @@ export default function ProjectManagement() {
                                      const subOut = Number(sub.outstanding) > 0 ? Number(sub.outstanding) : Math.max(0, subRetail - subPaid);
                                      const subMargin = subRetail > 0 ? Math.round(((subRetail - subCost) / subRetail) * 100) : 0;
                                      return (
-                                       <tr key={sub.id} style={{ background: 'rgba(139, 92, 246, 0.04)', borderLeft: '3px solid #8b5cf6' }}>
+                                       <tr key={sub.id} style={{ background: 'rgba(255, 255, 255, 0.015)' }}>
                                          <td style={{ fontFamily: 'monospace', fontWeight: 600, paddingLeft: '28px' }}>
                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                             <span style={{ color: '#8b5cf6', fontWeight: 700 }}>↳</span>
+                                             <span style={{ color: 'var(--text-tertiary)', fontSize: '11px', userSelect: 'none' }}>↳</span>
                                              <button 
                                                className="btn-link"
                                                style={{ 
@@ -2116,7 +2116,7 @@ export default function ProjectManagement() {
                                                  padding: 0, 
                                                  fontFamily: 'inherit', 
                                                  fontWeight: 'inherit', 
-                                                 color: '#8b5cf6', 
+                                                 color: 'var(--text-secondary)', 
                                                  cursor: 'pointer',
                                                  textDecoration: 'underline'
                                                }}
@@ -2124,7 +2124,7 @@ export default function ProjectManagement() {
                                              >
                                                {sub.id}
                                              </button>
-                                             <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: 700, borderRadius: '4px' }}>
+                                             <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(139, 92, 246, 0.15)', color: 'var(--text-secondary)', fontWeight: 700, borderRadius: '4px' }}>
                                                {sub.phase_name || sub.phaseName || `Phase ${sub.sub_order_index || 1}`}
                                              </span>
                                            </div>
