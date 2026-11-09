@@ -3312,43 +3312,179 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'Project managers' && isAdmin && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px' }}>
-          <div>
-            <div className="section-label">Project Managers List</div>
-            <div className="card">
-              <div className="card-body" style={{ padding: 0 }}>
-                {(!projectManagers || projectManagers.length === 0) ? (
-                  <div style={{ padding: 20, textAlign: 'center', fontSize: 13, color: 'var(--text-secondary)' }}>No project managers configured.</div>
-                ) : (
-                  <table className="table" style={{ margin: 0 }}>
+        <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
+          {/* Top Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '18px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>
+                  Team & Governance
+                </span>
+              </div>
+              <h1 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 6px 0', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                Project Managers & Leads
+              </h1>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
+                Manage executive studio project managers, assignment leads, and direct project contact details across client contracts.
+              </p>
+            </div>
+          </div>
+
+          {/* Metric Summary Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px' }}>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Total Leads & PMs</div>
+              <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>{(projectManagers || []).length}</div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Designated team leads</div>
+            </div>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Active Assignments</div>
+              <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
+                {(projectManagers || []).filter(pm => pm.active !== false).length}
+              </div>
+              <div style={{ fontSize: '12px', color: '#16a34a', fontWeight: 500 }}>● Available in project dropdowns</div>
+            </div>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>With Direct Email</div>
+              <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
+                {(projectManagers || []).filter(pm => pm.email && pm.email.trim()).length}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Client-facing correspondence</div>
+            </div>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Inactive Records</div>
+              <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
+                {(projectManagers || []).filter(pm => pm.active === false).length}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Archived or on leave</div>
+            </div>
+          </div>
+
+          {/* 2-Column Main Workspace */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 360px', gap: '24px', alignItems: 'start' }}>
+            {/* Left Column: Clean Table */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a', margin: '0 0 2px 0' }}>Project Managers Directory</h3>
+                  <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Active project managers automatically populate the project creation and assignment selectors.</p>
+                </div>
+                <span style={{ fontSize: '11.5px', color: '#64748b', background: '#f8fafc', padding: '3px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  {(projectManagers || []).length} records
+                </span>
+              </div>
+
+              {(!projectManagers || projectManagers.length === 0) ? (
+                <div style={{ padding: '40px 20px', textAlign: 'center', fontSize: '13px', color: '#64748b' }}>
+                  No project managers configured. Use the form on the right to add your first project manager.
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ margin: 0, width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
                     <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Phone</th>
-                        <th>Status</th>
-                        <th style={{ width: 180, textAlign: 'right' }}>Actions</th>
+                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <th style={{ padding: '14px 20px', fontWeight: 600 }}>Project Manager</th>
+                        <th style={{ padding: '14px 16px', fontWeight: 600 }}>Email Address</th>
+                        <th style={{ padding: '14px 16px', fontWeight: 600 }}>Contact Phone</th>
+                        <th style={{ padding: '14px 16px', fontWeight: 600 }}>Status</th>
+                        <th style={{ padding: '14px 20px', fontWeight: 600, textAlign: 'right' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {projectManagers.map(pm => (
-                        <tr key={pm.id} style={{ opacity: pm.active === false ? 0.6 : 1 }}>
-                          <td style={{ fontWeight: 600 }}>{pm.name}</td>
-                          <td>{pm.email || '—'}</td>
-                          <td>{pm.phone || '—'}</td>
-                          <td>
-                            <span className="badge" style={{ 
-                              background: pm.active === false ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)', 
-                              color: pm.active === false ? '#ef4444' : '#10b981', 
-                              border: pm.active === false ? '1px solid rgba(239, 68, 68, 0.2)' : '1px solid rgba(34, 197, 94, 0.2)' 
-                            }}>
-                              {pm.active === false ? 'Inactive' : 'Active'}
-                            </span>
+                      {projectManagers.map((pm, idx, arr) => (
+                        <tr 
+                          key={pm.id} 
+                          style={{ 
+                            opacity: pm.active === false ? 0.55 : 1,
+                            borderBottom: idx < arr.length - 1 ? '1px solid #f1f5f9' : 'none',
+                            backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafafa',
+                            transition: 'background-color 0.15s ease'
+                          }}
+                        >
+                          {/* Name + Initials Avatar */}
+                          <td style={{ padding: '14px 20px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              <div 
+                                style={{
+                                  width: '34px',
+                                  height: '34px',
+                                  borderRadius: '50%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '12px',
+                                  fontWeight: 700,
+                                  background: '#f1f5f9',
+                                  color: '#334155',
+                                  border: '1px solid #cbd5e1',
+                                  flexShrink: 0
+                                }}
+                              >
+                                {(pm.name || 'PM').substring(0, 2).toUpperCase()}
+                              </div>
+                              <span style={{ fontWeight: 600, color: '#0f172a', fontSize: '13px' }}>{pm.name}</span>
+                            </div>
                           </td>
-                          <td style={{ textAlign: 'right' }}>
-                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+
+                          {/* Email */}
+                          <td style={{ padding: '14px 16px', color: pm.email ? '#334155' : '#94a3b8' }}>
+                            {pm.email ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                {pm.email}
+                              </span>
+                            ) : '—'}
+                          </td>
+
+                          {/* Phone */}
+                          <td style={{ padding: '14px 16px', color: pm.phone ? '#334155' : '#94a3b8' }}>
+                            {pm.phone || '—'}
+                          </td>
+
+                          {/* Status Pill */}
+                          <td style={{ padding: '14px 16px' }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProjectManagers(prev => prev.map(p => p.id === pm.id ? { ...p, active: p.active === false ? true : false } : p));
+                                if (window.otoToast) {
+                                  window.otoToast(`${pm.name} marked as ${pm.active === false ? 'Active' : 'Inactive'}`, 'info');
+                                }
+                              }}
+                              title={pm.active === false ? "Click to activate" : "Click to deactivate"}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '3px 10px',
+                                borderRadius: '12px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                background: pm.active === false ? '#fef2f2' : '#f0fdf4',
+                                color: pm.active === false ? '#b91c1c' : '#15803d',
+                                border: pm.active === false ? '1px solid #fecaca' : '1px solid #bbf7d0',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: pm.active === false ? '#ef4444' : '#16a34a' }} />
+                              {pm.active === false ? 'Inactive' : 'Active'}
+                            </button>
+                          </td>
+
+                          {/* Actions */}
+                          <td style={{ padding: '14px 20px', textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', gap: '6px' }}>
                               <button 
-                                className="btn btn-sm btn-ghost" 
+                                type="button"
+                                style={{
+                                  fontSize: '11.5px',
+                                  fontWeight: 500,
+                                  color: '#334155',
+                                  background: '#ffffff',
+                                  border: '1px solid #cbd5e1',
+                                  borderRadius: '6px',
+                                  padding: '4px 9px',
+                                  cursor: 'pointer'
+                                }}
                                 onClick={() => {
                                   setEditingPmId(pm.id);
                                   setNewPmName(pm.name);
@@ -3359,24 +3495,44 @@ export default function SettingsPage() {
                                 Edit
                               </button>
                               <button 
-                                className="btn btn-sm" 
+                                type="button"
                                 style={{
-                                  background: pm.active === false ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                                  color: pm.active === false ? '#10b981' : '#ef4444',
-                                  border: pm.active === false ? '1px solid rgba(34, 197, 94, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)'
+                                  fontSize: '11.5px',
+                                  fontWeight: 500,
+                                  color: pm.active === false ? '#15803d' : '#475569',
+                                  background: '#ffffff',
+                                  border: '1px solid #cbd5e1',
+                                  borderRadius: '6px',
+                                  padding: '4px 9px',
+                                  cursor: 'pointer'
                                 }}
                                 onClick={() => {
                                   setProjectManagers(prev => prev.map(p => p.id === pm.id ? { ...p, active: p.active === false ? true : false } : p));
+                                  if (window.otoToast) {
+                                    window.otoToast(`${pm.name} marked as ${pm.active === false ? 'Active' : 'Inactive'}`, 'info');
+                                  }
                                 }}
                               >
                                 {pm.active === false ? 'Activate' : 'Deactivate'}
                               </button>
                               <button 
-                                className="btn btn-sm btn-ghost" 
-                                style={{ color: '#ef4444' }}
+                                type="button"
+                                style={{
+                                  fontSize: '11.5px',
+                                  fontWeight: 500,
+                                  color: '#dc2626',
+                                  background: '#ffffff',
+                                  border: '1px solid #fecaca',
+                                  borderRadius: '6px',
+                                  padding: '4px 9px',
+                                  cursor: 'pointer'
+                                }}
                                 onClick={async () => {
-                                  if (await window.otoConfirm(`Are you sure you want to delete ${pm.name}? This will remove them from settings, but existing projects referencing their name will keep the reference.`)) {
+                                  if (await window.otoConfirm(`Are you sure you want to delete ${pm.name}? Existing projects referencing this manager will retain the record.`)) {
                                     setProjectManagers(prev => prev.filter(p => p.id !== pm.id));
+                                    if (window.otoToast) {
+                                      window.otoToast(`${pm.name} deleted successfully!`, 'success');
+                                    }
                                   }
                                 }}
                               >
@@ -3388,60 +3544,130 @@ export default function SettingsPage() {
                       ))}
                     </tbody>
                   </table>
-                )}
-              </div>
+                </div>
+              )}
             </div>
-          </div>
 
-          <div>
-            <div className="section-label">{editingPmId ? 'Edit Project Manager' : 'Add Project Manager'}</div>
-            <div className="card">
-              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Full Name:</span>
+            {/* Right Column: Clean Executive Add/Edit Form Card */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a', margin: '0 0 2px 0' }}>
+                  {editingPmId ? 'Edit Project Manager' : 'Add Project Manager'}
+                </h3>
+                <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
+                  {editingPmId ? 'Update project lead credentials and contact details.' : 'Register a new project manager for assignment across the studio.'}
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                    Full Name <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
                   <input 
                     type="text" 
-                    className="form-control" 
                     value={newPmName} 
                     onChange={e => setNewPmName(e.target.value)} 
                     placeholder="e.g. Martin" 
+                    style={{
+                      width: '100%',
+                      height: '34px',
+                      padding: '4px 10px',
+                      fontSize: '13px',
+                      color: '#0f172a',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      outline: 'none'
+                    }}
                   />
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Email Address:</span>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                    Email Address
+                  </label>
                   <input 
                     type="email" 
-                    className="form-control" 
                     value={newPmEmail} 
                     onChange={e => setNewPmEmail(e.target.value)} 
                     placeholder="e.g. martin@1-to-1.world" 
+                    style={{
+                      width: '100%',
+                      height: '34px',
+                      padding: '4px 10px',
+                      fontSize: '13px',
+                      color: '#0f172a',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      outline: 'none'
+                    }}
                   />
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Phone Number:</span>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                    Phone Number
+                  </label>
                   <input 
                     type="text" 
-                    className="form-control" 
                     value={newPmPhone} 
                     onChange={e => setNewPmPhone(e.target.value)} 
                     placeholder="e.g. 082 123 4567" 
+                    style={{
+                      width: '100%',
+                      height: '34px',
+                      padding: '4px 10px',
+                      fontSize: '13px',
+                      color: '#0f172a',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      outline: 'none'
+                    }}
                   />
                 </div>
                 
-                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
                   <button 
                     type="button" 
-                    className="btn btn-primary" 
-                    style={{ flex: 1 }}
+                    style={{ 
+                      flex: 1,
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      gap: '8px', 
+                      padding: '9px 16px', 
+                      fontSize: '12.5px', 
+                      fontWeight: 600,
+                      backgroundColor: '#0f172a',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '7px',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#1e293b'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#0f172a'; }}
                     onClick={() => {
                       if (!newPmName.trim()) {
-                        alert('Name is required!');
+                        if (window.otoToast) {
+                          window.otoToast('Name is required!', 'error');
+                        } else {
+                          alert('Name is required!');
+                        }
                         return;
                       }
                       if (editingPmId) {
                         setProjectManagers(prev => prev.map(pm => pm.id === editingPmId ? { ...pm, name: newPmName.trim(), email: newPmEmail.trim(), phone: newPmPhone.trim() } : pm));
                         setEditingPmId(null);
-                        alert('Project Manager updated successfully!');
+                        if (window.otoToast) {
+                          window.otoToast('Project Manager updated successfully!', 'success');
+                        } else {
+                          alert('Project Manager updated successfully!');
+                        }
                       } else {
                         const newPM = {
                           id: `pm-${Date.now()}`,
@@ -3451,19 +3677,32 @@ export default function SettingsPage() {
                           active: true
                         };
                         setProjectManagers(prev => [...prev, newPM]);
-                        alert('Project Manager created successfully!');
+                        if (window.otoToast) {
+                          window.otoToast('Project Manager created successfully!', 'success');
+                        } else {
+                          alert('Project Manager created successfully!');
+                        }
                       }
                       setNewPmName('');
                       setNewPmEmail('');
                       setNewPmPhone('');
                     }}
                   >
-                    {editingPmId ? 'Update PM' : 'Create PM'}
+                    {editingPmId ? 'Update Lead' : 'Create Lead'}
                   </button>
                   {editingPmId && (
                     <button 
                       type="button" 
-                      className="btn" 
+                      style={{
+                        padding: '9px 14px',
+                        fontSize: '12.5px',
+                        fontWeight: 500,
+                        color: '#475569',
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '7px',
+                        cursor: 'pointer'
+                      }}
                       onClick={() => {
                         setEditingPmId(null);
                         setNewPmName('');
