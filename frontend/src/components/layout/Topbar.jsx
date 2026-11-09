@@ -1,12 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, LogOut, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 export default function Topbar({ title }) {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [subContext, setSubContext] = useState(null);
+  const [alertCount, setAlertCount] = useState(0);
+
+  // Listen for alerts count updates dispatched by active modules
+  useEffect(() => {
+    const handleCount = (e) => {
+      if (typeof e.detail?.count === 'number') {
+        setAlertCount(e.detail.count);
+      }
+    };
+    window.addEventListener('portal-alerts-count-update', handleCount);
+    return () => window.removeEventListener('portal-alerts-count-update', handleCount);
+  }, []);
+
+  const handleAlertsClick = () => {
+    let handled = false;
+    const ack = () => { handled = true; };
+    window.addEventListener('portal-alerts-handled', ack, { once: true });
+    window.dispatchEvent(new CustomEvent('toggle-portal-alerts'));
+    setTimeout(() => {
+      window.removeEventListener('portal-alerts-handled', ack);
+      if (!handled && !['/orders', '/projects', '/crm', '/design'].includes(location.pathname)) {
+        navigate('/orders');
+      }
+    }, 60);
+  };
 
   // Listen for active workspace / quotation breadcrumb changes dispatched by modules
   useEffect(() => {
@@ -56,23 +82,60 @@ export default function Topbar({ title }) {
       </div>
       <div className="topbar-right" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
         <button 
+          onClick={handleAlertsClick}
           style={{
-            background: 'none',
-            border: 'none',
-            color: 'var(--text-secondary)',
+            background: alertCount > 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(0, 0, 0, 0.03)',
+            border: alertCount > 0 ? '1px solid rgba(239, 68, 68, 0.22)' : '1px solid var(--border)',
+            color: alertCount > 0 ? '#ef4444' : 'var(--text-secondary)',
             cursor: 'pointer',
-            padding: '6px',
-            borderRadius: '6px',
+            padding: '4px 11px 4px 9px',
+            borderRadius: '20px',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'background 0.15s ease, color 0.15s ease'
+            gap: '7px',
+            fontSize: '12px',
+            fontWeight: 600,
+            transition: 'all 0.15s ease'
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-          title="Notifications"
+          onMouseEnter={(e) => { 
+            e.currentTarget.style.background = alertCount > 0 ? 'rgba(239, 68, 68, 0.14)' : 'rgba(0, 0, 0, 0.06)'; 
+            e.currentTarget.style.transform = 'translateY(-1px)';
+          }}
+          onMouseLeave={(e) => { 
+            e.currentTarget.style.background = alertCount > 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(0, 0, 0, 0.03)'; 
+            e.currentTarget.style.transform = 'translateY(0)';
+          }}
+          title={alertCount > 0 ? `${alertCount} Operational Alerts active - Click to view` : "Operational Alerts & Prompts"}
         >
-          <Bell size={17} />
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <Bell size={14} />
+            {alertCount > 0 && (
+              <span style={{ 
+                position: 'absolute', 
+                top: '-3px', 
+                right: '-3px', 
+                width: '6px', 
+                height: '6px', 
+                background: '#ef4444', 
+                borderRadius: '50%',
+                boxShadow: '0 0 5px rgba(239, 68, 68, 0.8)'
+              }} />
+            )}
+          </div>
+          <span style={{ letterSpacing: '0.01em' }}>Alerts</span>
+          {alertCount > 0 && (
+            <span style={{ 
+              background: '#ef4444', 
+              color: '#ffffff', 
+              borderRadius: '10px', 
+              padding: '1px 6px', 
+              fontSize: '10px', 
+              fontWeight: 700,
+              fontFamily: 'monospace'
+            }}>
+              {alertCount}
+            </span>
+          )}
         </button>
 
         <div 

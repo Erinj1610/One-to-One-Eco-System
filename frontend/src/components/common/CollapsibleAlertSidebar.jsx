@@ -521,6 +521,23 @@ export default function CollapsibleAlertSidebar({ module, onNavigate, isCollapse
     setCurrentPage(1);
   }, [activeTab, searchQuery, sortBy]);
 
+  // Listen for Topbar or keyboard triggers to toggle the alert drawer
+  useEffect(() => {
+    const handleToggle = () => {
+      window.dispatchEvent(new CustomEvent('portal-alerts-handled'));
+      toggleCollapse();
+    };
+    window.addEventListener('toggle-portal-alerts', handleToggle);
+    return () => window.removeEventListener('toggle-portal-alerts', handleToggle);
+  }, [isCollapsed]);
+
+  // Dispatch live alerts count to Topbar
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('portal-alerts-count-update', {
+      detail: { count: activeAlerts.length, module }
+    }));
+  }, [activeAlerts.length, module]);
+
   // Close on Escape key
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -539,62 +556,11 @@ export default function CollapsibleAlertSidebar({ module, onNavigate, isCollapse
     return filteredAlerts.slice(startIdx, startIdx + pageSize);
   }, [filteredAlerts, currentPage]);
 
-  return (
-    <>
-      {/* 1. FLOATING DOCKED TAB (Always visible, 0px document width impact) */}
-      <button
-        type="button"
-        onClick={toggleCollapse}
-        style={{
-          position: 'fixed',
-          right: 0,
-          top: '200px',
-          zIndex: 9990,
-          background: 'var(--bg-primary)',
-          border: '1px solid var(--border)',
-          borderRight: 'none',
-          borderTopLeftRadius: '10px',
-          borderBottomLeftRadius: '10px',
-          boxShadow: '-4px 4px 14px rgba(0,0,0,0.1)',
-          padding: '9px 12px 9px 10px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          cursor: 'pointer',
-          transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-        }}
-        onMouseEnter={e => {
-          e.currentTarget.style.transform = 'translateX(-3px)';
-          e.currentTarget.style.boxShadow = '-6px 6px 18px rgba(0,0,0,0.16)';
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.transform = 'translateX(0)';
-          e.currentTarget.style.boxShadow = '-4px 4px 14px rgba(0,0,0,0.1)';
-        }}
-        title="Open Alerts & Prompts Slide-over Drawer"
-      >
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-          <Bell size={16} color="var(--text-primary)" />
-          {activeAlerts.length > 0 && (
-            <span style={{
-              position: 'absolute',
-              top: '-3px',
-              right: '-3px',
-              width: '8px',
-              height: '8px',
-              background: 'var(--text-danger)',
-              borderRadius: '50%',
-              boxShadow: '0 0 6px var(--text-danger)'
-            }} />
-          )}
-        </div>
-        <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.02em', whiteSpace: 'nowrap' }}>
-          Alerts ({activeAlerts.length})
-        </span>
-      </button>
+  // When collapsed, takes 0px in layout and renders nothing on screen.
+  // When opened, renders the luxury slide-over flyout drawer directly into document.body.
+  if (isCollapsed) return null;
 
-      {/* 2. SLIDE-OVER FLYOUT DRAWER (Portal overlay, 0px main layout space) */}
-      {!isCollapsed && createPortal(
+  return createPortal(
         <div style={{ position: 'fixed', inset: 0, zIndex: 99998 }}>
           {/* Backdrop overlay */}
           <div
@@ -908,7 +874,5 @@ export default function CollapsibleAlertSidebar({ module, onNavigate, isCollapse
           </aside>
         </div>,
         document.body
-      )}
-    </>
-  );
+      );
 }
