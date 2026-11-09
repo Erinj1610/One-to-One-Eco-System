@@ -42,7 +42,7 @@ export default function Sidebar({ isCollapsed, toggleCollapse }) {
 
   return (
     <div className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
-      <div className="sb-logo" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: '49px' }}>
+      <div className="sb-logo" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '52px', minHeight: '52px', boxSizing: 'border-box' }}>
         {!isCollapsed && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Lightbulb size={18} color="var(--text-info)" /> 1-to-1 World

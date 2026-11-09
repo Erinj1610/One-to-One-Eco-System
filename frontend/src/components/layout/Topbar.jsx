@@ -42,27 +42,65 @@ export default function Topbar({ title }) {
   return (
     <div className="topbar">
       <div className="topbar-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px' }}>
-        <span style={{ fontWeight: subContext ? '500' : '600', color: subContext ? 'var(--text-secondary)' : 'var(--text-primary)' }}>
+        <span style={{ fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
           {title || 'Portal'}
         </span>
         {subContext && (
           <>
-            <ChevronRight size={14} color="#64748b" />
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: '600', color: '#e09924' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#e09924', display: 'inline-block' }} />
+            <ChevronRight size={14} color="#94a3b8" />
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: '500', color: '#64748b' }}>
               {subContext}
             </span>
           </>
         )}
       </div>
-      <div className="topbar-right" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-        <Bell size={18} color="var(--text-secondary)" style={{ cursor: 'pointer' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div className="topbar-right" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <button 
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            padding: '6px',
+            borderRadius: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'background 0.15s ease, color 0.15s ease'
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+          title="Notifications"
+        >
+          <Bell size={17} />
+        </button>
+
+        <div 
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '8px',
+            padding: '3px 10px 3px 4px',
+            borderRadius: '20px',
+            background: 'rgba(0, 0, 0, 0.03)',
+            border: '1px solid rgba(0, 0, 0, 0.05)'
+          }}
+        >
           <div className="av" title={email}>{initials}</div>
-          <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'inline-block', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ 
+            fontSize: '12px', 
+            fontWeight: 500,
+            color: 'var(--text-primary)', 
+            display: 'inline-block', 
+            maxWidth: '180px', 
+            overflow: 'hidden', 
+            textOverflow: 'ellipsis', 
+            whiteSpace: 'nowrap' 
+          }}>
             {email}
           </span>
         </div>
+
         <button 
           onClick={logout}
           style={{
@@ -72,17 +110,18 @@ export default function Topbar({ title }) {
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '4px',
+            gap: '5px',
             fontSize: '12px',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            transition: 'all 0.2s',
+            fontWeight: 500,
+            padding: '6px 10px',
+            borderRadius: '6px',
+            transition: 'background 0.15s ease, color 0.15s ease',
           }}
-          onMouseEnter={(e) => e.target.style.color = '#f87171'}
-          onMouseLeave={(e) => e.target.style.color = 'var(--text-secondary)'}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'; e.currentTarget.style.color = '#ef4444'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
           title="Sign Out"
         >
-          <LogOut size={16} />
+          <LogOut size={15} />
           <span>Logout</span>
         </button>
       </div>

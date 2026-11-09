@@ -42,7 +42,19 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Robo
 .sidebar { width: 200px; background: var(--bg-secondary); border-right: 0.5px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; transition: width 0.15s ease-in-out; }
 .sidebar.collapsed { width: 60px; }
 .sidebar.collapsed .nav-item { justify-content: center; padding: 8px 0; }
-.sb-logo { padding: 14px 14px; border-bottom: 0.5px solid var(--border); font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
+.sb-logo { 
+  padding: 0 14px; 
+  height: 52px;
+  min-height: 52px;
+  box-sizing: border-box;
+  border-bottom: 0.5px solid var(--border); 
+  font-size: 14px; 
+  font-weight: 500; 
+  display: flex; 
+  align-items: center; 
+  gap: 8px; 
+  color: var(--text-primary); 
+}
 .sb-logo i { font-size: 17px; color: var(--text-info); }
 .sb-sec-label { 
   font-size: 10px; 
@@ -95,12 +107,36 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Robo
 .sb-bottom { border-top: 0.5px solid var(--border); padding: 8px 0; margin-top: auto; }
 
 .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
-.topbar { padding: 11px 18px; border-bottom: 0.5px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-primary); flex-shrink: 0; }
+.topbar { 
+  padding: 0 18px; 
+  height: 52px;
+  min-height: 52px;
+  box-sizing: border-box;
+  border-bottom: 0.5px solid var(--border); 
+  display: flex; 
+  align-items: center; 
+  justify-content: space-between; 
+  background: var(--bg-primary); 
+  flex-shrink: 0; 
+}
 .topbar-title { font-size: 14px; font-weight: 500; }
 .topbar-right { display: flex; align-items: center; gap: 12px; }
 .topbar-right .icon-btn { color: var(--text-secondary); cursor: pointer; position: relative; }
 .topbar-right .icon-btn .dot { position: absolute; top: -2px; right: -2px; width: 7px; height: 7px; background: #e24b4a; border-radius: 50%; }
-.av { width: 28px; height: 28px; border-radius: 50%; background: var(--bg-info); color: var(--text-info); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; flex-shrink: 0; }
+.av { 
+  width: 24px; 
+  height: 24px; 
+  border-radius: 50%; 
+  background: #0f172a; 
+  color: #f8fafc; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  font-size: 10px; 
+  font-weight: 600; 
+  letter-spacing: 0.04em;
+  flex-shrink: 0; 
+}
 .content { flex: 1; overflow-y: auto; padding: clamp(12px, 1.4vw, 22px); width: 100%; max-width: 100%; }
 
 /* PAGES */
