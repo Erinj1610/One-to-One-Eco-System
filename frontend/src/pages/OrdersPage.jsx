@@ -45,6 +45,9 @@ import {
   History,
   ChevronRight,
   ChevronDown,
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
   Sparkles,
   ClipboardList,
   TrendingDown,
@@ -3260,249 +3263,325 @@ export default function OrdersPage() {
           </div>
 
           {/* SEARCH, FILTER & LEDGER GRID */}
-          <div className="card" style={{ border: '1.5px solid var(--border)' }}>
-            <div className="card-body" style={{ padding: '20px' }}>
-              
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-                <div style={{ display: 'flex', gap: '10px', flex: 1, minWidth: '300px' }}>
-                  <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
-                    <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
-                    <input 
-                      type="search"
-                      placeholder="Search Order ID, Order name, Linked Project, Client or PM..."
-                      className="form-control"
-                      style={{ paddingLeft: '32px', fontSize: '13px', height: '34px' }}
-                      value={searchQuery}
-                      onChange={e => setSearchQuery(e.target.value)}
-                    />
-                  </div>
-                  
-                  <SearchableFilterDropdown 
-                    value={filterStatus}
-                    onChange={setFilterStatus}
-                    options={['Draft', 'Pending', 'Ongoing', 'Complete', 'Cancelled']}
-                    allLabel="All Statuses"
-                    width="135px"
-                  />
-
-                  <SearchableFilterDropdown 
-                    value={projectFilterKey}
-                    onChange={setProjectFilterKey}
-                    options={projectOptions}
-                    allLabel="All Projects"
-                    width="155px"
-                  />
-
-                  <SearchableFilterDropdown 
-                    value={clientFilter}
-                    onChange={setClientFilter}
-                    options={clientOptions}
-                    allLabel="All Clients"
-                    width="155px"
-                  />
-
-                  <SearchableFilterDropdown 
-                    value={pmFilter}
-                    onChange={setPmFilter}
-                    options={pmOptions}
-                    allLabel="All PMs"
-                    width="140px"
-                  />
-
-                  <SearchableFilterDropdown 
-                    value={paymentStatusFilter}
-                    onChange={setPaymentStatusFilter}
-                    options={['Fully Paid', 'Partially Paid', 'Unpaid']}
-                    allLabel="All Payments"
-                    width="140px"
+          <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+            
+            {/* TIER 1: TOP FILTER TOOLBAR */}
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '10px', flex: 1, minWidth: '300px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
+                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
+                  <input 
+                    type="search"
+                    placeholder="Search Order ID, Order name, Linked Project, Client or PM..."
+                    className="form-control"
+                    style={{ paddingLeft: '32px', fontSize: '13px', height: '34px' }}
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
                   />
                 </div>
+                
+                <SearchableFilterDropdown 
+                  value={filterStatus}
+                  onChange={setFilterStatus}
+                  options={['Draft', 'Pending', 'Ongoing', 'Complete', 'Cancelled']}
+                  allLabel="All Statuses"
+                  width="135px"
+                />
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  {isAnyFilterActive && (
-                    <button 
-                      className="btn btn-ghost btn-sm" 
-                      onClick={handleClearFilters}
-                      style={{ fontSize: '11px', color: 'var(--text-info)', border: '1px solid var(--border)' }}
-                    >
-                      Clear Filters
-                    </button>
-                  )}
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    Showing <strong>{filteredOrders.length}</strong> active BOQs
-                  </div>
-                </div>
+                <SearchableFilterDropdown 
+                  value={projectFilterKey}
+                  onChange={setProjectFilterKey}
+                  options={projectOptions}
+                  allLabel="All Projects"
+                  width="155px"
+                />
+
+                <SearchableFilterDropdown 
+                  value={clientFilter}
+                  onChange={setClientFilter}
+                  options={clientOptions}
+                  allLabel="All Clients"
+                  width="155px"
+                />
+
+                <SearchableFilterDropdown 
+                  value={pmFilter}
+                  onChange={setPmFilter}
+                  options={pmOptions}
+                  allLabel="All PMs"
+                  width="140px"
+                />
+
+                <SearchableFilterDropdown 
+                  value={paymentStatusFilter}
+                  onChange={setPaymentStatusFilter}
+                  options={['Fully Paid', 'Partially Paid', 'Unpaid']}
+                  allLabel="All Payments"
+                  width="140px"
+                />
               </div>
 
-              {/* ORDERS BULK ACTIONS TOOLBAR */}
-              {selectedPoNumbers.size > 0 && (
-                <div className="card" style={{ padding: '12px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderLeft: '4px solid var(--text-info)', flexWrap: 'wrap', gap: '12px', animation: 'fadeIn 0.2s ease' }}>
-                  <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>
-                    {selectedPoNumbers.size} orders selected
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    <button 
-                      className="btn btn-sm btn-ghost" 
-                      onClick={() => setSelectedPoNumbers(new Set())}
-                      style={{ fontSize: '12px' }}
-                    >
-                      Cancel
-                    </button>
-                    
-                    <button 
-                      className="btn btn-sm btn-secondary" 
-                      onClick={handleBulkRenameOrders}
-                      style={{ fontSize: '12px' }}
-                    >
-                      Rename Quote Name
-                    </button>
-                    
-                    <select 
-                      className="form-control" 
-                      style={{ width: '180px', height: '28px', fontSize: '12px', padding: '0 8px', display: 'inline-block', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
-                      onChange={e => {
-                        if (e.target.value) {
-                          handleBulkRelinkOrders(e.target.value);
-                          e.target.value = ''; // Reset
-                        }
-                      }}
-                    >
-                      <option value="">Shift to Project...</option>
-                      {Object.values(projects).map(p => (
-                        <option key={p.key} value={p.key}>{p.name}</option>
-                      ))}
-                    </select>
-
-                    <button 
-                      className="btn btn-sm btn-danger" 
-                      onClick={handleBulkDeleteOrders}
-                      style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                    >
-                      <Trash2 size={12} />
-                      Delete Selected ({selectedPoNumbers.size})
-                    </button>
-                  </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {isAnyFilterActive && (
+                  <button 
+                    className="btn btn-ghost btn-sm" 
+                    onClick={handleClearFilters}
+                    style={{ fontSize: '11px', color: 'var(--text-info)', border: '1px solid var(--border)' }}
+                  >
+                    Clear Filters
+                  </button>
+                )}
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Showing <strong>{filteredOrders.length}</strong> active BOQs
                 </div>
-              )}
+              </div>
+            </div>
 
-              {/* ORDERS LEDGER LIST */}
-              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', position: 'relative' }}>
-                <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '30px', textAlign: 'center' }}>
-                        <input 
-                          type="checkbox" 
-                          checked={sortedOrders.length > 0 && sortedOrders.every(o => selectedPoNumbers.has(o.id))}
-                          onChange={() => toggleSelectAllPos(sortedOrders)}
-                          style={{ cursor: 'pointer' }}
-                        />
-                      </th>
-                      <th onClick={() => handleSort('id')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order ID {renderSortIcon('id')}</div>
-                      </th>
-                      <th onClick={() => handleSort('quote_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Name {renderSortIcon('quote_name')}</div>
-                      </th>
-                      <th onClick={() => handleSort('project')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Linked Project {renderSortIcon('project')}</div>
-                      </th>
-                      <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderSortIcon('client')}</div>
-                      </th>
-                      <th onClick={() => handleSort('pm')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Manager {renderSortIcon('pm')}</div>
-                      </th>
-                      <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Margin {renderSortIcon('margin')}</div>
-                      </th>
-                      <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Value {renderSortIcon('value')}</div>
-                      </th>
-                      <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Amount Paid {renderSortIcon('paid')}</div>
-                      </th>
-                      <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Balance Outstanding {renderSortIcon('outstanding')}</div>
-                      </th>
-                      <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Status {renderSortIcon('status')}</div>
-                      </th>
-                      <th onClick={() => handleSort('paymentStatus')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Payment Status {renderSortIcon('paymentStatus')}</div>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedOrders.map(o => {
-                      const cost = o.costValue || 0;
-                      const retail = o.value || 0;
-                      const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
-                      const isLowMargin = margin < 39;
-                      const isSelected = selectedPoNumbers.has(o.id);
+            {/* ORDERS BULK ACTIONS TOOLBAR */}
+            {selectedPoNumbers.size > 0 && (
+              <div style={{ padding: '10px 20px', background: 'rgba(59, 130, 246, 0.08)', borderBottom: '1px solid rgba(59, 130, 246, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', animation: 'fadeIn 0.2s ease' }}>
+                <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>
+                  {selectedPoNumbers.size} orders selected
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <button 
+                    className="btn btn-sm btn-ghost" 
+                    onClick={() => setSelectedPoNumbers(new Set())}
+                    style={{ fontSize: '12px' }}
+                  >
+                    Cancel
+                  </button>
+                  
+                  <button 
+                    className="btn btn-sm btn-secondary" 
+                    onClick={handleBulkRenameOrders}
+                    style={{ fontSize: '12px' }}
+                  >
+                    Rename Quote Name
+                  </button>
+                  
+                  <select 
+                    className="form-control" 
+                    style={{ width: '180px', height: '28px', fontSize: '12px', padding: '0 8px', display: 'inline-block', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                    onChange={e => {
+                      if (e.target.value) {
+                        handleBulkRelinkOrders(e.target.value);
+                        e.target.value = ''; // Reset
+                      }
+                    }}
+                  >
+                    <option value="">Shift to Project...</option>
+                    {Object.values(projects).map(p => (
+                      <option key={p.key} value={p.key}>{p.name}</option>
+                    ))}
+                  </select>
 
-                      const childSubs = subOrdersByParent[o.id] || subOrdersByParent[o.po_number] || [];
-                      const hasChildSubs = childSubs.length > 0;
-                      const isExpanded = expandedMasterOrders.has(o.id) || (debouncedSearchQuery && childSubs.some(sub => (sub.id || '').toLowerCase().includes(debouncedSearchQuery.toLowerCase())));
+                  <button 
+                    className="btn btn-sm btn-danger" 
+                    onClick={handleBulkDeleteOrders}
+                    style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <Trash2 size={12} />
+                    Delete Selected ({selectedPoNumbers.size})
+                  </button>
+                </div>
+              </div>
+            )}
 
-                      return (
-                        <React.Fragment key={o.id}>
-                          <tr 
-                            className="clickable" 
-                            onClick={() => handleOpenWorkspace(o)}
-                            style={{
-                              background: isSelected ? 'rgba(59, 130, 246, 0.08)' : (hasChildSubs ? 'rgba(59, 130, 246, 0.02)' : 'transparent'),
-                              borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent'
-                            }}
-                          >
-                            <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
-                              <input 
-                                type="checkbox" 
-                                checked={selectedPoNumbers.has(o.id)}
-                                onChange={(e) => toggleSelectPo(o.id, e)}
-                                style={{ cursor: 'pointer' }}
-                              />
-                            </td>
-                            <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }} onClick={e => e.stopPropagation()}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                {hasChildSubs && (
-                                  <button
-                                    type="button"
-                                    className="btn-ghost"
-                                    style={{
-                                      padding: 0,
-                                      height: '18px',
-                                      width: '18px',
-                                      borderRadius: '4px',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      color: isExpanded ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                                      background: isExpanded ? 'rgba(255, 255, 255, 0.06)' : 'transparent',
-                                      border: 'none',
-                                      cursor: 'pointer',
-                                      transition: 'all 0.15s ease'
-                                    }}
-                                    onClick={(e) => toggleExpandMaster(o.id, e)}
-                                    title={isExpanded ? "Collapse Sub-Orders" : `Expand ${childSubs.length} Sub-Orders`}
-                                  >
-                                    <ChevronRight 
-                                      size={12} 
-                                      style={{ 
-                                        transform: isExpanded ? 'rotate(90deg)' : 'none', 
-                                        transition: 'transform 0.15s ease' 
-                                      }} 
-                                    />
-                                  </button>
-                                )}
-                                <span 
-                                  className="btn-link" 
-                                  style={{ cursor: 'pointer', textDecoration: 'none', color: 'var(--text-info)' }} 
-                                  onClick={() => handleOpenWorkspace(o)}
+            {/* TIER 2: ORDERS LEDGER FULL-BLEED TABLE */}
+            <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '68vh', position: 'relative' }}>
+              <table className="table" style={{ margin: 0, width: '100%', fontSize: '12.5px', borderCollapse: 'collapse' }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ width: '40px', textAlign: 'center', padding: '10px 8px', verticalAlign: 'middle' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={sortedOrders.length > 0 && sortedOrders.every(o => selectedPoNumbers.has(o.id))}
+                        onChange={() => toggleSelectAllPos(sortedOrders)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </th>
+                    <th onClick={() => handleSort('id')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order ID {renderSortIcon('id')}</div>
+                    </th>
+                    <th onClick={() => handleSort('quote_name')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Name {renderSortIcon('quote_name')}</div>
+                    </th>
+                    <th onClick={() => handleSort('project')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Linked Project {renderSortIcon('project')}</div>
+                    </th>
+                    <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderSortIcon('client')}</div>
+                    </th>
+                    <th onClick={() => handleSort('pm')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Manager {renderSortIcon('pm')}</div>
+                    </th>
+                    <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Margin {renderSortIcon('margin')}</div>
+                    </th>
+                    <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Value {renderSortIcon('value')}</div>
+                    </th>
+                    <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Amount Paid {renderSortIcon('paid')}</div>
+                    </th>
+                    <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Balance Outstanding {renderSortIcon('outstanding')}</div>
+                    </th>
+                    <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Status {renderSortIcon('status')}</div>
+                    </th>
+                    <th onClick={() => handleSort('paymentStatus')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Payment Status {renderSortIcon('paymentStatus')}</div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedOrders.map(o => {
+                    const cost = o.costValue || 0;
+                    const retail = o.value || 0;
+                    const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
+                    const isLowMargin = margin < 39;
+                    const isSelected = selectedPoNumbers.has(o.id);
+
+                    const childSubs = subOrdersByParent[o.id] || subOrdersByParent[o.po_number] || [];
+                    const hasChildSubs = childSubs.length > 0;
+                    const isExpanded = expandedMasterOrders.has(o.id) || (debouncedSearchQuery && childSubs.some(sub => (sub.id || '').toLowerCase().includes(debouncedSearchQuery.toLowerCase())));
+
+                    return (
+                      <React.Fragment key={o.id}>
+                        <tr 
+                          className="clickable" 
+                          onClick={() => handleOpenWorkspace(o)}
+                          style={{
+                            background: isSelected ? 'rgba(59, 130, 246, 0.08)' : (hasChildSubs ? 'rgba(59, 130, 246, 0.02)' : 'transparent'),
+                            borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent'
+                          }}
+                        >
+                          <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={selectedPoNumbers.has(o.id)}
+                              onChange={(e) => toggleSelectPo(o.id, e)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                          </td>
+                          <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }} onClick={e => e.stopPropagation()}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              {hasChildSubs && (
+                                <button
+                                  type="button"
+                                  className="btn-ghost"
+                                  style={{
+                                    padding: 0,
+                                    height: '18px',
+                                    width: '18px',
+                                    borderRadius: '4px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: isExpanded ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                                    background: isExpanded ? 'rgba(255, 255, 255, 0.06)' : 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  onClick={(e) => toggleExpandMaster(o.id, e)}
+                                  title={isExpanded ? "Collapse Sub-Orders" : `Expand ${childSubs.length} Sub-Orders`}
                                 >
-                                  {o.id}
+                                  <ChevronRight 
+                                    size={12} 
+                                    style={{ 
+                                      transform: isExpanded ? 'rotate(90deg)' : 'none', 
+                                      transition: 'transform 0.15s ease' 
+                                    }} 
+                                  />
+                                </button>
+                              )}
+                              <span 
+                                className="btn-link" 
+                                style={{ cursor: 'pointer', textDecoration: 'none', color: 'var(--text-info)' }} 
+                                onClick={() => handleOpenWorkspace(o)}
+                              >
+                                {o.id}
+                              </span>
+                              {hasChildSubs && (
+                                <span 
+                                  style={{ 
+                                    fontSize: '9.5px', 
+                                    padding: '1px 6px', 
+                                    borderRadius: '3px', 
+                                    border: '1px solid var(--border)', 
+                                    background: 'var(--bg-secondary)', 
+                                    color: 'var(--text-secondary)', 
+                                    fontWeight: 600,
+                                    letterSpacing: '0.02em' 
+                                  }}
+                                >
+                                  Master · {childSubs.length} {childSubs.length === 1 ? 'Phase' : 'Phases'}
                                 </span>
-                                {hasChildSubs && (
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ fontWeight: 600 }}>{o.quote_name || 'Standard Quotation'}</td>
+                          <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectName}</td>
+                          <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: o.projectClient } }); }}>{o.projectClient || '—'}</td>
+                          <td style={{ color: 'var(--text-secondary)' }}>{o.projectPm || '—'}</td>
+                          <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                            {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
+                          </td>
+                          <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>
+                          <td style={{ color: 'var(--text-success)' }}>R {(o.paid || 0).toLocaleString()}</td>
+                          <td style={{ fontWeight: 600, color: o.outstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
+                            R {(o.outstanding || 0).toLocaleString()}
+                          </td>
+                          <td>
+                            <span className={`badge ${statusColor[o.status] || 'b-default'}`}>{o.status || 'Draft'}</span>
+                          </td>
+                          <td>
+                            <span className={`badge ${
+                              o.paymentStatus === 'Fully Paid' ? 'b-success' : o.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
+                            }`}>{o.paymentStatus || 'Unpaid'}</span>
+                          </td>
+                        </tr>
+
+                        {/* Hierarchical Sub-Orders List */}
+                        {isExpanded && childSubs.map(sub => {
+                          const subCost = sub.costValue || 0;
+                          const subRetail = sub.value || 0;
+                          const subMargin = subRetail > 0 ? Math.round(((subRetail - subCost) / subRetail) * 100) : 0;
+                          const subPaid = sub.paid || 0;
+                          const subOut = sub.outstanding || 0;
+                          const isSubSelected = selectedPoNumbers.has(sub.id);
+
+                          return (
+                            <tr 
+                              key={sub.id}
+                              className="clickable"
+                              onClick={() => handleOpenWorkspace(sub)}
+                              style={{ 
+                                background: isSubSelected ? 'rgba(59, 130, 246, 0.08)' : 'rgba(255, 255, 255, 0.015)',
+                                borderLeft: isSubSelected ? '3px solid #3b82f6' : '3px solid transparent'
+                              }}
+                            >
+                              <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={selectedPoNumbers.has(sub.id)}
+                                  onChange={(e) => toggleSelectPo(sub.id, e)}
+                                  style={{ cursor: 'pointer' }}
+                                />
+                              </td>
+                              <td style={{ fontFamily: 'monospace', fontWeight: 600, paddingLeft: '32px' }} onClick={e => e.stopPropagation()}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  <span style={{ color: 'var(--text-tertiary)', fontSize: '11px', userSelect: 'none' }}>↳</span>
+                                  <span 
+                                    className="btn-link" 
+                                    style={{ cursor: 'pointer', color: 'var(--text-secondary)', textDecoration: 'none' }} 
+                                    onClick={() => handleOpenWorkspace(sub)}
+                                  >
+                                    {sub.id}
+                                  </span>
                                   <span 
                                     style={{ 
                                       fontSize: '9.5px', 
@@ -3511,253 +3590,162 @@ export default function OrdersPage() {
                                       border: '1px solid var(--border)', 
                                       background: 'var(--bg-secondary)', 
                                       color: 'var(--text-secondary)', 
-                                      fontWeight: 600,
-                                      letterSpacing: '0.02em'
+                                      fontWeight: 600 
                                     }}
                                   >
-                                    Master · {childSubs.length} {childSubs.length === 1 ? 'Phase' : 'Phases'}
+                                    {sub.phase_name || sub.phaseName || `Phase ${sub.sub_order_index || 1}`}
                                   </span>
-                                )}
-                                {isAdmin && (
-                                  <button
-                                    className="btn btn-ghost btn-sm"
-                                    style={{ padding: '2px 4px', height: '20px', border: '1px solid var(--border)', fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: '2px', background: 'var(--bg-secondary)' }}
-                                    title="Link / Shift Project or Client"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setLinkModalItem(o);
-                                      setLinkClient(o.projectClient || '');
-                                      setLinkProjectKey(o.projectKey || '');
-                                    }}
-                                  >
-                                    <Layers size={10} /> Link
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                            <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
-                            <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectName}</td>
-                            <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: o.projectClient } }); }}>{o.projectClient || '—'}</td>
-                            <td style={{ color: 'var(--text-secondary)' }}>{o.projectPm || o.pm || '—'}</td>
-                            <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                              {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
-                            </td>
-                            <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>
-                            <td style={{ color: 'var(--text-success)' }}>R {(o.paid || 0).toLocaleString()}</td>
-                            <td style={{ fontWeight: 600, color: (o.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
-                              R {(o.outstanding || 0).toLocaleString()}
-                            </td>
-                            <td>
-                              <span className={`badge ${statusColor[o.status] || 'b-default'}`}>{o.status}</span>
-                            </td>
-                            <td>
-                              <span className={`badge ${
-                                o.paymentStatus === 'Fully Paid' ? 'b-success' : o.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
-                              }`}>{o.paymentStatus}</span>
-                            </td>
-                          </tr>
-
-                          {hasChildSubs && isExpanded && childSubs.map(sub => {
-                            const subCost = sub.costValue || 0;
-                            const subRetail = sub.value || 0;
-                            const subPaid = sub.paid || 0;
-                            const subOut = Number(sub.outstanding) > 0 ? Number(sub.outstanding) : Math.max(0, subRetail - subPaid);
-                            const subMargin = subRetail > 0 ? Math.round(((subRetail - subCost) / subRetail) * 100) : 0;
-                            const isSubSelected = selectedPoNumbers.has(sub.id);
-
-                            return (
-                              <tr 
-                                key={sub.id} 
-                                className="clickable" 
-                                onClick={() => handleOpenWorkspace(sub)}
-                                style={{
-                                  background: isSubSelected ? 'rgba(59, 130, 246, 0.08)' : 'rgba(255, 255, 255, 0.015)',
-                                  borderLeft: isSubSelected ? '3px solid #3b82f6' : '3px solid transparent'
-                                }}
-                              >
-                                <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
-                                  <input 
-                                    type="checkbox" 
-                                    checked={isSubSelected}
-                                    onChange={(e) => toggleSelectPo(sub.id, e)}
-                                    style={{ cursor: 'pointer' }}
-                                  />
-                                </td>
-                                <td style={{ fontFamily: 'monospace', fontWeight: 600, paddingLeft: '32px' }} onClick={e => e.stopPropagation()}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                    <span style={{ color: 'var(--text-tertiary)', fontSize: '11px', userSelect: 'none' }}>↳</span>
-                                    <span 
-                                      className="btn-link" 
-                                      style={{ cursor: 'pointer', color: 'var(--text-secondary)', textDecoration: 'none' }} 
-                                      onClick={() => handleOpenWorkspace(sub)}
-                                    >
-                                      {sub.id}
-                                    </span>
-                                    <span 
-                                      style={{ 
-                                        fontSize: '9.5px', 
-                                        padding: '1px 6px', 
-                                        borderRadius: '3px', 
-                                        border: '1px solid var(--border)', 
-                                        background: 'var(--bg-secondary)', 
-                                        color: 'var(--text-secondary)', 
-                                        fontWeight: 600 
-                                      }}
-                                    >
-                                      {sub.phase_name || sub.phaseName || `Phase ${sub.sub_order_index || 1}`}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{sub.quote_name || 'Phase Scope'}</td>
-                                <td style={{ fontWeight: 500, color: 'var(--text-secondary)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${sub.projectKey || o.projectKey}`); }}>{sub.projectName || o.projectName}</td>
-                                <td style={{ color: 'var(--text-secondary)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: sub.projectClient || o.projectClient } }); }}>{(sub.projectClient || o.projectClient) || '—'}</td>
-                                <td style={{ color: 'var(--text-tertiary)' }}>{sub.projectPm || o.projectPm || '—'}</td>
-                                <td style={{ fontWeight: 600, color: subMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                                  {subMargin}% {subMargin < 39 && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
-                                </td>
-                                <td style={{ fontWeight: 600 }}>R {subRetail.toLocaleString()}</td>
-                                <td style={{ color: 'var(--text-success)' }}>R {subPaid.toLocaleString()}</td>
-                                <td style={{ fontWeight: 600, color: subOut > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
-                                  R {subOut.toLocaleString()}
-                                </td>
-                                <td>
-                                  <span className={`badge ${statusColor[sub.status] || 'b-default'}`}>{sub.status || 'Draft'}</span>
-                                </td>
-                                <td>
-                                  <span className={`badge ${
-                                    sub.paymentStatus === 'Fully Paid' ? 'b-success' : sub.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
-                                  }`}>{sub.paymentStatus || 'Unpaid'}</span>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </React.Fragment>
-                      );
-                    })}
-
-                    {isStoreLoading && (
-                      <tr>
-                        <td colSpan={12} style={{ textAlign: 'center', padding: '48px' }}>
-                          <OneToOneLoader size="lg" text="Loading live orders & quotations..." />
-                        </td>
-                      </tr>
-                    )}
-                    {!isStoreLoading && filteredOrders.length === 0 && (
-                      <EmptyStateBanner
-                        colSpan={12}
-                        title="No orders or quotations found"
-                        subtitle="No records matched your search terms or active status filters."
-                        onClear={() => { setSearchQuery(''); setFilterStatus('All'); setSubOrderFilter('All'); }}
-                        clearLabel="Reset search & filters"
-                      />
-                    )}
-                  </tbody>
-                  {sortedOrders.length > 0 && (() => {
-                    const totalVal = sortedOrders.reduce((s, o) => s + (Number(o.value) || 0), 0);
-                    const totalPaid = sortedOrders.reduce((s, o) => s + (Number(o.paid) || 0), 0);
-                    const totalOut = sortedOrders.reduce((s, o) => s + (Number(o.outstanding) || 0), 0);
-                    return (
-                      <tfoot style={{ position: 'sticky', bottom: 0, background: 'var(--bg-secondary)', borderTop: '2px solid var(--border-strong)', zIndex: 2 }}>
-                        <tr>
-                          <td colSpan={6} style={{ fontWeight: 800, fontSize: '12px', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '12px' }}>
-                            LEDGER TOTAL ({sortedOrders.length} {sortedOrders.length === 1 ? 'Order' : 'Orders'})
-                          </td>
-                          <td style={{ fontWeight: 800, color: blendedMarginCompany < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                            {blendedMarginCompany}%
-                          </td>
-                          <td style={{ fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
-                            R {Math.round(totalVal).toLocaleString()}
-                          </td>
-                          <td style={{ fontWeight: 800, color: 'var(--text-success)', fontFamily: 'monospace' }}>
-                            R {Math.round(totalPaid).toLocaleString()}
-                          </td>
-                          <td style={{ fontWeight: 800, color: totalOut > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                            R {Math.round(totalOut).toLocaleString()}
-                          </td>
-                          <td colSpan={2} />
-                        </tr>
-                      </tfoot>
+                                </div>
+                              </td>
+                              <td style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{sub.quote_name || 'Phase Scope'}</td>
+                              <td style={{ fontWeight: 500, color: 'var(--text-secondary)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${sub.projectKey || o.projectKey}`); }}>{sub.projectName || o.projectName}</td>
+                              <td style={{ color: 'var(--text-secondary)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: sub.projectClient || o.projectClient } }); }}>{(sub.projectClient || o.projectClient) || '—'}</td>
+                              <td style={{ color: 'var(--text-tertiary)' }}>{sub.projectPm || o.projectPm || '—'}</td>
+                              <td style={{ fontWeight: 600, color: subMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                                {subMargin}% {subMargin < 39 && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
+                              </td>
+                              <td style={{ fontWeight: 600 }}>R {subRetail.toLocaleString()}</td>
+                              <td style={{ color: 'var(--text-success)' }}>R {subPaid.toLocaleString()}</td>
+                              <td style={{ fontWeight: 600, color: subOut > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
+                                R {subOut.toLocaleString()}
+                              </td>
+                              <td>
+                                <span className={`badge ${statusColor[sub.status] || 'b-default'}`}>{sub.status || 'Draft'}</span>
+                              </td>
+                              <td>
+                                <span className={`badge ${
+                                  sub.paymentStatus === 'Fully Paid' ? 'b-success' : sub.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
+                                }`}>{sub.paymentStatus || 'Unpaid'}</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
                     );
-                  })()}
-                </table>
-              </div>
+                  })}
 
-              {/* High-Performance Paged Pagination Toolbar */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: '12px' }}>
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Showing <strong>{sortedOrders.length > 0 ? (ordersActivePage - 1) * (ordersPageSize === 'All' ? sortedOrders.length : Number(ordersPageSize)) + 1 : 0}</strong>–<strong>{Math.min(ordersActivePage * (ordersPageSize === 'All' ? sortedOrders.length : Number(ordersPageSize)), sortedOrders.length)}</strong> of <strong>{sortedOrders.length}</strong> orders
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    <span>Rows per page:</span>
-                    <select 
-                      value={ordersPageSize} 
-                      onChange={e => {
-                        const val = e.target.value === 'All' ? 'All' : Number(e.target.value);
-                        React.startTransition(() => {
-                          setOrdersPageSize(val);
-                          setOrdersCurrentPage(1);
-                        });
-                      }}
-                      style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 600 }}
-                    >
-                      <option value={25}>25</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                      <option value="All">All ({sortedOrders.length})</option>
-                    </select>
-                  </div>
-                  {ordersPageSize !== 'All' && ordersTotalPages > 1 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <button 
-                        type="button"
-                        className="btn btn-ghost btn-sm" 
-                        disabled={ordersActivePage <= 1} 
-                        onClick={() => React.startTransition(() => setOrdersCurrentPage(1))}
-                        style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 600 }}
-                        title="First Page"
-                      >
-                        ⏮ First
-                      </button>
-                      <button 
-                        type="button"
-                        className="btn btn-ghost btn-sm" 
-                        disabled={ordersActivePage <= 1} 
-                        onClick={() => React.startTransition(() => setOrdersCurrentPage(p => Math.max(1, p - 1)))}
-                        style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 600 }}
-                        title="Previous Page"
-                      >
-                        ◀ Prev
-                      </button>
-                      <span style={{ fontSize: '12px', fontWeight: 700, padding: '0 8px', color: 'var(--text-primary)' }}>
-                        Page {ordersActivePage} of {ordersTotalPages}
-                      </span>
-                      <button 
-                        type="button"
-                        className="btn btn-ghost btn-sm" 
-                        disabled={ordersActivePage >= ordersTotalPages} 
-                        onClick={() => React.startTransition(() => setOrdersCurrentPage(p => Math.min(ordersTotalPages, p + 1)))}
-                        style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 600 }}
-                        title="Next Page"
-                      >
-                        Next ▶
-                      </button>
-                      <button 
-                        type="button"
-                        className="btn btn-ghost btn-sm" 
-                        disabled={ordersActivePage >= ordersTotalPages} 
-                        onClick={() => React.startTransition(() => setOrdersCurrentPage(ordersTotalPages))}
-                        style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 600 }}
-                        title="Last Page"
-                      >
-                        Last ⏭
-                      </button>
-                    </div>
+                  {isStoreLoading && (
+                    <tr>
+                      <td colSpan={12} style={{ textAlign: 'center', padding: '48px' }}>
+                        <OneToOneLoader size="lg" text="Loading live orders & quotations..." />
+                      </td>
+                    </tr>
                   )}
-                </div>
-              </div>
-
+                  {!isStoreLoading && filteredOrders.length === 0 && (
+                    <EmptyStateBanner
+                      colSpan={12}
+                      title="No orders or quotations found"
+                      subtitle="No records matched your search terms or active status filters."
+                      onClear={() => { setSearchQuery(''); setFilterStatus('All'); setSubOrderFilter('All'); }}
+                      clearLabel="Reset search & filters"
+                    />
+                  )}
+                </tbody>
+                {sortedOrders.length > 0 && (() => {
+                  const totalVal = sortedOrders.reduce((s, o) => s + (Number(o.value) || 0), 0);
+                  const totalPaid = sortedOrders.reduce((s, o) => s + (Number(o.paid) || 0), 0);
+                  const totalOut = sortedOrders.reduce((s, o) => s + (Number(o.outstanding) || 0), 0);
+                  return (
+                    <tfoot style={{ position: 'sticky', bottom: 0, background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', zIndex: 5, boxShadow: '0 -2px 6px rgba(0,0,0,0.06)' }}>
+                      <tr>
+                        <td colSpan={6} style={{ fontWeight: 700, fontSize: '11px', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                          LEDGER TOTAL ({sortedOrders.length} {sortedOrders.length === 1 ? 'Order' : 'Orders'})
+                        </td>
+                        <td style={{ fontWeight: 700, fontSize: '12px', color: blendedMarginCompany < 39 ? 'var(--text-danger)' : 'var(--text-success)', padding: '12px 12px', whiteSpace: 'nowrap' }}>
+                          {blendedMarginCompany}%
+                        </td>
+                        <td style={{ fontWeight: 700, fontSize: '12.5px', color: 'var(--text-primary)', fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', padding: '12px 12px', whiteSpace: 'nowrap' }}>
+                          R {Math.round(totalVal).toLocaleString()}
+                        </td>
+                        <td style={{ fontWeight: 700, fontSize: '12.5px', color: 'var(--text-success)', fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', padding: '12px 12px', whiteSpace: 'nowrap' }}>
+                          R {Math.round(totalPaid).toLocaleString()}
+                        </td>
+                        <td style={{ fontWeight: 700, fontSize: '12.5px', color: totalOut > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', padding: '12px 12px', whiteSpace: 'nowrap' }}>
+                          R {Math.round(totalOut).toLocaleString()}
+                        </td>
+                        <td colSpan={2} />
+                      </tr>
+                    </tfoot>
+                  );
+                })()}
+              </table>
             </div>
+
+            {/* TIER 3: INTEGRATED CARD FOOTER (High-Performance Paged Pagination Toolbar) */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 20px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Showing <strong>{sortedOrders.length > 0 ? (ordersActivePage - 1) * (ordersPageSize === 'All' ? sortedOrders.length : Number(ordersPageSize)) + 1 : 0}</strong>–<strong>{Math.min(ordersActivePage * (ordersPageSize === 'All' ? sortedOrders.length : Number(ordersPageSize)), sortedOrders.length)}</strong> of <strong>{sortedOrders.length}</strong> orders
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  <span>Rows per page:</span>
+                  <select 
+                    value={ordersPageSize} 
+                    onChange={e => {
+                      const val = e.target.value === 'All' ? 'All' : Number(e.target.value);
+                      React.startTransition(() => {
+                        setOrdersPageSize(val);
+                        setOrdersCurrentPage(1);
+                      });
+                    }}
+                    style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 600 }}
+                  >
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value="All">All ({sortedOrders.length})</option>
+                  </select>
+                </div>
+                {ordersPageSize !== 'All' && ordersTotalPages > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <button 
+                      type="button"
+                      className="btn btn-ghost btn-sm" 
+                      disabled={ordersActivePage <= 1} 
+                      onClick={() => React.startTransition(() => setOrdersCurrentPage(1))}
+                      style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      title="First Page"
+                    >
+                      <ChevronsLeft size={13} /> First
+                    </button>
+                    <button 
+                      type="button"
+                      className="btn btn-ghost btn-sm" 
+                      disabled={ordersActivePage <= 1} 
+                      onClick={() => React.startTransition(() => setOrdersCurrentPage(p => Math.max(1, p - 1)))}
+                      style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      title="Previous Page"
+                    >
+                      <ChevronLeft size={13} /> Prev
+                    </button>
+                    <span style={{ fontSize: '12px', fontWeight: 600, padding: '0 8px', color: 'var(--text-primary)' }}>
+                      Page {ordersActivePage} of {ordersTotalPages}
+                    </span>
+                    <button 
+                      type="button"
+                      className="btn btn-ghost btn-sm" 
+                      disabled={ordersActivePage >= ordersTotalPages} 
+                      onClick={() => React.startTransition(() => setOrdersCurrentPage(p => Math.min(ordersTotalPages, p + 1)))}
+                      style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      title="Next Page"
+                    >
+                      Next <ChevronRight size={13} />
+                    </button>
+                    <button 
+                      type="button"
+                      className="btn btn-ghost btn-sm" 
+                      disabled={ordersActivePage >= ordersTotalPages} 
+                      onClick={() => React.startTransition(() => setOrdersCurrentPage(ordersTotalPages))}
+                      style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      title="Last Page"
+                    >
+                      Last <ChevronsRight size={13} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
           </div>
           </div>
           <CollapsibleAlertSidebar 
