@@ -445,3 +445,21 @@ kbd,
 
 
 
+
+/* Luxury Clean Sidebar Navigation Enforcement */
+.sidebar a,
+.sidebar a:hover,
+.sidebar a:visited,
+.sidebar a:focus,
+.sidebar .nav-item,
+.sidebar .nav-item span,
+.sidebar .nav-item svg {
+  text-decoration: none !important;
+}
+
+.sidebar .nav-item.active {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.04) !important;
+}
