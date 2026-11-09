@@ -1888,22 +1888,34 @@ export default function ProductsPage() {
           {/* ========================================================= */}
           {/* SCREEN 1: PRODUCT MASTER DATABASE (LIST VIEW)              */}
           {/* ========================================================= */}
-          <div style={{ background: 'linear-gradient(135deg, rgba(24,95,165,0.06) 0%, rgba(139,92,246,0.02) 100%)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ 
+            background: '#ffffff', 
+            border: '1px solid #e2e8f0', 
+            borderRadius: '14px', 
+            padding: '20px 24px', 
+            marginBottom: '20px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
-                  <span className="badge b-success" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>{getModuleName('products', 'Products')} Suite</span>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Dual Feed: Palladium ERP & Master Google Sheets</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.08em', color: '#64748b' }}>
+                    {getModuleName('products', 'Products')} SUITE
+                  </span>
+                  <span style={{ color: '#cbd5e1' }}>•</span>
+                  <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>
+                    Dual Feed: Palladium ERP & Master Google Sheets
+                  </span>
                   {isSyncActive ? (
-                    <span style={{ fontSize: '11px', color: '#0284c7', display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(2, 132, 199, 0.12)', border: '1px solid rgba(2, 132, 199, 0.3)', padding: '3px 12px', borderRadius: '12px', fontWeight: 600 }}>
-                      <RefreshCw size={11} className="animate-spin" color="#0284c7" />
+                    <span style={{ fontSize: '11px', color: '#0f172a', display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#f1f5f9', border: '1px solid #e2e8f0', padding: '3px 10px', borderRadius: '6px', fontWeight: 600 }}>
+                      <RefreshCw size={11} className="animate-spin" color="#0f172a" />
                       <span>{palladiumStatus?.current_step || 'Syncing ERP & Google Sheets...'}</span>
                     </span>
                   ) : (
                     palladiumStatus?.last_synced_at && (
-                      <span style={{ fontSize: '11px', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(16, 185, 129, 0.1)', padding: '2px 10px', borderRadius: '12px', fontWeight: 600 }}>
+                      <span style={{ fontSize: '11px', color: '#059669', display: 'inline-flex', alignItems: 'center', gap: '5px', background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)', padding: '2px 8px', borderRadius: '6px', fontWeight: 600 }}>
                         <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
-                        Auto-Sync Active (Every 15m) • Last Synced: {(() => {
+                        Auto-Sync Active • Last Synced: {(() => {
                           const d = palladiumStatus.last_synced_at;
                           const str = String(d);
                           const dateObj = !str.endsWith('Z') && !str.includes('+') ? new Date(str + 'Z') : new Date(str);
@@ -1913,43 +1925,77 @@ export default function ProductsPage() {
                     )
                   )}
                 </div>
-                <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '10px' }}>
                   📦 {getModuleName('products', 'Products')} Master Database
                 </h1>
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <button
                   onClick={handleTriggerPalladiumSync}
                   disabled={isSyncActive}
-                  className="btn btn-ghost"
                   title="Unified Sync from Palladium ERP and Master Google Sheet"
                   style={{ 
-                    border: isSyncActive ? '1px solid #0284c7' : '1px solid #10b981', 
-                    color: isSyncActive ? '#0284c7' : '#10b981', 
-                    background: isSyncActive ? 'rgba(2, 132, 199, 0.08)' : 'rgba(16, 185, 129, 0.08)', 
+                    border: '1px solid #cbd5e1', 
+                    color: '#0f172a', 
+                    background: '#f8fafc', 
                     display: 'inline-flex', 
                     alignItems: 'center', 
                     gap: '6px', 
-                    fontSize: '12px', 
+                    fontSize: '12.5px', 
                     height: '36px',
+                    padding: '0 14px',
+                    borderRadius: '8px',
                     fontWeight: 600,
-                    cursor: isSyncActive ? 'not-allowed' : 'pointer'
+                    cursor: isSyncActive ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
                   }}
                 >
                   <RefreshCw size={14} className={isSyncActive ? 'animate-spin' : ''} />
-                  {isSyncActive 
-                    ? (palladiumStatus?.current_step || 'Syncing in Progress...') 
-                    : '⚡ Sync Master (ERP + Google Sheets)'}
+                  <span>
+                    {isSyncActive 
+                      ? (palladiumStatus?.current_step || 'Syncing in Progress...') 
+                      : '⚡ Sync Master (ERP + Google Sheets)'}
+                  </span>
                 </button>
 
-                <button onClick={handleExportTemplateExcel} className="btn btn-ghost" style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px', boxSizing: 'border-box' }}>
-                  <Download size={14} /> Export Product Database
+                <button 
+                  onClick={handleExportTemplateExcel} 
+                  style={{ 
+                    border: '1px solid #cbd5e1', 
+                    color: '#0f172a', 
+                    background: '#ffffff', 
+                    display: 'inline-flex', 
+                    alignItems: 'center', 
+                    gap: '6px', 
+                    fontSize: '12.5px', 
+                    height: '36px', 
+                    padding: '0 14px',
+                    borderRadius: '8px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                  }}
+                >
+                  <Download size={14} /> Export Database
                 </button>
 
                 <button 
                   onClick={() => setShowCreateModal(true)} 
-                  className="btn btn-primary" 
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '36px', boxSizing: 'border-box', fontWeight: 600 }}
+                  style={{ 
+                    display: 'inline-flex', 
+                    alignItems: 'center', 
+                    gap: '6px', 
+                    fontSize: '12.5px', 
+                    height: '36px', 
+                    padding: '0 16px',
+                    borderRadius: '8px',
+                    fontWeight: 700, 
+                    background: '#0f172a', 
+                    color: '#ffffff', 
+                    border: 'none', 
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                  }}
                 >
                   <Plus size={14} /> + New Product
                 </button>
@@ -1958,39 +2004,61 @@ export default function ProductsPage() {
           </div>
 
           {/* DATE RANGE FILTER ROW */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '12px 20px', marginBottom: '20px' }}>
+          <div style={{ 
+            display: 'flex', 
+            flexWrap: 'wrap', 
+            gap: '12px', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            background: '#ffffff', 
+            border: '1px solid #e2e8f0', 
+            borderRadius: '12px', 
+            padding: '12px 20px', 
+            marginBottom: '20px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+          }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <Package size={15} color="var(--text-success)" />
-              <span style={{ fontSize: '13px', fontWeight: 600 }}>Filter Products by Date:</span>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                {['All Time', 'Today', 'Last Week', 'This Month', 'Last 30 Days'].map(preset => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => handleDatePresetChange(preset)}
-                    className={`btn btn-sm ${datePreset === preset ? 'btn-primary' : 'btn-ghost'}`}
-                    style={{ padding: '4px 10px', height: 'auto', fontSize: '11px', borderRadius: '6px' }}
-                  >
-                    {preset}
-                  </button>
-                ))}
+              <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#0f172a' }}>Date Filter:</span>
+              <div style={{ display: 'flex', gap: '4px', background: '#f8fafc', padding: '3px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                {['All Time', 'Today', 'Last Week', 'This Month', 'Last 30 Days'].map(preset => {
+                  const isAct = datePreset === preset;
+                  return (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => handleDatePresetChange(preset)}
+                      style={{ 
+                        padding: '4px 10px', 
+                        height: 'auto', 
+                        fontSize: '11.5px', 
+                        borderRadius: '6px',
+                        border: 'none',
+                        background: isAct ? '#0f172a' : 'transparent',
+                        color: isAct ? '#ffffff' : '#64748b',
+                        fontWeight: isAct ? 700 : 500,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {preset}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Custom Range:</span>
+              <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Custom:</span>
               <input
                 type="date"
-                className="form-control"
-                style={{ width: '130px', height: '28px', padding: '2px 8px', fontSize: '11px' }}
+                style={{ width: '130px', height: '30px', padding: '2px 8px', fontSize: '11.5px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#0f172a' }}
                 value={startDate}
                 onChange={e => { setStartDate(e.target.value); setDatePreset('Custom'); }}
               />
-              <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>to</span>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>to</span>
               <input
                 type="date"
-                className="form-control"
-                style={{ width: '130px', height: '28px', padding: '2px 8px', fontSize: '11px' }}
+                style={{ width: '130px', height: '30px', padding: '2px 8px', fontSize: '11.5px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', color: '#0f172a' }}
                 value={endDate}
                 onChange={e => { setEndDate(e.target.value); setDatePreset('Custom'); }}
               />
@@ -1998,120 +2066,136 @@ export default function ProductsPage() {
           </div>
 
           {/* 5-KPI SUMMARY CARD GRID */}
-          <div className="stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '20px' }}>
             <div 
-              className="stat" 
               onClick={() => { setActiveFilterTab('all'); setCurrentPage(1); }}
-              style={{ background: 'var(--bg-primary)', border: activeFilterTab === 'all' ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '12px', padding: '16px', cursor: 'pointer', transition: 'all 0.2s ease' }}
+              style={{ 
+                background: '#ffffff', 
+                border: activeFilterTab === 'all' ? '2px solid #0f172a' : '1px solid #e2e8f0', 
+                borderRadius: '12px', 
+                padding: '16px 18px', 
+                cursor: 'pointer', 
+                transition: 'all 0.15s ease',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+              }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Total Products SKU</span>
-                <Package size={15} color="var(--text-info)" />
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Total Products SKU</span>
+                <Package size={15} color="#64748b" />
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {kpis.totalSku.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>SKUs</span>
+              <div style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace' }}>
+                {kpis.totalSku.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}>SKUs</span>
               </div>
-              <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
-                <span>Total Value: <strong>R {kpis.totalVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
-                <span>Units: <strong>{kpis.totalUnits.toLocaleString()}</strong></span>
+              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '10px', paddingTop: '8px', fontSize: '11px', color: '#64748b', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Value: <strong style={{ color: '#0f172a' }}>R {kpis.totalVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+                <span>Units: <strong style={{ color: '#0f172a' }}>{kpis.totalUnits.toLocaleString()}</strong></span>
               </div>
             </div>
 
             <div 
-              className="stat" 
               onClick={() => { setActiveFilterTab('pending_palladium'); setCurrentPage(1); }}
               style={{ 
-                background: activeFilterTab === 'pending_palladium' ? 'rgba(239, 68, 68, 0.08)' : (kpis.pendingPalladium > 0 ? 'rgba(245, 158, 11, 0.04)' : 'var(--bg-primary)'), 
-                border: activeFilterTab === 'pending_palladium' ? '2px solid #ef4444' : (kpis.pendingPalladium > 0 ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid var(--border)'), 
+                background: '#ffffff', 
+                border: activeFilterTab === 'pending_palladium' ? '2px solid #0f172a' : '1px solid #e2e8f0', 
                 borderRadius: '12px', 
-                padding: '16px', 
+                padding: '16px 18px', 
                 cursor: 'pointer',
-                transition: 'all 0.2s ease'
+                transition: 'all 0.15s ease',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '10px', color: kpis.pendingPalladium > 0 ? '#ef4444' : 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>
-                  🔴 Pending Palladium
+                <span style={{ fontSize: '11px', color: kpis.pendingPalladium > 0 ? '#b91c1c' : '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>
+                  Pending ERP Verification
                 </span>
-                <ShieldAlert size={15} color={kpis.pendingPalladium > 0 ? '#ef4444' : 'var(--text-tertiary)'} />
+                <ShieldAlert size={15} color={kpis.pendingPalladium > 0 ? '#dc2626' : '#64748b'} />
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: kpis.pendingPalladium > 0 ? '#ef4444' : 'var(--text-primary)' }}>
-                {kpis.pendingPalladium.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Items</span>
+              <div style={{ fontSize: '22px', fontWeight: 800, color: kpis.pendingPalladium > 0 ? '#dc2626' : '#0f172a', fontFamily: 'monospace' }}>
+                {kpis.pendingPalladium.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}>Items</span>
               </div>
-              <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>
-                <span className={`badge ${kpis.pendingPalladium > 0 ? 'b-danger' : 'b-secondary'}`} style={{ fontSize: '8.5px', padding: '1px 6px' }}>
+              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '10px', paddingTop: '8px', fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '4px', fontWeight: 700, background: kpis.pendingPalladium > 0 ? 'rgba(239, 68, 68, 0.1)' : '#f1f5f9', color: kpis.pendingPalladium > 0 ? '#dc2626' : '#64748b' }}>
                   {kpis.pendingPalladium > 0 ? 'Action Required' : 'All Clear'}
-                </span> {kpis.pendingPalladium > 0 ? 'Click to review & verify' : 'All SKUs verified in ERP'}
+                </span>
+                <span>{kpis.pendingPalladium > 0 ? 'Click to review & verify' : 'All SKUs verified in ERP'}</span>
               </div>
             </div>
 
             <div
-              className="stat"
               onClick={() => { setActiveFilterTab(activeFilterTab === 'low_stock' ? 'all' : 'low_stock'); setCurrentPage(1); }}
               style={{
-                background: activeFilterTab === 'low_stock' ? 'rgba(245, 158, 11, 0.08)' : 'var(--bg-primary)',
-                border: activeFilterTab === 'low_stock' ? '2px solid #f59e0b' : '1px solid var(--border)',
+                background: '#ffffff',
+                border: activeFilterTab === 'low_stock' ? '2px solid #0f172a' : '1px solid #e2e8f0',
                 borderRadius: '12px',
-                padding: '16px',
+                padding: '16px 18px',
                 cursor: 'pointer',
-                transition: 'all 0.2s ease'
+                transition: 'all 0.15s ease',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Low Stock Items</span>
-                <AlertTriangle size={15} color="var(--text-warning)" />
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Low Stock Items</span>
+                <AlertTriangle size={15} color="#d97706" />
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-warning)' }}>
-                {kpis.lowStock.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Count</span>
+              <div style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace' }}>
+                {kpis.lowStock.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}>Count</span>
               </div>
-              <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>
-                <span className="badge b-warning" style={{ fontSize: '8.5px', padding: '1px 6px' }}>Click to Filter</span> reorder threshold reached
+              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '10px', paddingTop: '8px', fontSize: '11px', color: '#64748b' }}>
+                <span style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '4px', fontWeight: 700, background: '#fef3c7', color: '#b45309', marginRight: '6px' }}>Threshold</span>
+                reorder limit reached
               </div>
             </div>
 
             <div
-              className="stat"
               onClick={() => { setActiveFilterTab(activeFilterTab === 'out_of_stock' ? 'all' : 'out_of_stock'); setCurrentPage(1); }}
               style={{
-                background: activeFilterTab === 'out_of_stock' ? 'rgba(239, 68, 68, 0.08)' : 'var(--bg-primary)',
-                border: activeFilterTab === 'out_of_stock' ? '2px solid #ef4444' : '1px solid var(--border)',
+                background: '#ffffff',
+                border: activeFilterTab === 'out_of_stock' ? '2px solid #0f172a' : '1px solid #e2e8f0',
                 borderRadius: '12px',
-                padding: '16px',
+                padding: '16px 18px',
                 cursor: 'pointer',
-                transition: 'all 0.2s ease'
+                transition: 'all 0.15s ease',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Out of Stock Items</span>
-                <AlertTriangle size={15} color="var(--text-danger)" />
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Out of Stock Items</span>
+                <AlertTriangle size={15} color="#dc2626" />
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-danger)' }}>
-                {kpis.outStock.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Count</span>
+              <div style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace' }}>
+                {kpis.outStock.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}>Count</span>
               </div>
-              <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>
-                <span className="badge b-danger" style={{ fontSize: '8.5px', padding: '1px 6px' }}>Click to Filter</span> zero or negative inventory
+              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '10px', paddingTop: '8px', fontSize: '11px', color: '#64748b' }}>
+                <span style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '4px', fontWeight: 700, background: 'rgba(239, 68, 68, 0.1)', color: '#dc2626', marginRight: '6px' }}>Zero Units</span>
+                zero inventory balance
               </div>
             </div>
 
-            <div className="stat" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '16px' }}>
+            <div style={{ 
+              background: '#ffffff', 
+              border: '1px solid #e2e8f0', 
+              borderRadius: '12px', 
+              padding: '16px 18px',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+            }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Stock Margin Potential</span>
-                <Percent size={15} color="var(--text-success)" />
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Stock Margin Potential</span>
+                <Percent size={15} color="#059669" />
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-success)' }}>
-                {kpis.avgMargin}% <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Avg Margin</span>
+              <div style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace' }}>
+                {kpis.avgMargin}% <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}>Avg Margin</span>
               </div>
-              <div style={{ borderTop: '0.5px solid var(--border)', marginTop: '8px', paddingTop: '6px', fontSize: '10px', color: 'var(--text-secondary)' }}>
-                Profit: <strong>R {kpis.totalMargin.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '10px', paddingTop: '8px', fontSize: '11px', color: '#64748b' }}>
+                Profit Potential: <strong style={{ color: '#059669' }}>R {kpis.totalMargin.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
               </div>
             </div>
           </div>
 
           {/* INTEGRATED PRODUCTS CATALOG CARD */}
-          <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)', marginBottom: '20px' }}>
+          <div style={{ border: '1px solid #e2e8f0', borderRadius: '14px', overflow: 'hidden', background: '#ffffff', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
             
             {/* TIER 1: VIEW TABS & FILTER CONTROL BAR */}
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: '#ffffff', display: 'flex', flexDirection: 'column', gap: '14px' }}>
             
             {/* VIEW TABS (All vs Pending Palladium vs Low Stock vs Out of Stock) */}
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: '14px', marginBottom: '14px', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
@@ -2264,9 +2348,9 @@ export default function ProductsPage() {
 
             {/* TIER 2: PRODUCT LEDGER FULL-BLEED TABLE */}
             <div style={{ overflowX: 'auto', maxHeight: '68vh', position: 'relative' }}>
-              <table className="table" style={{ margin: 0, fontSize: '12px', width: '100%', borderCollapse: 'collapse' }}>
+              <table className="table" style={{ margin: 0, fontSize: '12.5px', width: '100%', borderCollapse: 'collapse' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
-                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>
                     <th style={{ width: '38px', textAlign: 'center' }}>
                       <input 
                         type="checkbox" 
@@ -2559,37 +2643,44 @@ export default function ProductsPage() {
           {/* ========================================================= */}
           {/* SCREEN 2: PRODUCT DETAIL WORKSPACE VIEW                     */}
           {/* ========================================================= */}
-          <div className="card" style={{ border: '1.5px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
-            <div className="card-body" style={{ padding: '24px' }}>
+          <div style={{ border: '1px solid #e2e8f0', borderRadius: '14px', background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.02)', overflow: 'hidden' }}>
+            <div style={{ padding: '24px' }}>
               
               {/* TOP HEADER CONTROLS */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border)', paddingBottom: '18px', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #e2e8f0', paddingBottom: '18px', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
                 <div>
                   <button 
-                    className="btn btn-ghost btn-sm" 
-                    style={{ padding: '4px', height: 'auto', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '8px' }}
+                    style={{ padding: '4px 10px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, color: '#475569', background: '#f8fafc', border: '1px solid #cbd5e1', cursor: 'pointer', marginBottom: '10px' }}
                     onClick={() => setSelectedSku(null)}
                   >
                     <ArrowLeft size={13} /> Back to Master Database
                   </button>
                   
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1px', background: 'rgba(74,85,104,0.15)', color: 'var(--text-secondary)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                      Product Workspace Engine
+                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b', fontWeight: 700 }}>
+                      PRODUCT WORKSPACE ENGINE
                     </span>
                   </div>
                   
-                  <h2 style={{ margin: '6px 0 0 0', fontSize: '20px', color: 'var(--text-primary)', fontWeight: 700 }}>
+                  <h2 style={{ margin: '6px 0 0 0', fontSize: '22px', color: '#0f172a', fontWeight: 800, letterSpacing: '-0.02em' }}>
                     {activeProduct.sku} — {activeProduct.name}
                   </h2>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', padding: '8px 14px', borderRadius: '8px' }}>
-                  <span className={`badge ${activeProduct.status === 'Inactive' || !activeProduct.is_active ? 'b-danger' : 'b-success'}`} style={{ fontSize: '11px', padding: '4px 10px' }}>
-                    {activeProduct.status === 'Inactive' || !activeProduct.is_active ? '🔴 Discontinued / Inactive in ERP' : '🟢 Active in Palladium ERP'}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ 
+                    fontSize: '11px', 
+                    padding: '4px 10px', 
+                    borderRadius: '6px', 
+                    fontWeight: 700,
+                    background: activeProduct.status === 'Inactive' || !activeProduct.is_active ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+                    color: activeProduct.status === 'Inactive' || !activeProduct.is_active ? '#dc2626' : '#059669',
+                    border: activeProduct.status === 'Inactive' || !activeProduct.is_active ? '1px solid rgba(239, 68, 68, 0.2)' : '1px solid rgba(16, 185, 129, 0.2)'
+                  }}>
+                    {activeProduct.status === 'Inactive' || !activeProduct.is_active ? 'Discontinued in ERP' : 'Active in Palladium ERP'}
                   </span>
-                  <span style={{ fontSize: '11px', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(16, 185, 129, 0.1)', padding: '4px 10px', borderRadius: '6px', fontWeight: 600 }}>
-                    🔒 Palladium Single Source of Truth
+                  <span style={{ fontSize: '11px', color: '#475569', display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#f8fafc', border: '1px solid #e2e8f0', padding: '4px 10px', borderRadius: '6px', fontWeight: 600 }}>
+                    🔒 Single Source of Truth
                   </span>
                 </div>
               </div>
