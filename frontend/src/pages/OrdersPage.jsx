@@ -11,6 +11,7 @@ import MobileOrdersViewer from '../components/mobile/MobileOrdersViewer';
 import DriveFileExplorer from '../components/common/DriveFileExplorer';
 import TechnicalPackModal from '../components/orders/TechnicalPackModal';
 import SubOrderModal from '../components/orders/SubOrderModal';
+import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
 import ItemSwapModal from '../components/orders/ItemSwapModal';
 import AuditHistoryTab from '../components/orders/AuditHistoryTab';
 import ClientVariationDocument from '../components/orders/ClientVariationDocument';
@@ -43,6 +44,7 @@ import {
   RotateCcw,
   History,
   ChevronRight,
+  ChevronDown,
   Sparkles,
   ClipboardList,
   TrendingDown,
@@ -462,7 +464,8 @@ export default function OrdersPage() {
     }
   };
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    return localStorage.getItem('sidebar_collapsed_orders') === 'true';
+    const saved = localStorage.getItem('sidebar_collapsed_orders');
+    return saved !== null ? saved === 'true' : true; // Default to collapsed (full width table)
   });
   const location = useLocation();
   const navigate = useNavigate();
@@ -529,6 +532,26 @@ export default function OrdersPage() {
   const [showBoqCreateProductModal, setShowBoqCreateProductModal] = useState(false);
   const [boqTargetItemId, setBoqTargetItemId] = useState(null);
   const [showSubOrderModal, setShowSubOrderModal] = useState(false);
+  const [expandedMasterOrders, setExpandedMasterOrders] = useState(new Set());
+
+  const toggleExpandMaster = (masterId, e) => {
+    if (e) e.stopPropagation();
+    setExpandedMasterOrders(prev => {
+      const next = new Set(prev);
+      if (next.has(masterId)) next.delete(masterId);
+      else next.add(masterId);
+      return next;
+    });
+  };
+
+  const checkIsSubOrder = (ord) => {
+    if (!ord) return false;
+    if (typeof ord.is_sub_order === 'boolean') return ord.is_sub_order;
+    if (typeof ord.isSubOrder === 'boolean') return ord.isSubOrder;
+    if (ord.parent_po_number && String(ord.parent_po_number).trim() !== String(ord.id).trim()) return true;
+    if (ord.parent_order_id) return true;
+    return /-\d{3,}-\d{1,2}$/.test(String(ord.id || ord.po_number || '').trim());
+  };
   const [swapTargetItem, setSwapTargetItem] = useState(null);
   const [scopeFilter, setScopeFilter] = useState('ALL');
   const [revisionStatusFilter, setRevisionStatusFilter] = useState('ACTIVE');
@@ -1691,7 +1714,7 @@ export default function OrdersPage() {
   const [ordersCurrentPage, setOrdersCurrentPage] = useState(1);
 
   const sortedOrders = useMemo(() => {
-    if (!sortField) return filteredOrders;
+    if (!sortField) return topLevelOrders;
 
     const getVal = (o, field) => {
       const cost = o.costValue || 0;
@@ -1731,7 +1754,7 @@ export default function OrdersPage() {
       }
     };
 
-    return [...filteredOrders].sort((a, b) => {
+    return [...topLevelOrders].sort((a, b) => {
       const valA = getVal(a, sortField);
       const valB = getVal(b, sortField);
 
@@ -1739,7 +1762,7 @@ export default function OrdersPage() {
       if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [filteredOrders, sortField, sortDirection]);
+  }, [topLevelOrders, sortField, sortDirection]);
 
   const ordersTotalPages = useMemo(() => {
     if (ordersPageSize === 'All') return 1;
@@ -1771,12 +1794,36 @@ export default function OrdersPage() {
       : <ArrowDown size={12} style={{ marginLeft: '4px', color: 'var(--text-info)' }} />;
   };
 
-  // Dynamic statistics
-  const { totalCostCompany, totalValueCompany, blendedMarginCompany, lowMarginPoCount } = useMemo(() => {
-    const cost = filteredOrders.reduce((sum, o) => sum + (o.costValue || 0), 0);
-    const value = filteredOrders.reduce((sum, o) => sum + (o.value || 0), 0);
+  // Map all sub-orders by their parent PO number / ID
+  const subOrdersByParent = useMemo(() => {
+    const map = {};
+    (allOrders || []).forEach(ord => {
+      if (checkIsSubOrder(ord)) {
+        const parentKey = ord.parent_po_number || ord.parentPoNumber || (String(ord.id).includes('-') ? String(ord.id).replace(/-\d{1,2}$/, '') : ord.id);
+        if (!map[parentKey]) map[parentKey] = [];
+        map[parentKey].push(ord);
+      }
+    });
+    return map;
+  }, [allOrders]);
+
+  // Primary rows for the ledger: master orders + orphan sub-orders (if any)
+  const topLevelOrders = useMemo(() => {
+    return filteredOrders.filter(o => {
+      if (!checkIsSubOrder(o)) return true;
+      const parentKey = o.parent_po_number || o.parentPoNumber || (String(o.id).includes('-') ? String(o.id).replace(/-\d{1,2}$/, '') : ord.id);
+      const parentExists = (allOrders || []).some(p => p.id === parentKey || p.po_number === parentKey);
+      return !parentExists;
+    });
+  }, [filteredOrders, allOrders]);
+
+  // Dynamic statistics - calculate strictly from master orders to eliminate double-counting
+  const { totalCostCompany, totalValueCompany, blendedMarginCompany, lowMarginPoCount, masterOrdersCount } = useMemo(() => {
+    const masterOnly = filteredOrders.filter(o => !checkIsSubOrder(o));
+    const cost = masterOnly.reduce((sum, o) => sum + (o.costValue || 0), 0);
+    const value = masterOnly.reduce((sum, o) => sum + (o.value || 0), 0);
     const margin = value > 0 ? Math.round(((value - cost) / value) * 100) : 0;
-    const lowMargin = filteredOrders.filter(o => {
+    const lowMargin = masterOnly.filter(o => {
       const c = o.costValue || 0;
       const r = o.value || 0;
       if (r === 0) return false;
@@ -1787,7 +1834,8 @@ export default function OrdersPage() {
       totalCostCompany: cost,
       totalValueCompany: value,
       blendedMarginCompany: margin,
-      lowMarginPoCount: lowMargin
+      lowMarginPoCount: lowMargin,
+      masterOrdersCount: masterOnly.length
     };
   }, [filteredOrders]);
 
@@ -3043,8 +3091,8 @@ export default function OrdersPage() {
                   <ClipboardList size={18} />
                 </div>
                 <div>
-                  <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Hardware {getModuleName('orders', 'Orders')} & BOQ Workspace</h2>
-                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Central Quotations & Area-by-Area BOQ Builder.</div>
+                  <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Orders Module</h2>
+                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Central Quotations & Area-by-Area BOQ Builder</div>
                 </div>
               </div>
 
@@ -3129,7 +3177,7 @@ export default function OrdersPage() {
                 <ClipboardList size={16} color="var(--text-info)" />
               </div>
               <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {filteredOrders.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Active Qty</span>
+                {masterOrdersCount} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Active Qty</span>
               </div>
               <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px' }}>
                 Total quotations in system.
@@ -3235,41 +3283,29 @@ export default function OrdersPage() {
                     <option value="Cancelled">Cancelled</option>
                   </select>
 
-                  <select 
-                    className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                  <SearchableFilterDropdown 
                     value={projectFilterKey}
-                    onChange={e => setProjectFilterKey(e.target.value)}
-                  >
-                    <option value="All">All Projects</option>
-                    {projectOptions.map(p => (
-                      <option key={p.key} value={p.key}>{p.name}</option>
-                    ))}
-                  </select>
+                    onChange={setProjectFilterKey}
+                    options={projectOptions}
+                    allLabel="All Projects"
+                    width="155px"
+                  />
 
-                  <select 
-                    className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                  <SearchableFilterDropdown 
                     value={clientFilter}
-                    onChange={e => setClientFilter(e.target.value)}
-                  >
-                    <option value="All">All Clients</option>
-                    {clientOptions.map(client => (
-                      <option key={client} value={client}>{client}</option>
-                    ))}
-                  </select>
+                    onChange={setClientFilter}
+                    options={clientOptions}
+                    allLabel="All Clients"
+                    width="155px"
+                  />
 
-                  <select 
-                    className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                  <SearchableFilterDropdown 
                     value={pmFilter}
-                    onChange={e => setPmFilter(e.target.value)}
-                  >
-                    <option value="All">All PMs</option>
-                    {pmOptions.map(pm => (
-                      <option key={pm} value={pm}>{pm}</option>
-                    ))}
-                  </select>
+                    onChange={setPmFilter}
+                    options={pmOptions}
+                    allLabel="All PMs"
+                    width="140px"
+                  />
 
                   <select 
                     className="form-control"
@@ -3405,65 +3441,159 @@ export default function OrdersPage() {
                       const retail = o.value || 0;
                       const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
                       const isLowMargin = margin < 39;
-
                       const isSelected = selectedPoNumbers.has(o.id);
+
+                      const childSubs = subOrdersByParent[o.id] || subOrdersByParent[o.po_number] || [];
+                      const hasChildSubs = childSubs.length > 0;
+                      const isExpanded = expandedMasterOrders.has(o.id) || (debouncedSearchQuery && childSubs.some(sub => (sub.id || '').toLowerCase().includes(debouncedSearchQuery.toLowerCase())));
+
                       return (
-                        <tr 
-                          key={o.id} 
-                          className="clickable" 
-                          onClick={() => handleOpenWorkspace(o)}
-                          style={{
-                            background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-                            borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent'
-                          }}
-                        >
-                          <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
-                            <input 
-                              type="checkbox" 
-                              checked={selectedPoNumbers.has(o.id)}
-                              onChange={(e) => toggleSelectPo(o.id, e)}
-                              style={{ cursor: 'pointer' }}
-                            />
-                          </td>
-                          <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={e => e.stopPropagation()}>
-                            <span className="btn-link" style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => handleOpenWorkspace(o)}>{o.id}</span>
-                            {isAdmin && (
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                style={{ padding: '2px 4px', height: '20px', border: '1px solid var(--border)', fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: '2px', background: 'var(--bg-secondary)' }}
-                                title="Link / Shift Project or Client"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setLinkModalItem(o);
-                                  setLinkClient(o.projectClient || '');
-                                  setLinkProjectKey(o.projectKey || '');
+                        <React.Fragment key={o.id}>
+                          <tr 
+                            className="clickable" 
+                            onClick={() => handleOpenWorkspace(o)}
+                            style={{
+                              background: isSelected ? 'rgba(59, 130, 246, 0.08)' : (hasChildSubs ? 'rgba(59, 130, 246, 0.02)' : 'transparent'),
+                              borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent'
+                            }}
+                          >
+                            <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                              <input 
+                                type="checkbox" 
+                                checked={selectedPoNumbers.has(o.id)}
+                                onChange={(e) => toggleSelectPo(o.id, e)}
+                                style={{ cursor: 'pointer' }}
+                              />
+                            </td>
+                            <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }} onClick={e => e.stopPropagation()}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                {hasChildSubs && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-sm"
+                                    style={{ padding: 0, height: '20px', width: '20px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}
+                                    onClick={(e) => toggleExpandMaster(o.id, e)}
+                                    title={isExpanded ? "Collapse Sub-Orders" : `Expand ${childSubs.length} Sub-Orders`}
+                                  >
+                                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                  </button>
+                                )}
+                                <span 
+                                  className="btn-link" 
+                                  style={{ cursor: 'pointer', textDecoration: 'none' }} 
+                                  onClick={() => handleOpenWorkspace(o)}
+                                >
+                                  {o.id}
+                                </span>
+                                {hasChildSubs && (
+                                  <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(59, 130, 246, 0.15)', color: '#2563eb', fontWeight: 700, borderRadius: '4px' }}>
+                                    👑 Master ({childSubs.length})
+                                  </span>
+                                )}
+                                {isAdmin && (
+                                  <button
+                                    className="btn btn-ghost btn-sm"
+                                    style={{ padding: '2px 4px', height: '20px', border: '1px solid var(--border)', fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: '2px', background: 'var(--bg-secondary)' }}
+                                    title="Link / Shift Project or Client"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setLinkModalItem(o);
+                                      setLinkClient(o.projectClient || '');
+                                      setLinkProjectKey(o.projectKey || '');
+                                    }}
+                                  >
+                                    <Layers size={10} /> Link
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                            <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
+                            <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectName}</td>
+                            <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: o.projectClient } }); }}>{o.projectClient || '—'}</td>
+                            <td style={{ color: 'var(--text-secondary)' }}>{o.projectPm || o.pm || '—'}</td>
+                            <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                              {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
+                            </td>
+                            <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>
+                            <td style={{ color: 'var(--text-success)' }}>R {(o.paid || 0).toLocaleString()}</td>
+                            <td style={{ fontWeight: 600, color: (o.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
+                              R {(o.outstanding || 0).toLocaleString()}
+                            </td>
+                            <td>
+                              <span className={`badge ${statusColor[o.status] || 'b-default'}`}>{o.status}</span>
+                            </td>
+                            <td>
+                              <span className={`badge ${
+                                o.paymentStatus === 'Fully Paid' ? 'b-success' : o.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
+                              }`}>{o.paymentStatus}</span>
+                            </td>
+                          </tr>
+
+                          {hasChildSubs && isExpanded && childSubs.map(sub => {
+                            const subCost = sub.costValue || 0;
+                            const subRetail = sub.value || 0;
+                            const subPaid = sub.paid || 0;
+                            const subOut = Number(sub.outstanding) > 0 ? Number(sub.outstanding) : Math.max(0, subRetail - subPaid);
+                            const subMargin = subRetail > 0 ? Math.round(((subRetail - subCost) / subRetail) * 100) : 0;
+                            const isSubSelected = selectedPoNumbers.has(sub.id);
+
+                            return (
+                              <tr 
+                                key={sub.id} 
+                                className="clickable" 
+                                onClick={() => handleOpenWorkspace(sub)}
+                                style={{
+                                  background: isSubSelected ? 'rgba(139, 92, 246, 0.12)' : 'rgba(139, 92, 246, 0.04)',
+                                  borderLeft: isSubSelected ? '3px solid #8b5cf6' : '3px solid rgba(139, 92, 246, 0.4)'
                                 }}
                               >
-                                <Layers size={10} /> Link
-                              </button>
-                            )}
-                          </td>
-                          <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
-                          <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectName}</td>
-                          <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: o.projectClient } }); }}>{o.projectClient || '—'}</td>
-                          <td style={{ color: 'var(--text-secondary)' }}>{o.projectPm || o.pm || '—'}</td>
-                          <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                            {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
-                          </td>
-                          <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>
-                          <td style={{ color: 'var(--text-success)' }}>R {(o.paid || 0).toLocaleString()}</td>
-                          <td style={{ fontWeight: 600, color: (o.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
-                            R {(o.outstanding || 0).toLocaleString()}
-                          </td>
-                          <td>
-                            <span className={`badge ${statusColor[o.status] || 'b-default'}`}>{o.status}</span>
-                          </td>
-                          <td>
-                            <span className={`badge ${
-                              o.paymentStatus === 'Fully Paid' ? 'b-success' : o.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
-                            }`}>{o.paymentStatus}</span>
-                          </td>
-                        </tr>
+                                <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={isSubSelected}
+                                    onChange={(e) => toggleSelectPo(sub.id, e)}
+                                    style={{ cursor: 'pointer' }}
+                                  />
+                                </td>
+                                <td style={{ fontFamily: 'monospace', fontWeight: 600, paddingLeft: '28px' }} onClick={e => e.stopPropagation()}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                    <span style={{ color: '#8b5cf6', fontWeight: 700 }}>↳</span>
+                                    <span 
+                                      className="btn-link" 
+                                      style={{ cursor: 'pointer', color: '#8b5cf6', textDecoration: 'none' }} 
+                                      onClick={() => handleOpenWorkspace(sub)}
+                                    >
+                                      {sub.id}
+                                    </span>
+                                    <span className="badge" style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: 700, borderRadius: '4px' }}>
+                                      {sub.phase_name || sub.phaseName || `Phase ${sub.sub_order_index || 1}`}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td style={{ fontWeight: 600 }}>{sub.quote_name || 'Phase Scope'}</td>
+                                <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${sub.projectKey || o.projectKey}`); }}>{sub.projectName || o.projectName}</td>
+                                <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: sub.projectClient || o.projectClient } }); }}>{(sub.projectClient || o.projectClient) || '—'}</td>
+                                <td style={{ color: 'var(--text-secondary)' }}>{sub.projectPm || o.projectPm || '—'}</td>
+                                <td style={{ fontWeight: 700, color: subMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                                  {subMargin}% {subMargin < 39 && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
+                                </td>
+                                <td style={{ fontWeight: 600 }}>R {subRetail.toLocaleString()}</td>
+                                <td style={{ color: 'var(--text-success)' }}>R {subPaid.toLocaleString()}</td>
+                                <td style={{ fontWeight: 600, color: subOut > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
+                                  R {subOut.toLocaleString()}
+                                </td>
+                                <td>
+                                  <span className={`badge ${statusColor[sub.status] || 'b-default'}`}>{sub.status || 'Draft'}</span>
+                                </td>
+                                <td>
+                                  <span className={`badge ${
+                                    sub.paymentStatus === 'Fully Paid' ? 'b-success' : sub.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
+                                  }`}>{sub.paymentStatus || 'Unpaid'}</span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </React.Fragment>
                       );
                     })}
 
