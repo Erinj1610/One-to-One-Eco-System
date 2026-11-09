@@ -22,7 +22,7 @@ import {
   ArrowRight,
   Maximize2,
   ExternalLink,
-  ChevronDown,
+  ChevronDown, ChevronRight,
   X,
   Info,
   Compass,
@@ -119,6 +119,47 @@ export default function TakeoffSpecEngine({
   const [matrixFloorFilter, setMatrixFloorFilter] = useState('All');
   const [hideEmptyRooms, setHideEmptyRooms] = useState(false);
 
+  // Count-Up View Mode & Quick Filter States
+  const [countUpViewMode, setCountUpViewMode] = useState('flat'); // 'flat' | 'room_grouped'
+  const [countUpStatusFilter, setCountUpStatusFilter] = useState('ALL'); // 'ALL' | 'PENDING' | 'MAPPED' | 'LED' | 'TRACK'
+  const [collapsedRooms, setCollapsedRooms] = useState(new Set());
+
+  const toggleRoomCollapse = (roomKey) => {
+    setCollapsedRooms(prev => {
+      const next = new Set(prev);
+      if (next.has(roomKey)) next.delete(roomKey);
+      else next.add(roomKey);
+      return next;
+    });
+  };
+
+  // Multi-Run Linear LED Calculator helper
+  const handleQtyChange = (id, rawVal) => {
+    if (typeof rawVal === 'string' && rawVal.includes('+')) {
+      const parts = rawVal.split('+').map(p => parseFloat(p.trim())).filter(n => !isNaN(n) && n > 0);
+      if (parts.length > 1) {
+        const total = Math.round(parts.reduce((a, b) => a + b, 0) * 100) / 100;
+        const cutsStr = parts.map(p => `${p.toFixed(2)}m`).join(' + ');
+        const runNote = `${parts.length} runs (${cutsStr})`;
+        setCountUpRows(prev => prev.map(r => {
+          if (r.id !== id) return r;
+          const updatedNotes = r.notes
+            ? (r.notes.includes('runs (') ? r.notes.replace(/\d+ runs \([^)]+\)/, runNote) : `${r.notes} | ${runNote}`)
+            : runNote;
+          return {
+            ...r,
+            qty: total,
+            unit: 'm',
+            itemType: 'linear_led',
+            notes: updatedNotes
+          };
+        }));
+        return;
+      }
+    }
+    handleUpdateRow(id, 'qty', rawVal);
+  };
+
   // Catalog Picker Modal State
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
   const [takeoffSwapTarget, setTakeoffSwapTarget] = useState(null);
@@ -129,6 +170,21 @@ export default function TakeoffSpecEngine({
   const handleInitiateRowSwap = (row) => {
     const tag = (row.tag || '').trim().toUpperCase();
     const spec = specifications[tag];
+    const isConfigured = Boolean(spec?.product || spec?.ledConfig?.profileProduct || spec?.trackConfig?.railProduct);
+
+    // If tag is not configured yet (first-time mapping), open catalog picker directly without modal friction!
+    if (!isConfigured) {
+      const currentMode = spec?.itemType || row?.itemType || 'fixture';
+      if (currentMode === 'linear_led') {
+        openCatalogPicker(tag, 'led_profile', 'Linear');
+      } else if (currentMode === 'track_system') {
+        openCatalogPicker(tag, 'track_rail', 'Track');
+      } else {
+        openCatalogPicker(tag, 'product');
+      }
+      return;
+    }
+
     const matchingRowCount = countUpRows.filter(r => (r.tag || '').trim().toUpperCase() === tag).length;
     setTakeoffSwapTarget({
       mode: 'row',
@@ -2329,21 +2385,78 @@ export default function TakeoffSpecEngine({
     return uniqueTags;
   }, [summarySubTab, pointFixtureTags, linearLedTags, trackSystemTags, uniqueTags]);
 
+  // Stats for Count-Up quick filter pills
+  const countUpStatusFilterStats = useMemo(() => {
+    let pending = 0;
+    let mapped = 0;
+    let leds = 0;
+    let tracks = 0;
+    countUpRows.forEach(r => {
+      const tag = (r.tag || '').trim().toUpperCase();
+      const spec = specifications[tag];
+      const isConfigured = Boolean(spec?.product || spec?.ledConfig?.profileProduct || spec?.trackConfig?.railProduct);
+      if (isConfigured) mapped++; else pending++;
+      const currentType = spec?.itemType || r.itemType || 'fixture';
+      if (currentType === 'linear_led') leds++;
+      if (currentType === 'track_system') tracks++;
+    });
+    return { pending, mapped, leds, tracks, total: countUpRows.length };
+  }, [countUpRows, specifications]);
+
   // Filtered Count-Up rows
   const filteredCountUpRows = useMemo(() => {
     return countUpRows.filter(r => {
       if (floorFilter !== 'All' && r.floor !== floorFilter) return false;
+      const tag = (r.tag || '').trim().toUpperCase();
+      const spec = specifications[tag];
+      const isConfigured = Boolean(spec?.product || spec?.ledConfig?.profileProduct || spec?.trackConfig?.railProduct);
+      const currentType = spec?.itemType || r.itemType || 'fixture';
+
+      if (countUpStatusFilter === 'PENDING' && isConfigured) return false;
+      if (countUpStatusFilter === 'MAPPED' && !isConfigured) return false;
+      if (countUpStatusFilter === 'LED' && currentType !== 'linear_led') return false;
+      if (countUpStatusFilter === 'TRACK' && currentType !== 'track_system') return false;
+
       if (countUpSearch.trim()) {
         const q = countUpSearch.toLowerCase();
         return (
           (r.tag || '').toLowerCase().includes(q) ||
           (r.area || '').toLowerCase().includes(q) ||
+          (r.floor || '').toLowerCase().includes(q) ||
           (r.notes || '').toLowerCase().includes(q)
         );
       }
       return true;
     });
-  }, [countUpRows, floorFilter, countUpSearch]);
+  }, [countUpRows, floorFilter, countUpSearch, countUpStatusFilter, specifications]);
+
+  // Grouped by Room hierarchy
+  const groupedRoomsData = useMemo(() => {
+    const roomMap = new Map();
+    filteredCountUpRows.forEach((row, idx) => {
+      const floor = row.floor || 'Ground';
+      const area = row.area || 'General Area';
+      const key = `${floor}__${area}`;
+      if (!roomMap.has(key)) {
+        roomMap.set(key, {
+          key,
+          floor,
+          area,
+          rows: [],
+          totalQty: 0,
+          totalLength: 0,
+        });
+      }
+      const g = roomMap.get(key);
+      g.rows.push({ ...row, originalIndex: idx });
+      if (row.unit === 'm') {
+        g.totalLength += (Number(row.qty) || 0);
+      } else {
+        g.totalQty += (Number(row.qty) || 0);
+      }
+    });
+    return Array.from(roomMap.values());
+  }, [filteredCountUpRows]);
 
   // Filtered Matrix rows for active filters, search, and hide empty rooms
   const filteredMatrixData = useMemo(() => {
@@ -2907,15 +3020,15 @@ export default function TakeoffSpecEngine({
       {/* ------------------------------------------------------------- */}
       {/* TAB 1: COUNT-UP (SLEEK SPREADSHEET DATA GRID - NO BLOCKS) */}
       {/* ------------------------------------------------------------- */}
-      {activeTab === 'countup' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          
-          {/* TOOLBAR */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+{activeTab === 'countup' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+          {/* TOOLBAR TIER 1: QUICK ACTIONS */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-              <button 
-                className="btn btn-primary btn-xs" 
-                onClick={() => handleAddRow()} 
+              <button
+                className="btn btn-primary btn-xs"
+                onClick={() => handleAddRow()}
                 style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
               >
                 <Plus size={13} /> Add Row
@@ -2923,32 +3036,31 @@ export default function TakeoffSpecEngine({
               <button className="btn btn-secondary btn-xs" onClick={() => handleAddMultipleRows(5)}>
                 + Add 5 Rows
               </button>
-              <button 
-                className="btn btn-secondary btn-xs" 
+              <button
+                className="btn btn-secondary btn-xs"
                 onClick={() => setShowPasteModal(true)}
                 style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
               >
-                <FileText size={12} /> 📋 Paste from Excel / CSV
+                <FileText size={12} /> Paste from Excel / CSV
               </button>
-              <button 
-                className="btn btn-secondary btn-xs" 
+              <button
+                className="btn btn-secondary btn-xs"
                 onClick={() => setShowCadModal(true)}
-                style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(59, 130, 246, 0.08)', color: '#3b82f6', borderColor: 'rgba(59, 130, 246, 0.3)' }}
+                style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(59, 130, 246, 0.08)', borderColor: 'rgba(59, 130, 246, 0.3)', color: 'var(--text-info)' }}
                 title="Import and count fittings from AutoCAD .dwg file"
               >
-                <Compass size={12} /> 📐 Import CAD Plan (.dwg)
+                <Compass size={12} /> Import CAD Plan (.dwg)
               </button>
 
-              {/* DOWNLOAD PDF & EXPORT EXCEL ACTIONS */}
-              <button 
+              <button
                 type="button"
-                className="btn btn-secondary btn-xs" 
+                className="btn btn-secondary btn-xs"
                 onClick={handleDownloadCountUpPdf}
                 disabled={isExportingPdf || countUpRows.length === 0}
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '4px', 
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
                   fontWeight: 600,
                   color: '#dc2626',
                   borderColor: 'rgba(220, 38, 38, 0.35)',
@@ -2957,39 +3069,41 @@ export default function TakeoffSpecEngine({
                 title="Download official Room-by-Room Count-Up PDF"
               >
                 {isExportingPdf ? <RefreshCw size={12} className="animate-spin" /> : <Download size={12} />}
-                <span>{isExportingPdf ? 'Generating PDF...' : '📄 Download PDF'}</span>
+                <span>{isExportingPdf ? 'Generating PDF...' : 'Download PDF'}</span>
               </button>
 
-              <button 
+              <button
                 type="button"
-                className="btn btn-secondary btn-xs" 
+                className="btn btn-secondary btn-xs"
                 onClick={handlePrintCountUpPdf}
                 disabled={countUpRows.length === 0}
                 style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
                 title="Open A4 Print Layout / Save as PDF in browser"
               >
-                <Printer size={12} /> 🖨️ Print
+                <Printer size={12} />
+                <span>Print</span>
               </button>
 
-              <button 
+              <button
                 type="button"
-                className="btn btn-secondary btn-xs" 
+                className="btn btn-secondary btn-xs"
                 onClick={handleExportCountUpExcel}
                 disabled={isExportingExcel || countUpRows.length === 0}
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '4px', 
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
                   fontWeight: 600,
                   color: '#16a34a',
-                  borderColor: 'rgba(22, 163, 74, 0.35)',
+                  borderColor: 'rgba(220, 38, 38, 0.35)',
                   background: 'rgba(22, 163, 74, 0.06)'
                 }}
                 title="Export Room-by-Room Count-Up and Room/Tag summaries to Excel (.xlsx)"
               >
                 <FileSpreadsheet size={12} />
-                <span>{isExportingExcel ? 'Exporting...' : '📊 Export Excel'}</span>
+                <span>{isExportingExcel ? 'Exporting...' : 'Export Excel'}</span>
               </button>
+
               {countUpRows.length > 0 && (
                 <button className="btn btn-ghost btn-xs" onClick={handleClearAllRows} style={{ color: 'var(--text-danger)' }}>
                   Clear All
@@ -2997,23 +3111,42 @@ export default function TakeoffSpecEngine({
               )}
             </div>
 
-            {/* SEARCH & FLOOR FILTER */}
+            {/* VIEW MODE TOGGLE & SEARCH */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '2px 8px' }}>
+              <div style={{ display: 'inline-flex', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '2px' }}>
+                <button
+                  type="button"
+                  className={`btn btn-xs ${countUpViewMode === 'flat' ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setCountUpViewMode('flat')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', padding: '3px 8px' }}
+                >
+                  <List size={12} /> Flat Table
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-xs ${countUpViewMode === 'room_grouped' ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setCountUpViewMode('room_grouped')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', padding: '3px 8px' }}
+                >
+                  <Layers size={12} /> By Room ({groupedRoomsData.length})
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '3px 8px' }}>
                 <Search size={12} style={{ color: 'var(--text-secondary)', marginRight: '6px' }} />
-                <input 
-                  type="text" 
-                  placeholder="Filter tag or room..." 
-                  value={countUpSearch} 
+                <input
+                  type="text"
+                  placeholder="Filter tag or room..."
+                  value={countUpSearch}
                   onChange={e => setCountUpSearch(e.target.value)}
                   style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: '11px', color: 'var(--text-primary)', width: '130px' }}
                 />
               </div>
 
               {uniqueFloors.length > 0 && (
-                <select 
-                  className="select select-xs" 
-                  value={floorFilter} 
+                <select
+                  className="select select-xs"
+                  value={floorFilter}
                   onChange={e => setFloorFilter(e.target.value)}
                   style={{ fontSize: '11px', height: '26px' }}
                 >
@@ -3026,388 +3159,683 @@ export default function TakeoffSpecEngine({
             </div>
           </div>
 
-          {/* SPREADSHEET TABLE: BORDERLESS SEAMLESS CELLS */}
-          <div style={{ 
-            border: '1px solid var(--border)', 
-            borderRadius: '8px', 
-            overflowX: 'auto', 
-            background: 'var(--bg-primary)',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
-          }}>
-            <datalist id="plan-tags-list">
-              {dynamicTagSuggestions.map(t => <option key={t} value={t} />)}
-            </datalist>
-            <datalist id="common-rooms-list">
-              {dynamicRoomSuggestions.map(r => <option key={r} value={r} />)}
-            </datalist>
-            <datalist id="floor-levels-list">
-              {dynamicFloorSuggestions.map(f => <option key={f} value={f} />)}
-            </datalist>
+          {/* TOOLBAR TIER 2: STATUS TRIAGE FILTER PILLS */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', padding: '6px 10px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.04em', marginRight: '4px' }}>
+              Filter:
+            </span>
+            <button
+              type="button"
+              className={`btn btn-xs ${countUpStatusFilter === 'ALL' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setCountUpStatusFilter('ALL')}
+              style={{ borderRadius: '14px', fontSize: '11px', fontWeight: 600, padding: '2px 9px' }}
+            >
+              All ({countUpStatusFilterStats.total})
+            </button>
+            <button
+              type="button"
+              className="btn btn-xs"
+              onClick={() => setCountUpStatusFilter('PENDING')}
+              style={{
+                borderRadius: '14px',
+                fontSize: '11px',
+                fontWeight: 600,
+                padding: '2px 9px',
+                background: countUpStatusFilter === 'PENDING' ? '#f59e0b' : 'rgba(245, 158, 11, 0.1)',
+                color: countUpStatusFilter === 'PENDING' ? '#ffffff' : '#d97706',
+                border: '1px solid rgba(245, 158, 11, 0.35)'
+              }}
+            >
+              ⚠️ Pending Mapping ({countUpStatusFilterStats.pending})
+            </button>
+            <button
+              type="button"
+              className="btn btn-xs"
+              onClick={() => setCountUpStatusFilter('MAPPED')}
+              style={{
+                borderRadius: '14px',
+                fontSize: '11px',
+                fontWeight: 600,
+                padding: '2px 9px',
+                background: countUpStatusFilter === 'MAPPED' ? '#10b981' : 'rgba(16, 185, 129, 0.1)',
+                color: countUpStatusFilter === 'MAPPED' ? '#ffffff' : '#059669',
+                border: '1px solid rgba(16, 185, 129, 0.35)'
+              }}
+            >
+              ✓ Mapped ({countUpStatusFilterStats.mapped})
+            </button>
+            <button
+              type="button"
+              className={`btn btn-xs ${countUpStatusFilter === 'LED' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setCountUpStatusFilter('LED')}
+              style={{ borderRadius: '14px', fontSize: '11px', fontWeight: 600, padding: '2px 9px' }}
+            >
+              Linear LEDs ({countUpStatusFilterStats.leds})
+            </button>
+            <button
+              type="button"
+              className={`btn btn-xs ${countUpStatusFilter === 'TRACK' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setCountUpStatusFilter('TRACK')}
+              style={{ borderRadius: '14px', fontSize: '11px', fontWeight: 600, padding: '2px 9px' }}
+            >
+              Tracks ({countUpStatusFilterStats.tracks})
+            </button>
+          </div>
 
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left', tableLayout: 'fixed' }}>
-              <thead>
-                <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1.5px solid var(--border)', color: 'var(--text-secondary)', fontSize: '11.5px' }}>
-                  <th style={{ padding: '8px 10px', width: '36px', textAlign: 'center' }}>#</th>
-                  <th style={{ padding: '8px 10px', width: '120px' }}>Plan Tag / Code</th>
-                  <th style={{ padding: '8px 10px', width: '120px' }}>Type</th>
-                  <th style={{ padding: '8px 10px', width: '85px', textAlign: 'center' }}>First Fix</th>
-                  <th style={{ padding: '8px 10px', width: '130px' }}>Floor Level</th>
-                  <th style={{ padding: '8px 10px', width: '210px' }}>Room / Area</th>
-                  <th style={{ padding: '8px 10px', width: '110px', textAlign: 'center' }}>Qty / Length</th>
-                  <th style={{ padding: '8px 10px' }}>Mounting & Notes</th>
-                  <th style={{ padding: '8px 10px', width: '180px' }}>Catalog Mapping</th>
-                  <th style={{ padding: '8px 10px', width: '70px', textAlign: 'center' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCountUpRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                      No count-up lines recorded. Click <strong>+ Add Row</strong>, <strong>📐 Import CAD Plan (.dwg)</strong>, or <strong>📋 Paste from Excel / CSV</strong> to start your takeoff.
-                    </td>
+          <datalist id="plan-tags-list">
+            {dynamicTagSuggestions.map(t => <option key={t} value={t} />)}
+          </datalist>
+          <datalist id="common-rooms-list">
+            {dynamicRoomSuggestions.map(r => <option key={r} value={r} />)}
+          </datalist>
+          <datalist id="floor-levels-list">
+            {dynamicFloorSuggestions.map(f => <option key={f} value={f} />)}
+          </datalist>
+
+          {/* ------------------------------------------------------------- */}
+          {/* VIEW 1: FLAT SPREADSHEET TABLE (NATURAL ARCHITECTURAL ORDER)  */}
+          {/* ------------------------------------------------------------- */}
+          {countUpViewMode === 'flat' ? (
+            <div style={{
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+              overflowX: 'auto',
+              background: 'var(--bg-primary)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+            }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left', tableLayout: 'auto' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1.5px solid var(--border)', color: 'var(--text-secondary)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                    <th style={{ padding: '8px 10px', width: '36px', textAlign: 'center' }}>#</th>
+                    <th style={{ padding: '8px 10px', width: '130px' }}>Floor Level</th>
+                    <th style={{ padding: '8px 10px', width: '190px' }}>Room / Area</th>
+                    <th style={{ padding: '8px 10px', width: '110px' }}>Plan Tag</th>
+                    <th style={{ padding: '8px 10px', width: '110px' }}>Type</th>
+                    <th style={{ padding: '8px 10px', width: '110px', textAlign: 'center' }}>Qty / Length</th>
+                    <th style={{ padding: '8px 10px' }}>Mounting & Notes</th>
+                    <th style={{ padding: '8px 10px', width: '170px' }}>Catalog Mapping</th>
+                    <th style={{ padding: '8px 10px', width: '70px', textAlign: 'center' }}>Actions</th>
                   </tr>
-                ) : (
-                  filteredCountUpRows.map((row, index) => {
-                    const tag = (row.tag || '').trim().toUpperCase();
-                    const spec = specifications[tag];
-                    const isConfigured = Boolean(spec?.product || spec?.ledConfig?.profileProduct || spec?.trackConfig?.railProduct);
-                    const currentType = spec?.itemType || row.itemType || 'fixture';
+                </thead>
+                <tbody>
+                  {filteredCountUpRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                        No count-up lines match active filters. Click <strong>+ Add Row</strong> or adjust search.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredCountUpRows.map((row, index) => {
+                      const tag = (row.tag || '').trim().toUpperCase();
+                      const spec = specifications[tag];
+                      const isConfigured = Boolean(spec?.product || spec?.ledConfig?.profileProduct || spec?.trackConfig?.railProduct);
+                      const currentType = spec?.itemType || row.itemType || 'fixture';
 
-                    return (
-                      <tr 
-                        key={row.id} 
-                        style={{ 
-                          borderBottom: '1px solid var(--border)',
-                          transition: 'background 0.1s ease'
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                      >
-                        {/* INDEX */}
-                        <td style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '11px', userSelect: 'none' }}>
-                          {index + 1}
-                        </td>
-                        
-                        {/* TAG INPUT */}
-                        <td style={{ padding: '4px 8px' }}>
-                          <input 
-                            ref={index === filteredCountUpRows.length - 1 ? newRowTagInputRef : null}
-                            type="text" 
-                            data-row-index={index}
-                            data-field="tag"
-                            value={row.tag} 
-                            placeholder="e.g. DL1"
-                            list="plan-tags-list"
-                            onChange={e => handleUpdateRow(row.id, 'tag', e.target.value)}
-                            onKeyDown={e => handleKeyDown(e, index, 'tag')}
-                            style={{ 
-                              width: '100%', 
-                              fontWeight: 700, 
-                              fontFamily: 'monospace', 
-                              color: 'var(--text-info)',
-                              textTransform: 'uppercase',
-                              background: 'transparent',
-                              border: '1px solid transparent',
-                              borderRadius: '4px',
-                              padding: '4px 6px',
-                              outline: 'none',
-                              fontSize: '12px'
-                            }}
-                            onFocus={e => e.target.style.border = '1px solid var(--text-info)'}
-                            onBlur={e => e.target.style.border = '1px solid transparent'}
-                          />
-                        </td>
+                      return (
+                        <tr
+                          key={row.id}
+                          style={{
+                            borderBottom: '1px solid var(--border)',
+                            transition: 'background 0.1s ease'
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          {/* 1. INDEX */}
+                          <td style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '11px' }}>
+                            {index + 1}
+                          </td>
 
-                        {/* TYPE SELECTOR (Fitting, Linear LED, Track) */}
-                        <td style={{ padding: '4px 6px' }}>
-                          <select
-                            value={currentType}
-                            onChange={e => handleUpdateRow(row.id, 'itemType', e.target.value)}
-                            style={{
-                              width: '100%',
-                              fontSize: '11.5px',
-                              fontWeight: 600,
-                              padding: '3px 6px',
-                              borderRadius: '4px',
-                              border: '1px solid var(--border)',
-                              background: currentType === 'linear_led' 
-                                ? 'rgba(59, 130, 246, 0.12)' 
-                                : currentType === 'track_system' 
-                                  ? 'rgba(168, 85, 247, 0.12)' 
-                                  : 'var(--bg-secondary)',
-                              color: currentType === 'linear_led' 
-                                ? 'var(--text-info)' 
-                                : currentType === 'track_system' 
-                                  ? '#a855f7' 
-                                  : 'var(--text-primary)',
-                              cursor: 'pointer',
-                              outline: 'none'
-                            }}
-                            title="Classify fixture category (Fitting, Linear LED, or Track System)"
-                          >
-                            <option value="fixture">💡 Fitting</option>
-                            <option value="linear_led">〰️ Linear LED</option>
-                            <option value="track_system">🛤️ Track</option>
-                          </select>
-                        </td>
-
-                        {/* FIRST FIX SELECTOR */}
-                        <td style={{ padding: '4px 6px', textAlign: 'center' }}>
-                          <select
-                            value={row.firstFix === 'Yes' ? 'Yes' : 'No'}
-                            onChange={e => handleUpdateRow(row.id, 'firstFix', e.target.value)}
-                            style={{
-                              width: '100%',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              padding: '3px 4px',
-                              borderRadius: '4px',
-                              border: '1px solid var(--border)',
-                              background: row.firstFix === 'Yes' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-secondary)',
-                              color: row.firstFix === 'Yes' ? '#f59e0b' : 'var(--text-secondary)',
-                              cursor: 'pointer',
-                              outline: 'none'
-                            }}
-                            title="Specify whether this item is First Fix (rough-in / pre-install)"
-                          >
-                            <option value="No">No</option>
-                            <option value="Yes">Yes (FF)</option>
-                          </select>
-                        </td>
-
-                        {/* FLOOR INPUT */}
-                        <td style={{ padding: '4px 8px' }}>
-                          <input 
-                            type="text" 
-                            data-row-index={index}
-                            data-field="floor"
-                            value={row.floor} 
-                            placeholder="Ground"
-                            list="floor-levels-list"
-                            onChange={e => handleUpdateRow(row.id, 'floor', e.target.value)}
-                            onKeyDown={e => handleKeyDown(e, index, 'floor')}
-                            style={{ 
-                              width: '100%',
-                              background: 'transparent',
-                              border: '1px solid transparent',
-                              borderRadius: '4px',
-                              padding: '4px 6px',
-                              outline: 'none',
-                              fontSize: '12px',
-                              color: 'var(--text-primary)'
-                            }}
-                            onFocus={e => e.target.style.border = '1px solid var(--border-strong, #888)'}
-                            onBlur={e => e.target.style.border = '1px solid transparent'}
-                          />
-                        </td>
-
-                        {/* ROOM / AREA INPUT (WITH AUTOCOMPLETE) */}
-                        <td style={{ padding: '4px 8px' }}>
-                          <input 
-                            type="text" 
-                            data-row-index={index}
-                            data-field="area"
-                            value={row.area} 
-                            placeholder="e.g. Kitchen, Master Bedroom"
-                            list="common-rooms-list"
-                            onChange={e => handleUpdateRow(row.id, 'area', e.target.value)}
-                            onKeyDown={e => handleKeyDown(e, index, 'area')}
-                            style={{ 
-                              width: '100%',
-                              background: 'transparent',
-                              border: '1px solid transparent',
-                              borderRadius: '4px',
-                              padding: '4px 6px',
-                              outline: 'none',
-                              fontSize: '12px',
-                              color: 'var(--text-primary)'
-                            }}
-                            onFocus={e => e.target.style.border = '1px solid var(--border-strong, #888)'}
-                            onBlur={e => e.target.style.border = '1px solid transparent'}
-                          />
-                        </td>
-
-                        {/* QUANTITY INPUT */}
-                        <td style={{ padding: '4px 8px', textAlign: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
-                            <input 
-                              type="number" 
-                              min="0.01"
-                              step={row.unit === 'm' ? "0.01" : "1"}
+                          {/* 2. FLOOR INPUT */}
+                          <td style={{ padding: '4px 8px' }}>
+                            <input
+                              type="text"
                               data-row-index={index}
-                              data-field="qty"
-                              value={row.qty} 
-                              onChange={e => handleUpdateRow(row.id, 'qty', e.target.value)}
-                              onKeyDown={e => handleKeyDown(e, index, 'qty')}
-                              style={{ 
-                                width: row.unit === 'm' ? '65px' : '100%', 
-                                fontWeight: 700, 
-                                textAlign: 'center',
+                              data-field="floor"
+                              value={row.floor || ''}
+                              placeholder="Ground"
+                              list="floor-levels-list"
+                              onChange={e => handleUpdateRow(row.id, 'floor', e.target.value)}
+                              onKeyDown={e => handleKeyDown(e, index, 'floor')}
+                              style={{
+                                width: '100%',
                                 background: 'transparent',
                                 border: '1px solid transparent',
                                 borderRadius: '4px',
                                 padding: '4px 6px',
                                 outline: 'none',
-                                fontSize: '12.5px',
+                                fontSize: '12px',
                                 color: 'var(--text-primary)'
+                              }}
+                              onFocus={e => e.target.style.border = '1px solid var(--border-strong, #888)'}
+                              onBlur={e => e.target.style.border = '1px solid transparent'}
+                            />
+                          </td>
+
+                          {/* 3. ROOM / AREA INPUT */}
+                          <td style={{ padding: '4px 8px' }}>
+                            <input
+                              type="text"
+                              data-row-index={index}
+                              data-field="area"
+                              value={row.area || ''}
+                              placeholder="e.g. Kitchen, Master Bedroom"
+                              list="common-rooms-list"
+                              onChange={e => handleUpdateRow(row.id, 'area', e.target.value)}
+                              onKeyDown={e => handleKeyDown(e, index, 'area')}
+                              style={{
+                                width: '100%',
+                                background: 'transparent',
+                                border: '1px solid transparent',
+                                borderRadius: '4px',
+                                padding: '4px 6px',
+                                outline: 'none',
+                                fontSize: '12px',
+                                color: 'var(--text-primary)',
+                                fontWeight: 500
+                              }}
+                              onFocus={e => e.target.style.border = '1px solid var(--border-strong, #888)'}
+                              onBlur={e => e.target.style.border = '1px solid transparent'}
+                            />
+                          </td>
+
+                          {/* 4. PLAN TAG INPUT */}
+                          <td style={{ padding: '4px 8px' }}>
+                            <input
+                              ref={index === filteredCountUpRows.length - 1 ? newRowTagInputRef : null}
+                              type="text"
+                              data-row-index={index}
+                              data-field="tag"
+                              value={row.tag || ''}
+                              placeholder="e.g. DL1"
+                              list="plan-tags-list"
+                              onChange={e => handleUpdateRow(row.id, 'tag', e.target.value)}
+                              onKeyDown={e => handleKeyDown(e, index, 'tag')}
+                              style={{
+                                width: '100%',
+                                fontWeight: 700,
+                                fontFamily: 'monospace',
+                                color: 'var(--text-info)',
+                                textTransform: 'uppercase',
+                                background: 'transparent',
+                                border: '1px solid transparent',
+                                borderRadius: '4px',
+                                padding: '4px 6px',
+                                outline: 'none',
+                                fontSize: '12px'
                               }}
                               onFocus={e => e.target.style.border = '1px solid var(--text-info)'}
                               onBlur={e => e.target.style.border = '1px solid transparent'}
                             />
-                            {row.unit === 'm' && (
-                              <span style={{ fontSize: '10.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>m</span>
-                            )}
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* NOTES INPUT */}
-                        <td style={{ padding: '4px 8px' }}>
-                          <input 
-                            type="text" 
-                            data-row-index={index}
-                            data-field="notes"
-                            value={row.notes} 
-                            placeholder="e.g. Recessed 2.7m ceiling, beam angle 38°"
-                            onChange={e => handleUpdateRow(row.id, 'notes', e.target.value)}
-                            onKeyDown={e => handleKeyDown(e, index, 'notes')}
-                            style={{ 
-                              width: '100%', 
-                              fontSize: '11.5px',
-                              background: 'transparent',
-                              border: '1px solid transparent',
-                              borderRadius: '4px',
-                              padding: '4px 6px',
-                              outline: 'none',
-                              color: 'var(--text-secondary)'
-                            }}
-                            onFocus={e => e.target.style.border = '1px solid var(--border-strong, #888)'}
-                            onBlur={e => e.target.style.border = '1px solid transparent'}
-                          />
-                        </td>
+                          {/* 5. TYPE SELECTOR */}
+                          <td style={{ padding: '4px 6px' }}>
+                            <select
+                              value={currentType}
+                              onChange={e => handleUpdateRow(row.id, 'itemType', e.target.value)}
+                              style={{
+                                width: '100%',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                padding: '3px 6px',
+                                borderRadius: '4px',
+                                border: '1px solid var(--border)',
+                                background: currentType === 'linear_led'
+                                  ? 'rgba(59, 130, 246, 0.12)'
+                                  : currentType === 'track_system'
+                                  ? 'rgba(168, 85, 247, 0.12)'
+                                  : 'var(--bg-secondary)',
+                                color: currentType === 'linear_led'
+                                  ? 'var(--text-info)'
+                                  : currentType === 'track_system'
+                                  ? '#a855f7'
+                                  : 'var(--text-primary)',
+                                cursor: 'pointer',
+                                outline: 'none'
+                              }}
+                            >
+                              <option value="fixture">Fitting</option>
+                              <option value="linear_led">Linear LED</option>
+                              <option value="track_system">Track</option>
+                            </select>
+                          </td>
 
-                        {/* CATALOG MAPPING STATUS */}
-                        <td style={{ padding: '4px 8px' }}>
-                          {isConfigured ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span 
-                                style={{ 
-                                  display: 'inline-flex', 
-                                  alignItems: 'center', 
-                                  gap: '4px', 
-                                  color: 'var(--text-success)', 
+                          {/* 6. QUANTITY / LENGTH INPUT (WITH MULTI-RUN MATH) */}
+                          <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
+                              <input
+                                type="text"
+                                data-row-index={index}
+                                data-field="qty"
+                                value={row.qty !== undefined ? row.qty : ''}
+                                placeholder={row.unit === 'm' ? "e.g. 2.5 + 3.2" : "1"}
+                                onChange={e => handleQtyChange(row.id, e.target.value)}
+                                onKeyDown={e => handleKeyDown(e, index, 'qty')}
+                                title="Tip: You can enter additions like 6.62 + 2 for multi-run lengths"
+                                style={{
+                                  width: row.unit === 'm' ? '70px' : '100%',
+                                  fontWeight: 700,
+                                  textAlign: 'center',
+                                  background: 'transparent',
+                                  border: '1px solid transparent',
+                                  borderRadius: '4px',
+                                  padding: '4px 6px',
+                                  outline: 'none',
+                                  fontSize: '12.5px',
+                                  color: 'var(--text-primary)'
+                                }}
+                                onFocus={e => e.target.style.border = '1px solid var(--text-info)'}
+                                onBlur={e => e.target.style.border = '1px solid transparent'}
+                              />
+                              {row.unit === 'm' && (
+                                <span style={{ fontSize: '10.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>m</span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* 7. NOTES INPUT */}
+                          <td style={{ padding: '4px 8px' }}>
+                            <input
+                              type="text"
+                              data-row-index={index}
+                              data-field="notes"
+                              value={row.notes || ''}
+                              placeholder="e.g. Recessed 2.7m ceiling, beam angle 38°"
+                              onChange={e => handleUpdateRow(row.id, 'notes', e.target.value)}
+                              onKeyDown={e => handleKeyDown(e, index, 'notes')}
+                              style={{
+                                width: '100%',
+                                fontSize: '11.5px',
+                                background: 'transparent',
+                                border: '1px solid transparent',
+                                borderRadius: '4px',
+                                padding: '4px 6px',
+                                outline: 'none',
+                                color: 'var(--text-secondary)'
+                              }}
+                              onFocus={e => e.target.style.border = '1px solid var(--border-strong, #888)'}
+                              onBlur={e => e.target.style.border = '1px solid transparent'}
+                            />
+                          </td>
+
+                          {/* 8. CATALOG MAPPING STATUS */}
+                          <td style={{ padding: '4px 8px' }}>
+                            {isConfigured ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    color: 'var(--text-success)',
+                                    fontSize: '11px',
+                                    background: 'rgba(16, 185, 129, 0.1)',
+                                    padding: '2px 8px',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    fontWeight: 600,
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    maxWidth: '125px'
+                                  }}
+                                  onClick={() => setActiveTab('spec')}
+                                  title="Mapped! Click to view/edit specification"
+                                >
+                                  <CheckCircle size={12} /> {spec?.product?.sku || spec?.ledConfig?.profileSku || spec?.trackConfig?.railSku || 'Mapped'}
+                                </span>
+                                {(spec?.product || spec?.ledConfig?.profileProduct || spec?.trackConfig?.railProduct) && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-ghost btn-xs"
+                                    onClick={() => handleInspectItem(spec.product || spec.ledConfig?.profileProduct || spec.trackConfig?.railProduct)}
+                                    title="View full specification sheet"
+                                    style={{ padding: '2px 4px', color: 'var(--text-info)' }}
+                                  >
+                                    <Eye size={12} />
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  color: '#f59e0b',
                                   fontSize: '11px',
-                                  background: 'rgba(16, 185, 129, 0.1)',
+                                  background: 'rgba(245, 158, 11, 0.1)',
+                                  border: '1px dashed rgba(245, 158, 11, 0.4)',
                                   padding: '2px 8px',
                                   borderRadius: '4px',
                                   cursor: 'pointer',
-                                  fontWeight: 600,
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  maxWidth: '120px'
+                                  fontWeight: 600
                                 }}
-                                onClick={() => setActiveTab('spec')}
-                                title="Mapped! Click to view/edit specification"
+                                onClick={() => handleInitiateRowSwap(row)}
+                                title="Click to assign catalog fixture directly"
                               >
-                                <CheckCircle size={12} /> {spec?.product?.sku || spec?.ledConfig?.profileSku || spec?.trackConfig?.railSku || 'Mapped'}
+                                + Assign Product
                               </span>
-                              {(spec?.product || spec?.ledConfig?.profileProduct || spec?.trackConfig?.railProduct) && (
-                                <button 
-                                  className="btn btn-ghost btn-xs"
-                                  onClick={() => handleInspectItem(spec.product || spec.ledConfig?.profileProduct || spec.trackConfig?.railProduct, tag)}
-                                  title="View full specification sheet"
-                                  style={{ padding: '2px 4px', color: 'var(--text-info)' }}
-                                >
-                                  <Eye size={12} />
-                                </button>
-                              )}
+                            )}
+                          </td>
+
+                          {/* 9. ACTIONS */}
+                          <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs"
+                                onClick={() => handleDuplicateRow(row.id)}
+                                title="Duplicate row into same room"
+                                style={{ padding: '2px 4px', color: 'var(--text-info)' }}
+                              >
+                                <Copy size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs"
+                                onClick={() => handleDeleteRow(row.id)}
+                                title="Delete row"
+                                style={{ padding: '2px 4px', color: 'var(--text-danger)' }}
+                              >
+                                <Trash2 size={12} />
+                              </button>
                             </div>
-                          ) : (
-                            <span 
-                              style={{ 
-                                display: 'inline-flex', 
-                                alignItems: 'center', 
-                                gap: '4px', 
-                                color: 'var(--text-warning)', 
-                                fontSize: '11px',
-                                background: 'rgba(245, 158, 11, 0.1)',
-                                padding: '2px 8px',
-                                borderRadius: '4px',
-                                cursor: 'pointer',
-                                fontWeight: 500
-                              }}
-                              onClick={() => {
-                                if (currentType === 'linear_led') {
-                                  openCatalogPicker(tag, 'led_profile', 'Linear');
-                                } else if (currentType === 'track_system') {
-                                  openCatalogPicker(tag, 'track_rail', 'Track');
-                                } else {
-                                  openCatalogPicker(tag, 'product');
-                                }
-                              }}
-                              title={currentType === 'linear_led' ? 'Assign LED Profile' : currentType === 'track_system' ? 'Assign Track Rail' : 'Assign Product'}
-                            >
-                              <Plus size={11} /> {currentType === 'linear_led' ? 'Assign Profile' : currentType === 'track_system' ? 'Assign Rail' : 'Assign Product'}
-                            </span>
-                          )}
-                        </td>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            /* ------------------------------------------------------------- */
+            /* VIEW 2: GROUPED BY ROOM & FLOOR HIERARCHICAL VIEW             */
+            /* ------------------------------------------------------------- */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {groupedRoomsData.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--bg-primary)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  No rooms match active filters. Click <strong>+ Add Row</strong> to begin takeoff.
+                </div>
+              ) : (
+                groupedRoomsData.map((roomGroup) => {
+                  const isCollapsed = collapsedRooms.has(roomGroup.key);
+                  return (
+                    <div
+                      key={roomGroup.key}
+                      className="card"
+                      style={{
+                        background: 'var(--bg-primary)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '10px',
+                        overflow: 'hidden',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                      }}
+                    >
+                      {/* ROOM CARD HEADER */}
+                      <div
+                        style={{
+                          padding: '10px 14px',
+                          background: 'var(--bg-secondary)',
+                          borderBottom: isCollapsed ? 'none' : '1px solid var(--border)',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => toggleRoomCollapse(roomGroup.key)}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs"
+                            style={{ padding: '2px' }}
+                            onClick={(e) => { e.stopPropagation(); toggleRoomCollapse(roomGroup.key); }}
+                          >
+                            {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                          </button>
+                          <span className="badge b-primary" style={{ fontSize: '10px', fontWeight: 700, padding: '2px 6px', textTransform: 'uppercase' }}>
+                            {roomGroup.floor}
+                          </span>
+                          <span style={{ fontSize: '13.5px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                            {roomGroup.area}
+                          </span>
+                          <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                            ({roomGroup.rows.length} fittings {roomGroup.totalLength > 0 ? `• ${roomGroup.totalLength.toFixed(2)}m linear` : ''} {roomGroup.totalQty > 0 ? `• ${roomGroup.totalQty} units` : ''})
+                          </span>
+                        </div>
 
-                        {/* ACTIONS */}
-                        <td style={{ padding: '4px 8px', textAlign: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
-                            <button 
-                              className="btn btn-ghost btn-xs" 
-                              onClick={() => handleInitiateRowSwap(row)}
-                              title="Swap / Replace Fitting"
-                              style={{ padding: '2px 4px', color: '#f59e0b' }}
-                            >
-                              <RotateCcw size={12} />
-                            </button>
-                            <button 
-                              className="btn btn-ghost btn-xs" 
-                              onClick={() => handleDuplicateRow(row.id)}
-                              title="Duplicate row"
-                              style={{ padding: '2px 4px', color: 'var(--text-secondary)' }}
-                            >
-                              <Copy size={12} />
-                            </button>
-                            <button 
-                              className="btn btn-ghost btn-xs" 
-                              onClick={() => handleDeleteRow(row.id)}
-                              title="Delete row"
-                              style={{ padding: '2px 4px', color: 'var(--text-danger)' }}
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={e => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-xs"
+                            onClick={() => handleAddRow({ floor: roomGroup.floor, area: roomGroup.area })}
+                            style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600 }}
+                          >
+                            <Plus size={12} /> Add to {roomGroup.area}
+                          </button>
+                        </div>
+                      </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
-            <button 
-              className="btn btn-ghost btn-xs" 
-              onClick={() => handleAddRow()} 
-              style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-info)' }}
+                      {/* ROOM FITTINGS TABLE */}
+                      {!isCollapsed && (
+                        <div style={{ overflowX: 'auto' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                            <thead>
+                              <tr style={{ background: 'var(--bg-primary)', borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: '10.5px', textTransform: 'uppercase' }}>
+                                <th style={{ padding: '6px 10px', width: '32px', textAlign: 'center' }}>#</th>
+                                <th style={{ padding: '6px 10px', width: '120px' }}>Plan Tag</th>
+                                <th style={{ padding: '6px 10px', width: '110px' }}>Type</th>
+                                <th style={{ padding: '6px 10px', width: '110px', textAlign: 'center' }}>Qty / Length</th>
+                                <th style={{ padding: '6px 10px' }}>Mounting & Notes</th>
+                                <th style={{ padding: '6px 10px', width: '170px' }}>Catalog Mapping</th>
+                                <th style={{ padding: '6px 10px', width: '70px', textAlign: 'center' }}>Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {roomGroup.rows.map((row, rIdx) => {
+                                const tag = (row.tag || '').trim().toUpperCase();
+                                const spec = specifications[tag];
+                                const isConfigured = Boolean(spec?.product || spec?.ledConfig?.profileProduct || spec?.trackConfig?.railProduct);
+                                const currentType = spec?.itemType || row.itemType || 'fixture';
+
+                                return (
+                                  <tr
+                                    key={row.id}
+                                    style={{ borderBottom: '1px solid var(--border)' }}
+                                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                  >
+                                    <td style={{ padding: '5px 8px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '11px' }}>
+                                      {rIdx + 1}
+                                    </td>
+                                    <td style={{ padding: '4px 8px' }}>
+                                      <input
+                                        type="text"
+                                        value={row.tag || ''}
+                                        placeholder="e.g. DL1"
+                                        list="plan-tags-list"
+                                        onChange={e => handleUpdateRow(row.id, 'tag', e.target.value)}
+                                        style={{
+                                          width: '100%',
+                                          fontWeight: 700,
+                                          fontFamily: 'monospace',
+                                          color: 'var(--text-info)',
+                                          textTransform: 'uppercase',
+                                          background: 'transparent',
+                                          border: '1px solid transparent',
+                                          borderRadius: '4px',
+                                          padding: '3px 5px',
+                                          outline: 'none',
+                                          fontSize: '12px'
+                                        }}
+                                        onFocus={e => e.target.style.border = '1px solid var(--text-info)'}
+                                        onBlur={e => e.target.style.border = '1px solid transparent'}
+                                      />
+                                    </td>
+                                    <td style={{ padding: '4px 6px' }}>
+                                      <select
+                                        value={currentType}
+                                        onChange={e => handleUpdateRow(row.id, 'itemType', e.target.value)}
+                                        style={{
+                                          width: '100%',
+                                          fontSize: '11px',
+                                          fontWeight: 600,
+                                          padding: '2px 4px',
+                                          borderRadius: '4px',
+                                          border: '1px solid var(--border)',
+                                          background: 'var(--bg-secondary)',
+                                          color: 'var(--text-primary)',
+                                          cursor: 'pointer'
+                                        }}
+                                      >
+                                        <option value="fixture">Fitting</option>
+                                        <option value="linear_led">Linear LED</option>
+                                        <option value="track_system">Track</option>
+                                      </select>
+                                    </td>
+                                    <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+                                        <input
+                                          type="text"
+                                          value={row.qty !== undefined ? row.qty : ''}
+                                          placeholder={row.unit === 'm' ? "2.5 + 3" : "1"}
+                                          onChange={e => handleQtyChange(row.id, e.target.value)}
+                                          style={{
+                                            width: row.unit === 'm' ? '65px' : '100%',
+                                            fontWeight: 700,
+                                            textAlign: 'center',
+                                            background: 'transparent',
+                                            border: '1px solid transparent',
+                                            borderRadius: '4px',
+                                            padding: '3px 4px',
+                                            outline: 'none',
+                                            fontSize: '12px',
+                                            color: 'var(--text-primary)'
+                                          }}
+                                          onFocus={e => e.target.style.border = '1px solid var(--text-info)'}
+                                          onBlur={e => e.target.style.border = '1px solid transparent'}
+                                        />
+                                        {row.unit === 'm' && (
+                                          <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)' }}>m</span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td style={{ padding: '4px 8px' }}>
+                                      <input
+                                        type="text"
+                                        value={row.notes || ''}
+                                        placeholder="Notes..."
+                                        onChange={e => handleUpdateRow(row.id, 'notes', e.target.value)}
+                                        style={{
+                                          width: '100%',
+                                          fontSize: '11px',
+                                          background: 'transparent',
+                                          border: '1px solid transparent',
+                                          borderRadius: '4px',
+                                          padding: '3px 5px',
+                                          outline: 'none',
+                                          color: 'var(--text-secondary)'
+                                        }}
+                                        onFocus={e => e.target.style.border = '1px solid var(--border-strong, #888)'}
+                                        onBlur={e => e.target.style.border = '1px solid transparent'}
+                                      />
+                                    </td>
+                                    <td style={{ padding: '4px 8px' }}>
+                                      {isConfigured ? (
+                                        <span
+                                          style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            color: 'var(--text-success)',
+                                            fontSize: '11px',
+                                            background: 'rgba(16, 185, 129, 0.1)',
+                                            padding: '2px 8px',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            fontWeight: 600
+                                          }}
+                                          onClick={() => setActiveTab('spec')}
+                                        >
+                                          <CheckCircle size={11} /> {spec?.product?.sku || spec?.ledConfig?.profileSku || spec?.trackConfig?.railSku || 'Mapped'}
+                                        </span>
+                                      ) : (
+                                        <span
+                                          style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                            color: '#f59e0b',
+                                            fontSize: '11px',
+                                            background: 'rgba(245, 158, 11, 0.1)',
+                                            border: '1px dashed rgba(245, 158, 11, 0.4)',
+                                            padding: '2px 8px',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            fontWeight: 600
+                                          }}
+                                          onClick={() => handleInitiateRowSwap(row)}
+                                        >
+                                          + Assign Product
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
+                                        <button
+                                          type="button"
+                                          className="btn btn-ghost btn-xs"
+                                          onClick={() => handleDuplicateRow(row.id)}
+                                          title="Duplicate"
+                                          style={{ padding: '2px', color: 'var(--text-info)' }}
+                                        >
+                                          <Copy size={11} />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="btn btn-ghost btn-xs"
+                                          onClick={() => handleDeleteRow(row.id)}
+                                          title="Delete"
+                                          style={{ padding: '2px', color: 'var(--text-danger)' }}
+                                        >
+                                          <Trash2 size={11} />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {/* TABLE FOOTER */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+            <button
+              className="btn btn-ghost btn-xs"
+              onClick={() => handleAddRow()}
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-info)', fontWeight: 600 }}
             >
               <Plus size={12} /> Add next row (Press Enter in last cell)
             </button>
             <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-              Showing {filteredCountUpRows.length} of {countUpRows.length} total rows
+              Showing <strong>{filteredCountUpRows.length}</strong> of <strong>{countUpRows.length}</strong> total rows ({groupedRoomsData.length} unique rooms)
             </span>
           </div>
         </div>
       )}
 
-      {/* ------------------------------------------------------------- */}
-      {/* TAB 2: SPECIFICATION & DYNAMIC ACCESSORIES */}
-      {/* ------------------------------------------------------------- */}
-      {activeTab === 'spec' && (
+            {activeTab === 'spec' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           
           <div style={{ 
