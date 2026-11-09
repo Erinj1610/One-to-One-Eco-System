@@ -2860,15 +2860,118 @@ export default function OrdersPage() {
     }
   };
 
-  // Compiler callback: receives generated items from Takeoff engine and populates into activeOrderItems
-  const handleGenerateBOQFromTakeoff = (generatedItems, mode = 'append') => {
+  // Compiler callback: receives generated items from Takeoff engine and performs Smart Sync / Diff
+  const handleGenerateBOQFromTakeoff = async (generatedItems, mode = 'sync') => {
+    // Composite key generator: [floor]__[area]__[tag/code]
+    const makeKey = (item) => {
+      const f = (item.floor || 'Ground').trim().toLowerCase();
+      const a = (item.area || 'General Area').trim().toLowerCase();
+      const t = (item.tag || item.code || '').trim().toUpperCase();
+      return `${f}__${a}__${t}`;
+    };
+
+    let updatedList = [];
+    let updatedCount = 0;
+    let addedCount = 0;
+    let preservedCustomCount = 0;
+
     if (mode === 'replace') {
-      setActiveOrderItems(generatedItems);
+      // 1. Complete clean overwrite
+      updatedList = generatedItems.map((item, idx) => ({
+        ...item,
+        id: item.id || `boq-gen-${Date.now()}-${idx}`,
+        source: 'takeoff',
+        isTakeoffItem: true,
+      }));
+      addedCount = updatedList.length;
+    } else if (mode === 'append') {
+      // 2. Simple append
+      const stamped = generatedItems.map((item, idx) => ({
+        ...item,
+        id: item.id || `boq-gen-${Date.now()}-${idx}`,
+        source: 'takeoff',
+        isTakeoffItem: true,
+      }));
+      updatedList = [...activeOrderItems, ...stamped];
+      addedCount = stamped.length;
     } else {
-      setActiveOrderItems(prev => [...prev, ...generatedItems]);
+      // 3. Smart Sync / Diff Engine (Default)
+      const incomingMap = new Map();
+      generatedItems.forEach((item, idx) => {
+        const key = makeKey(item);
+        incomingMap.set(key, { ...item, _idx: idx });
+      });
+
+      const matchedIncomingKeys = new Set();
+
+      // Step A: Iterate over existing items, update matched Takeoff rows and preserve operational metadata
+      updatedList = activeOrderItems.map(existing => {
+        // If it's a blank spacer row, retain as is
+        if (existing.isBlankSpacer || (!existing.code && !existing.description && !existing.tag)) {
+          return existing;
+        }
+
+        const key = makeKey(existing);
+        if (incomingMap.has(key)) {
+          matchedIncomingKeys.add(key);
+          const incoming = incomingMap.get(key);
+          updatedCount++;
+          return {
+            ...existing,
+            qty: incoming.qty,
+            unitRetail: incoming.unitRetail !== undefined ? incoming.unitRetail : existing.unitRetail,
+            unitCost: incoming.unitCost !== undefined ? incoming.unitCost : existing.unitCost,
+            description: incoming.description || existing.description,
+            brand: incoming.brand || existing.brand,
+            supplier: incoming.supplier || existing.supplier,
+            dimming: incoming.dimming || existing.dimming,
+            tag: incoming.tag || existing.tag,
+            source: 'takeoff',
+            isTakeoffItem: true,
+            // Retain operational tracking links
+            po_ref: existing.po_ref || existing.poRef,
+            po_qty_ordered: existing.po_qty_ordered,
+            po_eta: existing.po_eta,
+            po_supplier: existing.po_supplier,
+            invoice_ref: existing.invoice_ref,
+            invoice_qty: existing.invoice_qty,
+            received_qty: existing.received_qty,
+            delivery_qty: existing.delivery_qty,
+            delivery_status: existing.delivery_status,
+            notes: existing.notes,
+          };
+        } else {
+          // Manual line item, custom allowance, or untagged entry
+          preservedCustomCount++;
+          return existing;
+        }
+      });
+
+      // Step B: Append any brand-new Takeoff items that didn't previously exist
+      generatedItems.forEach((incoming, idx) => {
+        const key = makeKey(incoming);
+        if (!matchedIncomingKeys.has(key)) {
+          addedCount++;
+          updatedList.push({
+            ...incoming,
+            id: incoming.id || `boq-gen-${Date.now()}-${idx}`,
+            source: 'takeoff',
+            isTakeoffItem: true,
+          });
+        }
+      });
     }
+
+    setActiveOrderItems(updatedList);
     setWorkspaceSubTab('boq');
-    alert(`✨ Generated ${generatedItems.length} items from Takeoff into the BOQ Spreadsheet!\nClick 'Save & Update' when you are ready to commit changes to database.`);
+
+    // Display non-blocking luxury status banner
+    const toastMsg = mode === 'replace'
+      ? `Compiled ${addedCount} items into BOQ Spreadsheet.`
+      : `Takeoff Synced: ${updatedCount} updated, ${addedCount} added, ${preservedCustomCount} manual rows preserved.`;
+    
+    setSaveSuccessMsg(toastMsg);
+    setTimeout(() => setSaveSuccessMsg(null), 4000);
   };
 
   // Create a brand-new Purchase Order / Quotation

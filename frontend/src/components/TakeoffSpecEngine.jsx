@@ -194,7 +194,7 @@ export default function TakeoffSpecEngine({
 
   // Generate BOQ Modal State
   const [showGenerateModal, setShowGenerateModal] = useState(false);
-  const [generateMode, setGenerateMode] = useState('append'); // 'append' | 'replace'
+  const [generateMode, setGenerateMode] = useState('sync'); // 'sync' | 'append' | 'replace'
   const [groupingMode, setGroupingMode] = useState('plan_code'); // 'plan_code' | 'area'
   const [includeRoomSpacers, setIncludeRoomSpacers] = useState(true);
 
@@ -7292,6 +7292,17 @@ export default function TakeoffSpecEngine({
                 <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', marginBottom: '2px' }}>
                   Destination Mode
                 </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                  <input 
+                    type="radio" 
+                    name="genMode" 
+                    value="sync" 
+                    checked={generateMode === 'sync'} 
+                    onChange={() => setGenerateMode('sync')}
+                  />
+                  <span><strong>Smart Sync (Recommended)</strong> — Updates quantities in place, adds new rooms/tags, and preserves custom rows and PO links.</span>
+                </label>
+
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)' }}>
                   <input 
                     type="radio" 
