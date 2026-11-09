@@ -811,8 +811,8 @@ export default function CrmPage() {
     }
 
     return (
-      <div className="animation-fade-in" style={{ display: 'grid', gridTemplateColumns: isSidebarCollapsed ? '1fr 50px' : '1fr 340px', gap: '24px', alignItems: 'start' }}>
-        <div style={{ minWidth: 0, position: 'relative' }}>
+      <div className="animation-fade-in" style={{ width: '100%' }}>
+        <div style={{ width: '100%', position: 'relative' }}>
         {/* Success Toasts container */}
         <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {toasts.map(t => (

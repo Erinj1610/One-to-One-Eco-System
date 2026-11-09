@@ -493,10 +493,7 @@ export default function ProjectList() {
   }
 
   return (
-    <div className="animation-fade-in" style={{ display: 'grid', gridTemplateColumns: isSidebarCollapsed ? '1fr 50px' : '1fr 340px', gap: '24px', alignItems: 'start' }}>
-      
-      {/* LEFT COLUMN: Main Dashboard */}
-      <div>
+    <div className="animation-fade-in" style={{ width: '100%' }}>
         {/* Title & Filter Bar Header */}
         <div className="card" style={{ marginBottom: '16px', background: 'var(--bg-primary)' }}>
           <div className="card-body" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
@@ -1039,8 +1036,6 @@ export default function ProjectList() {
           </table>
           </div>
         </div>
-      </div>
-
       {/* RIGHT COLUMN: Operational Alerts & Prompts */}
       <CollapsibleAlertSidebar 
         module="projects" 

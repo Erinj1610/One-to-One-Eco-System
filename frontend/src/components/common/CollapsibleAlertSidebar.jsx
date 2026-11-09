@@ -1,29 +1,75 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useStore } from '../../context/StoreContext';
 import { 
   ChevronRight, ChevronLeft, ShieldAlert, AlertTriangle, 
-  TrendingUp, ShoppingBag, UserCheck, CheckCircle, Bell, Play 
+  TrendingUp, ShoppingBag, UserCheck, CheckCircle, Bell, Play, X, Search, RotateCcw 
 } from 'lucide-react';
 
 export default function CollapsibleAlertSidebar({ module, onNavigate, isCollapsed: propIsCollapsed, onToggle }) {
   const { projects, contacts, alertSettings } = useStore();
   const storageKey = `sidebar_collapsed_${module}`;
+  const dismissedStorageKey = `portal_dismissed_alerts_${module}`;
+
   const [localIsCollapsed, setLocalIsCollapsed] = useState(() => {
-    return localStorage.getItem(storageKey) === 'true';
+    const saved = localStorage.getItem(storageKey);
+    return saved !== null ? saved === 'true' : true;
   });
 
   const isCollapsed = propIsCollapsed !== undefined ? propIsCollapsed : localIsCollapsed;
   const [currentPage, setCurrentPage] = useState(1);
+  const [activeTab, setActiveTab] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('value_desc');
+
+  const [dismissedIds, setDismissedIds] = useState(() => {
+    try {
+      const raw = localStorage.getItem(dismissedStorageKey);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
 
   const toggleCollapse = () => {
-    localStorage.setItem(storageKey, !isCollapsed ? 'true' : 'false');
+    const nextState = !isCollapsed;
+    localStorage.setItem(storageKey, String(nextState));
     if (onToggle) {
       onToggle();
     } else {
-      setLocalIsCollapsed(prev => !prev);
+      setLocalIsCollapsed(nextState);
     }
   };
 
+  const handleDismiss = (id, e) => {
+    if (e) e.stopPropagation();
+    setDismissedIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      try {
+        localStorage.setItem(dismissedStorageKey, JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  };
+
+  const handleDismissAll = (idsToDismiss) => {
+    setDismissedIds(prev => {
+      const next = new Set(prev);
+      idsToDismiss.forEach(id => next.add(id));
+      try {
+        localStorage.setItem(dismissedStorageKey, JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+  };
+
+  const handleRestoreAll = () => {
+    setDismissedIds(new Set());
+    try {
+      localStorage.removeItem(dismissedStorageKey);
+    } catch {}
+  };
   // Generate alerts based on module, toggles and custom rules
   const alerts = useMemo(() => {
     const list = Object.values(projects).filter(p => !p.isDraft);
@@ -226,6 +272,8 @@ export default function CollapsibleAlertSidebar({ module, onNavigate, isCollapse
             if (activeSettings.logisticsHolds && o.status === 'Customs hold') {
               generated.push({
                 id: `order-customs-${o.id}`,
+                amount: Number(o.value) || 0,
+                category: 'logistics',
                 projectKey: p.key,
                 type: 'delay',
                 badge: 'CUSTOMS HOLD',
@@ -240,6 +288,8 @@ export default function CollapsibleAlertSidebar({ module, onNavigate, isCollapse
             if (activeSettings.backorderedIssues && o.status === 'Pending') {
               generated.push({
                 id: `order-pending-${o.id}`,
+                amount: Number(o.value) || 0,
+                category: 'deposit',
                 projectKey: p.key,
                 type: 'logistics',
                 badge: 'AWAITING DEPOSIT',
@@ -256,6 +306,9 @@ export default function CollapsibleAlertSidebar({ module, onNavigate, isCollapse
               if (orderMargin < 39) {
                 generated.push({
                   id: `order-margin-${o.id}`,
+                  amount: Number(o.value) || 0,
+                  margin: orderMargin,
+                  category: 'margin',
                   projectKey: p.key,
                   type: 'margin',
                   badge: 'LOW MARGIN',
@@ -413,177 +466,449 @@ export default function CollapsibleAlertSidebar({ module, onNavigate, isCollapse
 
     return generated;
   }, [projects, contacts, module, alertSettings]);
+  // Filter out dismissed alerts and classify category
+  const activeAlerts = useMemo(() => {
+    return alerts.map(a => {
+      let cat = a.category;
+      if (!cat) {
+        const b = (a.badge || '').toUpperCase();
+        if (b.includes('DEPOSIT') || b.includes('PAYMENT') || b.includes('FEE')) cat = 'deposit';
+        else if (b.includes('MARGIN')) cat = 'margin';
+        else if (b.includes('HOLD') || b.includes('OVERDUE') || b.includes('LOGISTICS') || a.type === 'delay') cat = 'logistics';
+        else cat = 'other';
+      }
+      return { ...a, category: cat, isDismissed: dismissedIds.has(a.id) };
+    }).filter(a => !a.isDismissed);
+  }, [alerts, dismissedIds]);
 
-  // Reset pagination page on alert length or module changes
-  React.useEffect(() => {
+  // Category counts
+  const counts = useMemo(() => {
+    const c = { all: activeAlerts.length, deposit: 0, margin: 0, logistics: 0, other: 0 };
+    activeAlerts.forEach(a => {
+      if (a.category === 'deposit') c.deposit++;
+      else if (a.category === 'margin') c.margin++;
+      else if (a.category === 'logistics') c.logistics++;
+      else c.other++;
+    });
+    return c;
+  }, [activeAlerts]);
+
+  // Filtered & Sorted alerts
+  const filteredAlerts = useMemo(() => {
+    let res = activeAlerts;
+    if (activeTab === 'DEPOSIT') res = res.filter(a => a.category === 'deposit');
+    else if (activeTab === 'MARGIN') res = res.filter(a => a.category === 'margin');
+    else if (activeTab === 'LOGISTICS') res = res.filter(a => a.category === 'logistics');
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      res = res.filter(a => 
+        (a.title && a.title.toLowerCase().includes(q)) ||
+        (a.desc && a.desc.toLowerCase().includes(q)) ||
+        (a.id && a.id.toLowerCase().includes(q)) ||
+        (a.projectKey && a.projectKey.toLowerCase().includes(q))
+      );
+    }
+
+    if (sortBy === 'value_desc') {
+      res = [...res].sort((x, y) => (y.amount || 0) - (x.amount || 0));
+    }
+    return res;
+  }, [activeAlerts, activeTab, searchQuery, sortBy]);
+
+  // Reset pagination on filter or tab change
+  useEffect(() => {
     setCurrentPage(1);
-  }, [alerts.length, module]);
+  }, [activeTab, searchQuery, sortBy]);
 
-  const pageSize = 3;
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && !isCollapsed) {
+        toggleCollapse();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isCollapsed]);
+
+  const pageSize = 8;
+  const totalPages = Math.max(1, Math.ceil(filteredAlerts.length / pageSize));
   const pageAlerts = useMemo(() => {
     const startIdx = (currentPage - 1) * pageSize;
-    return alerts.slice(startIdx, startIdx + pageSize);
-  }, [alerts, currentPage]);
+    return filteredAlerts.slice(startIdx, startIdx + pageSize);
+  }, [filteredAlerts, currentPage]);
 
-  if (isCollapsed) {
-    return (
-      <div 
+  return (
+    <>
+      {/* 1. FLOATING DOCKED TAB (Always visible, 0px document width impact) */}
+      <button
+        type="button"
         onClick={toggleCollapse}
-        style={{ 
-          width: '50px', 
-          height: '100%', 
-          minHeight: '600px', 
-          borderLeft: '1px solid var(--border)', 
-          background: 'var(--bg-primary)', 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'center', 
-          paddingTop: '20px', 
+        style={{
+          position: 'fixed',
+          right: 0,
+          top: '200px',
+          zIndex: 9990,
+          background: 'var(--bg-primary)',
+          border: '1px solid var(--border)',
+          borderRight: 'none',
+          borderTopLeftRadius: '10px',
+          borderBottomLeftRadius: '10px',
+          boxShadow: '-4px 4px 14px rgba(0,0,0,0.1)',
+          padding: '9px 12px 9px 10px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
           cursor: 'pointer',
-          position: 'sticky',
-          top: '20px',
-          borderRadius: '12px'
+          transition: 'transform 0.15s ease, box-shadow 0.15s ease',
         }}
+        onMouseEnter={e => {
+          e.currentTarget.style.transform = 'translateX(-3px)';
+          e.currentTarget.style.boxShadow = '-6px 6px 18px rgba(0,0,0,0.16)';
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.transform = 'translateX(0)';
+          e.currentTarget.style.boxShadow = '-4px 4px 14px rgba(0,0,0,0.1)';
+        }}
+        title="Open Alerts & Prompts Slide-over Drawer"
       >
-        <div style={{ position: 'relative', marginBottom: '20px' }}>
-          <Bell size={18} color="var(--text-secondary)" />
-          {alerts.length > 0 && (
-            <span style={{ 
-              position: 'absolute', 
-              top: '-3px', 
-              right: '-3px', 
-              width: '8px', 
-              height: '8px', 
-              background: 'var(--text-danger)', 
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <Bell size={16} color="var(--text-primary)" />
+          {activeAlerts.length > 0 && (
+            <span style={{
+              position: 'absolute',
+              top: '-3px',
+              right: '-3px',
+              width: '8px',
+              height: '8px',
+              background: 'var(--text-danger)',
               borderRadius: '50%',
-              boxShadow: '0 0 8px var(--text-danger)'
+              boxShadow: '0 0 6px var(--text-danger)'
             }} />
           )}
         </div>
-        <ChevronLeft size={16} color="var(--text-tertiary)" style={{ marginTop: 'auto', marginBottom: '20px' }} />
-      </div>
-    );
-  }
+        <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.02em', whiteSpace: 'nowrap' }}>
+          Alerts ({activeAlerts.length})
+        </span>
+      </button>
 
-  return (
-    <div style={{ position: 'sticky', top: '20px', width: '340px' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-          <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <ShieldAlert size={14} color="var(--text-info)" />
-            <span>Alerts & Prompts ({alerts.length})</span>
-          </div>
-          <button 
-            className="btn btn-sm btn-ghost" 
+      {/* 2. SLIDE-OVER FLYOUT DRAWER (Portal overlay, 0px main layout space) */}
+      {!isCollapsed && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 99998 }}>
+          {/* Backdrop overlay */}
+          <div
             onClick={toggleCollapse}
-            style={{ padding: '2px 6px', display: 'flex', alignItems: 'center' }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.45)',
+              backdropFilter: 'blur(3px)',
+              zIndex: 99998,
+              animation: 'fadeIn 0.2s ease'
+            }}
+          />
+
+          {/* Right Flyout Panel */}
+          <aside
+            style={{
+              position: 'fixed',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              width: 'min(92vw, 440px)',
+              background: 'var(--bg-primary)',
+              borderLeft: '1px solid var(--border)',
+              boxShadow: '-16px 0 40px rgba(0, 0, 0, 0.25)',
+              zIndex: 99999,
+              display: 'flex',
+              flexDirection: 'column',
+              animation: 'slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+            }}
           >
-            <ChevronRight size={14} />
-          </button>
-        </div>
-
-        {pageAlerts.map((alert) => {
-          let IconComp = AlertTriangle;
-          let borderCol = 'var(--text-danger)';
-          let badgeBg = 'b-danger';
-
-          if (alert.type === 'finance') {
-            IconComp = ShieldAlert;
-            borderCol = 'var(--text-warning)';
-            badgeBg = 'b-warning';
-          } else if (alert.type === 'margin') {
-            IconComp = TrendingUp;
-            borderCol = 'var(--text-danger)';
-            badgeBg = 'b-danger';
-          } else if (alert.type === 'logistics') {
-            IconComp = ShoppingBag;
-            borderCol = 'var(--text-success)';
-            badgeBg = 'b-success';
-          } else if (alert.type === 'approval') {
-            IconComp = UserCheck;
-            borderCol = 'var(--text-info)';
-            badgeBg = 'b-info';
-          }
-
-          return (
-            <div 
-              key={alert.id} 
-              className="card" 
-              style={{ 
-                borderLeft: `4px solid ${borderCol}`,
-                boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
-                background: 'var(--bg-primary)'
-              }}
-            >
-              <div className="card-body" style={{ padding: '12px 14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span className={`badge ${badgeBg}`} style={{ fontSize: '9px', fontWeight: 700, padding: '2px 6px' }}>
-                    {alert.badge}
-                  </span>
-                  <IconComp size={14} style={{ color: borderCol }} />
+            {/* TIER 1: DRAWER TOP HEADER */}
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid var(--border)',
+              background: 'var(--bg-secondary)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '12px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'rgba(59, 130, 246, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ShieldAlert size={16} color="var(--text-info)" />
                 </div>
-                
-                <h4 style={{ margin: '0 0 6px 0', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  {alert.title}
-                </h4>
-                
-                <p style={{ margin: '0 0 10px 0', fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                  {alert.desc}
-                </p>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    Alerts & Prompts
+                    <span style={{ fontSize: '11px', fontWeight: 700, padding: '1px 7px', borderRadius: '12px', background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+                      {activeAlerts.length}
+                    </span>
+                  </h3>
+                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '1px' }}>
+                    Operational triage & prioritized exceptions
+                  </div>
+                </div>
+              </div>
 
-                <button 
-                  className="btn btn-sm btn-ghost" 
-                  style={{ 
-                    width: '100%', 
-                    justifyContent: 'center', 
-                    fontSize: '11px', 
-                    background: 'var(--bg-secondary)', 
-                    border: '1px solid var(--border)',
-                    color: 'var(--text-info)'
-                  }}
-                  onClick={() => {
-                    onNavigate(alert.navPath, alert.navState);
-                  }}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {dismissedIds.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleRestoreAll}
+                    className="btn btn-ghost btn-xs"
+                    style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                    title="Restore all dismissed alerts"
+                  >
+                    <RotateCcw size={11} /> Restore ({dismissedIds.size})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={toggleCollapse}
+                  className="btn btn-ghost btn-sm"
+                  style={{ padding: '6px', borderRadius: '6px', color: 'var(--text-secondary)' }}
+                  title="Close Drawer (Esc)"
                 >
-                  <Play size={10} style={{ marginRight: '4px' }} /> {alert.action}
+                  <X size={16} />
                 </button>
               </div>
             </div>
-          );
-        })}
 
-        {alerts.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '24px', border: '1px dashed var(--border)', borderRadius: '8px', color: 'var(--text-tertiary)', fontSize: '12px', background: 'var(--bg-primary)' }}>
-            <CheckCircle size={18} color="var(--text-success)" style={{ margin: '0 auto 8px auto' }} />
-            All parameters on track! No actions required.
-          </div>
-        )}
+            {/* TIER 2: CATEGORY FILTER TABS & SEARCH */}
+            <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* Search Input */}
+              <div style={{ position: 'relative', width: '100%' }}>
+                <Search size={13} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-tertiary)' }} />
+                <input
+                  type="search"
+                  placeholder="Filter by Order #, Client, Project..."
+                  className="form-control"
+                  style={{ paddingLeft: '30px', height: '30px', fontSize: '12px' }}
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                />
+              </div>
 
-        {/* PAGINATION CONTROLS */}
-        {alerts.length > pageSize && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', borderTop: '1px solid var(--border)', marginTop: '8px' }}>
-            <button 
-              className="btn btn-sm btn-ghost" 
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.5 : 1 }}
-            >
-              <ChevronLeft size={12} /> Prev
-            </button>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-              Showing {Math.min(alerts.length, (currentPage - 1) * pageSize + 1)}–{Math.min(alerts.length, currentPage * pageSize)} of {alerts.length}
-            </span>
-            <button 
-              className="btn btn-sm btn-ghost" 
-              onClick={() => setCurrentPage(p => Math.min(Math.ceil(alerts.length / pageSize), p + 1))}
-              disabled={currentPage >= Math.ceil(alerts.length / pageSize)}
-              style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', cursor: currentPage >= Math.ceil(alerts.length / pageSize) ? 'not-allowed' : 'pointer', opacity: currentPage >= Math.ceil(alerts.length / pageSize) ? 0.5 : 1 }}
-            >
-              Next <ChevronRight size={12} />
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+              {/* Category Pills */}
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('ALL')}
+                    className={`btn btn-xs ${activeTab === 'ALL' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ fontSize: '11px', fontWeight: 600, padding: '3px 8px', borderRadius: '6px' }}
+                  >
+                    All ({counts.all})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('DEPOSIT')}
+                    className={`btn btn-xs ${activeTab === 'DEPOSIT' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ fontSize: '11px', fontWeight: 600, padding: '3px 8px', borderRadius: '6px' }}
+                  >
+                    Deposits ({counts.deposit})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('MARGIN')}
+                    className={`btn btn-xs ${activeTab === 'MARGIN' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ fontSize: '11px', fontWeight: 600, padding: '3px 8px', borderRadius: '6px' }}
+                  >
+                    Margins ({counts.margin})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('LOGISTICS')}
+                    className={`btn btn-xs ${activeTab === 'LOGISTICS' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ fontSize: '11px', fontWeight: 600, padding: '3px 8px', borderRadius: '6px' }}
+                  >
+                    Logistics ({counts.logistics})
+                  </button>
+                </div>
+
+                {filteredAlerts.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleDismissAll(filteredAlerts.map(a => a.id))}
+                    className="btn btn-ghost btn-xs"
+                    style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', textDecoration: 'underline' }}
+                    title="Dismiss currently visible alerts"
+                  >
+                    Dismiss current ({filteredAlerts.length})
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* TIER 3: SCROLLABLE ALERTS LIST */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {pageAlerts.map(alert => {
+                let IconComp = AlertTriangle;
+                let borderCol = '#ef4444';
+                let badgeClass = 'b-danger';
+
+                if (alert.category === 'deposit') {
+                  IconComp = ShieldAlert;
+                  borderCol = '#f59e0b';
+                  badgeClass = 'b-warning';
+                } else if (alert.category === 'margin') {
+                  IconComp = TrendingUp;
+                  borderCol = '#ef4444';
+                  badgeClass = 'b-danger';
+                } else if (alert.category === 'logistics') {
+                  IconComp = ShoppingBag;
+                  borderCol = '#8b5cf6';
+                  badgeClass = 'b-secondary';
+                }
+
+                return (
+                  <div
+                    key={alert.id}
+                    className="card hover-scale"
+                    style={{
+                      borderLeft: `3px solid ${borderCol}`,
+                      borderTop: '1px solid var(--border)',
+                      borderRight: '1px solid var(--border)',
+                      borderBottom: '1px solid var(--border)',
+                      borderRadius: '8px',
+                      background: 'var(--bg-primary)',
+                      padding: '12px 14px',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '6px',
+                      position: 'relative'
+                    }}
+                  >
+                    {/* Top Row: Badge + Amount + Dismiss */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span className={`badge ${badgeClass}`} style={{ fontSize: '9.5px', fontWeight: 700, padding: '2px 6px', textTransform: 'uppercase' }}>
+                          {alert.badge}
+                        </span>
+                        {alert.amount > 0 && (
+                          <span style={{ fontSize: '11px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
+                            R {alert.amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <IconComp size={13} style={{ color: borderCol }} />
+                        <button
+                          type="button"
+                          onClick={(e) => handleDismiss(alert.id, e)}
+                          className="btn btn-ghost btn-xs"
+                          style={{ padding: '2px', color: 'var(--text-tertiary)', borderRadius: '4px' }}
+                          title="Dismiss this alert"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Title */}
+                    <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>
+                      {alert.title}
+                    </div>
+
+                    {/* Description */}
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                      {alert.desc}
+                    </div>
+
+                    {/* Action Button */}
+                    <div style={{ marginTop: '2px', display: 'flex', justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        style={{
+                          padding: '4px 10px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          background: 'var(--bg-secondary)',
+                          border: '1px solid var(--border)',
+                          color: 'var(--text-info)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          borderRadius: '6px'
+                        }}
+                        onClick={() => {
+                          toggleCollapse();
+                          onNavigate(alert.navPath, alert.navState);
+                        }}
+                      >
+                        <Play size={10} /> {alert.action} →
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {filteredAlerts.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-tertiary)' }}>
+                  <CheckCircle size={32} color="#10b981" style={{ margin: '0 auto 12px auto', opacity: 0.8 }} />
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                    Zero Alerts Found
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                    {dismissedIds.size > 0 
+                      ? `${dismissedIds.size} alerts have been dismissed or resolved.`
+                      : 'All items in this category are operating within acceptable parameters.'}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* TIER 5: DRAWER FOOTER & PAGINATION */}
+            <div style={{
+              padding: '11px 20px',
+              borderTop: '1px solid var(--border)',
+              background: 'var(--bg-secondary)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: '11.5px',
+              color: 'var(--text-secondary)'
+            }}>
+              <div>
+                Showing <strong>{filteredAlerts.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}</strong>–<strong>{Math.min(currentPage * pageSize, filteredAlerts.length)}</strong> of <strong>{filteredAlerts.length}</strong>
+              </div>
+
+              {totalPages > 1 && (
+                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-xs"
+                    disabled={currentPage <= 1}
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                  >
+                    <ChevronLeft size={12} /> Prev
+                  </button>
+                  <span style={{ fontSize: '11px', fontWeight: 600, padding: '0 4px', color: 'var(--text-primary)' }}>
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-xs"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                  >
+                    Next <ChevronRight size={12} />
+                  </button>
+                </div>
+              )}
+            </div>
+          </aside>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
