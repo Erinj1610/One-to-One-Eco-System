@@ -11,7 +11,7 @@ import {
   Users, Shield, Key, Plus, Search, Check, AlertTriangle, 
   Trash2, Edit3, RefreshCw, Copy, CheckCircle2, Lock, Unlock,
   Sliders, Grid, List, Layers, ArrowRight, UserPlus, ExternalLink, X,
-  Briefcase, CheckSquare, Sparkles, RotateCcw, SlidersHorizontal
+  Briefcase, CheckSquare, Sparkles, RotateCcw, SlidersHorizontal, ChevronLeft, ArrowLeft, Building2, Percent
 } from 'lucide-react';
 
 
@@ -922,43 +922,120 @@ export default function SettingsPage() {
   const SETTINGS_CATEGORIES = [
     {
       group: 'Organization & Brand',
+      description: 'Studio identity, VAT, billing entity & financial margin baselines',
       tabs: [
-        { id: 'General', label: 'Company Profile & Branding', icon: 'Building2' },
-        { id: 'Rate card', label: 'Rate Cards & Margins', icon: 'Percent' }
+        { 
+          id: 'General', 
+          label: 'Company Profile & Branding', 
+          desc: 'Studio address, VAT numbers, invoice banking details & document header previews.',
+          icon: Building2 
+        },
+        { 
+          id: 'Rate card', 
+          label: 'Rate Cards & Target Margins', 
+          desc: 'Default margin percentages, design fees, and commercial pricing models.',
+          icon: Percent 
+        }
       ]
     },
     {
       group: 'Team & Governance',
+      description: 'Staff accounts, role permission matrix, and access security logs',
       tabs: [
-        { id: 'Users & Permissions', label: 'Users & Permissions', icon: 'Shield', adminOnly: true },
-        { id: 'Project managers', label: 'Project Managers & Leads', icon: 'Briefcase', adminOnly: true },
-        { id: 'Activity log', label: 'Activity Audit Log', icon: 'List', adminOnly: true }
+        { 
+          id: 'Users & Permissions', 
+          label: 'Users & Access Permissions', 
+          desc: 'Manage staff accounts, assign standard roles, and adjust granular module permissions.',
+          icon: Shield, 
+          adminOnly: true 
+        },
+        { 
+          id: 'Project managers', 
+          label: 'Project Managers & Leads', 
+          desc: 'Active studio PMs assigned to projects, client orders, and delivery pipelines.',
+          icon: Briefcase, 
+          adminOnly: true 
+        },
+        { 
+          id: 'Activity log', 
+          label: 'Activity Audit Log', 
+          desc: 'Comprehensive timestamped audit trail of logins, edits, allocations, and deletions.',
+          icon: List, 
+          adminOnly: true 
+        }
       ]
     },
     {
       group: 'Workflow & Operations',
+      description: 'Project pipeline milestones, cloud storage automation & document layouts',
       tabs: [
-        { id: 'Workflow Stages', label: 'Workflow Stages', icon: 'SlidersHorizontal' },
-        { id: 'Drive & Folders', label: 'Google Drive Routing', icon: 'Layers', adminOnly: true },
-        { id: 'Dropdowns', label: 'Dropdowns & Lookups', icon: 'Grid', adminOnly: true },
-        { id: 'Templates', label: 'Document Templates', icon: 'Copy', adminOnly: true }
+        { 
+          id: 'Workflow Stages', 
+          label: 'Workflow Stages', 
+          desc: 'Linear milestone phases and automatic blockers across all project pipelines.',
+          icon: SlidersHorizontal 
+        },
+        { 
+          id: 'Drive & Folders', 
+          label: 'Google Drive Routing', 
+          desc: 'Dynamic cloud storage folder structures, document routing, and duplicate consolidation.',
+          icon: Layers, 
+          adminOnly: true 
+        },
+        { 
+          id: 'Dropdowns', 
+          label: 'Dropdowns & Lookups', 
+          desc: 'Central management for tags, categories, client types, and custom statuses.',
+          icon: Grid, 
+          adminOnly: true 
+        },
+        { 
+          id: 'Templates', 
+          label: 'Document Templates', 
+          desc: 'Thermal sticker presets, Argox label layouts, and document export definitions.',
+          icon: Copy, 
+          adminOnly: true 
+        }
       ]
     },
     {
       group: 'System & Releases',
+      description: 'Cloud Run revision promotion, system alert rules & external integrations',
       tabs: [
-        ...(isStaging ? [{ id: 'Releases & Deployments', label: 'Releases & Deployments', icon: 'Sparkles', adminOnly: true }] : []),
-        { id: 'Alerts', label: 'System Alerts & Rules', icon: 'AlertTriangle' },
-        { id: 'Modules', label: 'Modules & Navigation', icon: 'Sliders', adminOnly: true },
-        { id: 'Integrations', label: 'API Integrations', icon: 'ExternalLink' }
+        ...(isStaging ? [{ 
+          id: 'Releases & Deployments', 
+          label: 'Releases & Deployments', 
+          desc: 'Promote verified staging revisions directly to live production traffic.',
+          icon: Sparkles, 
+          adminOnly: true 
+        }] : []),
+        { 
+          id: 'Alerts', 
+          label: 'System Alerts & Rules', 
+          desc: 'Automated margin warnings, overdue order notifications, and threshold alerts.',
+          icon: AlertTriangle 
+        },
+        { 
+          id: 'Modules', 
+          label: 'Modules & Navigation', 
+          desc: 'Control navigation visibility and toggle specialized portal features.',
+          icon: Sliders, 
+          adminOnly: true 
+        },
+        { 
+          id: 'Integrations', 
+          label: 'API Integrations', 
+          desc: 'Google Drive, Firebase Auth, and external microservice connectivity.',
+          icon: ExternalLink 
+        }
       ]
     }
   ];
 
   const availableTabs = SETTINGS_CATEGORIES.flatMap(c => c.tabs).filter(t => !t.adminOnly || isAdmin).map(t => t.id);
 
-
-  const [activeTab, setActiveTab] = useState('General');
+  // When null, we show the clean Tile Directory Grid. When set to an ID, we show that setting with a back button.
+  const [activeTab, setActiveTab] = useState(null);
   const [activeRole, setActiveRole] = useState('Admin');
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [ruleForm, setRuleForm] = useState({ module: 'projects', parameter: 'margin', condition: 'less_than', value: '', label: '' });
@@ -1555,63 +1632,135 @@ export default function SettingsPage() {
 
   return (
     <div className="animation-fade-in">
-      {/* Modern Grouped Executive Navigation Header */}
-      <div 
-        style={{ 
-          background: 'var(--bg-secondary)', 
-          border: '1px solid var(--border)', 
-          borderRadius: '12px', 
-          padding: '8px 12px', 
-          marginBottom: '24px',
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '16px',
-          alignItems: 'center',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
-        }}
-      >
-        {SETTINGS_CATEGORIES.map(cat => {
-          const visibleTabs = cat.tabs.filter(t => !t.adminOnly || isAdmin);
-          if (visibleTabs.length === 0) return null;
+      {/* 1. ROOT VIEW: Clean Luxury Tile Directory Grid */}
+      {!activeTab && (
+        <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '32px', maxWidth: '1200px' }}>
+          <div>
+            <h1 style={{ fontSize: '22px', fontWeight: 700, margin: '0 0 6px 0', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              Settings & Preferences
+            </h1>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
+              Manage studio identity, team permissions, pipeline workflows, and system infrastructure.
+            </p>
+          </div>
 
-          return (
-            <div key={cat.group} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-tertiary)', paddingRight: '4px', userSelect: 'none' }}>
-                {cat.group}:
-              </span>
-              <div style={{ display: 'flex', gap: '3px', background: 'rgba(0,0,0,0.03)', padding: '2px', borderRadius: '7px' }}>
-                {visibleTabs.map(t => {
-                  const isActive = activeTab === t.id;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setActiveTab(t.id)}
-                      style={{
-                        border: 'none',
-                        background: isActive ? '#ffffff' : 'transparent',
-                        color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
-                        fontWeight: isActive ? 600 : 500,
-                        fontSize: '12px',
-                        padding: '5px 10px',
-                        borderRadius: '5px',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                        boxShadow: isActive ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-                        whiteSpace: 'nowrap'
-                      }}
-                      onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = 'var(--text-primary)'; }}
-                      onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                    >
-                      {t.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+            {SETTINGS_CATEGORIES.map(cat => {
+              const visibleTabs = cat.tabs.filter(t => !t.adminOnly || isAdmin);
+              if (visibleTabs.length === 0) return null;
+
+              return (
+                <div key={cat.group}>
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+                      {cat.group}
+                    </div>
+                    {cat.description && (
+                      <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                        {cat.description}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
+                    {visibleTabs.map(t => {
+                      const IconComp = t.icon || Sliders;
+                      return (
+                        <div
+                          key={t.id}
+                          onClick={() => setActiveTab(t.id)}
+                          style={{
+                            background: '#ffffff',
+                            border: '1px solid var(--border)',
+                            borderRadius: '10px',
+                            padding: '18px 20px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px',
+                            transition: 'all 0.15s cubic-bezier(0.16, 1, 0.3, 1)',
+                            position: 'relative',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                            e.currentTarget.style.borderColor = 'rgba(0, 0, 0, 0.18)';
+                            e.currentTarget.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.06)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'translateY(0)';
+                            e.currentTarget.style.borderColor = 'var(--border)';
+                            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.03)';
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div 
+                                style={{ 
+                                  width: '32px', 
+                                  height: '32px', 
+                                  borderRadius: '8px', 
+                                  background: 'var(--bg-secondary)', 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  justifyContent: 'center',
+                                  color: 'var(--text-primary)'
+                                }}
+                              >
+                                <IconComp size={16} />
+                              </div>
+                              <h3 style={{ margin: 0, fontSize: '13.5px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {t.label}
+                              </h3>
+                            </div>
+                            <ArrowRight size={14} color="#94a3b8" />
+                          </div>
+
+                          <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.45' }}>
+                            {t.desc}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 2. SUB-VIEW HEADER: Clean Top Navigation Breadcrumb when inside a setting */}
+      {activeTab && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '22px' }}>
+          <button
+            type="button"
+            onClick={() => setActiveTab(null)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              background: '#ffffff',
+              border: '1px solid var(--border)',
+              borderRadius: '7px',
+              color: 'var(--text-primary)',
+              fontSize: '12.5px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'background 0.12s ease'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = '#ffffff'}
+          >
+            <ChevronLeft size={16} /> All Settings
+          </button>
+          <span style={{ color: 'var(--text-tertiary)', fontSize: '13px' }}>/</span>
+          <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+            {SETTINGS_CATEGORIES.flatMap(c => c.tabs).find(t => t.id === activeTab)?.label || activeTab}
+          </span>
+        </div>
+      )}
 
       {activeTab === 'General' && (
         <CompanyProfileSettings 
