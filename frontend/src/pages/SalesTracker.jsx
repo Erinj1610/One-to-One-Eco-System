@@ -2670,22 +2670,24 @@ export default function SalesTracker() {
     setSelectedOrderId(null);
   };
 
-  // EXPORT ORDER ITEMS FOR PALLADIUM SALES ORDER ITEM IMPORT
+  // EXPORT SUMMARY ROWS FOR PALLADIUM SALES ORDER ITEM IMPORT (EXACTLY AS SHOWN IN SALES TRACKER)
   const handleExportPalladiumOrder = () => {
-    if (!activeOrderItems || activeOrderItems.length === 0) {
-      alert('No items in this order to export.');
+    if (!groupedItems || groupedItems.length === 0) {
+      alert('No summarized items in this order to export.');
       return;
     }
 
-    const validItems = activeOrderItems.filter(item => !item.is_credit && !item.isCredit && (Number(item.qty) || 0) > 0);
-    if (validItems.length === 0) {
-      alert('No valid items with quantity found to export.');
+    // Export the exact summarized rows as displayed in the Sales Tracker table (excluding credit items and 0 qty)
+    const validSummaryItems = groupedItems.filter(item => !item.is_credit && !item.isCredit && (Number(item.qty) || 0) > 0);
+    if (validSummaryItems.length === 0) {
+      alert('No valid summarized items with quantity found to export.');
       return;
     }
 
     // Format strictly for Palladium Item Import: Column A = Number, Column B = Quantity
-    const rows = validItems.map(item => ({
-      Number: (item.code || item.oneOneCode || item.one_one_code || 'ITEM').trim(),
+    // Prefer Supplier Item Code (item.code), then 1:1 Code (item.oneOneCode)
+    const rows = validSummaryItems.map(item => ({
+      Number: (item.code || item.oneOneCode || 'ITEM').trim(),
       Quantity: Math.round(Number(item.qty) || 0)
     }));
 
@@ -2696,7 +2698,7 @@ export default function SalesTracker() {
     worksheet['!cols'] = [{ wch: 25 }, { wch: 15 }];
 
     const safeQuote = (quoteName || selectedOrderId || 'Order').replace(/[^a-zA-Z0-9_-]/g, '_');
-    XLSX.writeFile(workbook, `Palladium_SO_${safeQuote}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.writeFile(workbook, `Palladium_SO_Summary_${safeQuote}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const handleBulkExcelExport = () => {
