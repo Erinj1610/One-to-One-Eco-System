@@ -340,7 +340,91 @@ export default function ClientDocumentModal({
   }, [scopedOrders, projectName]);
 
   const handlePrint = () => {
-    window.print();
+    if (!printRef.current) return;
+
+    // Remove any previously created print iframe
+    const oldIframe = document.getElementById('client-document-print-iframe');
+    if (oldIframe) {
+      oldIframe.remove();
+    }
+
+    const iframe = document.createElement('iframe');
+    iframe.id = 'client-document-print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) return;
+
+    const contentHtml = printRef.current.innerHTML;
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${docType === 'statement' ? 'Statement' : 'Progress Report'} - ${projectName || 'One to One'}</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 12mm 15mm;
+            }
+            * {
+              box-sizing: border-box;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            body {
+              margin: 0;
+              padding: 0;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", Helvetica, Arial, sans-serif;
+              color: #1e293b;
+              background: #ffffff;
+              font-size: 11px;
+              line-height: 1.4;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              page-break-inside: auto;
+            }
+            tr {
+              page-break-inside: avoid;
+              page-break-after: auto;
+            }
+            thead {
+              display: table-header-group;
+            }
+            tfoot {
+              display: table-footer-group;
+            }
+            .no-break {
+              page-break-inside: avoid;
+            }
+          </style>
+        </head>
+        <body>
+          <div>
+            ${contentHtml}
+          </div>
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    // Allow resources/fonts to render before invoking print
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        iframe.remove();
+      }, 1000);
+    }, 250);
   };
 
   const toggleSelectOrder = (orderId) => {
