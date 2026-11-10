@@ -2,7 +2,6 @@ import os
 import json
 import tempfile
 import logging
-import re
 import xml.etree.ElementTree as ET
 from typing import List, Dict, Any, Optional
 
@@ -10,10 +9,10 @@ logger = logging.getLogger(__name__)
 
 def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
     """
-    Jaspersoft Studio 7+ introduces <element kind="..."> and omits XML namespace attributes,
-    or adds attributes like uuid without the standard JasperReports schema definition.
-    This normalizes the JRXML into standard JasperReports 6.x XML so jasperreports-6.20 engine
-    compiles and renders it seamlessly.
+    Jaspersoft Studio 7+ introduces <element kind="..."> without XML namespace attributes,
+    or with modern element tags.
+    This normalizes the JRXML into standard JasperReports 6.x XML so the Jasper compilation
+    engine compiles and renders it into authentic PDF.
     """
     with open(source_jrxml_path, 'r', encoding='utf-8') as f:
         content = f.read()
@@ -25,88 +24,86 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
             '<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"'
         )
 
-    # Convert Studio 7 <element kind="staticText" ...> to <staticText><reportElement .../>
-    # If the user saved in Studio 7 format:
     tree = ET.fromstring(content)
 
+    # Namespace handling
+    ns_prefix = ""
+    if tree.tag.startswith("{"):
+        ns_prefix = tree.tag.split("}")[0] + "}"
+
     # Rename <description> inside <field> to <fieldDescription>
-    for f in tree.findall(".//field"):
-        desc = f.find("description")
-        if desc is not None:
-            desc.tag = "fieldDescription"
-    for f in tree.findall(".//{http://jasperreports.sourceforge.net/jasperreports}field"):
-        desc = f.find("{http://jasperreports.sourceforge.net/jasperreports}description")
-        if desc is not None:
-            desc.tag = "{http://jasperreports.sourceforge.net/jasperreports}fieldDescription"
+    for f in tree.iter():
+        if f.tag.endswith("field"):
+            for child in f:
+                if child.tag.endswith("description"):
+                    child.tag = f"{ns_prefix}fieldDescription"
 
-    # Check if modern Studio 7 elements exist
-    has_modern_elements = len(tree.findall(".//element")) > 0
+    # Rename <expression> inside <group> to <groupExpression>
+    for g in tree.iter():
+        if g.tag.endswith("group") and not g.tag.endswith("groupHeader") and not g.tag.endswith("groupFooter"):
+            for child in g:
+                if child.tag.endswith("expression"):
+                    child.tag = f"{ns_prefix}groupExpression"
 
-    if has_modern_elements:
-        # Transform modern <element kind="X"> to classic <X><reportElement>
-        def transform_element(elem):
-            kind = elem.attrib.get("kind")
-            if not kind:
-                return
-            elem.tag = kind
-            # Create reportElement child
-            rep_elem = ET.Element("reportElement")
-            rep_attribs = ["x", "y", "width", "height", "uuid", "forecolor", "backcolor", "mode", "key"]
-            for a in rep_attribs:
-                if a in elem.attrib:
-                    rep_elem.attrib[a] = elem.attrib.pop(a)
-            elem.insert(0, rep_elem)
-            elem.attrib.pop("kind", None)
+    # Check if modern Studio 7 elements exist using universal wildcard {* }
+    modern_elements = [e for e in tree.iter() if e.tag.endswith("element") and "kind" in e.attrib]
 
-            # Move textElement properties
-            text_attribs = ["hTextAlign", "vTextAlign"]
-            has_text_props = any(a in elem.attrib for a in text_attribs)
-            font_attribs = ["fontName", "fontSize", "bold", "italic", "underline"]
-            has_font_props = any(a in elem.attrib for a in font_attribs)
-
-            if has_text_props or has_font_props:
-                txt_elem = ET.Element("textElement")
-                if "hTextAlign" in elem.attrib:
-                    txt_elem.attrib["textAlignment"] = elem.attrib.pop("hTextAlign")
-                if "vTextAlign" in elem.attrib:
-                    txt_elem.attrib["verticalAlignment"] = elem.attrib.pop("vTextAlign")
-
-                if has_font_props:
-                    f_elem = ET.Element("font")
-                    if "fontName" in elem.attrib:
-                        f_elem.attrib["fontName"] = elem.attrib.pop("fontName")
-                    if "fontSize" in elem.attrib:
-                        f_elem.attrib["size"] = str(int(float(elem.attrib.pop("fontSize"))))
-                    if "bold" in elem.attrib:
-                        f_elem.attrib["isBold"] = elem.attrib.pop("bold")
-                    if "italic" in elem.attrib:
-                        f_elem.attrib["isItalic"] = elem.attrib.pop("italic")
-                    if "underline" in elem.attrib:
-                        f_elem.attrib["isUnderline"] = elem.attrib.pop("underline")
-                    txt_elem.append(f_elem)
-
-                elem.append(txt_elem)
-
-            # Move expression to textFieldExpression
-            expr = elem.find("expression")
-            if expr is not None and kind == "textField":
-                expr.tag = "textFieldExpression"
-
-        for parent in tree.iter():
+    if modern_elements:
+        for parent in list(tree.iter()):
             for child in list(parent):
-                if child.tag == "element":
-                    transform_element(child)
+                if child.tag.endswith("element") and "kind" in child.attrib:
+                    kind = child.attrib.pop("kind")
+                    child.tag = f"{ns_prefix}{kind}"
 
-        # Output normalized XML
-        fd, temp_norm = tempfile.mkstemp(suffix=".jrxml")
-        os.close(fd)
-        ET.ElementTree(tree).write(temp_norm, encoding="utf-8", xml_declaration=True)
-        return temp_norm
+                    # Create reportElement child
+                    rep_elem = ET.Element(f"{ns_prefix}reportElement")
+                    rep_attribs = ["x", "y", "width", "height", "uuid", "forecolor", "backcolor", "mode", "key"]
+                    for a in rep_attribs:
+                        if a in child.attrib:
+                            rep_elem.attrib[a] = child.attrib.pop(a)
+                    child.insert(0, rep_elem)
+
+                    # Move textElement properties
+                    text_attribs = ["hTextAlign", "vTextAlign"]
+                    has_text_props = any(a in child.attrib for a in text_attribs)
+                    font_attribs = ["fontName", "fontSize", "bold", "italic", "underline"]
+                    has_font_props = any(a in child.attrib for a in font_attribs)
+
+                    if has_text_props or has_font_props:
+                        txt_elem = ET.Element(f"{ns_prefix}textElement")
+                        if "hTextAlign" in child.attrib:
+                            txt_elem.attrib["textAlignment"] = child.attrib.pop("hTextAlign")
+                        if "vTextAlign" in child.attrib:
+                            txt_elem.attrib["verticalAlignment"] = child.attrib.pop("vTextAlign")
+
+                        if has_font_props:
+                            f_elem = ET.Element(f"{ns_prefix}font")
+                            if "fontName" in child.attrib:
+                                f_elem.attrib["fontName"] = child.attrib.pop("fontName")
+                            if "fontSize" in child.attrib:
+                                f_elem.attrib["size"] = str(int(float(child.attrib.pop("fontSize"))))
+                            if "bold" in child.attrib:
+                                f_elem.attrib["isBold"] = child.attrib.pop("bold")
+                            if "italic" in child.attrib:
+                                f_elem.attrib["isItalic"] = child.attrib.pop("italic")
+                            if "underline" in child.attrib:
+                                f_elem.attrib["isUnderline"] = child.attrib.pop("underline")
+                            txt_elem.append(f_elem)
+
+                        child.append(txt_elem)
+
+                    # Move expression to textFieldExpression
+                    expr = None
+                    for c in child:
+                        if c.tag.endswith("expression"):
+                            expr = c
+                            break
+                    if expr is not None and kind == "textField":
+                        expr.tag = f"{ns_prefix}textFieldExpression"
 
     fd, temp_norm = tempfile.mkstemp(suffix=".jrxml")
     os.close(fd)
-    with open(temp_norm, 'w', encoding='utf-8') as f:
-        f.write(content)
+    ET.ElementTree(tree).write(temp_norm, encoding="utf-8", xml_declaration=True)
     return temp_norm
 
 
@@ -116,10 +113,6 @@ def compile_and_render_jasper_report(
     parameters: Optional[Dict[str, Any]] = None,
     output_pdf_path: Optional[str] = None
 ) -> str:
-    """
-    Takes an actual JasperReports .jrxml template file and dynamic data,
-    and uses the JasperReports compilation engine to generate an authentic PDF.
-    """
     from pyreportjasper import PyReportJasper
 
     if not os.path.exists(jrxml_path):
