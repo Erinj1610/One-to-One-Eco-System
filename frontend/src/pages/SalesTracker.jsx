@@ -3,6 +3,7 @@ import EmptyStateBanner from '../components/common/EmptyStateBanner';
 import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
+import ClientDocumentModal from '../components/documents/ClientDocumentModal';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
 import MobileSalesViewer from '../components/mobile/MobileSalesViewer';
@@ -1126,6 +1127,7 @@ export default function SalesTracker() {
 
   // Modal creation state
   const [showCreatePoModal, setShowCreatePoModal] = useState(false);
+  const [showClientDocModal, setShowClientDocModal] = useState(false);
   const [isSubmittingPo, setIsSubmittingPo] = useState(false);
   const [newPoForm, setNewPoForm] = useState({
     projectKey: 'upper',
@@ -4593,11 +4595,13 @@ export default function SalesTracker() {
                 )}
                 
                 <button 
+                  type="button"
                   className="btn btn-primary" 
-                  onClick={() => setShowCreatePoModal(true)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                  onClick={() => setShowClientDocModal(true)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#0f766e', borderColor: '#0f766e' }}
+                  title="Generate Statements, Progress Reports and Client Documents"
                 >
-                  <Plus size={16} /> Create Sales Order
+                  <FileText size={16} /> Generate Document
                 </button>
               </div>
             </div>
@@ -7524,6 +7528,15 @@ export default function SalesTracker() {
       )}
 
       {/* CREATE PURCHASE ORDER MODAL */}
+      <ClientDocumentModal
+        isOpen={showClientDocModal}
+        onClose={() => setShowClientDocModal(false)}
+        projects={projects}
+        allOrders={allOrders}
+        initialProjectKey={projectFilterKey !== 'All' ? projectFilterKey : null}
+        initialOrderId={selectedOrderId || null}
+      />
+
       {showCreatePoModal && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
