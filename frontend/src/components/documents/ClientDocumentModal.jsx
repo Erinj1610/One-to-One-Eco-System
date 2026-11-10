@@ -16,7 +16,9 @@ import {
   ChevronRight,
   Eye,
   RefreshCw,
-  Edit3
+  Edit3,
+  Search,
+  Folder
 } from 'lucide-react';
 import SearchableFilterDropdown from '../common/SearchableFilterDropdown';
 import { API_BASE } from '../../api_config';
@@ -41,8 +43,10 @@ export default function ClientDocumentModal({
   const [selectedOrderIds, setSelectedOrderIds] = useState(() => initialOrderId ? [initialOrderId] : []);
   const [statementDate, setStatementDate] = useState(() => new Date().toISOString().split('T')[0]);
 
-  // Order selection dropdown open state
+  // Order selection dropdown state
   const [showOrderPicker, setShowOrderPicker] = useState(false);
+  const [orderPickerSearch, setOrderPickerSearch] = useState('');
+  const [orderPickerProjectFilter, setOrderPickerProjectFilter] = useState('ALL');
 
   // Editable Statement Details
   const [customNotes, setCustomNotes] = useState(
@@ -90,13 +94,51 @@ export default function ClientDocumentModal({
     return allOrders.filter(o => o.projectKey === selectedProjectKey);
   }, [allOrders, scopeMode, selectedOrderIds, selectedProjectKey, selectedClientName, projects]);
 
-  // Available orders under selected project/client for the order-picker
-  const availableOrdersForSelection = useMemo(() => {
-    if (selectedProjectKey) {
-      return allOrders.filter(o => o.projectKey === selectedProjectKey);
-    }
-    return allOrders;
-  }, [allOrders, selectedProjectKey]);
+  // Group all orders by project for the comprehensive order picker
+  const groupedOrdersForPicker = useMemo(() => {
+    const map = {};
+    allOrders.forEach(ord => {
+      const pKey = ord.projectKey || 'OTHER';
+      const pName = ord.projectName || projects[pKey]?.name || 'General Orders';
+      const pClient = ord.projectClient || projects[pKey]?.client || '';
+      const groupKey = `${pName}__${pKey}`;
+
+      if (!map[groupKey]) {
+        map[groupKey] = {
+          projectKey: pKey,
+          projectName: pName,
+          clientName: pClient,
+          orders: []
+        };
+      }
+      map[groupKey].orders.push(ord);
+    });
+    return Object.values(map).sort((a, b) => a.projectName.localeCompare(b.projectName));
+  }, [allOrders, projects]);
+
+  // Filtered orders list for the search & filter within the order picker
+  const filteredPickerGroups = useMemo(() => {
+    return groupedOrdersForPicker.map(group => {
+      if (orderPickerProjectFilter !== 'ALL' && group.projectKey !== orderPickerProjectFilter) {
+        return null;
+      }
+
+      const q = orderPickerSearch.trim().toLowerCase();
+      const filteredOrders = group.orders.filter(ord => {
+        if (!q) return true;
+        const idMatch = String(ord.id || '').toLowerCase().includes(q);
+        const nameMatch = String(ord.quote_name || '').toLowerCase().includes(q);
+        const clientMatch = String(group.clientName || '').toLowerCase().includes(q);
+        return idMatch || nameMatch || clientMatch;
+      });
+
+      if (filteredOrders.length === 0) return null;
+      return {
+        ...group,
+        orders: filteredOrders
+      };
+    }).filter(Boolean);
+  }, [groupedOrdersForPicker, orderPickerSearch, orderPickerProjectFilter]);
 
   // Resolved metadata for headers
   const currentProject = projects[selectedProjectKey] || (scopedOrders[0] ? projects[scopedOrders[0].projectKey] : null);
@@ -307,6 +349,16 @@ export default function ClientDocumentModal({
     );
   };
 
+  const selectAllInGroup = (orders) => {
+    const ids = orders.map(o => o.id);
+    setSelectedOrderIds(prev => Array.from(new Set([...prev, ...ids])));
+  };
+
+  const deselectAllInGroup = (orders) => {
+    const ids = new Set(orders.map(o => o.id));
+    setSelectedOrderIds(prev => prev.filter(id => !ids.has(id)));
+  };
+
   return (
     <div style={{
       position: 'fixed',
@@ -326,8 +378,8 @@ export default function ClientDocumentModal({
         background: '#ffffff',
         borderRadius: '12px',
         width: '100%',
-        maxWidth: '1100px',
-        height: '92vh',
+        maxWidth: '1140px',
+        height: '94vh',
         display: 'flex',
         flexDirection: 'column',
         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
@@ -492,7 +544,7 @@ export default function ClientDocumentModal({
               />
             )}
 
-            {/* Select Specific Orders Picker (Interactive Popover) */}
+            {/* Interactive Order Navigator Popover across Projects & Clients */}
             {scopeMode === 'orders' && (
               <div style={{ position: 'relative' }}>
                 <button
@@ -513,63 +565,175 @@ export default function ClientDocumentModal({
                   }}
                 >
                   <Filter size={13} color="#0f766e" />
-                  <span>Choose Orders ({selectedOrderIds.length})</span>
+                  <span>Choose Orders ({selectedOrderIds.length} Selected)</span>
                 </button>
 
                 {showOrderPicker && (
                   <div style={{
                     position: 'absolute',
                     top: '100%',
-                    left: 0,
+                    right: 0,
                     marginTop: '6px',
                     background: '#ffffff',
                     border: '1px solid #cbd5e1',
                     borderRadius: '8px',
-                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)',
-                    padding: '10px',
-                    width: '320px',
-                    maxHeight: '260px',
+                    boxShadow: '0 12px 30px -5px rgba(0,0,0,0.2)',
+                    padding: '12px',
+                    width: '380px',
+                    maxHeight: '400px',
                     overflowY: 'auto',
                     zIndex: 1000
                   }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>SELECT ORDERS TO INCLUDE</span>
+                    {/* Popover Header with Quick Search & Clear */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#0f766e', textTransform: 'uppercase' }}>
+                        ORDER & SUB-ORDER NAVIGATOR
+                      </span>
                       <button 
                         type="button" 
                         onClick={() => setSelectedOrderIds([])}
-                        style={{ fontSize: '10px', color: '#b91c1c', border: 'none', background: 'none', cursor: 'pointer' }}
+                        style={{ fontSize: '10.5px', color: '#b91c1c', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 600 }}
                       >
-                        Clear All
+                        Clear Selection ({selectedOrderIds.length})
                       </button>
                     </div>
-                    {availableOrdersForSelection.map(ord => {
-                      const isChecked = selectedOrderIds.includes(ord.id);
-                      return (
-                        <label 
-                          key={ord.id}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '8px',
-                            padding: '4px 6px',
-                            borderRadius: '4px',
-                            fontSize: '11.5px',
-                            cursor: 'pointer',
-                            background: isChecked ? 'rgba(15, 118, 110, 0.08)' : 'transparent'
-                          }}
-                        >
-                          <input 
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => toggleSelectOrder(ord.id)}
-                            style={{ cursor: 'pointer' }}
-                          />
-                          <div style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            <strong style={{ fontFamily: 'monospace', color: '#0f766e' }}>{ord.id}</strong> — {ord.quote_name || ord.projectName || 'Order'}
+
+                    {/* Instant Search Bar */}
+                    <div style={{ position: 'relative', marginBottom: '8px' }}>
+                      <Search size={13} style={{ position: 'absolute', left: '8px', top: '8px', color: '#94a3b8' }} />
+                      <input 
+                        type="text"
+                        placeholder="Search order ID, quote name, client..."
+                        value={orderPickerSearch}
+                        onChange={e => setOrderPickerSearch(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '5px 8px 5px 28px',
+                          fontSize: '11.5px',
+                          borderRadius: '5px',
+                          border: '1px solid #cbd5e1'
+                        }}
+                      />
+                    </div>
+
+                    {/* Quick Filter by Project */}
+                    <div style={{ marginBottom: '10px' }}>
+                      <select
+                        value={orderPickerProjectFilter}
+                        onChange={e => setOrderPickerProjectFilter(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '4px 8px',
+                          fontSize: '11.5px',
+                          borderRadius: '5px',
+                          border: '1px solid #cbd5e1',
+                          background: '#f8fafc',
+                          color: '#334155'
+                        }}
+                      >
+                        <option value="ALL">All Projects ({allOrders.length} Orders)</option>
+                        {groupedOrdersForPicker.map(g => (
+                          <option key={g.projectKey} value={g.projectKey}>
+                            {g.projectName} ({g.orders.length} orders)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Orders Grouped by Project */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {filteredPickerGroups.map(group => {
+                        const groupOrderIds = group.orders.map(o => o.id);
+                        const isAllSelected = groupOrderIds.length > 0 && groupOrderIds.every(id => selectedOrderIds.includes(id));
+                        const isSomeSelected = groupOrderIds.some(id => selectedOrderIds.includes(id));
+
+                        return (
+                          <div 
+                            key={group.projectKey}
+                            style={{
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '6px',
+                              overflow: 'hidden',
+                              background: '#ffffff'
+                            }}
+                          >
+                            {/* Group Header */}
+                            <div style={{
+                              padding: '5px 8px',
+                              background: '#f1f5f9',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              borderBottom: '1px solid #e2e8f0'
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 700, color: '#0f172a' }}>
+                                <Folder size={12} color="#0f766e" />
+                                <span>{group.projectName}</span>
+                                {group.clientName && (
+                                  <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 400 }}>({group.clientName})</span>
+                                )}
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => isAllSelected ? deselectAllInGroup(group.orders) : selectAllInGroup(group.orders)}
+                                style={{
+                                  fontSize: '10px',
+                                  color: '#0f766e',
+                                  border: 'none',
+                                  background: 'none',
+                                  cursor: 'pointer',
+                                  fontWeight: 600
+                                }}
+                              >
+                                {isAllSelected ? 'Deselect All' : 'Select All'}
+                              </button>
+                            </div>
+
+                            {/* Order Rows */}
+                            <div style={{ padding: '4px 6px' }}>
+                              {group.orders.map(ord => {
+                                const isChecked = selectedOrderIds.includes(ord.id);
+                                return (
+                                  <label 
+                                    key={ord.id}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      padding: '4px 6px',
+                                      borderRadius: '4px',
+                                      fontSize: '11.5px',
+                                      cursor: 'pointer',
+                                      background: isChecked ? 'rgba(15, 118, 110, 0.08)' : 'transparent'
+                                    }}
+                                  >
+                                    <input 
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => toggleSelectOrder(ord.id)}
+                                      style={{ cursor: 'pointer' }}
+                                    />
+                                    <div style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      <strong style={{ fontFamily: 'monospace', color: '#0f766e' }}>{ord.id}</strong> — {ord.quote_name || 'General Spec'}
+                                    </div>
+                                    <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 600 }}>
+                                      {ord.itemsList ? `${ord.itemsList.length} items` : ''}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </label>
-                      );
-                    })}
+                        );
+                      })}
+
+                      {filteredPickerGroups.length === 0 && (
+                        <div style={{ padding: '16px', textAlign: 'center', color: '#94a3b8', fontSize: '11.5px' }}>
+                          No orders match your search term.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
