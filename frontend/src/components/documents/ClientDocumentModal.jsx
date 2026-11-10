@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Edit3
 } from 'lucide-react';
+import SearchableFilterDropdown from '../common/SearchableFilterDropdown';
 import { API_BASE } from '../../api_config';
 
 export default function ClientDocumentModal({
@@ -40,6 +41,9 @@ export default function ClientDocumentModal({
   const [selectedOrderIds, setSelectedOrderIds] = useState(() => initialOrderId ? [initialOrderId] : []);
   const [statementDate, setStatementDate] = useState(() => new Date().toISOString().split('T')[0]);
 
+  // Order selection dropdown open state
+  const [showOrderPicker, setShowOrderPicker] = useState(false);
+
   // Editable Statement Details
   const [customNotes, setCustomNotes] = useState(
     '• Final payments are due prior to delivery of stock.\n• Quote your account name as payment reference.\n• Send proof of payment to debtors@1-to-1.world.\n• Attention: Najma Smith.'
@@ -54,13 +58,21 @@ export default function ClientDocumentModal({
 
   const printRef = useRef(null);
 
-  // Available unique clients list
-  const clientList = useMemo(() => {
+  // Available unique clients list (formatted for SearchableFilterDropdown)
+  const clientOptions = useMemo(() => {
     const set = new Set();
     Object.values(projects).forEach(p => {
       if (p.client) set.add(p.client);
     });
-    return Array.from(set).sort();
+    return Array.from(set).sort().map(c => ({ value: c, label: c }));
+  }, [projects]);
+
+  // Available projects list (formatted for SearchableFilterDropdown)
+  const projectOptions = useMemo(() => {
+    return Object.values(projects).map(p => ({
+      value: p.key,
+      label: `${p.name || 'Project'} ${p.client ? `(${p.client})` : ''}`
+    })).sort((a, b) => a.label.localeCompare(b.label));
   }, [projects]);
 
   // Filter orders based on chosen Scope
@@ -78,9 +90,17 @@ export default function ClientDocumentModal({
     return allOrders.filter(o => o.projectKey === selectedProjectKey);
   }, [allOrders, scopeMode, selectedOrderIds, selectedProjectKey, selectedClientName, projects]);
 
+  // Available orders under selected project/client for the order-picker
+  const availableOrdersForSelection = useMemo(() => {
+    if (selectedProjectKey) {
+      return allOrders.filter(o => o.projectKey === selectedProjectKey);
+    }
+    return allOrders;
+  }, [allOrders, selectedProjectKey]);
+
   // Resolved metadata for headers
   const currentProject = projects[selectedProjectKey] || (scopedOrders[0] ? projects[scopedOrders[0].projectKey] : null);
-  const projectName = currentProject ? (currentProject.name || currentProject.title || 'General Project') : 'General Project';
+  const projectName = currentProject ? (currentProject.name || currentProject.title || 'General Project') : (scopedOrders[0]?.projectName || 'General Project');
   const clientName = currentProject ? (currentProject.client || currentProject.clientCompany || 'Valued Client') : (selectedClientName || 'Valued Client');
   const deliveryAddress = currentProject?.deliveryAddress || currentProject?.address || 'Site Address';
   const projectPm = currentProject?.pm || currentProject?.pmName || 'Brad Abrahams';
@@ -117,7 +137,7 @@ export default function ClientDocumentModal({
         ord.clientInvoices.forEach(cinv => {
           if (cinv.is_credit || String(cinv.id).toUpperCase().startsWith('CN-')) {
             const crVal = Math.abs(Number(cinv.amount || cinv.total) || 0);
-            totalPaid += crVal; // Credit note reduces balance like a payment
+            totalPaid += crVal;
             transactions.push({
               date: cinv.date || statementDate,
               orderRef: ordRef,
@@ -207,7 +227,6 @@ export default function ClientDocumentModal({
       const ordTitle = ord.quote_name ? `${projectName} (${ord.quote_name})` : `${projectName} (${ord.id})`;
       const rawItems = ord.itemsList || [];
 
-      // Consolidate non-credit items
       const itemMap = {};
       rawItems.filter(item => !item.is_credit && !item.isCredit && (Number(item.qty) || 0) > 0).forEach(item => {
         const oneOne = (item.oneOneCode || item.one_one_code || '').trim();
@@ -235,7 +254,6 @@ export default function ClientDocumentModal({
         if (item.deliveryDate && !itemMap[key].deliveryDate) itemMap[key].deliveryDate = item.deliveryDate;
       });
 
-      // Format final progress rows with smart statuses
       const rows = Object.values(itemMap).map(row => {
         const totalQ = row.qty;
         const recQ = row.receivedQty;
@@ -279,9 +297,14 @@ export default function ClientDocumentModal({
     }).filter(g => g.rows.length > 0);
   }, [scopedOrders, projectName]);
 
-  // Handle standard browser print / PDF export
   const handlePrint = () => {
     window.print();
+  };
+
+  const toggleSelectOrder = (orderId) => {
+    setSelectedOrderIds(prev => 
+      prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]
+    );
   };
 
   return (
@@ -313,7 +336,7 @@ export default function ClientDocumentModal({
         
         {/* MODAL HEADER */}
         <div style={{
-          padding: '16px 24px',
+          padding: '14px 24px',
           borderBottom: '1px solid #e2e8f0',
           display: 'flex',
           justifyContent: 'space-between',
@@ -321,7 +344,7 @@ export default function ClientDocumentModal({
           background: '#f8fafc'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <FileText size={20} color="#0284c7" />
+            <FileText size={20} color="#0f766e" />
             <div>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>
                 Client Document Engine
@@ -332,7 +355,6 @@ export default function ClientDocumentModal({
             </div>
           </div>
 
-          {/* Action buttons */}
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <button
               type="button"
@@ -371,7 +393,7 @@ export default function ClientDocumentModal({
           </div>
         </div>
 
-        {/* CONTROLS & SCOPE TOOLBAR */}
+        {/* CONTROLS & SCOPE TOOLBAR (FEATURING SEARCHABLE DROPDOWNS) */}
         <div style={{
           padding: '12px 24px',
           background: '#ffffff',
@@ -380,7 +402,9 @@ export default function ClientDocumentModal({
           flexWrap: 'wrap',
           gap: '16px',
           alignItems: 'center',
-          justifyContent: 'space-between'
+          justifyContent: 'space-between',
+          position: 'relative',
+          zIndex: 100
         }}>
           
           {/* Document Type Selector */}
@@ -422,52 +446,143 @@ export default function ClientDocumentModal({
             </button>
           </div>
 
-          {/* Scope Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Scope:</span>
-            
-            <select
-              style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+          {/* Scope Controls with SearchableFilterDropdowns */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Scope:
+            </span>
+
+            {/* Scope Mode Dropdown */}
+            <SearchableFilterDropdown
               value={scopeMode}
-              onChange={e => setScopeMode(e.target.value)}
-            >
-              <option value="project">Per Project</option>
-              <option value="client">Per Client (All Projects)</option>
-              <option value="orders">Select Orders ({selectedOrderIds.length})</option>
-            </select>
+              onChange={val => {
+                setScopeMode(val);
+                if (val === 'project' && !selectedProjectKey) {
+                  setSelectedProjectKey(Object.keys(projects)[0] || '');
+                }
+              }}
+              options={[
+                { value: 'project', label: 'Per Project' },
+                { value: 'client', label: 'Per Client (All Projects)' },
+                { value: 'orders', label: `Select Specific Orders (${selectedOrderIds.length})` }
+              ]}
+              allLabel="Scope Mode"
+              width="190px"
+            />
 
+            {/* Project Picker (Searchable) */}
             {scopeMode === 'project' && (
-              <select
-                style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', maxWidth: '220px' }}
+              <SearchableFilterDropdown
                 value={selectedProjectKey}
-                onChange={e => setSelectedProjectKey(e.target.value)}
-              >
-                {Object.values(projects).map(p => (
-                  <option key={p.key} value={p.key}>{p.name} ({p.client || 'Client'})</option>
-                ))}
-              </select>
+                onChange={setSelectedProjectKey}
+                options={projectOptions}
+                allLabel="Choose Project..."
+                width="240px"
+              />
             )}
 
+            {/* Client Picker (Searchable) */}
             {scopeMode === 'client' && (
-              <select
-                style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1', maxWidth: '220px' }}
+              <SearchableFilterDropdown
                 value={selectedClientName}
-                onChange={e => setSelectedClientName(e.target.value)}
-              >
-                <option value="">Choose Client...</option>
-                {clientList.map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
+                onChange={setSelectedClientName}
+                options={clientOptions}
+                allLabel="Choose Client..."
+                width="220px"
+              />
             )}
 
+            {/* Select Specific Orders Picker (Interactive Popover) */}
+            {scopeMode === 'orders' && (
+              <div style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowOrderPicker(!showOrderPicker)}
+                  style={{
+                    padding: '5px 12px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    color: '#0f172a'
+                  }}
+                >
+                  <Filter size={13} color="#0f766e" />
+                  <span>Choose Orders ({selectedOrderIds.length})</span>
+                </button>
+
+                {showOrderPicker && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    marginTop: '6px',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)',
+                    padding: '10px',
+                    width: '320px',
+                    maxHeight: '260px',
+                    overflowY: 'auto',
+                    zIndex: 1000
+                  }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span>SELECT ORDERS TO INCLUDE</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setSelectedOrderIds([])}
+                        style={{ fontSize: '10px', color: '#b91c1c', border: 'none', background: 'none', cursor: 'pointer' }}
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                    {availableOrdersForSelection.map(ord => {
+                      const isChecked = selectedOrderIds.includes(ord.id);
+                      return (
+                        <label 
+                          key={ord.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '4px 6px',
+                            borderRadius: '4px',
+                            fontSize: '11.5px',
+                            cursor: 'pointer',
+                            background: isChecked ? 'rgba(15, 118, 110, 0.08)' : 'transparent'
+                          }}
+                        >
+                          <input 
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleSelectOrder(ord.id)}
+                            style={{ cursor: 'pointer' }}
+                          />
+                          <div style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <strong style={{ fontFamily: 'monospace', color: '#0f766e' }}>{ord.id}</strong> — {ord.quote_name || ord.projectName || 'Order'}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Date Selector */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', borderLeft: '1px solid #e2e8f0', paddingLeft: '10px' }}>
               <span style={{ fontSize: '11px', color: '#64748b' }}>Date:</span>
               <input 
                 type="date"
                 value={statementDate}
                 onChange={e => setStatementDate(e.target.value)}
-                style={{ padding: '3px 6px', fontSize: '11.5px', borderRadius: '5px', border: '1px solid #cbd5e1' }}
+                style={{ padding: '4px 8px', fontSize: '12px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
               />
             </div>
           </div>
