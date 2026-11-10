@@ -61,6 +61,15 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
                     for a in rep_attribs:
                         if a in child.attrib:
                             rep_elem.attrib[a] = child.attrib.pop(a)
+
+                    # In JasperReports 6.x schema, printWhenExpression is a child of reportElement!
+                    for c in list(child):
+                        if c.tag.endswith("printWhenExpression"):
+                            child.remove(c)
+                            c.tag = f"{ns_prefix}printWhenExpression"
+                            rep_elem.append(c)
+                            break
+
                     child.insert(0, rep_elem)
 
                     # Rename blankWhenNull to isBlankWhenNull on textField for JasperReports 6.x
