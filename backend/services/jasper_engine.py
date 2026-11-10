@@ -24,6 +24,25 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
             '<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"'
         )
 
+    # Automatically add missing <field> declarations for any $F{...} referenced in expressions
+    import re
+    used_fields = set(re.findall(r"\$F\{([^\}]+)\}", content))
+    declared_fields = set(re.findall(r'<field\s+name="([^"]+)"', content))
+    missing_fields = sorted(list(used_fields - declared_fields))
+    if missing_fields:
+        field_xmls = []
+        for mf in missing_fields:
+            field_type = "java.lang.Integer" if "qty" in mf.lower() else ("java.lang.Double" if ("received" in mf.lower() or "backorder" in mf.lower()) else "java.lang.String")
+            field_xmls.append(f'\t<field name="{mf}" class="{field_type}"/>')
+        # Insert before first <group or <title or <band or <detail
+        insert_marker = None
+        for m in ['<group', '<title', '<detail', '<pageHeader']:
+            if m in content:
+                insert_marker = m
+                break
+        if insert_marker:
+            content = content.replace(insert_marker, "\n".join(field_xmls) + "\n\t" + insert_marker, 1)
+
     tree = ET.fromstring(content)
 
     # Namespace handling
