@@ -166,11 +166,12 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
                         if kind == "textField":
                             expr.tag = f"{ns_prefix}textFieldExpression"
                         elif kind == "image":
-                            expr.tag = f"{ns_prefix}imageExpression"
-                            # If expression is empty string or whitespace, replace with 1x1 transparent PNG stream
-                            # to avoid "The byte array is not a recognized imageformat" in JasperReports
+                            # If expression is empty string or empty quotes, drop the image element to avoid
+                            # "The byte array is not a recognized imageformat" during PDF export
                             if not expr.text or expr.text.strip() in ['""', "''", 'null', '']:
-                                expr.text = 'new java.io.ByteArrayInputStream(java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="))'
+                                parent.remove(child)
+                                continue
+                            expr.tag = f"{ns_prefix}imageExpression"
 
     # Wrap <pen> inside <graphicElement> for line, rectangle, ellipse, etc. in JasperReports 6.x
     for elem in tree.iter():
