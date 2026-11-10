@@ -1,3 +1,4 @@
+// Version 1.0.1 - JasperReports Direct PDF Integration
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   X, 
