@@ -110,6 +110,27 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
                     if expr is not None and kind == "textField":
                         expr.tag = f"{ns_prefix}textFieldExpression"
 
+    # Wrap <pen> inside <graphicElement> for line, rectangle, ellipse, etc. in JasperReports 6.x
+    for elem in tree.iter():
+        tag_name = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
+        if tag_name in ("line", "rectangle", "ellipse"):
+            pen = None
+            for c in list(elem):
+                c_name = c.tag.split("}")[-1] if "}" in c.tag else c.tag
+                if c_name == "pen":
+                    pen = c
+                    elem.remove(c)
+                    break
+            if pen is not None:
+                # In JasperReports 6.x schema: graphicElement must contain pen
+                graphic_elem = ET.Element(f"{ns_prefix}graphicElement")
+                graphic_elem.append(pen)
+                # graphicElement should be placed after reportElement if reportElement exists
+                if len(elem) > 0 and (elem[0].tag.endswith("reportElement")):
+                    elem.insert(1, graphic_elem)
+                else:
+                    elem.insert(0, graphic_elem)
+
     fd, temp_norm = tempfile.mkstemp(suffix=".jrxml")
     os.close(fd)
     ET.ElementTree(tree).write(temp_norm, encoding="utf-8", xml_declaration=True)
