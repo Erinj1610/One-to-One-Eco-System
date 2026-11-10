@@ -47,7 +47,8 @@ import {
   Play,
   CreditCard,
   Lock,
-  Unlock
+  Unlock,
+  Download
 } from 'lucide-react';
 
 const PHI_ADVISORIES = {
@@ -2667,6 +2668,35 @@ export default function SalesTracker() {
 
     alert(`Quotation Workspace Brain Synced & Saved to Cloud SQL!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Total Cost: R ${Math.round(totalCostTotal).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.`);
     setSelectedOrderId(null);
+  };
+
+  // EXPORT ORDER ITEMS FOR PALLADIUM SALES ORDER ITEM IMPORT
+  const handleExportPalladiumOrder = () => {
+    if (!activeOrderItems || activeOrderItems.length === 0) {
+      alert('No items in this order to export.');
+      return;
+    }
+
+    const validItems = activeOrderItems.filter(item => !item.is_credit && !item.isCredit && (Number(item.qty) || 0) > 0);
+    if (validItems.length === 0) {
+      alert('No valid items with quantity found to export.');
+      return;
+    }
+
+    // Format strictly for Palladium Item Import: Column A = Number, Column B = Quantity
+    const rows = validItems.map(item => ({
+      Number: (item.code || item.oneOneCode || item.one_one_code || 'ITEM').trim(),
+      Quantity: Math.round(Number(item.qty) || 0)
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+
+    worksheet['!cols'] = [{ wch: 25 }, { wch: 15 }];
+
+    const safeQuote = (quoteName || selectedOrderId || 'Order').replace(/[^a-zA-Z0-9_-]/g, '_');
+    XLSX.writeFile(workbook, `Palladium_SO_${safeQuote}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const handleBulkExcelExport = () => {
@@ -5648,6 +5678,24 @@ export default function SalesTracker() {
                     Cancel
                   </button>
                   
+                  <button 
+                    type="button"
+                    className="btn btn-outline btn-sm" 
+                    onClick={handleExportPalladiumOrder}
+                    title="Export clean XLSX (Number & Quantity) ready for Palladium Sales Order Item Import"
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px', 
+                      borderColor: 'var(--border)', 
+                      background: 'var(--bg-secondary)',
+                      color: 'var(--text-primary)',
+                      fontWeight: 600
+                    }}
+                  >
+                    <Download size={14} style={{ color: '#10b981' }} /> Export Palladium SO (.xlsx)
+                  </button>
+
                   <button 
                     className="btn btn-primary btn-sm" 
                     onClick={handleSaveOrderSpreadsheet}
