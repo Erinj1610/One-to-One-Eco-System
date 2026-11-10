@@ -71,13 +71,21 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
                         if adjust == "StretchHeight":
                             child.attrib["isStretchWithOverflow"] = "true"
 
-                    # Move textElement properties
+                    # Move textElement properties & paragraph
                     text_attribs = ["hTextAlign", "vTextAlign"]
                     has_text_props = any(a in child.attrib for a in text_attribs)
                     font_attribs = ["fontName", "fontSize", "bold", "italic", "underline"]
                     has_font_props = any(a in child.attrib for a in font_attribs)
+                    
+                    # Check for paragraph child in modern Studio 7
+                    paragraph_child = None
+                    for c in list(child):
+                        if c.tag.endswith("paragraph"):
+                            paragraph_child = c
+                            child.remove(c)
+                            break
 
-                    if has_text_props or has_font_props:
+                    if has_text_props or has_font_props or paragraph_child is not None:
                         txt_elem = ET.Element(f"{ns_prefix}textElement")
                         if "hTextAlign" in child.attrib:
                             txt_elem.attrib["textAlignment"] = child.attrib.pop("hTextAlign")
@@ -97,6 +105,10 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
                             if "underline" in child.attrib:
                                 f_elem.attrib["isUnderline"] = child.attrib.pop("underline")
                             txt_elem.append(f_elem)
+
+                        if paragraph_child is not None:
+                            paragraph_child.tag = f"{ns_prefix}paragraph"
+                            txt_elem.append(paragraph_child)
 
                         # In JasperReports schema, textElement MUST come BEFORE textFieldExpression / patternExpression
                         child.insert(1, txt_elem)
