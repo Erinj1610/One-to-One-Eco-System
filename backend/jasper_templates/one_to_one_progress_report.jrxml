@@ -19,7 +19,7 @@
 		<defaultValueExpression><![CDATA["House Botha"]]></defaultValueExpression>
 	</parameter>
 	<field name="sectionTitle" class="java.lang.String">
-		<description><![CDATA[Grouping section e.g. Entrance & Dining, Decorative Lighting]]></description>
+		<fieldDescription><![CDATA[Grouping section e.g. Entrance & Dining, Decorative Lighting]]></fieldDescription>
 	</field>
 	<field name="qty" class="java.lang.Integer"/>
 	<field name="oneOneCode" class="java.lang.String"/>
