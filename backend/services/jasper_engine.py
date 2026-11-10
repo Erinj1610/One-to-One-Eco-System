@@ -28,7 +28,17 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
     # Convert Studio 7 <element kind="staticText" ...> to <staticText><reportElement .../>
     # If the user saved in Studio 7 format:
     tree = ET.fromstring(content)
-    
+
+    # Rename <description> inside <field> to <fieldDescription>
+    for f in tree.findall(".//field"):
+        desc = f.find("description")
+        if desc is not None:
+            desc.tag = "fieldDescription"
+    for f in tree.findall(".//{http://jasperreports.sourceforge.net/jasperreports}field"):
+        desc = f.find("{http://jasperreports.sourceforge.net/jasperreports}description")
+        if desc is not None:
+            desc.tag = "{http://jasperreports.sourceforge.net/jasperreports}fieldDescription"
+
     # Check if modern Studio 7 elements exist
     has_modern_elements = len(tree.findall(".//element")) > 0
 
