@@ -57,12 +57,22 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
     if tree.tag.startswith("{"):
         ns_prefix = tree.tag.split("}")[0] + "}"
 
-    # Rename <description> inside <field> to <fieldDescription>
+    # Rename <description> inside <field> to <fieldDescription>, and ensure each field has a fieldDescription matching its JSON path
     for f in tree.iter():
         if f.tag.endswith("field"):
+            name = f.attrib.get("name", "")
+            # Ensure fieldDescription exists and points to JSON property
+            fd = None
             for child in f:
-                if child.tag.endswith("description"):
+                if child.tag.endswith("description") or child.tag.endswith("fieldDescription"):
                     child.tag = f"{ns_prefix}fieldDescription"
+                    fd = child
+                    break
+            if fd is None:
+                fd = ET.Element(f"{ns_prefix}fieldDescription")
+                f.append(fd)
+            # In Jasper JSON datasource, fieldDescription is the exact property path in the JSON row
+            fd.text = name
 
     # Rename <expression> inside <group> to <groupExpression>
     for g in tree.iter():
@@ -244,8 +254,33 @@ def compile_and_render_jasper_report(
     if output_base.lower().endswith(".pdf"):
         output_base = output_base[:-4]
 
+    # Expand both dot notation ("item.qty") and nested dicts ({"item": {"qty": ...}})
+    # so JasperReports JSON datasource can resolve any field mapping style flawlessly
+    clean_data = []
+    for row in data:
+        r = dict(row)
+        # 1. Flatten nested 'item' dict if present
+        if "item" in r and isinstance(r["item"], dict):
+            for sub_k, sub_v in r["item"].items():
+                r[f"item.{sub_k}"] = sub_v
+                if sub_k not in r:
+                    r[sub_k] = sub_v
+        else:
+            # 2. If 'item' is not a dict, populate nested 'item' and dot-notation from plain keys
+            sub_item = {}
+            for k in ["qty", "oneOneCode", "type", "description"]:
+                val = r.get(k)
+                if val is None and k == "type":
+                    val = r.get("madeCode")
+                if val is not None:
+                    r[f"item.{k}"] = val
+                    sub_item[k] = val
+            r["item"] = sub_item
+
+        clean_data.append(r)
+
     with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False, encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False)
+        json.dump(clean_data, f, ensure_ascii=False)
         temp_data_file = f.name
 
     try:
