@@ -31,7 +31,7 @@
 	<field name="eta" class="java.lang.String"/>
 	<field name="dateDelivered" class="java.lang.String"/>
 	<group name="SectionGroup">
-		<expression><![CDATA[$F{sectionTitle}]]></expression>
+		<groupExpression><![CDATA[$F{sectionTitle}]]></groupExpression>
 		<groupHeader>
 			<band height="46">
 				<element kind="textField" uuid="8a9b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d" x="0" y="8" width="555" height="18" fontName="SansSerif" fontSize="10.0" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
