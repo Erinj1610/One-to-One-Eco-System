@@ -1,0 +1,62 @@
+[
+  {
+    "sectionTitle": "House Botha (Entrance & Dining)",
+    "qty": 6,
+    "oneOneCode": "1TO1-0021",
+    "madeCode": "GD-CFMG9-LRG",
+    "description": "Pendant - Cumulus Fibre Mesh G9 220-240V Large 280x300mm Clear",
+    "progress": "Back Order",
+    "received": 0.0,
+    "backOrder": 6.0,
+    "eta": "12/06/2026",
+    "dateDelivered": ""
+  },
+  {
+    "sectionTitle": "House Botha (Entrance & Dining)",
+    "qty": 6,
+    "oneOneCode": "1TO1-0022",
+    "madeCode": "GD-CFMG9-SML",
+    "description": "Pendant - Cumulus Fibre Mesh G9 220-240V Small 240x280mm Clear",
+    "progress": "Back Order",
+    "received": 0.0,
+    "backOrder": 6.0,
+    "eta": "12/06/2026",
+    "dateDelivered": ""
+  },
+  {
+    "sectionTitle": "House Botha (Entrance & Dining)",
+    "qty": 12,
+    "oneOneCode": "1TO1-0035",
+    "madeCode": "BC91",
+    "description": "Lamp - G9 bi-pin dimmable lamp 3W IP20 3000K",
+    "progress": "Received",
+    "received": 12.0,
+    "backOrder": 0.0,
+    "eta": "Stock Received",
+    "dateDelivered": "05/06/2026"
+  },
+  {
+    "sectionTitle": "House Botha (Decorative Lighting)",
+    "qty": 2,
+    "oneOneCode": "1TO1-0044",
+    "madeCode": "LC-8379-G",
+    "description": "Wall Reading Light - Gamma SR 3.2W 2700K 31° IP20 Gold",
+    "progress": "Received",
+    "received": 2.0,
+    "backOrder": 0.0,
+    "eta": "Stock Received",
+    "dateDelivered": "08/06/2026"
+  },
+  {
+    "sectionTitle": "House Botha (Decorative Lighting)",
+    "qty": 1,
+    "oneOneCode": "1TO1-0051",
+    "madeCode": "GD-2200-LB",
+    "description": "Pendant - CINTURA 110-220V LED Leather & Brass",
+    "progress": "Back Order",
+    "received": 0.0,
+    "backOrder": 1.0,
+    "eta": "11/06/2026",
+    "dateDelivered": ""
+  }
+]

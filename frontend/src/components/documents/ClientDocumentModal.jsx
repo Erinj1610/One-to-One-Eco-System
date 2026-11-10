@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   X, 
   Download, 
@@ -47,6 +47,35 @@ export default function ClientDocumentModal({
   const [showOrderPicker, setShowOrderPicker] = useState(false);
   const [orderPickerSearch, setOrderPickerSearch] = useState('');
   const [orderPickerProjectFilter, setOrderPickerProjectFilter] = useState('ALL');
+
+  // Jasper Template Engine State
+  const [jasperTemplate, setJasperTemplate] = useState(null);
+  const [jasperLoading, setJasperLoading] = useState(false);
+  const [useJasperTemplate, setUseJasperTemplate] = useState(true);
+
+  // Fetch Jasper Template definition when opening or switching to progress
+  useEffect(() => {
+    let isMounted = true;
+    const fetchTemplate = async () => {
+      setJasperLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/documents/templates/one_to_one_progress_report`);
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted && data?.definition) {
+            setJasperTemplate(data.definition);
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch Jasper template definition:', err);
+      } finally {
+        if (isMounted) setJasperLoading(false);
+      }
+    };
+
+    fetchTemplate();
+    return () => { isMounted = false; };
+  }, []);
 
   // Editable Statement Details
   const [customNotes, setCustomNotes] = useState(
@@ -492,6 +521,25 @@ export default function ClientDocumentModal({
           </div>
 
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {docType === 'progress' && (
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px',
+                background: jasperTemplate ? 'rgba(15, 118, 110, 0.1)' : '#f1f5f9',
+                borderRadius: '6px',
+                border: '1px solid',
+                borderColor: jasperTemplate ? '#0f766e' : '#cbd5e1',
+                fontSize: '11px',
+                color: jasperTemplate ? '#0f766e' : '#64748b',
+                fontWeight: 600
+              }}>
+                <Layers size={13} />
+                <span>Jasper Template: {jasperTemplate ? 'one_to_one_progress_report.jrxml' : 'Connecting...'}</span>
+              </div>
+            )}
+
             <button
               type="button"
               onClick={handlePrint}
@@ -998,18 +1046,19 @@ export default function ClientDocumentModal({
 
 
             {/* ========================================================= */}
-            {/* DOCUMENT 2: PROGRESS REPORT LAYOUT                        */}
+            {/* DOCUMENT 2: PROGRESS REPORT LAYOUT (DRIVEN BY JASPER)    */}
             {/* ========================================================= */}
             {docType === 'progress' && (
               <div>
-                {/* REPORT HEADER */}
+                {/* REPORT HEADER (FROM JASPER PARAMETERS) */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #334155', paddingBottom: '12px', marginBottom: '18px' }}>
                   <div style={{ fontSize: '10px', color: '#475569', lineHeight: '1.4' }}>
-                    <strong>ONE:ONE</strong><br />
-                    3 Ravenscraig Road, Woodstock<br />
-                    Unit 09 The Stockyard<br />
-                    VAT No: 4590312965<br />
-                    Reg No: 2022/863083/07<br />
+                    <strong>{jasperTemplate?.parameters?.CompanyName || '1TO1 Design Studio'}</strong><br />
+                    {(jasperTemplate?.parameters?.CompanyAddress || '3 Ravenscraig Road, Woodstock\nUnit 09 The Stockyard\nCape Town, 7925').split('\n').map((line, lIdx) => (
+                      <span key={lIdx}>{line}<br /></span>
+                    ))}
+                    VAT No: {jasperTemplate?.parameters?.VatNumber || '4590312965'}<br />
+                    Reg No: {jasperTemplate?.parameters?.RegNumber || '2022/863083/07'}<br />
                     <strong>Date: {new Date(statementDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -1039,15 +1088,32 @@ export default function ClientDocumentModal({
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9.5px', textAlign: 'left' }}>
                       <thead>
                         <tr style={{ background: '#cbd5e1', color: '#0f172a', borderTop: '1px solid #94a3b8', borderBottom: '1px solid #94a3b8' }}>
-                          <th style={{ padding: '6px 6px', textAlign: 'center', width: '35px' }}>Qty</th>
-                          <th style={{ padding: '6px 6px', width: '90px' }}>1:1 Code</th>
-                          <th style={{ padding: '6px 6px', width: '90px' }}>Made Code</th>
-                          <th style={{ padding: '6px 6px' }}>Description</th>
-                          <th style={{ padding: '6px 6px', textAlign: 'center', width: '80px' }}>Progress</th>
-                          <th style={{ padding: '6px 6px', textAlign: 'right', width: '55px' }}>Received</th>
-                          <th style={{ padding: '6px 6px', textAlign: 'right', width: '55px' }}>Back Order</th>
-                          <th style={{ padding: '6px 6px', textAlign: 'center', width: '85px' }}>ETA</th>
-                          <th style={{ padding: '6px 6px', textAlign: 'center', width: '95px' }}>Date Delivered</th>
+                          {jasperTemplate?.columns && jasperTemplate.columns.length > 0 ? (
+                            jasperTemplate.columns.map((col, cIdx) => (
+                              <th 
+                                key={cIdx} 
+                                style={{ 
+                                  padding: '6px 6px', 
+                                  textAlign: col.label === 'Qty' || col.label === '1:1 Code' || col.label === 'Progress' || col.label === 'ETA' || col.label === 'Delivered' ? 'center' : (col.label === 'Received' || col.label === 'Back Order' ? 'right' : 'left'),
+                                  width: `${(col.width / 555) * 100}%`
+                                }}
+                              >
+                                {col.label}
+                              </th>
+                            ))
+                          ) : (
+                            <>
+                              <th style={{ padding: '6px 6px', textAlign: 'center', width: '35px' }}>Qty</th>
+                              <th style={{ padding: '6px 6px', width: '90px' }}>1:1 Code</th>
+                              <th style={{ padding: '6px 6px', width: '90px' }}>Made Code</th>
+                              <th style={{ padding: '6px 6px' }}>Description</th>
+                              <th style={{ padding: '6px 6px', textAlign: 'center', width: '80px' }}>Progress</th>
+                              <th style={{ padding: '6px 6px', textAlign: 'right', width: '55px' }}>Received</th>
+                              <th style={{ padding: '6px 6px', textAlign: 'right', width: '55px' }}>Back Order</th>
+                              <th style={{ padding: '6px 6px', textAlign: 'center', width: '85px' }}>ETA</th>
+                              <th style={{ padding: '6px 6px', textAlign: 'center', width: '95px' }}>Date Delivered</th>
+                            </>
+                          )}
                         </tr>
                       </thead>
                       <tbody>

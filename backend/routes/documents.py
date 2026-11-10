@@ -978,3 +978,40 @@ def stream_file_content(gdrive_file_id: str):
     except Exception as e:
         logger.error(f"Failed to stream file {gdrive_file_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to stream file: {str(e)}")
+
+
+# --- 12. JasperReports JRXML Template Endpoint ---
+@router.get("/templates/{template_name}")
+def get_jasper_template_definition(template_name: str):
+    """
+    Returns the parsed specification of a Jasper .jrxml template (margins, columns, fields, parameters)
+    so the portal can render the document dynamically exactly as defined in Jaspersoft Studio.
+    """
+    import os
+    from services.jasper_parser import parse_jrxml_template
+
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # Check in backend/jasper_templates or root jasper_templates
+    possible_paths = [
+        os.path.join(base_dir, "jasper_templates", f"{template_name}.jrxml"),
+        os.path.join(os.path.dirname(base_dir), "jasper_templates", f"{template_name}.jrxml"),
+        os.path.join(base_dir, "templates", f"{template_name}.jrxml")
+    ]
+
+    target_path = None
+    for p in possible_paths:
+        if os.path.exists(p):
+            target_path = p
+            break
+
+    if not target_path:
+        raise HTTPException(status_code=404, detail=f"Template {template_name}.jrxml not found on server")
+
+    parsed = parse_jrxml_template(target_path)
+    return {
+        "status": "success",
+        "template": template_name,
+        "path": target_path,
+        "definition": parsed
+    }
+

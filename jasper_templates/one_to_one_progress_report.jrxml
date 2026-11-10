@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Created with Jaspersoft Studio -->
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports" 
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+              xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd" 
+              name="one_to_one_progress_report" 
+              pageWidth="595" 
+              pageHeight="842" 
+              columnWidth="555" 
+              leftMargin="20" 
+              rightMargin="20" 
+              topMargin="25" 
+              bottomMargin="25" 
+              uuid="b1e8e5d3-8271-469b-871d-f8ecfa82910a">
+    
+    <!-- ================================================================= -->
+    <!-- REPORT PARAMETERS (Report-Level Metadata)                         -->
+    <!-- ================================================================= -->
+    <parameter name="CompanyName" class="java.lang.String">
+        <defaultValueExpression><![CDATA["1TO1 Design Studio"]]></defaultValueExpression>
+    </parameter>
+    <parameter name="CompanyAddress" class="java.lang.String">
+        <defaultValueExpression><![CDATA["3 Ravenscraig Road, Woodstock\nUnit 09 The Stockyard\nCape Town, 7925"]]></defaultValueExpression>
+    </parameter>
+    <parameter name="VatNumber" class="java.lang.String">
+        <defaultValueExpression><![CDATA["4590312965"]]></defaultValueExpression>
+    </parameter>
+    <parameter name="RegNumber" class="java.lang.String">
+        <defaultValueExpression><![CDATA["2022/863083/07"]]></defaultValueExpression>
+    </parameter>
+    <parameter name="ReportDate" class="java.lang.String">
+        <defaultValueExpression><![CDATA["2 June 2026"]]></defaultValueExpression>
+    </parameter>
+    <parameter name="ProjectName" class="java.lang.String">
+        <defaultValueExpression><![CDATA["House Botha"]]></defaultValueExpression>
+    </parameter>
+
+    <!-- ================================================================= -->
+    <!-- FIELDS (Dynamic row data for progress report items)              -->
+    <!-- ================================================================= -->
+    <field name="sectionTitle" class="java.lang.String">
+        <fieldDescription><![CDATA[Grouping section e.g. Entrance & Dining, Decorative Lighting]]></fieldDescription>
+    </field>
+    <field name="qty" class="java.lang.Integer"/>
+    <field name="oneOneCode" class="java.lang.String"/>
+    <field name="madeCode" class="java.lang.String"/>
+    <field name="description" class="java.lang.String"/>
+    <field name="progress" class="java.lang.String"/>
+    <field name="received" class="java.lang.Double"/>
+    <field name="backOrder" class="java.lang.Double"/>
+    <field name="eta" class="java.lang.String"/>
+    <field name="dateDelivered" class="java.lang.String"/>
+
+    <!-- ================================================================= -->
+    <!-- SECTION GROUPING                                                  -->
+    <!-- ================================================================= -->
+    <group name="SectionGroup">
+        <groupExpression><![CDATA[$F{sectionTitle}]]></groupExpression>
+        <groupHeader>
+            <band height="46">
+                <!-- Group Title Bar (Matches House Botha Section Header) -->
+                <textField isBlankWhenNull="true">
+                    <reportElement x="0" y="8" width="555" height="18" uuid="8a9b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d"/>
+                    <textElement textAlignment="Center" verticalAlignment="Middle">
+                        <font fontName="SansSerif" size="10" isBold="true"/>
+                    </textElement>
+                    <textFieldExpression><![CDATA[$F{sectionTitle} != null ? $F{sectionTitle} : ($P{ProjectName} + " (General Lighting)")]]></textFieldExpression>
+                </textField>
+                <line>
+                    <reportElement x="0" y="26" width="555" height="1" forecolor="#0F172A" uuid="9a8b7c6d-5e4f-3a2b-1c0d-9e8f7a6b5c4d"/>
+                    <graphicElement>
+                        <pen lineWidth="1.0"/>
+                    </graphicElement>
+                </line>
+
+                <!-- Table Column Header -->
+                <rectangle>
+                    <reportElement mode="Opaque" x="0" y="28" width="555" height="18" backcolor="#E2E8F0" uuid="1c2d3e4f-5a6b-7c8d-9e0f-1a2b3c4d5e6f"/>
+                    <graphicElement>
+                        <pen lineWidth="0.5" lineColor="#CBD5E1"/>
+                    </graphicElement>
+                </rectangle>
+
+                <staticText>
+                    <reportElement x="0" y="28" width="28" height="18" uuid="a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"/>
+                    <textElement textAlignment="Center" verticalAlignment="Middle">
+                        <font fontName="SansSerif" size="8" isBold="true"/>
+                    </textElement>
+                    <text><![CDATA[Qty]]></text>
+                </staticText>
+                <staticText>
+                    <reportElement x="28" y="28" width="55" height="18" uuid="b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e"/>
+                    <textElement textAlignment="Center" verticalAlignment="Middle">
+                        <font fontName="SansSerif" size="8" isBold="true"/>
+                    </textElement>
+                    <text><![CDATA[1:1 Code]]></text>
+                </staticText>
+                <staticText>
+                    <reportElement x="83" y="28" width="70" height="18" uuid="c3d4e5f6-a7b8-9c0d-1e2f-3a4b5c6d7e8f"/>
+                    <textElement textAlignment="Left" verticalAlignment="Middle">
+                        <font fontName="SansSerif" size="8" isBold="true"/>
+                    </textElement>
+                    <text><![CDATA[Made code]]></text>
+                </staticText>
+                <staticText>
+                    <reportElement x="153" y="28" width="165" height="18" uuid="d4e5f6a7-b8c9-0d1e-2f3a-4b5c6d7e8f9a"/>
+                    <textElement textAlignment="Left" verticalAlignment="Middle">
+                        <font fontName="SansSerif" size="8" isBold="true"/>
+                    </textElement>
+                    <text><![CDATA[Description]]></text>
+                </staticText>
+                <staticText>
+                    <reportElement x="318" y="28" width="48" height="18" uuid="e5f6a7b8-c9d0-1e2f-3a4b-5c6d7e8f9a0b"/>
+                    <textElement textAlignment="Center" verticalAlignment="Middle">
+                        <font fontName="SansSerif" size="8" isBold="true"/>
+                    </textElement>
+                    <text><![CDATA[Progress]]></text>
+                </staticText>
+                <staticText>
+                    <reportElement x="366" y="28" width="42" height="18" uuid="f6a7b8c9-d0e1-2f3a-4b5c-6d7e8f9a0b1c"/>
+                    <textElement textAlignment="Right" verticalAlignment="Middle">
+                        <font fontName="SansSerif" size="8" isBold="true"/>
+                    </textElement>
+                    <text><![CDATA[Received]]></text>
+                </staticText>
+                <staticText>
+                    <reportElement x="408" y="28" width="45" height="18" uuid="a7b8c9d0-e1f2-3a4b-5c6d-7e8f9a0b1c2d"/>
+                    <textElement textAlignment="Right" verticalAlignment="Middle">
+                        <font fontName="SansSerif" size="8" isBold="true"/>
+                    </textElement>
+                    <text><![CDATA[Back Order]]></text>
+                </staticText>
+                <staticText>
+                    <reportElement x="453" y="28" width="52" height="18" uuid="b8c9d0e1-f2a3-4b5c-6d7e-8f9a0b1c2d3e"/>
+                    <textElement textAlignment="Center" verticalAlignment="Middle">
+                        <font fontName="SansSerif" size="8" isBold="true"/>
+                    </textElement>
+                    <text><![CDATA[ETA]]></text>
+                </staticText>
+                <staticText>
+                    <reportElement x="505" y="28" width="50" height="18" uuid="c9d0e1f2-a3b4-5c6d-7e8f-9a0b1c2d3e4f"/>
+                    <textElement textAlignment="Center" verticalAlignment="Middle">
+                        <font fontName="SansSerif" size="8" isBold="true"/>
+                    </textElement>
+                    <text><![CDATA[Delivered]]></text>
+                </staticText>
+            </band>
+        </groupHeader>
+        <groupFooter>
+            <band height="10">
+                <line>
+                    <reportElement x="0" y="2" width="555" height="1" forecolor="#CBD5E1" uuid="8e9f0a1b-2c3d-4e5f-6a7b-8c9d0e1f2a3b"/>
+                </line>
+            </band>
+        </groupFooter>
+    </group>
+
+    <!-- ================================================================= -->
+    <!-- TITLE BAND                                                        -->
+    <!-- ================================================================= -->
+    <title>
+        <band height="68" splitType="Stretch">
+            <!-- Left Company Info -->
+            <textField>
+                <reportElement x="0" y="0" width="280" height="48" forecolor="#334155" uuid="1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"/>
+                <textElement>
+                    <font fontName="SansSerif" size="8" isBold="false"/>
+                    <paragraph lineSpacing="Single"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$P{CompanyAddress} + "\nVAT No: " + $P{VatNumber} + "\nReg No: " + $P{RegNumber}]]></textFieldExpression>
+            </textField>
+            
+            <textField>
+                <reportElement x="0" y="48" width="280" height="14" forecolor="#0F172A" uuid="2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e"/>
+                <textElement verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="8" isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA["Date: " + $P{ReportDate}]]></textFieldExpression>
+            </textField>
+
+            <!-- Center/Right Title -->
+            <staticText>
+                <reportElement x="270" y="15" width="285" height="24" forecolor="#0F172A" uuid="3c4d5e6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="16" isBold="true" isUnderline="true"/>
+                </textElement>
+                <text><![CDATA[PROGRESS REPORT]]></text>
+            </staticText>
+        </band>
+    </title>
+
+    <!-- ================================================================= -->
+    <!-- DETAIL BAND (Each item row in the progress report)                -->
+    <!-- ================================================================= -->
+    <detail>
+        <band height="18" splitType="Prevent">
+            <!-- Alternating background bar -->
+            <rectangle>
+                <reportElement mode="Opaque" x="0" y="0" width="555" height="18" backcolor="#FFFFFF" uuid="d1e2f3a4-b5c6-7d8e-9f0a-1b2c3d4e5f6a">
+                    <printWhenExpression><![CDATA[$V{REPORT_COUNT} % 2 == 1]]></printWhenExpression>
+                </reportElement>
+                <graphicElement>
+                    <pen lineWidth="0.5" lineColor="#E2E8F0"/>
+                </graphicElement>
+            </rectangle>
+            <rectangle>
+                <reportElement mode="Opaque" x="0" y="0" width="555" height="18" backcolor="#F8FAFC" uuid="e2f3a4b5-c6d7-8e9f-0a1b-2c3d4e5f6a7b">
+                    <printWhenExpression><![CDATA[$V{REPORT_COUNT} % 2 == 0]]></printWhenExpression>
+                </reportElement>
+                <graphicElement>
+                    <pen lineWidth="0.5" lineColor="#E2E8F0"/>
+                </graphicElement>
+            </rectangle>
+
+            <!-- Qty -->
+            <textField isBlankWhenNull="true">
+                <reportElement x="0" y="0" width="28" height="18" uuid="4d5e6f7a-8b9c-0d1e-2f3a-4b5c6d7e8f9a"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="8" isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$F{qty}]]></textFieldExpression>
+            </textField>
+
+            <!-- 1:1 Code -->
+            <textField isBlankWhenNull="true">
+                <reportElement x="28" y="0" width="55" height="18" forecolor="#0F766E" uuid="5e6f7a8b-9c0d-1e2f-3a4b-5c6d7e8f9a0b"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font fontName="Courier New" size="7.5" isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$F{oneOneCode} != null ? $F{oneOneCode} : "—"]]></textFieldExpression>
+            </textField>
+
+            <!-- Made Code -->
+            <textField isBlankWhenNull="true">
+                <reportElement x="83" y="0" width="70" height="18" uuid="6f7a8b9c-0d1e-2f3a-4b5c-6d7e8f9a0b1c"/>
+                <textElement textAlignment="Left" verticalAlignment="Middle">
+                    <font fontName="Courier New" size="7.5"/>
+                    <paragraph leftIndent="2"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$F{madeCode} != null ? $F{madeCode} : "—"]]></textFieldExpression>
+            </textField>
+
+            <!-- Description -->
+            <textField isStretchWithOverflow="true" isBlankWhenNull="true">
+                <reportElement x="153" y="0" width="165" height="18" uuid="7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d"/>
+                <textElement verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="7.5"/>
+                    <paragraph leftIndent="2"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$F{description}]]></textFieldExpression>
+            </textField>
+
+            <!-- Progress (Received vs Back Order badge) -->
+            <textField isBlankWhenNull="true">
+                <reportElement x="318" y="0" width="48" height="18" forecolor="#B45309" uuid="8b9c0d1e-2f3a-4b5c-6d7e-8f9a0b1c2d3e">
+                    <printWhenExpression><![CDATA[$F{progress} != null && !"Received".equalsIgnoreCase($F{progress})]]></printWhenExpression>
+                </reportElement>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="7.5" isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$F{progress} != null ? $F{progress} : "Back Order"]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="318" y="0" width="48" height="18" forecolor="#16A34A" uuid="9c0d1e2f-3a4b-5c6d-7e8f-9a0b1c2d3e4f">
+                    <printWhenExpression><![CDATA["Received".equalsIgnoreCase($F{progress})]]></printWhenExpression>
+                </reportElement>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="7.5" isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA["Received"]]></textFieldExpression>
+            </textField>
+
+            <!-- Received -->
+            <textField pattern="#,##0.00" isBlankWhenNull="true">
+                <reportElement x="366" y="0" width="42" height="18" uuid="0d1e2f3a-4b5c-6d7e-8f9a-0b1c2d3e4f5a"/>
+                <textElement textAlignment="Right" verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="7.5" isBold="true"/>
+                    <paragraph rightIndent="2"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$F{received}]]></textFieldExpression>
+            </textField>
+
+            <!-- Back Order -->
+            <textField pattern="#,##0.00" isBlankWhenNull="true">
+                <reportElement x="408" y="0" width="45" height="18" forecolor="#B91C1C" uuid="1e2f3a4b-5c6d-7e8f-9a0b-1c2d3e4f5a6b"/>
+                <textElement textAlignment="Right" verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="7.5" isBold="true"/>
+                    <paragraph rightIndent="2"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$F{backOrder}]]></textFieldExpression>
+            </textField>
+
+            <!-- ETA -->
+            <textField isBlankWhenNull="true">
+                <reportElement x="453" y="0" width="52" height="18" uuid="2f3a4b5c-6d7e-8f9a-0b1c-2d3e4f5a6b7c"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="7.5"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$F{eta}]]></textFieldExpression>
+            </textField>
+
+            <!-- Date Delivered -->
+            <textField isBlankWhenNull="true">
+                <reportElement x="505" y="0" width="50" height="18" forecolor="#475569" uuid="3a4b5c6d-7e8f-9a0b-1c2d-3e4f5a6b7c8d"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="7.5"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$F{dateDelivered} != null ? $F{dateDelivered} : "—"]]></textFieldExpression>
+            </textField>
+        </band>
+    </detail>
+
+    <!-- ================================================================= -->
+    <!-- PAGE FOOTER                                                       -->
+    <!-- ================================================================= -->
+    <pageFooter>
+        <band height="20">
+            <line>
+                <reportElement x="0" y="2" width="555" height="1" forecolor="#CBD5E1" uuid="4b5c6d7e-8f9a-0b1c-2d3e-4f5a6b7c8d9e"/>
+            </line>
+            <textField>
+                <reportElement x="0" y="4" width="300" height="14" forecolor="#94A3B8" uuid="5c6d7e8f-9a0b-1c2d-3e4f-5a6b7c8d9e0f"/>
+                <textElement verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="7.5"/>
+                </textElement>
+                <textFieldExpression><![CDATA["ONE:ONE Progress Report — " + $P{ProjectName}]]></textFieldExpression>
+            </textField>
+            <textField>
+                <reportElement x="400" y="4" width="155" height="14" forecolor="#94A3B8" uuid="6d7e8f9a-0b1c-2d3e-4f5a-6b7c8d9e0f1a"/>
+                <textElement textAlignment="Right" verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="7.5"/>
+                </textElement>
+                <textFieldExpression><![CDATA["Page " + $V{PAGE_NUMBER}]]></textFieldExpression>
+            </textField>
+        </band>
+    </pageFooter>
+
+</jasperReport>
