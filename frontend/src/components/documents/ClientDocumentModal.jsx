@@ -59,7 +59,9 @@ export default function ClientDocumentModal({
     const fetchTemplate = async () => {
       setJasperLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/api/documents/templates/one_to_one_progress_report`);
+        // Explicitly query Cloud Run staging backend where the jasper parser and template reside
+        const backendUrl = 'https://one-to-one-backend-staging-858977785048.us-central1.run.app';
+        const res = await fetch(`${backendUrl}/api/documents/templates/one_to_one_progress_report`);
         if (res.ok) {
           const data = await res.json();
           if (isMounted && data?.definition) {
