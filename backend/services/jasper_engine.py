@@ -101,14 +101,17 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
                         # In JasperReports schema, textElement MUST come BEFORE textFieldExpression / patternExpression
                         child.insert(1, txt_elem)
 
-                    # Move expression to textFieldExpression
+                    # Move expression to textFieldExpression or imageExpression
                     expr = None
                     for c in child:
                         if c.tag.endswith("expression"):
                             expr = c
                             break
-                    if expr is not None and kind == "textField":
-                        expr.tag = f"{ns_prefix}textFieldExpression"
+                    if expr is not None:
+                        if kind == "textField":
+                            expr.tag = f"{ns_prefix}textFieldExpression"
+                        elif kind == "image":
+                            expr.tag = f"{ns_prefix}imageExpression"
 
     # Wrap <pen> inside <graphicElement> for line, rectangle, ellipse, etc. in JasperReports 6.x
     for elem in tree.iter():
@@ -130,6 +133,29 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
                     elem.insert(1, graphic_elem)
                 else:
                     elem.insert(0, graphic_elem)
+
+    # In JasperReports 6.x schema, sections like <title>, <pageHeader>, <columnHeader>, <pageFooter>, <summary>
+    # MUST contain a <band> child. Studio 7 placed elements and height directly on the section tag.
+    band_container_tags = [
+        "background", "title", "pageHeader", "columnHeader",
+        "groupHeader", "groupFooter", "columnFooter", "pageFooter",
+        "lastPageFooter", "summary", "noData"
+    ]
+    for parent in list(tree.iter()):
+        for sec in list(parent):
+            tag_name = sec.tag.split("}")[-1] if "}" in sec.tag else sec.tag
+            if tag_name in band_container_tags:
+                has_band = any((c.tag.split("}")[-1] if "}" in c.tag else c.tag) == "band" for c in sec)
+                if not has_band:
+                    # Move all children and band-related attributes into a <band> child
+                    band = ET.Element(f"{ns_prefix}band")
+                    for attr in ["height", "splitType"]:
+                        if attr in sec.attrib:
+                            band.attrib[attr] = sec.attrib.pop(attr)
+                    for c in list(sec):
+                        sec.remove(c)
+                        band.append(c)
+                    sec.append(band)
 
     fd, temp_norm = tempfile.mkstemp(suffix=".jrxml")
     os.close(fd)
