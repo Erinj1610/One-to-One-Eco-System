@@ -980,7 +980,65 @@ def stream_file_content(gdrive_file_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to stream file: {str(e)}")
 
 
-# --- 12. JasperReports JRXML Template Endpoint ---
+# --- 13. Jasper PDF Generator Endpoint ---
+class JasperGenerateRequest(BaseModel):
+    template_name: str = "one_to_one_progress_report"
+    parameters: Optional[Dict[str, Any]] = None
+    data: List[Dict[str, Any]] = []
+
+@router.post("/generate/jasper-pdf")
+def generate_jasper_pdf_endpoint(payload: JasperGenerateRequest):
+    """
+    Renders an authentic, pixel-perfect PDF directly from a JasperReports .jrxml template
+    using the real JasperReports compilation engine.
+    """
+    import os
+    from fastapi.responses import FileResponse, Response
+    from services.jasper_engine import compile_and_render_jasper_report
+
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    possible_paths = [
+        os.path.join(base_dir, "jasper_templates", f"{payload.template_name}.jrxml"),
+        os.path.join(os.path.dirname(base_dir), "jasper_templates", f"{payload.template_name}.jrxml"),
+        os.path.join(base_dir, "templates", f"{payload.template_name}.jrxml")
+    ]
+
+    target_path = None
+    for p in possible_paths:
+        if os.path.exists(p):
+            target_path = p
+            break
+
+    if not target_path:
+        raise HTTPException(status_code=404, detail=f"Jasper template {payload.template_name}.jrxml not found")
+
+    try:
+        pdf_path = compile_and_render_jasper_report(
+            jrxml_path=target_path,
+            data=payload.data,
+            parameters=payload.parameters
+        )
+
+        with open(pdf_path, "rb") as f:
+            pdf_bytes = f.read()
+
+        try:
+            os.remove(pdf_path)
+        except Exception:
+            pass
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"inline; filename=\"{payload.template_name}.pdf\"",
+                "Cache-Control": "no-cache"
+            }
+        )
+    except Exception as e:
+        logger.error(f"Jasper compilation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to generate Jasper PDF: {str(e)}")
+
 @router.get("/templates/{template_name}")
 def get_jasper_template_definition(template_name: str):
     """

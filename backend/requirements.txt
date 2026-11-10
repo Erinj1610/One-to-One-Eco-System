@@ -19,3 +19,4 @@ pymssql==2.3.13
 
 pymupdf>=1.24.0
 Pillow>=10.0.0
+pyreportjasper>=2.1.4
