@@ -1121,28 +1121,111 @@ export default function ClientDocumentModal({
                       <tbody>
                         {group.rows.map((r, rIdx) => (
                           <tr key={rIdx} style={{ borderBottom: '1px solid #e2e8f0', background: rIdx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
-                            <td style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700 }}>{r.qty}</td>
-                            <td style={{ padding: '6px 6px', fontFamily: 'monospace', fontWeight: 600, color: '#0f766e' }}>{r.oneOneCode}</td>
-                            <td style={{ padding: '6px 6px', fontFamily: 'monospace' }}>{r.code}</td>
-                            <td style={{ padding: '6px 6px', maxWidth: '240px' }}>{r.description}</td>
-                            <td style={{ padding: '6px 6px', textAlign: 'center' }}>
-                              <span style={{
-                                padding: '2px 6px',
-                                borderRadius: '4px',
-                                fontSize: '8.5px',
-                                fontWeight: 700,
-                                background: r.progress === 'Received' ? 'rgba(22, 163, 74, 0.12)' : 'rgba(245, 158, 11, 0.15)',
-                                color: r.progress === 'Received' ? '#16a34a' : '#b45309'
-                              }}>
-                                {r.progress}
-                              </span>
-                            </td>
-                            <td style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 600 }}>{r.received.toFixed(2)}</td>
-                            <td style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 600, color: r.backOrder > 0 ? '#b91c1c' : '#64748b' }}>
-                              {r.backOrder.toFixed(2)}
-                            </td>
-                            <td style={{ padding: '6px 6px', textAlign: 'center', fontSize: '9px', fontWeight: 600 }}>{r.eta}</td>
-                            <td style={{ padding: '6px 6px', textAlign: 'center', fontSize: '9px', color: '#475569' }}>{r.dateDelivered}</td>
+                            {jasperTemplate?.columns && jasperTemplate.columns.length > 0 ? (
+                              jasperTemplate.columns.map((col, cIdx) => {
+                                const lbl = (col.label || '').toLowerCase().trim();
+                                if (lbl.includes('qty')) {
+                                  return (
+                                    <td key={cIdx} style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700 }}>
+                                      {r.qty}
+                                    </td>
+                                  );
+                                }
+                                if (lbl.includes('1:1') || lbl.includes('one')) {
+                                  return (
+                                    <td key={cIdx} style={{ padding: '6px 6px', fontFamily: 'monospace', fontWeight: 600, color: '#0f766e', textAlign: 'center' }}>
+                                      {r.oneOneCode}
+                                    </td>
+                                  );
+                                }
+                                if (lbl.includes('plan') || lbl.includes('made') || lbl.includes('type')) {
+                                  return (
+                                    <td key={cIdx} style={{ padding: '6px 6px', fontFamily: 'monospace' }}>
+                                      {r.code}
+                                    </td>
+                                  );
+                                }
+                                if (lbl.includes('desc')) {
+                                  return (
+                                    <td key={cIdx} style={{ padding: '6px 6px', maxWidth: '240px' }}>
+                                      {r.description}
+                                    </td>
+                                  );
+                                }
+                                if (lbl.includes('prog')) {
+                                  return (
+                                    <td key={cIdx} style={{ padding: '6px 6px', textAlign: 'center' }}>
+                                      <span style={{
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        fontSize: '8.5px',
+                                        fontWeight: 700,
+                                        background: r.progress === 'Received' ? 'rgba(22, 163, 74, 0.12)' : 'rgba(245, 158, 11, 0.15)',
+                                        color: r.progress === 'Received' ? '#16a34a' : '#b45309'
+                                      }}>
+                                        {r.progress}
+                                      </span>
+                                    </td>
+                                  );
+                                }
+                                if (lbl.includes('rec')) {
+                                  return (
+                                    <td key={cIdx} style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 600 }}>
+                                      {r.received.toFixed(2)}
+                                    </td>
+                                  );
+                                }
+                                if (lbl.includes('back')) {
+                                  return (
+                                    <td key={cIdx} style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 600, color: r.backOrder > 0 ? '#b91c1c' : '#64748b' }}>
+                                      {r.backOrder.toFixed(2)}
+                                    </td>
+                                  );
+                                }
+                                if (lbl.includes('eta')) {
+                                  return (
+                                    <td key={cIdx} style={{ padding: '6px 6px', textAlign: 'center', fontSize: '9px', fontWeight: 600 }}>
+                                      {r.eta}
+                                    </td>
+                                  );
+                                }
+                                if (lbl.includes('deliv')) {
+                                  return (
+                                    <td key={cIdx} style={{ padding: '6px 6px', textAlign: 'center', fontSize: '9px', color: '#475569' }}>
+                                      {r.dateDelivered}
+                                    </td>
+                                  );
+                                }
+                                return (
+                                  <td key={cIdx} style={{ padding: '6px 6px' }}>—</td>
+                                );
+                              })
+                            ) : (
+                              <>
+                                <td style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700 }}>{r.qty}</td>
+                                <td style={{ padding: '6px 6px', fontFamily: 'monospace', fontWeight: 600, color: '#0f766e' }}>{r.oneOneCode}</td>
+                                <td style={{ padding: '6px 6px', fontFamily: 'monospace' }}>{r.code}</td>
+                                <td style={{ padding: '6px 6px', maxWidth: '240px' }}>{r.description}</td>
+                                <td style={{ padding: '6px 6px', textAlign: 'center' }}>
+                                  <span style={{
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    fontSize: '8.5px',
+                                    fontWeight: 700,
+                                    background: r.progress === 'Received' ? 'rgba(22, 163, 74, 0.12)' : 'rgba(245, 158, 11, 0.15)',
+                                    color: r.progress === 'Received' ? '#16a34a' : '#b45309'
+                                  }}>
+                                    {r.progress}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 600 }}>{r.received.toFixed(2)}</td>
+                                <td style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 600, color: r.backOrder > 0 ? '#b91c1c' : '#64748b' }}>
+                                  {r.backOrder.toFixed(2)}
+                                </td>
+                                <td style={{ padding: '6px 6px', textAlign: 'center', fontSize: '9px', fontWeight: 600 }}>{r.eta}</td>
+                                <td style={{ padding: '6px 6px', textAlign: 'center', fontSize: '9px', color: '#475569' }}>{r.dateDelivered}</td>
+                              </>
+                            )}
                           </tr>
                         ))}
                       </tbody>
