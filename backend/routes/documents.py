@@ -983,6 +983,7 @@ def stream_file_content(gdrive_file_id: str):
 # --- 13. Jasper PDF Generator Endpoint ---
 class JasperGenerateRequest(BaseModel):
     template_name: str = "one_to_one_progress_report"
+    template_xml: Optional[str] = None
     parameters: Optional[Dict[str, Any]] = None
     data: List[Dict[str, Any]] = []
 
@@ -991,26 +992,39 @@ def generate_jasper_pdf_endpoint(payload: JasperGenerateRequest):
     """
     Renders an authentic, pixel-perfect PDF directly from a JasperReports .jrxml template
     using the real JasperReports compilation engine.
+    Supports either a template_name on the server or raw template_xml provided directly by the user.
     """
     import os
+    import tempfile
     from fastapi.responses import FileResponse, Response
     from services.jasper_engine import compile_and_render_jasper_report
 
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    possible_paths = [
-        os.path.join(base_dir, "jasper_templates", f"{payload.template_name}.jrxml"),
-        os.path.join(os.path.dirname(base_dir), "jasper_templates", f"{payload.template_name}.jrxml"),
-        os.path.join(base_dir, "templates", f"{payload.template_name}.jrxml")
-    ]
+    clean_template_name = payload.template_name
+    if clean_template_name.lower().endswith(".jrxml"):
+        clean_template_name = clean_template_name[:-6]
 
-    target_path = None
-    for p in possible_paths:
-        if os.path.exists(p):
-            target_path = p
-            break
+    temp_custom_xml = None
+    if payload.template_xml and payload.template_xml.strip():
+        fd, temp_custom_xml = tempfile.mkstemp(suffix=".jrxml")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(payload.template_xml)
+        target_path = temp_custom_xml
+    else:
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        possible_paths = [
+            os.path.join(base_dir, "jasper_templates", f"{clean_template_name}.jrxml"),
+            os.path.join(os.path.dirname(base_dir), "jasper_templates", f"{clean_template_name}.jrxml"),
+            os.path.join(base_dir, "templates", f"{clean_template_name}.jrxml")
+        ]
+
+        target_path = None
+        for p in possible_paths:
+            if os.path.exists(p):
+                target_path = p
+                break
 
     if not target_path:
-        raise HTTPException(status_code=404, detail=f"Jasper template {payload.template_name}.jrxml not found")
+        raise HTTPException(status_code=404, detail=f"Jasper template {clean_template_name}.jrxml not found")
 
     try:
         pdf_path = compile_and_render_jasper_report(
@@ -1027,15 +1041,26 @@ def generate_jasper_pdf_endpoint(payload: JasperGenerateRequest):
         except Exception:
             pass
 
+        if temp_custom_xml and os.path.exists(temp_custom_xml):
+            try:
+                os.remove(temp_custom_xml)
+            except Exception:
+                pass
+
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f"inline; filename=\"{payload.template_name}.pdf\"",
-                "Cache-Control": "no-cache"
+                "Content-Disposition": f"inline; filename=\"{clean_template_name}.pdf\"",
+                "Cache-Control": "no-cache, no-store, must-revalidate"
             }
         )
     except Exception as e:
+        if temp_custom_xml and os.path.exists(temp_custom_xml):
+            try:
+                os.remove(temp_custom_xml)
+            except Exception:
+                pass
         logger.error(f"Jasper compilation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to generate Jasper PDF: {str(e)}")
 

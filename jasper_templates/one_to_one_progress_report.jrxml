@@ -35,7 +35,7 @@
 		<groupHeader>
 			<band height="46">
 				<element kind="textField" uuid="8a9b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d" x="0" y="8" width="555" height="18" fontName="SansSerif" fontSize="10.0" bold="true" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
-					<expression><![CDATA[$P{ProjectName}]]></expression>
+					<expression><![CDATA[$F{sectionTitle}]]></expression>
 				</element>
 				<element kind="line" uuid="9a8b7c6d-5e4f-3a2b-1c0d-9e8f7a6b5c4d" x="0" y="26" width="555" height="1" forecolor="#0F172A">
 					<pen lineWidth="1.0"/>
@@ -83,8 +83,8 @@
 			<paragraph lineSpacing="Single"/>
 			<expression><![CDATA[$P{CompanyAddress} + "\nVAT No: " + $P{VatNumber} + "\nReg No: " + $P{RegNumber}]]></expression>
 		</element>
-		<element kind="staticText" uuid="3c4d5e6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f" x="0" y="0" width="380" height="24" forecolor="#0F172A" fontName="SansSerif" fontSize="16.0" bold="true" underline="true" hTextAlign="Center" vTextAlign="Middle">
-			<text><![CDATA[($P{ProjectName})  Progress Report]]></text>
+		<element kind="textField" uuid="3c4d5e6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f" x="0" y="0" width="380" height="24" forecolor="#0F172A" fontName="SansSerif" fontSize="16.0" bold="true" underline="true" hTextAlign="Left" vTextAlign="Middle">
+			<expression><![CDATA[$P{ProjectName} + "  Progress Report"]]></expression>
 		</element>
 		<element kind="textField" uuid="2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e" x="0" y="73" width="380" height="14" forecolor="#0F172A" fontName="SansSerif" fontSize="8.0" bold="true" vTextAlign="Middle">
 			<expression><![CDATA["Date: " + $P{ReportDate}]]></expression>
