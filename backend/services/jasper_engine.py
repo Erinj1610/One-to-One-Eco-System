@@ -73,6 +73,18 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
                 f.append(fd)
             # In Jasper JSON datasource, fieldDescription is the exact property path in the JSON row
             fd.text = name
+            
+            # Also attach property net.sf.jasperreports.json.field.expression for JasperReports 6.x
+            prop = None
+            for child in f:
+                if child.tag.endswith("property") and child.attrib.get("name") == "net.sf.jasperreports.json.field.expression":
+                    prop = child
+                    break
+            if prop is None:
+                prop = ET.Element(f"{ns_prefix}property")
+                prop.attrib["name"] = "net.sf.jasperreports.json.field.expression"
+                f.insert(0, prop)
+            prop.attrib["value"] = name
 
     # Rename <expression> inside <group> to <groupExpression>
     for g in tree.iter():
