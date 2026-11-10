@@ -52,32 +52,80 @@ export default function ClientDocumentModal({
   const [jasperTemplate, setJasperTemplate] = useState(null);
   const [jasperLoading, setJasperLoading] = useState(false);
   const [useJasperTemplate, setUseJasperTemplate] = useState(true);
+  const [jasperPdfBlobUrl, setJasperPdfBlobUrl] = useState(null);
+  const [jasperPdfGenerating, setJasperPdfGenerating] = useState(false);
 
-  // Fetch Jasper Template definition when opening or switching to progress
+  // Generate authentic Jasper PDF whenever in progress tab and scope/date changes
   useEffect(() => {
     let isMounted = true;
-    const fetchTemplate = async () => {
-      setJasperLoading(true);
+    if (docType !== 'progress') return;
+
+    const generateJasperPdf = async () => {
+      setJasperPdfGenerating(true);
       try {
-        // Explicitly query Cloud Run staging backend where the jasper parser and template reside
+        const flatData = [];
+        progressReportGroups.forEach(group => {
+          group.rows.forEach(r => {
+            flatData.push({
+              sectionTitle: group.title,
+              qty: r.qty,
+              oneOneCode: r.oneOneCode,
+              madeCode: r.code,
+              description: r.description,
+              progress: r.progress,
+              received: r.received,
+              backOrder: r.backOrder,
+              eta: r.eta,
+              dateDelivered: r.dateDelivered,
+              item: {
+                qty: r.qty,
+                oneOneCode: r.oneOneCode,
+                type: r.code,
+                description: r.description
+              }
+            });
+          });
+        });
+
         const backendUrl = 'https://one-to-one-backend-staging-858977785048.us-central1.run.app';
-        const res = await fetch(`${backendUrl}/api/documents/templates/one_to_one_progress_report`);
+        const res = await fetch(`${backendUrl}/api/documents/generate/jasper-pdf`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template_name: 'one_to_one_progress_report',
+            parameters: {
+              ProjectName: projectName,
+              ReportDate: new Date(statementDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+            },
+            data: flatData
+          })
+        });
+
         if (res.ok) {
-          const data = await res.json();
-          if (isMounted && data?.definition) {
-            setJasperTemplate(data.definition);
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          if (isMounted) {
+            setJasperPdfBlobUrl(prev => {
+              if (prev) URL.revokeObjectURL(prev);
+              return url;
+            });
           }
+        } else {
+          console.warn('Jasper PDF endpoint returned status:', res.status);
         }
       } catch (err) {
-        console.warn('Could not fetch Jasper template definition:', err);
+        console.warn('Could not compile Jasper PDF:', err);
       } finally {
-        if (isMounted) setJasperLoading(false);
+        if (isMounted) setJasperPdfGenerating(false);
       }
     };
 
-    fetchTemplate();
-    return () => { isMounted = false; };
-  }, []);
+    const timer = setTimeout(generateJasperPdf, 300);
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [docType, progressReportGroups, projectName, statementDate]);
 
   // Editable Statement Details
   const [customNotes, setCustomNotes] = useState(
@@ -1048,195 +1096,51 @@ export default function ClientDocumentModal({
 
 
             {/* ========================================================= */}
-            {/* DOCUMENT 2: PROGRESS REPORT LAYOUT (DRIVEN BY JASPER)    */}
+            {/* DOCUMENT 2: AUTHENTIC JASPER ENGINE COMPILED PDF VIEWER   */}
             {/* ========================================================= */}
             {docType === 'progress' && (
-              <div>
-                {/* REPORT HEADER (FROM JASPER PARAMETERS) */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #334155', paddingBottom: '12px', marginBottom: '18px' }}>
-                  <div style={{ fontSize: '10px', color: '#475569', lineHeight: '1.4' }}>
-                    <strong>{jasperTemplate?.parameters?.CompanyName || '1TO1 Design Studio'}</strong><br />
-                    {(jasperTemplate?.parameters?.CompanyAddress || '3 Ravenscraig Road, Woodstock\nUnit 09 The Stockyard\nCape Town, 7925').split('\n').map((line, lIdx) => (
-                      <span key={lIdx}>{line}<br /></span>
-                    ))}
-                    VAT No: {jasperTemplate?.parameters?.VatNumber || '4590312965'}<br />
-                    Reg No: {jasperTemplate?.parameters?.RegNumber || '2022/863083/07'}<br />
-                    <strong>Date: {new Date(statementDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>
+              <div style={{ width: '100%', minHeight: '1050px', display: 'flex', flexDirection: 'column' }}>
+                {jasperPdfGenerating && (
+                  <div style={{
+                    padding: '16px',
+                    textAlign: 'center',
+                    background: '#f8fafc',
+                    border: '1px dashed #cbd5e1',
+                    borderRadius: '8px',
+                    marginBottom: '14px',
+                    fontSize: '12px',
+                    color: '#0f766e',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                  }}>
+                    <RefreshCw size={15} className="animate-spin" />
+                    <span>Compiling authentic Jasper PDF directly from one_to_one_progress_report.jrxml...</span>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 900, letterSpacing: '1px', textTransform: 'uppercase' }}>
-                      PROGRESS REPORT
-                    </h1>
-                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#0f766e' }}>{projectName}</span>
-                  </div>
-                </div>
+                )}
 
-                {/* ORDERS & SUB-ORDERS ACCORDION GROUPS */}
-                {progressReportGroups.map((group, gIdx) => (
-                  <div key={gIdx} style={{ marginBottom: '26px' }}>
-                    <div style={{ 
-                      fontSize: '12px', 
-                      fontWeight: 800, 
-                      textAlign: 'center', 
-                      borderBottom: '2px solid #0f172a', 
-                      paddingBottom: '4px', 
-                      marginBottom: '8px',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px'
-                    }}>
-                      {group.title}
+                {jasperPdfBlobUrl ? (
+                  <iframe 
+                    title="Jasper Progress Report"
+                    src={`${jasperPdfBlobUrl}#toolbar=0&navpanes=0&scrollbar=1`}
+                    style={{
+                      width: '100%',
+                      height: '1050px',
+                      border: 'none',
+                      borderRadius: '4px',
+                      background: '#525659'
+                    }}
+                  />
+                ) : (
+                  !jasperPdfGenerating && (
+                    <div style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
+                      <FileText size={36} color="#94a3b8" style={{ margin: '0 auto 12px' }} />
+                      <h4 style={{ margin: '0 0 6px', fontSize: '15px', color: '#1e293b' }}>Jasper PDF Engine Initializing</h4>
+                      <p style={{ margin: 0, fontSize: '12px' }}>Generating report directly from template...</p>
                     </div>
-
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '9.5px', textAlign: 'left' }}>
-                      <thead>
-                        <tr style={{ background: '#cbd5e1', color: '#0f172a', borderTop: '1px solid #94a3b8', borderBottom: '1px solid #94a3b8' }}>
-                          {jasperTemplate?.columns && jasperTemplate.columns.length > 0 ? (
-                            jasperTemplate.columns.map((col, cIdx) => (
-                              <th 
-                                key={cIdx} 
-                                style={{ 
-                                  padding: '6px 6px', 
-                                  textAlign: col.label === 'Qty' || col.label === '1:1 Code' || col.label === 'Progress' || col.label === 'ETA' || col.label === 'Delivered' ? 'center' : (col.label === 'Received' || col.label === 'Back Order' ? 'right' : 'left'),
-                                  width: `${(col.width / 555) * 100}%`
-                                }}
-                              >
-                                {col.label}
-                              </th>
-                            ))
-                          ) : (
-                            <>
-                              <th style={{ padding: '6px 6px', textAlign: 'center', width: '35px' }}>Qty</th>
-                              <th style={{ padding: '6px 6px', width: '90px' }}>1:1 Code</th>
-                              <th style={{ padding: '6px 6px', width: '90px' }}>Made Code</th>
-                              <th style={{ padding: '6px 6px' }}>Description</th>
-                              <th style={{ padding: '6px 6px', textAlign: 'center', width: '80px' }}>Progress</th>
-                              <th style={{ padding: '6px 6px', textAlign: 'right', width: '55px' }}>Received</th>
-                              <th style={{ padding: '6px 6px', textAlign: 'right', width: '55px' }}>Back Order</th>
-                              <th style={{ padding: '6px 6px', textAlign: 'center', width: '85px' }}>ETA</th>
-                              <th style={{ padding: '6px 6px', textAlign: 'center', width: '95px' }}>Date Delivered</th>
-                            </>
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {group.rows.map((r, rIdx) => (
-                          <tr key={rIdx} style={{ borderBottom: '1px solid #e2e8f0', background: rIdx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
-                            {jasperTemplate?.columns && jasperTemplate.columns.length > 0 ? (
-                              jasperTemplate.columns.map((col, cIdx) => {
-                                const lbl = (col.label || '').toLowerCase().trim();
-                                if (lbl.includes('qty')) {
-                                  return (
-                                    <td key={cIdx} style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700 }}>
-                                      {r.qty}
-                                    </td>
-                                  );
-                                }
-                                if (lbl.includes('1:1') || lbl.includes('one')) {
-                                  return (
-                                    <td key={cIdx} style={{ padding: '6px 6px', fontFamily: 'monospace', fontWeight: 600, color: '#0f766e', textAlign: 'center' }}>
-                                      {r.oneOneCode}
-                                    </td>
-                                  );
-                                }
-                                if (lbl.includes('plan') || lbl.includes('made') || lbl.includes('type')) {
-                                  return (
-                                    <td key={cIdx} style={{ padding: '6px 6px', fontFamily: 'monospace' }}>
-                                      {r.code}
-                                    </td>
-                                  );
-                                }
-                                if (lbl.includes('desc')) {
-                                  return (
-                                    <td key={cIdx} style={{ padding: '6px 6px', maxWidth: '240px' }}>
-                                      {r.description}
-                                    </td>
-                                  );
-                                }
-                                if (lbl.includes('prog')) {
-                                  return (
-                                    <td key={cIdx} style={{ padding: '6px 6px', textAlign: 'center' }}>
-                                      <span style={{
-                                        padding: '2px 6px',
-                                        borderRadius: '4px',
-                                        fontSize: '8.5px',
-                                        fontWeight: 700,
-                                        background: r.progress === 'Received' ? 'rgba(22, 163, 74, 0.12)' : 'rgba(245, 158, 11, 0.15)',
-                                        color: r.progress === 'Received' ? '#16a34a' : '#b45309'
-                                      }}>
-                                        {r.progress}
-                                      </span>
-                                    </td>
-                                  );
-                                }
-                                if (lbl.includes('rec')) {
-                                  return (
-                                    <td key={cIdx} style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 600 }}>
-                                      {r.received.toFixed(2)}
-                                    </td>
-                                  );
-                                }
-                                if (lbl.includes('back')) {
-                                  return (
-                                    <td key={cIdx} style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 600, color: r.backOrder > 0 ? '#b91c1c' : '#64748b' }}>
-                                      {r.backOrder.toFixed(2)}
-                                    </td>
-                                  );
-                                }
-                                if (lbl.includes('eta')) {
-                                  return (
-                                    <td key={cIdx} style={{ padding: '6px 6px', textAlign: 'center', fontSize: '9px', fontWeight: 600 }}>
-                                      {r.eta}
-                                    </td>
-                                  );
-                                }
-                                if (lbl.includes('deliv')) {
-                                  return (
-                                    <td key={cIdx} style={{ padding: '6px 6px', textAlign: 'center', fontSize: '9px', color: '#475569' }}>
-                                      {r.dateDelivered}
-                                    </td>
-                                  );
-                                }
-                                return (
-                                  <td key={cIdx} style={{ padding: '6px 6px' }}>—</td>
-                                );
-                              })
-                            ) : (
-                              <>
-                                <td style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700 }}>{r.qty}</td>
-                                <td style={{ padding: '6px 6px', fontFamily: 'monospace', fontWeight: 600, color: '#0f766e' }}>{r.oneOneCode}</td>
-                                <td style={{ padding: '6px 6px', fontFamily: 'monospace' }}>{r.code}</td>
-                                <td style={{ padding: '6px 6px', maxWidth: '240px' }}>{r.description}</td>
-                                <td style={{ padding: '6px 6px', textAlign: 'center' }}>
-                                  <span style={{
-                                    padding: '2px 6px',
-                                    borderRadius: '4px',
-                                    fontSize: '8.5px',
-                                    fontWeight: 700,
-                                    background: r.progress === 'Received' ? 'rgba(22, 163, 74, 0.12)' : 'rgba(245, 158, 11, 0.15)',
-                                    color: r.progress === 'Received' ? '#16a34a' : '#b45309'
-                                  }}>
-                                    {r.progress}
-                                  </span>
-                                </td>
-                                <td style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 600 }}>{r.received.toFixed(2)}</td>
-                                <td style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 600, color: r.backOrder > 0 ? '#b91c1c' : '#64748b' }}>
-                                  {r.backOrder.toFixed(2)}
-                                </td>
-                                <td style={{ padding: '6px 6px', textAlign: 'center', fontSize: '9px', fontWeight: 600 }}>{r.eta}</td>
-                                <td style={{ padding: '6px 6px', textAlign: 'center', fontSize: '9px', color: '#475569' }}>{r.dateDelivered}</td>
-                              </>
-                            )}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ))}
-
-                {progressReportGroups.length === 0 && (
-                  <div style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
-                    No items or orders found for the selected scope.
-                  </div>
+                  )
                 )}
               </div>
             )}
