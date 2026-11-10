@@ -55,78 +55,6 @@ export default function ClientDocumentModal({
   const [jasperPdfBlobUrl, setJasperPdfBlobUrl] = useState(null);
   const [jasperPdfGenerating, setJasperPdfGenerating] = useState(false);
 
-  // Generate authentic Jasper PDF whenever in progress tab and scope/date changes
-  useEffect(() => {
-    let isMounted = true;
-    if (docType !== 'progress') return;
-
-    const generateJasperPdf = async () => {
-      setJasperPdfGenerating(true);
-      try {
-        const flatData = [];
-        progressReportGroups.forEach(group => {
-          group.rows.forEach(r => {
-            flatData.push({
-              sectionTitle: group.title,
-              qty: r.qty,
-              oneOneCode: r.oneOneCode,
-              madeCode: r.code,
-              description: r.description,
-              progress: r.progress,
-              received: r.received,
-              backOrder: r.backOrder,
-              eta: r.eta,
-              dateDelivered: r.dateDelivered,
-              item: {
-                qty: r.qty,
-                oneOneCode: r.oneOneCode,
-                type: r.code,
-                description: r.description
-              }
-            });
-          });
-        });
-
-        const backendUrl = 'https://one-to-one-backend-staging-858977785048.us-central1.run.app';
-        const res = await fetch(`${backendUrl}/api/documents/generate/jasper-pdf`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            template_name: 'one_to_one_progress_report',
-            parameters: {
-              ProjectName: projectName,
-              ReportDate: new Date(statementDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-            },
-            data: flatData
-          })
-        });
-
-        if (res.ok) {
-          const blob = await res.blob();
-          const url = URL.createObjectURL(blob);
-          if (isMounted) {
-            setJasperPdfBlobUrl(prev => {
-              if (prev) URL.revokeObjectURL(prev);
-              return url;
-            });
-          }
-        } else {
-          console.warn('Jasper PDF endpoint returned status:', res.status);
-        }
-      } catch (err) {
-        console.warn('Could not compile Jasper PDF:', err);
-      } finally {
-        if (isMounted) setJasperPdfGenerating(false);
-      }
-    };
-
-    const timer = setTimeout(generateJasperPdf, 300);
-    return () => {
-      isMounted = false;
-      clearTimeout(timer);
-    };
-  }, [docType, progressReportGroups, projectName, statementDate]);
-
   // Editable Statement Details
   const [customNotes, setCustomNotes] = useState(
     '• Final payments are due prior to delivery of stock.\n• Quote your account name as payment reference.\n• Send proof of payment to debtors@1-to-1.world.\n• Attention: Najma Smith.'
@@ -417,6 +345,80 @@ export default function ClientDocumentModal({
       };
     }).filter(g => g.rows.length > 0);
   }, [scopedOrders, projectName]);
+
+  // Generate authentic Jasper PDF whenever in progress tab and scope/date changes
+  useEffect(() => {
+    let isMounted = true;
+    if (docType !== 'progress') return;
+
+    const generateJasperPdf = async () => {
+      setJasperPdfGenerating(true);
+      try {
+        const flatData = [];
+        progressReportGroups.forEach(group => {
+          group.rows.forEach(r => {
+            flatData.push({
+              sectionTitle: group.title,
+              qty: r.qty,
+              oneOneCode: r.oneOneCode,
+              madeCode: r.code,
+              description: r.description,
+              progress: r.progress,
+              received: r.received,
+              backOrder: r.backOrder,
+              eta: r.eta,
+              dateDelivered: r.dateDelivered,
+              item: {
+                qty: r.qty,
+                oneOneCode: r.oneOneCode,
+                type: r.code,
+                description: r.description
+              }
+            });
+          });
+        });
+
+        const backendUrl = 'https://one-to-one-backend-staging-858977785048.us-central1.run.app';
+        const res = await fetch(`${backendUrl}/api/documents/generate/jasper-pdf`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            template_name: 'one_to_one_progress_report',
+            parameters: {
+              ProjectName: projectName,
+              ReportDate: new Date(statementDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+            },
+            data: flatData
+          })
+        });
+
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          if (isMounted) {
+            setJasperPdfBlobUrl(prev => {
+              if (prev) URL.revokeObjectURL(prev);
+              return url;
+            });
+          }
+        } else {
+          console.warn('Jasper PDF endpoint returned status:', res.status);
+        }
+      } catch (err) {
+        console.warn('Could not compile Jasper PDF:', err);
+      } finally {
+        if (isMounted) setJasperPdfGenerating(false);
+      }
+    };
+
+    const timer = setTimeout(generateJasperPdf, 300);
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [docType, progressReportGroups, projectName, statementDate]);
+
+
 
   const handlePrint = () => {
     if (!printRef.current) return;
