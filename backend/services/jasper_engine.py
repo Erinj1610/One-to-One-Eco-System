@@ -63,6 +63,14 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
                             rep_elem.attrib[a] = child.attrib.pop(a)
                     child.insert(0, rep_elem)
 
+                    # Rename blankWhenNull to isBlankWhenNull on textField for JasperReports 6.x
+                    if "blankWhenNull" in child.attrib:
+                        child.attrib["isBlankWhenNull"] = child.attrib.pop("blankWhenNull")
+                    if "textAdjust" in child.attrib:
+                        adjust = child.attrib.pop("textAdjust")
+                        if adjust == "StretchHeight":
+                            child.attrib["isStretchWithOverflow"] = "true"
+
                     # Move textElement properties
                     text_attribs = ["hTextAlign", "vTextAlign"]
                     has_text_props = any(a in child.attrib for a in text_attribs)
