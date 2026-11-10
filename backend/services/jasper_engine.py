@@ -43,6 +43,13 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
         if insert_marker:
             content = content.replace(insert_marker, "\n".join(field_xmls) + "\n\t" + insert_marker, 1)
 
+    # Standardize system fonts across the whole template to JVM core fonts (avoids JRFontNotFoundException on Linux)
+    content = content.replace('fontName="Courier New"', 'fontName="Monospaced"')
+    content = content.replace('fontName="Courier"', 'fontName="Monospaced"')
+    content = content.replace('fontName="Arial"', 'fontName="SansSerif"')
+    content = content.replace('fontName="Helvetica"', 'fontName="SansSerif"')
+    content = content.replace('fontName="Times New Roman"', 'fontName="Serif"')
+
     tree = ET.fromstring(content)
 
     # Namespace handling
@@ -123,7 +130,15 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
                         if has_font_props:
                             f_elem = ET.Element(f"{ns_prefix}font")
                             if "fontName" in child.attrib:
-                                f_elem.attrib["fontName"] = child.attrib.pop("fontName")
+                                font_val = child.attrib.pop("fontName")
+                                # Standard Java headless JVM font mappings (avoid JRFontNotFoundException)
+                                if font_val in ["Courier New", "Courier", "monospace"]:
+                                    font_val = "Monospaced"
+                                elif font_val in ["Times New Roman", "Times", "serif"]:
+                                    font_val = "Serif"
+                                elif font_val in ["Arial", "Helvetica", "sans-serif"]:
+                                    font_val = "SansSerif"
+                                f_elem.attrib["fontName"] = font_val
                             if "fontSize" in child.attrib:
                                 f_elem.attrib["size"] = str(int(float(child.attrib.pop("fontSize"))))
                             if "bold" in child.attrib:
