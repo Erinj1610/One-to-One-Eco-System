@@ -98,7 +98,8 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
                                 f_elem.attrib["isUnderline"] = child.attrib.pop("underline")
                             txt_elem.append(f_elem)
 
-                        child.append(txt_elem)
+                        # In JasperReports schema, textElement MUST come BEFORE textFieldExpression / patternExpression
+                        child.insert(1, txt_elem)
 
                     # Move expression to textFieldExpression
                     expr = None
