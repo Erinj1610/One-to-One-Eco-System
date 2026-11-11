@@ -503,6 +503,53 @@ def render_jasper_document_for_order(doc_type: str, data: dict):
         print(f"Jasper exception for {doc_type}: {e}")
         return None
 
+@router.get("/debug-jasper/{doc_type}")
+def debug_jasper(doc_type: str):
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    template_name = JASPER_DOC_MAP.get(doc_type.lower().strip())
+    possible_paths = [
+        os.path.join(base_dir, "jasper_templates", f"{template_name}.jrxml") if template_name else "",
+        os.path.join(os.path.dirname(base_dir), "jasper_templates", f"{template_name}.jrxml") if template_name else "",
+        os.path.join("backend", "jasper_templates", f"{template_name}.jrxml") if template_name else "",
+        os.path.join("jasper_templates", f"{template_name}.jrxml") if template_name else "",
+        f"{template_name}.jrxml" if template_name else ""
+    ]
+    resolved_path = None
+    for p in possible_paths:
+        if p and os.path.exists(p):
+            resolved_path = p
+            break
+
+    pyreportjasper_installed = False
+    pyreportjasper_error = None
+    try:
+        import pyreportjasper
+        pyreportjasper_installed = True
+    except Exception as e:
+        pyreportjasper_error = str(e)
+
+    sample_render_error = None
+    if resolved_path and pyreportjasper_installed:
+        try:
+            with open(resolved_path, "r", encoding="utf-8") as f:
+                template_xml = f.read()
+            from services.jasper_engine import compile_and_render_jasper_report
+            res = compile_and_render_jasper_report(template_xml, {"parameters": {}, "data": []})
+            sample_render_error = res.get("error")
+        except Exception as e:
+            sample_render_error = str(e)
+
+    return {
+        "doc_type": doc_type,
+        "template_name": template_name,
+        "base_dir": base_dir,
+        "resolved_path": resolved_path,
+        "possible_paths": possible_paths,
+        "pyreportjasper_installed": pyreportjasper_installed,
+        "pyreportjasper_error": pyreportjasper_error,
+        "sample_render_error": sample_render_error
+    }
+
 @router.post("/generate/{doc_type}")
 def generate_document(doc_type: str, page: int = None, format: str = 'pdf', is_save_action: bool = False, data: dict = Body(...), db: Session = Depends(get_db)):
     """
