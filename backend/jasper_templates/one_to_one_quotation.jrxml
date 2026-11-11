@@ -87,7 +87,7 @@
 		<element kind="textField" uuid="4d5e6f7a-8b9c-0d1e-2f3a-4b5c6d7e8f9a" x="0" y="68" width="555" height="16" forecolor="#000000" fontName="SansSerif" fontSize="8.0" bold="true" vTextAlign="Middle">
 			<expression><![CDATA["One to One Rep : " + $P{OneOneRep} + "             Mobile : " + $P{PmPhone} + "               Email : " + $P{PmEmail}]]></expression>
 		</element>
-		<element kind="image" uuid="3a595667-dffa-4666-b8aa-a0063a7c5bcd" x="450" y="0" width="105" height="52" hTextAlign="Right" vTextAlign="Middle">
+		<element kind="image" uuid="3a595667-dffa-4666-b8aa-a0063a7c5bcd" x="450" y="0" width="105" height="52" hImageAlign="Right" vImageAlign="Middle">
 			<expression><![CDATA[$P{LogoPath}]]></expression>
 		</element>
 	</title>
