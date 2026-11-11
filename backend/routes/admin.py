@@ -527,13 +527,19 @@ def debug_jasper(doc_type: str):
         pyreportjasper_error = str(e)
 
     sample_render_error = None
+    rendered_output_pdf = None
     if resolved_path and pyreportjasper_installed:
         try:
-            with open(resolved_path, "r", encoding="utf-8") as f:
-                template_xml = f.read()
             from services.jasper_engine import compile_and_render_jasper_report
-            res = compile_and_render_jasper_report(template_xml, {"parameters": {}, "data": []})
-            sample_render_error = res.get("error")
+            fd, temp_pdf = tempfile.mkstemp(suffix=".pdf")
+            os.close(fd)
+            out_pdf = compile_and_render_jasper_report(
+                jrxml_path=resolved_path,
+                data=[{"qty": 1, "description": "Test Item", "isCredit": False}],
+                parameters={"ProjectName": "Test", "OrderName": "Test Order"},
+                output_pdf_path=temp_pdf
+            )
+            rendered_output_pdf = out_pdf
         except Exception as e:
             sample_render_error = str(e)
 
@@ -545,7 +551,8 @@ def debug_jasper(doc_type: str):
         "possible_paths": possible_paths,
         "pyreportjasper_installed": pyreportjasper_installed,
         "pyreportjasper_error": pyreportjasper_error,
-        "sample_render_error": sample_render_error
+        "sample_render_error": sample_render_error,
+        "rendered_output_pdf": rendered_output_pdf
     }
 
 @router.post("/generate/{doc_type}")
