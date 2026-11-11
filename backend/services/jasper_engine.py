@@ -193,6 +193,15 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
                             if not expr.text or expr.text.strip() in ['""', "''", 'null', '']:
                                 parent.remove(child)
                                 continue
+                            # In JasperReports 6.x schema, image alignment attributes are hAlign and vAlign!
+                            if "hImageAlign" in child.attrib:
+                                child.attrib["hAlign"] = child.attrib.pop("hImageAlign")
+                            if "vImageAlign" in child.attrib:
+                                child.attrib["vAlign"] = child.attrib.pop("vImageAlign")
+                            if "hTextAlign" in child.attrib:
+                                child.attrib["hAlign"] = child.attrib.pop("hTextAlign")
+                            if "vTextAlign" in child.attrib:
+                                child.attrib["vAlign"] = child.attrib.pop("vTextAlign")
                             expr.tag = f"{ns_prefix}imageExpression"
 
     # Wrap <pen> inside <graphicElement> for line, rectangle, ellipse, etc. in JasperReports 6.x
