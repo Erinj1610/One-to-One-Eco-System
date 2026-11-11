@@ -619,6 +619,7 @@ export default function TakeoffSpecEngine({
       tag: newTag,
       itemType: inferredType,
       unit: inferredType === 'fixture' ? 'pcs' : 'm',
+      firstFix: defaults.firstFix || (lastRow ? (lastRow.firstFix || 'No') : 'No'),
       floor: defaults.floor || (lastRow ? lastRow.floor : 'Ground'),
       area: defaults.area || (lastRow ? lastRow.area : ''),
       qty: defaults.qty || (inferredType === 'fixture' ? 1 : 3),
@@ -644,6 +645,7 @@ export default function TakeoffSpecEngine({
       tag: defTag,
       itemType: defType,
       unit: defType === 'fixture' ? 'pcs' : 'm',
+      firstFix: lastRow ? (lastRow.firstFix || 'No') : 'No',
       floor: lastRow ? lastRow.floor : 'Ground',
       area: '',
       qty: defType === 'fixture' ? 1 : 3,
@@ -2391,6 +2393,7 @@ export default function TakeoffSpecEngine({
     let mapped = 0;
     let leds = 0;
     let tracks = 0;
+    let firstFixCount = 0;
     countUpRows.forEach(r => {
       const tag = (r.tag || '').trim().toUpperCase();
       const spec = specifications[tag];
@@ -2399,8 +2402,9 @@ export default function TakeoffSpecEngine({
       const currentType = spec?.itemType || r.itemType || 'fixture';
       if (currentType === 'linear_led') leds++;
       if (currentType === 'track_system') tracks++;
+      if (r.firstFix === 'Yes') firstFixCount++;
     });
-    return { pending, mapped, leds, tracks, total: countUpRows.length };
+    return { pending, mapped, leds, tracks, firstFix: firstFixCount, total: countUpRows.length };
   }, [countUpRows, specifications]);
 
   // Filtered Count-Up rows
@@ -2416,6 +2420,7 @@ export default function TakeoffSpecEngine({
       if (countUpStatusFilter === 'MAPPED' && !isConfigured) return false;
       if (countUpStatusFilter === 'LED' && currentType !== 'linear_led') return false;
       if (countUpStatusFilter === 'TRACK' && currentType !== 'track_system') return false;
+      if (countUpStatusFilter === 'FIRST_FIX' && r.firstFix !== 'Yes') return false;
 
       if (countUpSearch.trim()) {
         const q = countUpSearch.toLowerCase();
@@ -3220,6 +3225,22 @@ export default function TakeoffSpecEngine({
             >
               Tracks ({countUpStatusFilterStats.tracks})
             </button>
+            <button
+              type="button"
+              className="btn btn-xs"
+              onClick={() => setCountUpStatusFilter('FIRST_FIX')}
+              style={{
+                borderRadius: '14px',
+                fontSize: '11px',
+                fontWeight: 600,
+                padding: '2px 9px',
+                background: countUpStatusFilter === 'FIRST_FIX' ? '#f59e0b' : 'rgba(245, 158, 11, 0.1)',
+                color: countUpStatusFilter === 'FIRST_FIX' ? '#ffffff' : '#d97706',
+                border: '1px solid rgba(245, 158, 11, 0.35)'
+              }}
+            >
+              First Fix ({countUpStatusFilterStats.firstFix})
+            </button>
           </div>
 
           <datalist id="plan-tags-list">
@@ -3250,7 +3271,8 @@ export default function TakeoffSpecEngine({
                     <th style={{ padding: '8px 10px', width: '130px' }}>Floor Level</th>
                     <th style={{ padding: '8px 10px', width: '190px' }}>Room / Area</th>
                     <th style={{ padding: '8px 10px', width: '110px' }}>Plan Tag</th>
-                    <th style={{ padding: '8px 10px', width: '110px' }}>Type</th>
+                    <th style={{ padding: '8px 10px', width: '100px' }}>Type</th>
+                    <th style={{ padding: '8px 10px', width: '90px', textAlign: 'center' }}>First Fix</th>
                     <th style={{ padding: '8px 10px', width: '110px', textAlign: 'center' }}>Qty / Length</th>
                     <th style={{ padding: '8px 10px' }}>Mounting & Notes</th>
                     <th style={{ padding: '8px 10px', width: '170px' }}>Catalog Mapping</th>
@@ -3260,7 +3282,7 @@ export default function TakeoffSpecEngine({
                 <tbody>
                   {filteredCountUpRows.length === 0 ? (
                     <tr>
-                      <td colSpan={9} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                      <td colSpan={10} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                         No count-up lines match active filters. Click <strong>+ Add Row</strong> or adjust search.
                       </td>
                     </tr>
@@ -3401,7 +3423,31 @@ export default function TakeoffSpecEngine({
                             </select>
                           </td>
 
-                          {/* 6. QUANTITY / LENGTH INPUT (WITH MULTI-RUN MATH) */}
+                          {/* 6. FIRST FIX SELECTOR */}
+                          <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                            <select
+                              value={row.firstFix === 'Yes' ? 'Yes' : 'No'}
+                              onChange={e => handleUpdateRow(row.id, 'firstFix', e.target.value)}
+                              style={{
+                                width: '100%',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                padding: '3px 4px',
+                                borderRadius: '4px',
+                                border: '1px solid var(--border)',
+                                background: row.firstFix === 'Yes' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-secondary)',
+                                color: row.firstFix === 'Yes' ? '#f59e0b' : 'var(--text-secondary)',
+                                cursor: 'pointer',
+                                outline: 'none'
+                              }}
+                              title="Specify whether this item is First Fix (rough-in / pre-install)"
+                            >
+                              <option value="No">No</option>
+                              <option value="Yes">Yes (FF)</option>
+                            </select>
+                          </td>
+
+                          {/* 7. QUANTITY / LENGTH INPUT (WITH MULTI-RUN MATH) */}
                           <td style={{ padding: '4px 8px', textAlign: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
                               <input
@@ -3627,7 +3673,8 @@ export default function TakeoffSpecEngine({
                               <tr style={{ background: 'var(--bg-primary)', borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: '10.5px', textTransform: 'uppercase' }}>
                                 <th style={{ padding: '6px 10px', width: '32px', textAlign: 'center' }}>#</th>
                                 <th style={{ padding: '6px 10px', width: '120px' }}>Plan Tag</th>
-                                <th style={{ padding: '6px 10px', width: '110px' }}>Type</th>
+                                <th style={{ padding: '6px 10px', width: '100px' }}>Type</th>
+                                <th style={{ padding: '6px 10px', width: '85px', textAlign: 'center' }}>First Fix</th>
                                 <th style={{ padding: '6px 10px', width: '110px', textAlign: 'center' }}>Qty / Length</th>
                                 <th style={{ padding: '6px 10px' }}>Mounting & Notes</th>
                                 <th style={{ padding: '6px 10px', width: '170px' }}>Catalog Mapping</th>
@@ -3694,6 +3741,28 @@ export default function TakeoffSpecEngine({
                                         <option value="fixture">Fitting</option>
                                         <option value="linear_led">Linear LED</option>
                                         <option value="track_system">Track</option>
+                                      </select>
+                                    </td>
+                                    <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                                      <select
+                                        value={row.firstFix === 'Yes' ? 'Yes' : 'No'}
+                                        onChange={e => handleUpdateRow(row.id, 'firstFix', e.target.value)}
+                                        style={{
+                                          width: '100%',
+                                          fontSize: '11px',
+                                          fontWeight: 600,
+                                          padding: '2px 4px',
+                                          borderRadius: '4px',
+                                          border: '1px solid var(--border)',
+                                          background: row.firstFix === 'Yes' ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-secondary)',
+                                          color: row.firstFix === 'Yes' ? '#f59e0b' : 'var(--text-secondary)',
+                                          cursor: 'pointer',
+                                          outline: 'none'
+                                        }}
+                                        title="Specify whether this item is First Fix (rough-in / pre-install)"
+                                      >
+                                        <option value="No">No</option>
+                                        <option value="Yes">Yes (FF)</option>
                                       </select>
                                     </td>
                                     <td style={{ padding: '4px 8px', textAlign: 'center' }}>
