@@ -45,7 +45,7 @@
 	<field name="totalRetail" class="java.lang.String"/>
 	<field name="floorSubtotal" class="java.lang.String"/>
 	<group name="FloorGroup">
-		<groupExpression><![CDATA[$F{floor}]]></groupExpression>
+		<expression><![CDATA[$F{floor}]]></expression>
 		<groupHeader>
 			<band height="36">
 				<element kind="textField" uuid="1a2b3c4d-5e6f-7a8b-9c0d-0e1f2a3b4c5d" x="0" y="4" width="555" height="16" fontName="SansSerif" fontSize="9.0" bold="true" vTextAlign="Middle">

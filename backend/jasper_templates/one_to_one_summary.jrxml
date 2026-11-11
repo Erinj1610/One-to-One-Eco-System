@@ -51,7 +51,7 @@
 	<field name="totalRetail" class="java.lang.String"/>
 	<field name="isCredit" class="java.lang.Boolean"/>
 	<group name="CreditGroup">
-		<groupExpression><![CDATA[$F{isCredit} != null && $F{isCredit}]]></groupExpression>
+		<expression><![CDATA[$F{isCredit} != null && $F{isCredit}]]></expression>
 		<groupHeader>
 			<band height="18">
 				<printWhenExpression><![CDATA[$F{isCredit} != null && $F{isCredit}]]></printWhenExpression>
