@@ -1,3 +1,5 @@
+import EmptyStateBanner from '../components/common/EmptyStateBanner';
+import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
@@ -8,6 +10,11 @@ import TakeoffSpecEngine from '../components/TakeoffSpecEngine';
 import MobileOrdersViewer from '../components/mobile/MobileOrdersViewer';
 import DriveFileExplorer from '../components/common/DriveFileExplorer';
 import TechnicalPackModal from '../components/orders/TechnicalPackModal';
+import SubOrderModal from '../components/orders/SubOrderModal';
+import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
+import ItemSwapModal from '../components/orders/ItemSwapModal';
+import AuditHistoryTab from '../components/orders/AuditHistoryTab';
+import ClientVariationDocument from '../components/orders/ClientVariationDocument';
 import { API_BASE } from '../api_config';
 import { 
   ArrowUpDown,
@@ -33,7 +40,14 @@ import {
   DollarSign,
   Truck,
   Layers,
+  GitBranch,
+  RotateCcw,
+  History,
   ChevronRight,
+  ChevronDown,
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
   Sparkles,
   ClipboardList,
   TrendingDown,
@@ -131,6 +145,8 @@ const PRODUCT_CATALOG = [
   { code: 'SIG-FLR-019', description: 'Architectural Floor Uplight', brand: 'Signature', dimming: 'Non-dim', unitCost: 2100.00, unitRetail: 3200.00, stockQty: 8, eta: '4 weeks' },
   { code: 'MOL-TRK-005', description: '3-Phase Track System 2m', brand: 'Molecule', dimming: 'Non-dim', unitCost: 520.00, unitRetail: 780.00, stockQty: 30, eta: '2 weeks' },
 ];
+
+const PRODUCT_CATALOG_MAP = new Map(PRODUCT_CATALOG.map(p => [(p.code || '').trim(), p]));
 
 function SearchableCodeSelect({ value, onChange, onSelect, onOpenCreateProduct, rowIdx, colIdx, onKeyDown }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -383,7 +399,7 @@ function SearchableCodeSelect({ value, onChange, onSelect, onOpenCreateProduct, 
 
 export default function OrdersPage() {
   const { 
-    projects, setProjects, updateProject, contacts, setContacts, logAttrition, moveOrder, getModuleName, projectManagers, logActivity,
+    isStoreLoading, projects, setProjects, updateProject, contacts, setContacts, logAttrition, moveOrder, getModuleName, projectManagers, logActivity,
     refreshProjects, bulkDeleteOrders, bulkRelinkOrders, bulkRenameOrders 
   } = useStore();
   const { isAdmin } = useAuth();
@@ -426,7 +442,7 @@ export default function OrdersPage() {
 
   const handleBulkDeleteOrders = async () => {
     if (selectedPoNumbers.size === 0) return;
-    if (window.confirm(`Are you sure you want to delete the ${selectedPoNumbers.size} selected orders and all their items? This cannot be undone.`)) {
+    if (await window.otoConfirm(`Are you sure you want to delete the ${selectedPoNumbers.size} selected orders and all their items? This cannot be undone.`, { title: "Delete Orders", confirmText: "Delete Orders" })) {
       await bulkDeleteOrders(Array.from(selectedPoNumbers));
       setSelectedPoNumbers(new Set());
     }
@@ -436,7 +452,7 @@ export default function OrdersPage() {
     if (selectedPoNumbers.size === 0 || !targetProjectKey) return;
     const targetProject = Object.values(projects).find(p => p.key === targetProjectKey);
     if (!targetProject) return;
-    if (window.confirm(`Are you sure you want to shift/re-link the ${selectedPoNumbers.size} selected orders to project '${targetProject.name}'?`)) {
+    if (await window.otoConfirm(`Are you sure you want to shift/re-link the ${selectedPoNumbers.size} selected orders to project '${targetProject.name}'?`, { title: "Re-link Orders", confirmText: "Re-link" })) {
       await bulkRelinkOrders(Array.from(selectedPoNumbers), targetProjectKey);
       setSelectedPoNumbers(new Set());
     }
@@ -451,7 +467,8 @@ export default function OrdersPage() {
     }
   };
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    return localStorage.getItem('sidebar_collapsed_orders') === 'true';
+    const saved = localStorage.getItem('sidebar_collapsed_orders');
+    return saved !== null ? saved === 'true' : true; // Default to collapsed (full width table)
   });
   const location = useLocation();
   const navigate = useNavigate();
@@ -467,6 +484,7 @@ export default function OrdersPage() {
   const { widths, onResizeStart } = useResizableTable('orders_boq_spreadsheet_v2', {
     qty: 60,
     oneOneCode: 100,
+    subOrder: 110,
     type: 80,
     firstFix: 80,
     itemType: 90,
@@ -483,10 +501,22 @@ export default function OrdersPage() {
     margin: 60,
     stock: 90,
     actions: 70
-  }, ['qty', 'oneOneCode', 'type', 'firstFix', 'itemType', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'supplier', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
+  }, ['qty', 'oneOneCode', 'subOrder', 'type', 'firstFix', 'itemType', 'code', 'description', 'floor', 'area', 'dimming', 'brand', 'supplier', 'cost', 'retail', 'totalRetail', 'margin', 'stock', 'actions']);
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedProjectKey, setSelectedProjectKey] = useState(null);
+
+  // Listen for sidebar navigation clicks to reset to root orders ledger
+  useEffect(() => {
+    const handleNavReset = (e) => {
+      if (e?.detail?.path === '/orders' || e?.detail?.id === 'orders') {
+        setSelectedOrderId(null);
+        setSelectedProjectKey(null);
+      }
+    };
+    window.addEventListener('portal-nav-reset', handleNavReset);
+    return () => window.removeEventListener('portal-nav-reset', handleNavReset);
+  }, []);
   
   // Temporary state for the active order items in the spreadsheet workspace
   const [activeOrderItems, setActiveOrderItems] = useState([]);
@@ -504,6 +534,102 @@ export default function OrdersPage() {
   // In-Order Ad-Hoc Product Creation Modal State (for BOQ Spreadsheet)
   const [showBoqCreateProductModal, setShowBoqCreateProductModal] = useState(false);
   const [boqTargetItemId, setBoqTargetItemId] = useState(null);
+  const [showSubOrderModal, setShowSubOrderModal] = useState(false);
+  const [expandedMasterOrders, setExpandedMasterOrders] = useState(new Set());
+
+  const toggleExpandMaster = (masterId, e) => {
+    if (e) e.stopPropagation();
+    setExpandedMasterOrders(prev => {
+      const next = new Set(prev);
+      if (next.has(masterId)) next.delete(masterId);
+      else next.add(masterId);
+      return next;
+    });
+  };
+
+  const checkIsSubOrder = (ord) => {
+    if (!ord) return false;
+    if (typeof ord.is_sub_order === 'boolean') return ord.is_sub_order;
+    if (typeof ord.isSubOrder === 'boolean') return ord.isSubOrder;
+    if (ord.parent_po_number && String(ord.parent_po_number).trim() !== String(ord.id).trim()) return true;
+    if (ord.parent_order_id) return true;
+    return /-\d{3,}-\d{1,2}$/.test(String(ord.id || ord.po_number || '').trim());
+  };
+  const [swapTargetItem, setSwapTargetItem] = useState(null);
+  const [scopeFilter, setScopeFilter] = useState('ALL');
+  const [revisionStatusFilter, setRevisionStatusFilter] = useState('ACTIVE');
+
+  // Currently open order in spreadsheet workspace
+  const currentOrderObj = useMemo(() => {
+    if (!selectedOrderId) return {};
+    return Object.values(projects || {}).flatMap(p => Array.isArray(p.orders) ? p.orders : Object.values(p.orders || {})).find(o => String(o.id) === String(selectedOrderId) || String(o.po_number || o.poNumber) === String(selectedOrderId)) || {};
+  }, [projects, selectedOrderId]);
+
+  // Sync breadcrumb subContext with Topbar
+  useEffect(() => {
+    if (selectedOrderId) {
+      const orderName = currentOrderObj?.name || currentOrderObj?.title || selectedOrderId;
+      const clientName = currentOrderObj?.client || currentOrderObj?.client_name;
+      const label = clientName ? `${clientName} › ${orderName}` : orderName;
+      window.dispatchEvent(new CustomEvent('portal-context-change', {
+        detail: { subContext: label }
+      }));
+    } else {
+      window.dispatchEvent(new CustomEvent('portal-context-change', {
+        detail: { subContext: null }
+      }));
+    }
+  }, [selectedOrderId, currentOrderObj]);
+
+  const isSubOrderWorkspace = useMemo(() => {
+    if (!selectedOrderId) return false;
+    // 1. Explicit database boolean (highest authority)
+    if (currentOrderObj && typeof currentOrderObj.is_sub_order === 'boolean') {
+      if (currentOrderObj.is_sub_order === false) return false;
+      if (currentOrderObj.is_sub_order === true) return true;
+    }
+    if (currentOrderObj && typeof currentOrderObj.isSubOrder === 'boolean') {
+      if (currentOrderObj.isSubOrder === false) return false;
+      if (currentOrderObj.isSubOrder === true) return true;
+    }
+    // 2. Parent PO check
+    const parent = currentOrderObj?.parent_po_number || currentOrderObj?.parentPoNumber;
+    if (parent && String(parent).trim() !== String(selectedOrderId).trim()) {
+      return true;
+    }
+    // 3. Fallback regex: sub-order IDs strictly end with a 1-2 digit phase suffix (-01, -02) following a quote number
+    // Format: e.g. Q-2026-0667-01 (master Q-2026-0667 will NEVER match)
+    return /-\d{3,}-\d{1,2}$/.test(String(selectedOrderId).trim());
+  }, [currentOrderObj, selectedOrderId]);
+
+  const masterPoRef = useMemo(() => {
+    if (!selectedOrderId) return null;
+    const parent = currentOrderObj?.parent_po_number || currentOrderObj?.parentPoNumber;
+    if (parent && String(parent).trim() !== String(selectedOrderId).trim()) {
+      return String(parent).trim();
+    }
+    const id = String(selectedOrderId).trim();
+    if (/-\d{3,}-\d{1,2}$/.test(id)) {
+      return id.replace(/-\d{1,2}$/, '');
+    }
+    return id;
+  }, [currentOrderObj, selectedOrderId]);
+
+  const fetchCurrentOrderItems = async (orderId) => {
+    const idToFetch = orderId || selectedOrderId;
+    if (!idToFetch) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/orders/${idToFetch}/items`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setActiveOrderItems(data);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to reload order items:', e);
+    }
+  };
   const [boqCustomSku, setBoqCustomSku] = useState('');
   const [boqCustomName, setBoqCustomName] = useState('');
   const [boqCustomCategory, setBoqCustomCategory] = useState('Downlight');
@@ -737,7 +863,7 @@ export default function OrdersPage() {
   };
 
   // Workspace View State (BOQ Spreadsheet vs Document Generator)
-  const [workspaceSubTab, setWorkspaceSubTab] = useState('boq'); // 'boq' | 'doc_gen'
+  const [workspaceSubTab, setWorkspaceSubTab] = useState('takeoff'); // 'boq' | 'doc_gen'
   const [showVoidedLogisticsDocs, setShowVoidedLogisticsDocs] = useState(false);
   const [creditsSectionOpen, setCreditsSectionOpen] = useState(true);
   const [interactiveCreditsOpen, setInteractiveCreditsOpen] = useState(true);
@@ -981,7 +1107,7 @@ export default function OrdersPage() {
     const depositFormatted70 = `R ${(finalTotalInclVat * 0.70).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const depositFormatted100 = `R ${(finalTotalInclVat * 1.00).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-    const currentOrderObj = Object.values(projects || {}).flatMap(p => Object.values(p.orders || {})).find(o => o.id === selectedOrderId || o.poNumber === selectedOrderId) || {};
+    const currentOrderObj = Object.values(projects || {}).flatMap(p => Array.isArray(p.orders) ? p.orders : Object.values(p.orders || {})).find(o => String(o.id) === String(selectedOrderId) || String(o.po_number || o.poNumber) === String(selectedOrderId)) || {};
     const effectivePaidFromOrder = Number(currentOrderObj.paid) || 0;
     const effectivePaymentsFromOrder = Array.isArray(currentOrderObj.payments) ? currentOrderObj.payments : [];
 
@@ -1434,9 +1560,15 @@ export default function OrdersPage() {
           totalDelQty += Number(delivered) || 0;
         });
 
-        const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
-        const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
-        const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
+        let procPct = o.procPct !== undefined ? Number(o.procPct) : null;
+        let invPct = o.invPct !== undefined ? Number(o.invPct) : null;
+        let delPct = o.delPct !== undefined ? Number(o.delPct) : null;
+
+        if (procPct === null || invPct === null || delPct === null) {
+          procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
+          invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
+          delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
+        }
 
         // Standalone Payment Status calculation
         const totalPaidVal = Number(o.paid) || 0;
@@ -1537,15 +1669,36 @@ export default function OrdersPage() {
     setEndDate('');
   };
 
+  // Map all sub-orders by their parent PO number / ID (defined first so filteredOrders & tree can use it)
+  const subOrdersByParent = useMemo(() => {
+    const map = {};
+    (allOrders || []).forEach(ord => {
+      if (checkIsSubOrder(ord)) {
+        const parentKey = ord.parent_po_number || ord.parentPoNumber || (String(ord.id).includes('-') ? String(ord.id).replace(/-\d{1,2}$/, '') : ord.id);
+        if (!map[parentKey]) map[parentKey] = [];
+        map[parentKey].push(ord);
+      }
+    });
+    return map;
+  }, [allOrders]);
+
   const filteredOrders = useMemo(() => {
     const query = debouncedSearchQuery.toLowerCase().trim();
     return allOrders.filter(o => {
+      const childSubs = subOrdersByParent[o.id] || subOrdersByParent[o.po_number] || [];
+      const childMatch = query && childSubs.some(sub => 
+        (sub.id || '').toLowerCase().includes(query) ||
+        (sub.quote_name || '').toLowerCase().includes(query) ||
+        (sub.phase_name || '').toLowerCase().includes(query)
+      );
+
       const matchesSearch = !query ||
         (o.id || '').toLowerCase().includes(query) ||
         (o.quote_name || '').toLowerCase().includes(query) ||
         (o.projectName || '').toLowerCase().includes(query) ||
         (o.projectClient || '').toLowerCase().includes(query) ||
-        (o.projectPm || '').toLowerCase().includes(query);
+        (o.projectPm || '').toLowerCase().includes(query) ||
+        childMatch;
         
       const matchesStatus = filterStatus === 'All' || o.status === filterStatus;
       const matchesProject = projectFilterKey === 'All' || o.projectKey === projectFilterKey || o.projectName === projectFilterKey;
@@ -1577,11 +1730,47 @@ export default function OrdersPage() {
       
       return matchesSearch && matchesStatus && matchesProject && matchesClient && matchesPm && matchesPaymentStatus && matchesDate;
     });
-  }, [allOrders, debouncedSearchQuery, filterStatus, projectFilterKey, clientFilter, pmFilter, paymentStatusFilter, startDate, endDate]);
+  }, [allOrders, debouncedSearchQuery, filterStatus, projectFilterKey, clientFilter, pmFilter, paymentStatusFilter, startDate, endDate, subOrdersByParent]);
+
+  // Primary rows for the ledger: master orders + orphan sub-orders (if any)
+  const topLevelOrders = useMemo(() => {
+    return filteredOrders.filter(o => {
+      if (!checkIsSubOrder(o)) return true;
+      const parentKey = o.parent_po_number || o.parentPoNumber || (String(o.id).includes('-') ? String(o.id).replace(/-\d{1,2}$/, '') : o.id);
+      const parentExists = (allOrders || []).some(p => p.id === parentKey || p.po_number === parentKey);
+      return !parentExists;
+    });
+  }, [filteredOrders, allOrders]);
+
+  // Dynamic statistics - calculate strictly from master orders to eliminate double-counting
+  const { totalCostCompany, totalValueCompany, blendedMarginCompany, lowMarginPoCount, masterOrdersCount } = useMemo(() => {
+    const masterOnly = filteredOrders.filter(o => !checkIsSubOrder(o));
+    const cost = masterOnly.reduce((sum, o) => sum + (o.costValue || 0), 0);
+    const value = masterOnly.reduce((sum, o) => sum + (o.value || 0), 0);
+    const margin = value > 0 ? Math.round(((value - cost) / value) * 100) : 0;
+    const lowMargin = masterOnly.filter(o => {
+      const c = o.costValue || 0;
+      const r = o.value || 0;
+      if (r === 0) return false;
+      return ((r - c) / r) * 100 < 39;
+    }).length;
+
+    return {
+      totalCostCompany: cost,
+      totalValueCompany: value,
+      blendedMarginCompany: margin,
+      lowMarginPoCount: lowMargin,
+      masterOrdersCount: masterOnly.length
+    };
+  }, [filteredOrders]);
 
   // Sort Logic for All Columns in Orders Module
+  // Pagination with Page Memory
+  const [ordersPageSize, setOrdersPageSize] = useState(50);
+  const [ordersCurrentPage, setOrdersCurrentPage] = useState(1);
+
   const sortedOrders = useMemo(() => {
-    if (!sortField) return filteredOrders;
+    if (!sortField) return topLevelOrders;
 
     const getVal = (o, field) => {
       const cost = o.costValue || 0;
@@ -1621,7 +1810,7 @@ export default function OrdersPage() {
       }
     };
 
-    return [...filteredOrders].sort((a, b) => {
+    return [...topLevelOrders].sort((a, b) => {
       const valA = getVal(a, sortField);
       const valB = getVal(b, sortField);
 
@@ -1629,7 +1818,21 @@ export default function OrdersPage() {
       if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [filteredOrders, sortField, sortDirection]);
+  }, [topLevelOrders, sortField, sortDirection]);
+
+  const ordersTotalPages = useMemo(() => {
+    if (ordersPageSize === 'All') return 1;
+    return Math.max(1, Math.ceil(sortedOrders.length / Number(ordersPageSize)));
+  }, [sortedOrders.length, ordersPageSize]);
+
+  const ordersActivePage = Math.min(ordersCurrentPage, ordersTotalPages);
+
+  const paginatedOrders = useMemo(() => {
+    if (ordersPageSize === 'All') return sortedOrders;
+    const size = Number(ordersPageSize);
+    const start = (ordersActivePage - 1) * size;
+    return sortedOrders.slice(start, start + size);
+  }, [sortedOrders, ordersActivePage, ordersPageSize]);
 
   const handleSort = (field) => {
     if (sortField === field) {
@@ -1647,34 +1850,16 @@ export default function OrdersPage() {
       : <ArrowDown size={12} style={{ marginLeft: '4px', color: 'var(--text-info)' }} />;
   };
 
-  // Dynamic statistics
-  const { totalCostCompany, totalValueCompany, blendedMarginCompany, lowMarginPoCount } = useMemo(() => {
-    const cost = filteredOrders.reduce((sum, o) => sum + (o.costValue || 0), 0);
-    const value = filteredOrders.reduce((sum, o) => sum + (o.value || 0), 0);
-    const margin = value > 0 ? Math.round(((value - cost) / value) * 100) : 0;
-    const lowMargin = filteredOrders.filter(o => {
-      const c = o.costValue || 0;
-      const r = o.value || 0;
-      if (r === 0) return false;
-      return ((r - c) / r) * 100 < 39;
-    }).length;
-
-    return {
-      totalCostCompany: cost,
-      totalValueCompany: value,
-      blendedMarginCompany: margin,
-      lowMarginPoCount: lowMargin
-    };
-  }, [filteredOrders]);
-
   // Open the spreadsheet workspace
   const handleOpenWorkspace = (order) => {
-    setSelectedOrderId(order.id);
-    setSelectedProjectKey(order.projectKey);
+    React.startTransition(() => {
+      setSelectedOrderId(order.id);
+      setSelectedProjectKey(order.projectKey);
+      setWorkspaceSubTab('takeoff');
     const loadedItems = (order.itemsList || []).map(item => {
       let etaVal = item.eta;
       if (!etaVal) {
-        const catalogItem = PRODUCT_CATALOG.find(p => p.code === item.code);
+        const catalogItem = PRODUCT_CATALOG_MAP.get((item.code || '').trim()) || PRODUCT_CATALOG.find(p => p.code === item.code);
         etaVal = catalogItem ? catalogItem.eta : '4 weeks';
       }
       return {
@@ -1820,6 +2005,7 @@ export default function OrdersPage() {
 
     const rawBilling = (order.billingDetails || order.billing_details || proj.billingDetails || contact.billingAddress || '').trim();
     setBillingDetails(rawBilling.includes('TEST TSTETESSET') ? (proj.billingDetails || contact.billingAddress || '') : rawBilling);
+    });
   };
 
   // Cell modification in the spreadsheet workspace
@@ -1830,7 +2016,7 @@ export default function OrdersPage() {
         
         // Auto-populate details from PRODUCT_CATALOG if code changes
         if (field === 'code') {
-          const catalogItem = PRODUCT_CATALOG.find(p => p.code === val);
+          const catalogItem = PRODUCT_CATALOG_MAP.get((val || "").trim()) || PRODUCT_CATALOG.find(p => p.code === val);
           if (catalogItem) {
             updated.description = catalogItem.description;
             updated.brand = catalogItem.brand;
@@ -2594,7 +2780,10 @@ export default function OrdersPage() {
       item_type: item.itemType || item.item_type || "Hardware",
       sort_order: Math.round(Number(item.sortOrder !== undefined ? item.sortOrder : (item.sort_order !== undefined ? item.sort_order : 0)) || 0),
       notes: item.notes || null,
-      first_fix: item.firstFix || item.first_fix || 'No'
+      first_fix: item.firstFix || item.first_fix || 'No',
+      sub_order_ref: item.sub_order_ref || item.subOrderRef || null,
+      revision_status: item.revision_status || item.revisionStatus || 'Active',
+      swap_reason: item.swap_reason || item.swapReason || null
     }));
 
     try {
@@ -2671,15 +2860,118 @@ export default function OrdersPage() {
     }
   };
 
-  // Compiler callback: receives generated items from Takeoff engine and populates into activeOrderItems
-  const handleGenerateBOQFromTakeoff = (generatedItems, mode = 'append') => {
+  // Compiler callback: receives generated items from Takeoff engine and performs Smart Sync / Diff
+  const handleGenerateBOQFromTakeoff = async (generatedItems, mode = 'sync') => {
+    // Composite key generator: [floor]__[area]__[tag/code]
+    const makeKey = (item) => {
+      const f = (item.floor || 'Ground').trim().toLowerCase();
+      const a = (item.area || 'General Area').trim().toLowerCase();
+      const t = (item.tag || item.code || '').trim().toUpperCase();
+      return `${f}__${a}__${t}`;
+    };
+
+    let updatedList = [];
+    let updatedCount = 0;
+    let addedCount = 0;
+    let preservedCustomCount = 0;
+
     if (mode === 'replace') {
-      setActiveOrderItems(generatedItems);
+      // 1. Complete clean overwrite
+      updatedList = generatedItems.map((item, idx) => ({
+        ...item,
+        id: item.id || `boq-gen-${Date.now()}-${idx}`,
+        source: 'takeoff',
+        isTakeoffItem: true,
+      }));
+      addedCount = updatedList.length;
+    } else if (mode === 'append') {
+      // 2. Simple append
+      const stamped = generatedItems.map((item, idx) => ({
+        ...item,
+        id: item.id || `boq-gen-${Date.now()}-${idx}`,
+        source: 'takeoff',
+        isTakeoffItem: true,
+      }));
+      updatedList = [...activeOrderItems, ...stamped];
+      addedCount = stamped.length;
     } else {
-      setActiveOrderItems(prev => [...prev, ...generatedItems]);
+      // 3. Smart Sync / Diff Engine (Default)
+      const incomingMap = new Map();
+      generatedItems.forEach((item, idx) => {
+        const key = makeKey(item);
+        incomingMap.set(key, { ...item, _idx: idx });
+      });
+
+      const matchedIncomingKeys = new Set();
+
+      // Step A: Iterate over existing items, update matched Takeoff rows and preserve operational metadata
+      updatedList = activeOrderItems.map(existing => {
+        // If it's a blank spacer row, retain as is
+        if (existing.isBlankSpacer || (!existing.code && !existing.description && !existing.tag)) {
+          return existing;
+        }
+
+        const key = makeKey(existing);
+        if (incomingMap.has(key)) {
+          matchedIncomingKeys.add(key);
+          const incoming = incomingMap.get(key);
+          updatedCount++;
+          return {
+            ...existing,
+            qty: incoming.qty,
+            unitRetail: incoming.unitRetail !== undefined ? incoming.unitRetail : existing.unitRetail,
+            unitCost: incoming.unitCost !== undefined ? incoming.unitCost : existing.unitCost,
+            description: incoming.description || existing.description,
+            brand: incoming.brand || existing.brand,
+            supplier: incoming.supplier || existing.supplier,
+            dimming: incoming.dimming || existing.dimming,
+            tag: incoming.tag || existing.tag,
+            source: 'takeoff',
+            isTakeoffItem: true,
+            // Retain operational tracking links
+            po_ref: existing.po_ref || existing.poRef,
+            po_qty_ordered: existing.po_qty_ordered,
+            po_eta: existing.po_eta,
+            po_supplier: existing.po_supplier,
+            invoice_ref: existing.invoice_ref,
+            invoice_qty: existing.invoice_qty,
+            received_qty: existing.received_qty,
+            delivery_qty: existing.delivery_qty,
+            delivery_status: existing.delivery_status,
+            notes: existing.notes,
+          };
+        } else {
+          // Manual line item, custom allowance, or untagged entry
+          preservedCustomCount++;
+          return existing;
+        }
+      });
+
+      // Step B: Append any brand-new Takeoff items that didn't previously exist
+      generatedItems.forEach((incoming, idx) => {
+        const key = makeKey(incoming);
+        if (!matchedIncomingKeys.has(key)) {
+          addedCount++;
+          updatedList.push({
+            ...incoming,
+            id: incoming.id || `boq-gen-${Date.now()}-${idx}`,
+            source: 'takeoff',
+            isTakeoffItem: true,
+          });
+        }
+      });
     }
+
+    setActiveOrderItems(updatedList);
     setWorkspaceSubTab('boq');
-    alert(`✨ Generated ${generatedItems.length} items from Takeoff into the BOQ Spreadsheet!\nClick 'Save & Update' when you are ready to commit changes to database.`);
+
+    // Display non-blocking luxury status banner
+    const toastMsg = mode === 'replace'
+      ? `Compiled ${addedCount} items into BOQ Spreadsheet.`
+      : `Takeoff Synced: ${updatedCount} updated, ${addedCount} added, ${preservedCustomCount} manual rows preserved.`;
+    
+    setSaveSuccessMsg(toastMsg);
+    setTimeout(() => setSaveSuccessMsg(null), 4000);
   };
 
   // Create a brand-new Purchase Order / Quotation
@@ -2905,8 +3197,7 @@ export default function OrdersPage() {
         isMobile ? (
           <MobileOrdersViewer orders={allOrders} onRefresh={refreshProjects} />
         ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: isSidebarCollapsed ? '1fr 50px' : '1fr 340px', gap: '24px', alignItems: 'start' }}>
-          <div style={{ minWidth: 0 }}>
+        <div style={{ width: '100%' }}>
           <div className="card" style={{ marginBottom: '16px', background: 'var(--bg-primary)' }}>
             <div className="card-body" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -2914,8 +3205,8 @@ export default function OrdersPage() {
                   <ClipboardList size={18} />
                 </div>
                 <div>
-                  <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Hardware {getModuleName('orders', 'Orders')} & BOQ Workspace</h2>
-                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Central Quotations & Area-by-Area BOQ Builder.</div>
+                  <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Orders Module</h2>
+                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Central Quotations & Area-by-Area BOQ Builder</div>
                 </div>
               </div>
 
@@ -3000,7 +3291,7 @@ export default function OrdersPage() {
                 <ClipboardList size={16} color="var(--text-info)" />
               </div>
               <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {filteredOrders.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Active Qty</span>
+                {masterOrdersCount} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Active Qty</span>
               </div>
               <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px' }}>
                 Total quotations in system.
@@ -3075,210 +3366,201 @@ export default function OrdersPage() {
           </div>
 
           {/* SEARCH, FILTER & LEDGER GRID */}
-          <div className="card" style={{ border: '1.5px solid var(--border)' }}>
-            <div className="card-body" style={{ padding: '20px' }}>
-              
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-                <div style={{ display: 'flex', gap: '10px', flex: 1, minWidth: '300px' }}>
-                  <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
-                    <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
-                    <input 
-                      type="text"
-                      placeholder="Search Order ID, Order name, Linked Project, Client or PM..."
-                      className="form-control"
-                      style={{ paddingLeft: '32px', fontSize: '13px', height: '34px' }}
-                      value={searchQuery}
-                      onChange={e => setSearchQuery(e.target.value)}
-                    />
-                  </div>
+          <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+            
+            {/* TIER 1: TOP FILTER TOOLBAR */}
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '10px', flex: 1, minWidth: '300px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
+                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
+                  <input 
+                    type="search"
+                    placeholder="Search Order ID, Order name, Linked Project, Client or PM..."
+                    className="form-control"
+                    style={{ paddingLeft: '32px', fontSize: '13px', height: '34px' }}
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                
+                <SearchableFilterDropdown 
+                  value={filterStatus}
+                  onChange={setFilterStatus}
+                  options={['Draft', 'Pending', 'Ongoing', 'Complete', 'Cancelled']}
+                  allLabel="All Statuses"
+                  width="135px"
+                />
+
+                <SearchableFilterDropdown 
+                  value={projectFilterKey}
+                  onChange={setProjectFilterKey}
+                  options={projectOptions}
+                  allLabel="All Projects"
+                  width="155px"
+                />
+
+                <SearchableFilterDropdown 
+                  value={clientFilter}
+                  onChange={setClientFilter}
+                  options={clientOptions}
+                  allLabel="All Clients"
+                  width="155px"
+                />
+
+                <SearchableFilterDropdown 
+                  value={pmFilter}
+                  onChange={setPmFilter}
+                  options={pmOptions}
+                  allLabel="All PMs"
+                  width="140px"
+                />
+
+                <SearchableFilterDropdown 
+                  value={paymentStatusFilter}
+                  onChange={setPaymentStatusFilter}
+                  options={['Fully Paid', 'Partially Paid', 'Unpaid']}
+                  allLabel="All Payments"
+                  width="140px"
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {isAnyFilterActive && (
+                  <button 
+                    className="btn btn-ghost btn-sm" 
+                    onClick={handleClearFilters}
+                    style={{ fontSize: '11px', color: 'var(--text-info)', border: '1px solid var(--border)' }}
+                  >
+                    Clear Filters
+                  </button>
+                )}
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Showing <strong>{filteredOrders.length}</strong> active BOQs
+                </div>
+              </div>
+            </div>
+
+            {/* ORDERS BULK ACTIONS TOOLBAR */}
+            {selectedPoNumbers.size > 0 && (
+              <div style={{ padding: '10px 20px', background: 'rgba(59, 130, 246, 0.08)', borderBottom: '1px solid rgba(59, 130, 246, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', animation: 'fadeIn 0.2s ease' }}>
+                <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>
+                  {selectedPoNumbers.size} orders selected
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <button 
+                    className="btn btn-sm btn-ghost" 
+                    onClick={() => setSelectedPoNumbers(new Set())}
+                    style={{ fontSize: '12px' }}
+                  >
+                    Cancel
+                  </button>
+                  
+                  <button 
+                    className="btn btn-sm btn-secondary" 
+                    onClick={handleBulkRenameOrders}
+                    style={{ fontSize: '12px' }}
+                  >
+                    Rename Quote Name
+                  </button>
                   
                   <select 
-                    className="form-control"
-                    style={{ width: '130px', height: '34px', fontSize: '13px' }}
-                    value={filterStatus}
-                    onChange={e => setFilterStatus(e.target.value)}
+                    className="form-control" 
+                    style={{ width: '180px', height: '28px', fontSize: '12px', padding: '0 8px', display: 'inline-block', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                    onChange={e => {
+                      if (e.target.value) {
+                        handleBulkRelinkOrders(e.target.value);
+                        e.target.value = ''; // Reset
+                      }
+                    }}
                   >
-                    <option value="All">All Statuses</option>
-                    <option value="Draft">Draft</option>
-                    <option value="Pending">Pending</option>
-                    <option value="Ongoing">Ongoing</option>
-                    <option value="Complete">Complete</option>
-                    <option value="Cancelled">Cancelled</option>
-                  </select>
-
-                  <select 
-                    className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
-                    value={projectFilterKey}
-                    onChange={e => setProjectFilterKey(e.target.value)}
-                  >
-                    <option value="All">All Projects</option>
-                    {projectOptions.map(p => (
+                    <option value="">Shift to Project...</option>
+                    {Object.values(projects).map(p => (
                       <option key={p.key} value={p.key}>{p.name}</option>
                     ))}
                   </select>
 
-                  <select 
-                    className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
-                    value={clientFilter}
-                    onChange={e => setClientFilter(e.target.value)}
+                  <button 
+                    className="btn btn-sm btn-danger" 
+                    onClick={handleBulkDeleteOrders}
+                    style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
                   >
-                    <option value="All">All Clients</option>
-                    {clientOptions.map(client => (
-                      <option key={client} value={client}>{client}</option>
-                    ))}
-                  </select>
-
-                  <select 
-                    className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
-                    value={pmFilter}
-                    onChange={e => setPmFilter(e.target.value)}
-                  >
-                    <option value="All">All PMs</option>
-                    {pmOptions.map(pm => (
-                      <option key={pm} value={pm}>{pm}</option>
-                    ))}
-                  </select>
-
-                  <select 
-                    className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
-                    value={paymentStatusFilter}
-                    onChange={e => setPaymentStatusFilter(e.target.value)}
-                  >
-                    <option value="All">All Payments</option>
-                    <option value="Fully Paid">Fully Paid</option>
-                    <option value="Partially Paid">Partially Paid</option>
-                    <option value="Unpaid">Unpaid</option>
-                  </select>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  {isAnyFilterActive && (
-                    <button 
-                      className="btn btn-ghost btn-sm" 
-                      onClick={handleClearFilters}
-                      style={{ fontSize: '11px', color: 'var(--text-info)', border: '1px solid var(--border)' }}
-                    >
-                      Clear Filters
-                    </button>
-                  )}
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    Showing <strong>{filteredOrders.length}</strong> active BOQs
-                  </div>
+                    <Trash2 size={12} />
+                    Delete Selected ({selectedPoNumbers.size})
+                  </button>
                 </div>
               </div>
+            )}
 
-              {/* ORDERS BULK ACTIONS TOOLBAR */}
-              {selectedPoNumbers.size > 0 && (
-                <div className="card" style={{ padding: '12px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(59, 130, 246, 0.1)', borderLeft: '4px solid var(--text-info)', flexWrap: 'wrap', gap: '12px', animation: 'fadeIn 0.2s ease' }}>
-                  <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>
-                    {selectedPoNumbers.size} orders selected
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    <button 
-                      className="btn btn-sm btn-ghost" 
-                      onClick={() => setSelectedPoNumbers(new Set())}
-                      style={{ fontSize: '12px' }}
-                    >
-                      Cancel
-                    </button>
-                    
-                    <button 
-                      className="btn btn-sm btn-secondary" 
-                      onClick={handleBulkRenameOrders}
-                      style={{ fontSize: '12px' }}
-                    >
-                      Rename Quote Name
-                    </button>
-                    
-                    <select 
-                      className="form-control" 
-                      style={{ width: '180px', height: '28px', fontSize: '12px', padding: '0 8px', display: 'inline-block', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}
-                      onChange={e => {
-                        if (e.target.value) {
-                          handleBulkRelinkOrders(e.target.value);
-                          e.target.value = ''; // Reset
-                        }
-                      }}
-                    >
-                      <option value="">Shift to Project...</option>
-                      {Object.values(projects).map(p => (
-                        <option key={p.key} value={p.key}>{p.name}</option>
-                      ))}
-                    </select>
+            {/* TIER 2: ORDERS LEDGER FULL-BLEED TABLE */}
+            <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '68vh', position: 'relative' }}>
+              <table className="table" style={{ margin: 0, width: '100%', fontSize: '12.5px', borderCollapse: 'collapse' }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                    <th style={{ width: '40px', textAlign: 'center', padding: '10px 8px', verticalAlign: 'middle' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={sortedOrders.length > 0 && sortedOrders.every(o => selectedPoNumbers.has(o.id))}
+                        onChange={() => toggleSelectAllPos(sortedOrders)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </th>
+                    <th onClick={() => handleSort('id')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order ID {renderSortIcon('id')}</div>
+                    </th>
+                    <th onClick={() => handleSort('quote_name')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Name {renderSortIcon('quote_name')}</div>
+                    </th>
+                    <th onClick={() => handleSort('project')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Linked Project {renderSortIcon('project')}</div>
+                    </th>
+                    <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderSortIcon('client')}</div>
+                    </th>
+                    <th onClick={() => handleSort('pm')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Manager {renderSortIcon('pm')}</div>
+                    </th>
+                    <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Margin {renderSortIcon('margin')}</div>
+                    </th>
+                    <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Value {renderSortIcon('value')}</div>
+                    </th>
+                    <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Amount Paid {renderSortIcon('paid')}</div>
+                    </th>
+                    <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Balance Outstanding {renderSortIcon('outstanding')}</div>
+                    </th>
+                    <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Status {renderSortIcon('status')}</div>
+                    </th>
+                    <th onClick={() => handleSort('paymentStatus')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Payment Status {renderSortIcon('paymentStatus')}</div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedOrders.map(o => {
+                    const cost = o.costValue || 0;
+                    const retail = o.value || 0;
+                    const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
+                    const isLowMargin = margin < 39;
+                    const isSelected = selectedPoNumbers.has(o.id);
 
-                    <button 
-                      className="btn btn-sm btn-danger" 
-                      onClick={handleBulkDeleteOrders}
-                      style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-                    >
-                      <Trash2 size={12} />
-                      Delete Selected ({selectedPoNumbers.size})
-                    </button>
-                  </div>
-                </div>
-              )}
+                    const childSubs = subOrdersByParent[o.id] || subOrdersByParent[o.po_number] || [];
+                    const hasChildSubs = childSubs.length > 0;
+                    const isExpanded = expandedMasterOrders.has(o.id) || (debouncedSearchQuery && childSubs.some(sub => (sub.id || '').toLowerCase().includes(debouncedSearchQuery.toLowerCase())));
 
-              {/* ORDERS LEDGER LIST */}
-              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', position: 'relative' }}>
-                <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '30px', textAlign: 'center' }}>
-                        <input 
-                          type="checkbox" 
-                          checked={sortedOrders.length > 0 && sortedOrders.every(o => selectedPoNumbers.has(o.id))}
-                          onChange={() => toggleSelectAllPos(sortedOrders)}
-                          style={{ cursor: 'pointer' }}
-                        />
-                      </th>
-                      <th onClick={() => handleSort('id')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order ID {renderSortIcon('id')}</div>
-                      </th>
-                      <th onClick={() => handleSort('quote_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Name {renderSortIcon('quote_name')}</div>
-                      </th>
-                      <th onClick={() => handleSort('project')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Linked Project {renderSortIcon('project')}</div>
-                      </th>
-                      <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderSortIcon('client')}</div>
-                      </th>
-                      <th onClick={() => handleSort('pm')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Manager {renderSortIcon('pm')}</div>
-                      </th>
-                      <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Margin {renderSortIcon('margin')}</div>
-                      </th>
-                      <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Value {renderSortIcon('value')}</div>
-                      </th>
-                      <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Amount Paid {renderSortIcon('paid')}</div>
-                      </th>
-                      <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Balance Outstanding {renderSortIcon('outstanding')}</div>
-                      </th>
-                      <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Status {renderSortIcon('status')}</div>
-                      </th>
-                      <th onClick={() => handleSort('paymentStatus')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Payment Status {renderSortIcon('paymentStatus')}</div>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedOrders.map(o => {
-                      const cost = o.costValue || 0;
-                      const retail = o.value || 0;
-                      const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
-                      const isLowMargin = margin < 39;
-
-                      return (
-                        <tr key={o.id} className="clickable" onClick={() => handleOpenWorkspace(o)}>
+                    return (
+                      <React.Fragment key={o.id}>
+                        <tr 
+                          className="clickable" 
+                          onClick={() => handleOpenWorkspace(o)}
+                          style={{
+                            background: isSelected ? 'rgba(59, 130, 246, 0.08)' : (hasChildSubs ? 'rgba(59, 130, 246, 0.02)' : 'transparent'),
+                            borderLeft: isSelected ? '3px solid #3b82f6' : '3px solid transparent'
+                          }}
+                        >
                           <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
                             <input 
                               type="checkbox" 
@@ -3287,94 +3569,293 @@ export default function OrdersPage() {
                               style={{ cursor: 'pointer' }}
                             />
                           </td>
-                          <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)', display: 'flex', alignItems: 'center', gap: '6px' }} onClick={e => e.stopPropagation()}>
-                            <span className="btn-link" style={{ cursor: 'pointer', textDecoration: 'underline' }} onClick={() => handleOpenWorkspace(o)}>{o.id}</span>
-                            {isAdmin && (
-                              <button
-                                className="btn btn-ghost btn-sm"
-                                style={{ padding: '2px 4px', height: '20px', border: '1px solid var(--border)', fontSize: '9px', display: 'inline-flex', alignItems: 'center', gap: '2px', background: 'var(--bg-secondary)' }}
-                                title="Link / Shift Project or Client"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setLinkModalItem(o);
-                                  setLinkClient(o.projectClient || '');
-                                  setLinkProjectKey(o.projectKey || '');
-                                }}
+                          <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }} onClick={e => e.stopPropagation()}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              {hasChildSubs && (
+                                <button
+                                  type="button"
+                                  className="btn-ghost"
+                                  style={{
+                                    padding: 0,
+                                    height: '18px',
+                                    width: '18px',
+                                    borderRadius: '4px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: isExpanded ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                                    background: isExpanded ? 'rgba(255, 255, 255, 0.06)' : 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  onClick={(e) => toggleExpandMaster(o.id, e)}
+                                  title={isExpanded ? "Collapse Sub-Orders" : `Expand ${childSubs.length} Sub-Orders`}
+                                >
+                                  <ChevronRight 
+                                    size={12} 
+                                    style={{ 
+                                      transform: isExpanded ? 'rotate(90deg)' : 'none', 
+                                      transition: 'transform 0.15s ease' 
+                                    }} 
+                                  />
+                                </button>
+                              )}
+                              <span 
+                                className="btn-link" 
+                                style={{ cursor: 'pointer', textDecoration: 'none', color: 'var(--text-info)' }} 
+                                onClick={() => handleOpenWorkspace(o)}
                               >
-                                <Layers size={10} /> Link
-                              </button>
-                            )}
+                                {o.id}
+                              </span>
+                              {hasChildSubs && (
+                                <span 
+                                  style={{ 
+                                    fontSize: '9.5px', 
+                                    padding: '1px 6px', 
+                                    borderRadius: '3px', 
+                                    border: '1px solid var(--border)', 
+                                    background: 'var(--bg-secondary)', 
+                                    color: 'var(--text-secondary)', 
+                                    fontWeight: 600,
+                                    letterSpacing: '0.02em' 
+                                  }}
+                                >
+                                  Master · {childSubs.length} {childSubs.length === 1 ? 'Phase' : 'Phases'}
+                                </span>
+                              )}
+                            </div>
                           </td>
-                          <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
-                          <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectName}</td>
-                          <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: o.projectClient } }); }}>{o.projectClient || '—'}</td>
-                          <td style={{ color: 'var(--text-secondary)' }}>{o.projectPm || o.pm || '—'}</td>
+                          <td style={{ fontWeight: 600 }}>{o.quote_name || 'Standard Quotation'}</td>
+                          <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectName}</td>
+                          <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: o.projectClient } }); }}>{o.projectClient || '—'}</td>
+                          <td style={{ color: 'var(--text-secondary)' }}>{o.projectPm || '—'}</td>
                           <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
                             {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
                           </td>
                           <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>
                           <td style={{ color: 'var(--text-success)' }}>R {(o.paid || 0).toLocaleString()}</td>
-                          <td style={{ fontWeight: 600, color: (o.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
+                          <td style={{ fontWeight: 600, color: o.outstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
                             R {(o.outstanding || 0).toLocaleString()}
                           </td>
                           <td>
-                            <span className={`badge ${statusColor[o.status] || 'b-default'}`}>{o.status}</span>
+                            <span className={`badge ${statusColor[o.status] || 'b-default'}`}>{o.status || 'Draft'}</span>
                           </td>
                           <td>
                             <span className={`badge ${
                               o.paymentStatus === 'Fully Paid' ? 'b-success' : o.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
-                            }`}>{o.paymentStatus}</span>
+                            }`}>{o.paymentStatus || 'Unpaid'}</span>
                           </td>
                         </tr>
-                      );
-                    })}
 
-                    {filteredOrders.length === 0 && (
-                      <tr>
-                        <td colSpan={12} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
-                          No active quotations or Bills of Quantity found.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                  {sortedOrders.length > 0 && (() => {
-                    const totalVal = sortedOrders.reduce((s, o) => s + (Number(o.value) || 0), 0);
-                    const totalPaid = sortedOrders.reduce((s, o) => s + (Number(o.paid) || 0), 0);
-                    const totalOut = sortedOrders.reduce((s, o) => s + (Number(o.outstanding) || 0), 0);
-                    return (
-                      <tfoot style={{ position: 'sticky', bottom: 0, background: 'var(--bg-secondary)', borderTop: '2px solid var(--border-strong)', zIndex: 2 }}>
-                        <tr>
-                          <td colSpan={6} style={{ fontWeight: 800, fontSize: '12px', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '12px' }}>
-                            LEDGER TOTAL ({sortedOrders.length} {sortedOrders.length === 1 ? 'Order' : 'Orders'})
-                          </td>
-                          <td style={{ fontWeight: 800, color: blendedMarginCompany < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                            {blendedMarginCompany}%
-                          </td>
-                          <td style={{ fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
-                            R {Math.round(totalVal).toLocaleString()}
-                          </td>
-                          <td style={{ fontWeight: 800, color: 'var(--text-success)', fontFamily: 'monospace' }}>
-                            R {Math.round(totalPaid).toLocaleString()}
-                          </td>
-                          <td style={{ fontWeight: 800, color: totalOut > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                            R {Math.round(totalOut).toLocaleString()}
-                          </td>
-                          <td colSpan={2} />
-                        </tr>
-                      </tfoot>
+                        {/* Hierarchical Sub-Orders List */}
+                        {isExpanded && childSubs.map(sub => {
+                          const subCost = sub.costValue || 0;
+                          const subRetail = sub.value || 0;
+                          const subMargin = subRetail > 0 ? Math.round(((subRetail - subCost) / subRetail) * 100) : 0;
+                          const subPaid = sub.paid || 0;
+                          const subOut = sub.outstanding || 0;
+                          const isSubSelected = selectedPoNumbers.has(sub.id);
+
+                          return (
+                            <tr 
+                              key={sub.id}
+                              className="clickable"
+                              onClick={() => handleOpenWorkspace(sub)}
+                              style={{ 
+                                background: isSubSelected ? 'rgba(59, 130, 246, 0.08)' : 'rgba(255, 255, 255, 0.015)',
+                                borderLeft: isSubSelected ? '3px solid #3b82f6' : '3px solid transparent'
+                              }}
+                            >
+                              <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={selectedPoNumbers.has(sub.id)}
+                                  onChange={(e) => toggleSelectPo(sub.id, e)}
+                                  style={{ cursor: 'pointer' }}
+                                />
+                              </td>
+                              <td style={{ fontFamily: 'monospace', fontWeight: 600, paddingLeft: '32px' }} onClick={e => e.stopPropagation()}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  <span style={{ color: 'var(--text-tertiary)', fontSize: '11px', userSelect: 'none' }}>↳</span>
+                                  <span 
+                                    className="btn-link" 
+                                    style={{ cursor: 'pointer', color: 'var(--text-secondary)', textDecoration: 'none' }} 
+                                    onClick={() => handleOpenWorkspace(sub)}
+                                  >
+                                    {sub.id}
+                                  </span>
+                                  <span 
+                                    style={{ 
+                                      fontSize: '9.5px', 
+                                      padding: '1px 6px', 
+                                      borderRadius: '3px', 
+                                      border: '1px solid var(--border)', 
+                                      background: 'var(--bg-secondary)', 
+                                      color: 'var(--text-secondary)', 
+                                      fontWeight: 600 
+                                    }}
+                                  >
+                                    {sub.phase_name || sub.phaseName || `Phase ${sub.sub_order_index || 1}`}
+                                  </span>
+                                </div>
+                              </td>
+                              <td style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{sub.quote_name || 'Phase Scope'}</td>
+                              <td style={{ fontWeight: 500, color: 'var(--text-secondary)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${sub.projectKey || o.projectKey}`); }}>{sub.projectName || o.projectName}</td>
+                              <td style={{ color: 'var(--text-secondary)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: sub.projectClient || o.projectClient } }); }}>{(sub.projectClient || o.projectClient) || '—'}</td>
+                              <td style={{ color: 'var(--text-tertiary)' }}>{sub.projectPm || o.projectPm || '—'}</td>
+                              <td style={{ fontWeight: 600, color: subMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                                {subMargin}% {subMargin < 39 && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
+                              </td>
+                              <td style={{ fontWeight: 600 }}>R {subRetail.toLocaleString()}</td>
+                              <td style={{ color: 'var(--text-success)' }}>R {subPaid.toLocaleString()}</td>
+                              <td style={{ fontWeight: 600, color: subOut > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
+                                R {subOut.toLocaleString()}
+                              </td>
+                              <td>
+                                <span className={`badge ${statusColor[sub.status] || 'b-default'}`}>{sub.status || 'Draft'}</span>
+                              </td>
+                              <td>
+                                <span className={`badge ${
+                                  sub.paymentStatus === 'Fully Paid' ? 'b-success' : sub.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
+                                }`}>{sub.paymentStatus || 'Unpaid'}</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
                     );
-                  })()}
-                </table>
-              </div>
+                  })}
 
+                  {isStoreLoading && (
+                    <tr>
+                      <td colSpan={12} style={{ textAlign: 'center', padding: '48px' }}>
+                        <OneToOneLoader size="lg" text="Loading live orders & quotations..." />
+                      </td>
+                    </tr>
+                  )}
+                  {!isStoreLoading && filteredOrders.length === 0 && (
+                    <EmptyStateBanner
+                      colSpan={12}
+                      title="No orders or quotations found"
+                      subtitle="No records matched your search terms or active status filters."
+                      onClear={() => { setSearchQuery(''); setFilterStatus('All'); setSubOrderFilter('All'); }}
+                      clearLabel="Reset search & filters"
+                    />
+                  )}
+                </tbody>
+                {sortedOrders.length > 0 && (() => {
+                  const totalVal = sortedOrders.reduce((s, o) => s + (Number(o.value) || 0), 0);
+                  const totalPaid = sortedOrders.reduce((s, o) => s + (Number(o.paid) || 0), 0);
+                  const totalOut = sortedOrders.reduce((s, o) => s + (Number(o.outstanding) || 0), 0);
+                  return (
+                    <tfoot style={{ position: 'sticky', bottom: 0, background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', zIndex: 5, boxShadow: '0 -2px 6px rgba(0,0,0,0.06)' }}>
+                      <tr>
+                        <td colSpan={6} style={{ fontWeight: 700, fontSize: '11px', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                          LEDGER TOTAL ({sortedOrders.length} {sortedOrders.length === 1 ? 'Order' : 'Orders'})
+                        </td>
+                        <td style={{ fontWeight: 700, fontSize: '12px', color: blendedMarginCompany < 39 ? 'var(--text-danger)' : 'var(--text-success)', padding: '12px 12px', whiteSpace: 'nowrap' }}>
+                          {blendedMarginCompany}%
+                        </td>
+                        <td style={{ fontWeight: 700, fontSize: '12.5px', color: 'var(--text-primary)', fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', padding: '12px 12px', whiteSpace: 'nowrap' }}>
+                          R {Math.round(totalVal).toLocaleString()}
+                        </td>
+                        <td style={{ fontWeight: 700, fontSize: '12.5px', color: 'var(--text-success)', fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', padding: '12px 12px', whiteSpace: 'nowrap' }}>
+                          R {Math.round(totalPaid).toLocaleString()}
+                        </td>
+                        <td style={{ fontWeight: 700, fontSize: '12.5px', color: totalOut > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', padding: '12px 12px', whiteSpace: 'nowrap' }}>
+                          R {Math.round(totalOut).toLocaleString()}
+                        </td>
+                        <td colSpan={2} />
+                      </tr>
+                    </tfoot>
+                  );
+                })()}
+              </table>
             </div>
-          </div>
+
+            {/* TIER 3: INTEGRATED CARD FOOTER (High-Performance Paged Pagination Toolbar) */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 20px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Showing <strong>{sortedOrders.length > 0 ? (ordersActivePage - 1) * (ordersPageSize === 'All' ? sortedOrders.length : Number(ordersPageSize)) + 1 : 0}</strong>–<strong>{Math.min(ordersActivePage * (ordersPageSize === 'All' ? sortedOrders.length : Number(ordersPageSize)), sortedOrders.length)}</strong> of <strong>{sortedOrders.length}</strong> orders
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  <span>Rows per page:</span>
+                  <select 
+                    value={ordersPageSize} 
+                    onChange={e => {
+                      const val = e.target.value === 'All' ? 'All' : Number(e.target.value);
+                      React.startTransition(() => {
+                        setOrdersPageSize(val);
+                        setOrdersCurrentPage(1);
+                      });
+                    }}
+                    style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 600 }}
+                  >
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value="All">All ({sortedOrders.length})</option>
+                  </select>
+                </div>
+                {ordersPageSize !== 'All' && ordersTotalPages > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <button 
+                      type="button"
+                      className="btn btn-ghost btn-sm" 
+                      disabled={ordersActivePage <= 1} 
+                      onClick={() => React.startTransition(() => setOrdersCurrentPage(1))}
+                      style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      title="First Page"
+                    >
+                      <ChevronsLeft size={13} /> First
+                    </button>
+                    <button 
+                      type="button"
+                      className="btn btn-ghost btn-sm" 
+                      disabled={ordersActivePage <= 1} 
+                      onClick={() => React.startTransition(() => setOrdersCurrentPage(p => Math.max(1, p - 1)))}
+                      style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      title="Previous Page"
+                    >
+                      <ChevronLeft size={13} /> Prev
+                    </button>
+                    <span style={{ fontSize: '12px', fontWeight: 600, padding: '0 8px', color: 'var(--text-primary)' }}>
+                      Page {ordersActivePage} of {ordersTotalPages}
+                    </span>
+                    <button 
+                      type="button"
+                      className="btn btn-ghost btn-sm" 
+                      disabled={ordersActivePage >= ordersTotalPages} 
+                      onClick={() => React.startTransition(() => setOrdersCurrentPage(p => Math.min(ordersTotalPages, p + 1)))}
+                      style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      title="Next Page"
+                    >
+                      Next <ChevronRight size={13} />
+                    </button>
+                    <button 
+                      type="button"
+                      className="btn btn-ghost btn-sm" 
+                      disabled={ordersActivePage >= ordersTotalPages} 
+                      onClick={() => React.startTransition(() => setOrdersCurrentPage(ordersTotalPages))}
+                      style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      title="Last Page"
+                    >
+                      Last <ChevronsRight size={13} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
           </div>
           <CollapsibleAlertSidebar 
             module="orders" 
             onNavigate={(path, state) => {
               if (path === '/orders' && state?.selectedOrderId) {
                 setSelectedOrderId(state.selectedOrderId);
+                setWorkspaceSubTab('takeoff');
                 if (state.selectedProjectKey) setSelectedProjectKey(state.selectedProjectKey);
               } else {
                 navigate(path, { state });
@@ -3484,6 +3965,54 @@ export default function OrdersPage() {
                   </button>
                 </div>
               </div>
+
+              {/* SUB-ORDER GOVERNANCE BANNER */}
+              {isSubOrderWorkspace && (
+                <div style={{
+                  background: 'linear-gradient(90deg, rgba(139, 92, 246, 0.12) 0%, rgba(59, 130, 246, 0.08) 100%)',
+                  border: '1px solid rgba(139, 92, 246, 0.35)',
+                  borderRadius: '8px',
+                  padding: '12px 18px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                  width: '100%'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '22px' }}>🔒</span>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '13.5px', color: '#8b5cf6', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>Sub-Order Phase Workspace: {selectedOrderId}</span>
+                        {(currentOrderObj.phase_name || currentOrderObj.phaseName) && (
+                          <span style={{ background: 'rgba(139, 92, 246, 0.2)', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', color: '#8b5cf6', fontWeight: 700 }}>
+                            {currentOrderObj.phase_name || currentOrderObj.phaseName}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        Line items, quantities, and Takeoff are centrally governed by Master Order <strong>{masterPoRef}</strong>. Edits to line items must be performed on the Master Order. Document Generator, Tech Packs, Payments, Logistics, and Invoicing are active for this phase.
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: 700, color: 'var(--text-info)' }}
+                    onClick={() => {
+                      if (masterPoRef) {
+                        const masterObj = Object.values(projects || {}).flatMap(p => Array.isArray(p.orders) ? p.orders : Object.values(p.orders || {})).find(o => String(o.id) === String(masterPoRef) || String(o.po_number || o.poNumber) === String(masterPoRef));
+                        if (masterObj) handleOpenWorkspace(masterObj);
+                        else setSelectedOrderId(masterPoRef);
+                      }
+                    }}
+                  >
+                    <span>↗ Switch to Master Order ({masterPoRef})</span>
+                  </button>
+                </div>
+              )}
 
               {/* TIER 2: FINANCIAL VITALS GRID (FULL 100% WIDTH, PERCENTAGE PROPORTIONS, NO HARDCODED MIN-WIDTH) */}
               {(() => {
@@ -3738,20 +4267,60 @@ export default function OrdersPage() {
               >
                 <DollarSign size={13} style={{ color: '#ef4444' }} /> 🔴 Credits & Returns
               </button>
+              <button 
+                className={`btn btn-sm ${workspaceSubTab === 'audits' ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
+                onClick={() => setWorkspaceSubTab('audits')}
+              >
+                <History size={13} style={{ color: '#10b981' }} /> 📜 Revisions & Audits
+              </button>
             </div>
 
             {/* SUB-TAB 0: TAKEOFF & SPECIFICATION ENGINE */}
             {workspaceSubTab === 'takeoff' && (
-              <TakeoffSpecEngine
-                orderId={selectedOrderId}
-                projectKey={selectedProjectKey}
-                orderSupplier={orderSupplier}
-                initialTakeoffData={takeoffData}
-                orderNotes={orderNotes}
-                onUpdateOrderNotes={setOrderNotes}
-                onSaveTakeoffData={handleSaveTakeoffData}
-                onGenerateBOQ={handleGenerateBOQFromTakeoff}
-              />
+              isSubOrderWorkspace ? (
+                <div style={{
+                  padding: '48px 24px',
+                  textAlign: 'center',
+                  background: 'var(--bg-primary)',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border)',
+                  maxWidth: '680px',
+                  margin: '36px auto'
+                }}>
+                  <div style={{ fontSize: '38px', marginBottom: '12px' }}>🔒</div>
+                  <h3 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Takeoff & Specification Locked for Sub-Orders
+                  </h3>
+                  <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 20px 0' }}>
+                    Fittings, quantities, and room specifications are centrally mastered on <strong>{masterPoRef}</strong>. Line item changes must be executed on the Master Order to prevent scope conflicts across phases.
+                  </p>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      if (masterPoRef) {
+                        const masterObj = Object.values(projects || {}).flatMap(p => Array.isArray(p.orders) ? p.orders : Object.values(p.orders || {})).find(o => String(o.id) === String(masterPoRef) || String(o.po_number || o.poNumber) === String(masterPoRef));
+                        if (masterObj) handleOpenWorkspace(masterObj);
+                        else setSelectedOrderId(masterPoRef);
+                      }
+                    }}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    ↗ Switch to Master Order ({masterPoRef})
+                  </button>
+                </div>
+              ) : (
+                <TakeoffSpecEngine
+                  orderId={selectedOrderId}
+                  projectKey={selectedProjectKey}
+                  orderSupplier={orderSupplier}
+                  initialTakeoffData={takeoffData}
+                  orderNotes={orderNotes}
+                  onUpdateOrderNotes={setOrderNotes}
+                  onSaveTakeoffData={handleSaveTakeoffData}
+                  onGenerateBOQ={handleGenerateBOQFromTakeoff}
+                />
+              )
             )}
 
             {workspaceSubTab === 'boq' && (
@@ -4390,6 +4959,117 @@ export default function OrdersPage() {
                         </div>
                       )}
 
+                      {/* SUB-ORDER & REVISION VARIATION WORKFLOW TOOLBAR */}
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        background: 'var(--bg-secondary)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '8px',
+                        padding: '10px 14px',
+                        marginBottom: '14px',
+                        flexWrap: 'wrap',
+                        gap: '10px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            Scope Filter:
+                          </span>
+                          <div style={{ display: 'inline-flex', gap: '4px', background: 'var(--bg-primary)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                            <button
+                              type="button"
+                              onClick={() => setScopeFilter('ALL')}
+                              className="btn btn-xs"
+                              style={{
+                                padding: '3px 10px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                borderRadius: '4px',
+                                border: 'none',
+                                background: scopeFilter === 'ALL' ? 'var(--text-info)' : 'transparent',
+                                color: scopeFilter === 'ALL' ? '#fff' : 'var(--text-secondary)',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              All Scope ({activeOrderItems.filter(it => !it.is_credit && !it.isCredit).length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setScopeFilter('UNASSIGNED')}
+                              className="btn btn-xs"
+                              style={{
+                                padding: '3px 10px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                borderRadius: '4px',
+                                border: 'none',
+                                background: scopeFilter === 'UNASSIGNED' ? 'var(--text-warning)' : 'transparent',
+                                color: scopeFilter === 'UNASSIGNED' ? '#fff' : 'var(--text-secondary)',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Unassigned Scope ({activeOrderItems.filter(it => !it.is_credit && !it.isCredit && !it.sub_order_ref && !it.subOrderRef).length})
+                            </button>
+                            {Object.values(projects || {}).flatMap(p => Array.isArray(p.orders) ? p.orders : Object.values(p.orders || {})).filter(o => 
+                              (o.parent_order_id && String(o.parent_order_id) === String(selectedOrderId)) ||
+                              (o.parentOrderId && String(o.parentOrderId) === String(selectedOrderId)) ||
+                              (o.parent_po_number && String(o.parent_po_number) === String(selectedOrderId)) ||
+                              (o.parentPoNumber && String(o.parentPoNumber) === String(selectedOrderId)) ||
+                              ((o.is_sub_order || o.isSubOrder) && String(o.po_number || o.id || '').startsWith(String(selectedOrderId) + '-'))
+                            ).map(sub => (
+                              <button
+                                key={sub.id || sub.po_number}
+                                type="button"
+                                onClick={() => setScopeFilter(sub.po_number || sub.poNumber || sub.id)}
+                                className="btn btn-xs"
+                                style={{
+                                  padding: '3px 10px',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  borderRadius: '4px',
+                                  border: 'none',
+                                  background: scopeFilter === (sub.po_number || sub.poNumber || sub.id) ? '#8b5cf6' : 'transparent',
+                                  color: scopeFilter === (sub.po_number || sub.poNumber || sub.id) ? '#fff' : 'var(--text-secondary)',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                {sub.po_number || sub.id} ({sub.phase_name || sub.phaseName || 'Sub'})
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* REVISION VISIBILITY TOGGLE */}
+                          <button
+                            type="button"
+                            onClick={() => setRevisionStatusFilter(prev => prev === 'ACTIVE' ? 'ALL' : 'ACTIVE')}
+                            className="btn btn-xs btn-ghost"
+                            style={{ fontSize: '11px', border: '1px solid var(--border)', color: revisionStatusFilter === 'ALL' ? 'var(--text-warning)' : 'var(--text-secondary)' }}
+                          >
+                            {revisionStatusFilter === 'ALL' ? '👁️ Showing Swapped Out Items' : '👁️ Hide Swapped Items'}
+                          </button>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-ghost"
+                            onClick={() => setWorkspaceSubTab('audits')}
+                            style={{ fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '4px', border: '1px solid var(--border)' }}
+                          >
+                            <History size={13} color="var(--text-info)" /> Audit History
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-primary"
+                            onClick={() => setShowSubOrderModal(true)}
+                            style={{ fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '6px', background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)', border: 'none', color: '#fff' }}
+                          >
+                            <GitBranch size={13} /> ⚡ Create Sub-Order / Phase (-01)
+                          </button>
+                        </div>
+                      </div>
+
                       {/* TWO-COLUMN SPREADSHEET + AREA BREAKDOWN LAYOUT */}
                       <div style={{ display: 'grid', gridTemplateColumns: showAreaBreakdown ? '1fr 340px' : '1fr', gap: '20px', marginBottom: '20px' }}>
                         
@@ -4412,6 +5092,10 @@ export default function OrdersPage() {
                                 <th style={{ width: widths.oneOneCode, position: 'relative' }}>
                                   1:1 Code
                                   <div className="resize-handle" onMouseDown={e => onResizeStart('oneOneCode', e)} />
+                                </th>
+                                <th style={{ width: widths.subOrder, position: 'relative', textAlign: 'center' }}>
+                                  Sub-Order / Phase
+                                  <div className="resize-handle" onMouseDown={e => onResizeStart('subOrder', e)} />
                                 </th>
                                 <th style={{ width: widths.type, position: 'relative' }}>
                                   Type
@@ -4483,7 +5167,19 @@ export default function OrdersPage() {
                               </tr>
                             </thead>
                             <tbody>
-                              {activeOrderItems.filter(item => !(item.is_credit || item.isCredit)).map((item, index) => {
+                              {activeOrderItems.filter(item => {
+                                if (item.is_credit || item.isCredit) return false;
+                                if (revisionStatusFilter === 'ACTIVE' && item.revision_status === 'Swapped') return false;
+                                if (revisionStatusFilter === 'SWAPPED' && item.revision_status !== 'Swapped') return false;
+                                if (scopeFilter === 'UNASSIGNED') {
+                                  return !item.sub_order_ref && !item.subOrderRef;
+                                }
+                                if (scopeFilter !== 'ALL') {
+                                  const ref = item.sub_order_ref || item.subOrderRef;
+                                  return ref === scopeFilter || (ref && ref.endsWith(scopeFilter));
+                                }
+                                return true;
+                              }).map((item, index) => {
                                 const cost = Number(item.unitCost) || 0;
                                 const retail = Number(item.unitRetail) || 0;
                                 const qty = Number(item.qty) || 0;
@@ -4491,9 +5187,13 @@ export default function OrdersPage() {
                                 const lineMargin = retail > 0 ? ((retail - cost) / retail) * 100 : 0;
                                 const isLowMargin = lineMargin < 39;
 
-                                // Google Sheet Highlighting rules
+                                // Google Sheet & Revision Highlighting rules
                                 let rowStyle = {};
-                                if (item.stockStatus === 'In Stock') {
+                                if (item.revision_status === 'Swapped') {
+                                  rowStyle = { background: 'rgba(239, 68, 68, 0.08)', opacity: 0.75, textDecoration: 'line-through' };
+                                } else if (item.revision_status === 'Added') {
+                                  rowStyle = { background: 'rgba(16, 185, 129, 0.08)' };
+                                } else if (item.stockStatus === 'In Stock') {
                                   rowStyle = { background: 'rgba(59, 130, 246, 0.08)' };
                                 } else if (item.selection === 'Selection') {
                                   rowStyle = { background: 'rgba(16, 185, 129, 0.06)' };
@@ -4537,7 +5237,7 @@ export default function OrdersPage() {
                                       >
                                         <GripVertical size={9} style={{ verticalAlign: 'middle', opacity: 0.5 }} />
                                       </td>
-                                      <td colSpan={18} style={{ background: 'rgba(0, 0, 0, 0.04)', height: '9px', padding: 0, borderTop: '1px solid rgba(0,0,0,0.08)', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+                                      <td colSpan={19} style={{ background: 'rgba(0, 0, 0, 0.04)', height: '9px', padding: 0, borderTop: '1px solid rgba(0,0,0,0.08)', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
                                         <div style={{ height: '100%', width: '100%' }} />
                                       </td>
                                       <td style={{ textAlign: 'center', padding: '0 4px', verticalAlign: 'middle' }}>
@@ -4617,15 +5317,75 @@ export default function OrdersPage() {
                                     
                                     {/* 1:1 CODE */}
                                     <td>
-                                      <input 
-                                        type="text"
-                                        className="boq-cell-input"
-                                        value={item.oneOneCode || ''}
-                                        onChange={e => handleUpdateSpreadsheetCell(item.id, 'oneOneCode', e.target.value)}
-                                        data-row={index}
-                                        data-col={1}
-                                        data-field="oneOneCode"
-                                      />
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                        <input 
+                                          type="text"
+                                          className="boq-cell-input"
+                                          style={{ textDecoration: item.revision_status === 'Swapped' ? 'line-through' : 'none' }}
+                                          value={item.oneOneCode || ''}
+                                          onChange={e => handleUpdateSpreadsheetCell(item.id, 'oneOneCode', e.target.value)}
+                                          data-row={index}
+                                          data-col={1}
+                                          data-field="oneOneCode"
+                                        />
+                                        {(item.sub_order_ref || item.subOrderRef) && (
+                                          <span className="badge" title={`Assigned to ${item.sub_order_ref || item.subOrderRef}`} style={{ fontSize: '9px', padding: '1px 4px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: 700, flexShrink: 0, textDecoration: 'none' }}>
+                                            {(item.sub_order_ref || item.subOrderRef).slice(-3)}
+                                          </span>
+                                        )}
+                                        {item.revision_status === 'Swapped' && (
+                                          <span className="badge b-danger" title={`Swapped: ${item.swap_reason || ''}`} style={{ fontSize: '8.5px', padding: '1px 3px', flexShrink: 0, textDecoration: 'none' }}>
+                                            Swap
+                                          </span>
+                                        )}
+                                        {item.revision_status === 'Added' && (
+                                          <span className="badge b-success" title={`Replacement: ${item.swap_reason || ''}`} style={{ fontSize: '8.5px', padding: '1px 3px', flexShrink: 0, textDecoration: 'none' }}>
+                                            Add
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+
+                                    {/* SUB-ORDER / PHASE ALLOCATION */}
+                                    <td style={{ textAlign: 'center', verticalAlign: 'middle', padding: '2px 4px' }}>
+                                      {(item.sub_order_ref || item.subOrderRef) ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => setScopeFilter(item.sub_order_ref || item.subOrderRef)}
+                                          className="btn btn-ghost"
+                                          title={`Filter BOQ to ${item.sub_order_ref || item.subOrderRef}`}
+                                          style={{
+                                            padding: '2px 6px',
+                                            height: 'auto',
+                                            borderRadius: '4px',
+                                            background: 'rgba(139, 92, 246, 0.12)',
+                                            border: '1px solid rgba(139, 92, 246, 0.3)',
+                                            color: '#8b5cf6',
+                                            fontSize: '10px',
+                                            fontWeight: 700,
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px',
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          <span>{(item.sub_order_ref || item.subOrderRef).replace(/^Q-\d{4}-\d+-?/, 'Phase ')}</span>
+                                        </button>
+                                      ) : (
+                                        <span 
+                                          style={{ 
+                                            fontSize: '10px', 
+                                            color: 'var(--text-tertiary)', 
+                                            background: 'var(--bg-secondary)', 
+                                            padding: '2px 6px', 
+                                            borderRadius: '4px',
+                                            border: '1px dashed var(--border)' 
+                                          }}
+                                          title="Unallocated to any phase"
+                                        >
+                                          Unallocated
+                                        </span>
+                                      )}
                                     </td>
 
                                     {/* TYPE CODE */}
@@ -4882,7 +5642,7 @@ export default function OrdersPage() {
                                         const rawAvail = item.stock_available ?? item.stockAvailable ?? item.stock_on_hand ?? item.stockOnHand ?? item.stockQty;
                                         let avail = (rawAvail !== undefined && rawAvail !== null && rawAvail !== '') ? Number(rawAvail) : null;
                                         if (avail === null || isNaN(avail)) {
-                                          const catalogItem = PRODUCT_CATALOG.find(p => p.code === item.code);
+                                          const catalogItem = PRODUCT_CATALOG_MAP.get((item.code || '').trim()) || PRODUCT_CATALOG.find(p => p.code === item.code);
                                           if (catalogItem) {
                                             avail = Number(catalogItem.stockQty);
                                           }
@@ -4923,6 +5683,15 @@ export default function OrdersPage() {
                                           onClick={() => handleDuplicateSpreadsheetRow(item)}
                                         >
                                           <Copy size={12} />
+                                        </button>
+                                        <button 
+                                          type="button"
+                                          className="btn btn-ghost"
+                                          style={{ padding: '2px', height: 'auto', color: '#f59e0b' }}
+                                          title="On-Site Item Variation & Swap"
+                                          onClick={() => setSwapTargetItem(item)}
+                                        >
+                                          <RotateCcw size={12} />
                                         </button>
                                         <button 
                                           type="button"
@@ -5098,7 +5867,7 @@ export default function OrdersPage() {
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                 <div style={{ display: 'flex', gap: '6px' }}>
                                   <input
-                                    type="text"
+                                    type="search"
                                     className="form-control"
                                     style={{ height: '28px', fontSize: '11px', padding: '4px 8px', flex: 1 }}
                                     placeholder="Search catalog..."
@@ -5356,6 +6125,8 @@ export default function OrdersPage() {
                       } else {
                         docsList = [
                           { id: 'quote', name: 'Quotation (Summarized)', icon: <FileText size={14} /> },
+                          { id: 'revision_audit', name: 'Revision & Variation Audit', icon: <History size={14} /> },
+                          { id: 'technical_pack', name: 'Technical Pack & Spec Book', icon: <BookOpen size={14} /> },
                           { id: 'boq_doc', name: 'BOQ (Detailed Breakdown)', icon: <Layers size={14} /> },
                           { id: 'schedule', name: 'Lighting Schedule', icon: <ClipboardList size={14} /> },
                           { id: 'deposit_invoice', name: 'Deposit Invoice', icon: <DollarSign size={14} /> },
@@ -5433,7 +6204,42 @@ export default function OrdersPage() {
                 </div>
 
                 {/* THE HIGH-FIDELITY LIVE DOCUMENT CANVAS PREVIEW */}
-                {(() => {
+                {selectedDocType === 'revision_audit' ? (
+                  <ClientVariationDocument
+                    poNumber={selectedOrderId}
+                    order={currentOrderObj}
+                    onBackToWorkspace={() => setWorkspaceSubTab('boq')}
+                  />
+                ) : selectedDocType === 'technical_pack' ? (
+                  <div style={{
+                    background: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                    padding: '36px 24px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border)',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+                    maxWidth: '800px',
+                    margin: '0 auto',
+                    textAlign: 'center'
+                  }}>
+                    <div style={{ fontSize: '36px', marginBottom: '10px' }}>📘</div>
+                    <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                      One to One Architectural Technical Pack Studio
+                    </h3>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '13px', maxWidth: '540px', margin: '0 auto 20px auto', lineHeight: 1.5 }}>
+                      Compile high-resolution, standardized PDF Technical Packs containing complete photometric specs, wiring diagrams, cutouts, and installation guidelines for <strong>{selectedOrderId}</strong> ({activeOrderItems.length} active fittings).
+                    </p>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => setIsTechPackModalOpen(true)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 22px', fontSize: '13px', fontWeight: 700 }}
+                      >
+                        <BookOpen size={16} /> Launch Technical Pack Studio
+                      </button>
+                    </div>
+                  </div>
+                ) : (() => {
                   const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
                   const totalRetailGross = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
                   const totalCreditedRetail = (erpCreditedItems || []).reduce((s, item) => s + Math.abs(Number(item.totalRetail || 0)), 0);
@@ -6623,6 +7429,17 @@ export default function OrdersPage() {
               );
             })()}
 
+            {workspaceSubTab === 'audits' && (
+              <AuditHistoryTab
+                poNumber={selectedOrderId}
+                order={currentOrderObj}
+                onOpenVariationDocument={() => {
+                  setSelectedDocType('revision_audit');
+                  setWorkspaceSubTab('doc_gen');
+                }}
+              />
+            )}
+
             {workspaceSubTab === 'credits' && (() => {
               const totalErpCredited = orderCreditNotes.reduce((sum, cn) => sum + Math.abs(Number(cn.totalValue || cn.value || cn.amount || 0)), 0);
               const grossOrderValue = activeOrderItems.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * (1 - (orderDiscount || 0) / 100);
@@ -6833,11 +7650,38 @@ export default function OrdersPage() {
               );
             })()}
 
-
-
           </div>
         </div>
       )}
+
+      {/* SUB-ORDER / PHASE CREATION MODAL */}
+      <SubOrderModal
+        isOpen={showSubOrderModal}
+        onClose={() => setShowSubOrderModal(false)}
+        masterOrder={currentOrderObj?.po_number ? currentOrderObj : { po_number: selectedOrderId, quote_name: quoteName }}
+        items={activeOrderItems}
+        onSubOrderCreated={(res) => {
+          refreshProjects();
+          if (selectedOrderId) {
+            fetchCurrentOrderItems(selectedOrderId);
+          }
+        }}
+      />
+
+      {/* ON-SITE ITEM VARIATION & SWAP MODAL */}
+      <ItemSwapModal
+        isOpen={!!swapTargetItem}
+        onClose={() => setSwapTargetItem(null)}
+        item={swapTargetItem}
+        poNumber={selectedOrderId}
+        catalogProducts={catalogProducts}
+        onSwapCompleted={(res) => {
+          refreshProjects();
+          if (selectedOrderId) {
+            fetchCurrentOrderItems(selectedOrderId);
+          }
+        }}
+      />
 
       {/* CREATE PURCHASE ORDER MODAL */}
       {showCreatePoModal && (

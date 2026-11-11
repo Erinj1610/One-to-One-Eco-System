@@ -211,7 +211,7 @@ export default function UniversalWorkflowBar({ projectKey, currentUser, onRouted
   };
 
   const handleResolveBlocker = async () => {
-    if (!window.confirm(`Resolve active blocker and restore normal flow for ${projectKey}?`)) return;
+    if (!(await window.otoConfirm(`Resolve active blocker and restore normal flow for ${projectKey}?`, { title: "Resolve Blocker", isDanger: false, confirmText: "Resolve" }))) return;
     setResolving(true);
     try {
       const res = await fetch(`${API_BASE}/api/workflow/resolve`, {

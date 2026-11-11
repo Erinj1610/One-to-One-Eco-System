@@ -203,12 +203,12 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
     setTimeout(() => setSaveSuccess(false), 2500);
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (DEFAULT_LABEL_TEMPLATES.some(d => d.id === id)) {
       alert("Factory default templates cannot be deleted, but you can customize or duplicate them.");
       return;
     }
-    if (!window.confirm("Are you sure you want to delete this custom template?")) return;
+    if (!(await window.otoConfirm("Are you sure you want to delete this custom template?"))) return;
     const updated = activeTemplates.filter(t => t.id !== id);
     setActiveTemplates(updated);
     setSelectedTemplateId(updated[0]?.id || '');
@@ -296,8 +296,8 @@ export default function LabelTemplateModal({ isOpen, onClose, templates, onSaveT
     if (onSaveTemplates) onSaveTemplates(updated);
   };
 
-  const handleResetDefaults = () => {
-    if (!window.confirm("Reset all templates back to factory default templates?")) return;
+  const handleResetDefaults = async () => {
+    if (!(await window.otoConfirm("Reset all templates back to factory default templates?"))) return;
     setActiveTemplates(DEFAULT_LABEL_TEMPLATES);
     setSelectedTemplateId(DEFAULT_LABEL_TEMPLATES[0].id);
     if (onSaveTemplates) onSaveTemplates(DEFAULT_LABEL_TEMPLATES);

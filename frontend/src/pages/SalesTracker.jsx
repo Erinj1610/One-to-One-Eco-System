@@ -1,5 +1,10 @@
+// Bump chunk v1.0.1
+import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
+import EmptyStateBanner from '../components/common/EmptyStateBanner';
+import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useEffect, useMemo } from 'react';
 import * as XLSX from 'xlsx';
+import ClientDocumentModal from '../components/documents/ClientDocumentModal';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
 import MobileSalesViewer from '../components/mobile/MobileSalesViewer';
@@ -34,6 +39,9 @@ import {
   Layers,
   ChevronRight,
   ChevronDown,
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
   Sparkles,
   ClipboardList,
   Calendar,
@@ -41,7 +49,8 @@ import {
   Play,
   CreditCard,
   Lock,
-  Unlock
+  Unlock,
+  Download
 } from 'lucide-react';
 
 const PHI_ADVISORIES = {
@@ -264,7 +273,7 @@ const getItemDefaults = (item) => {
 export default function SalesTracker() {
   const { user, isAdmin } = useAuth();
   const [marginMode, setMarginMode] = useState('pm'); // 'pm' (internal cost) | 'supplier' (confidential true factory cost)
-  const { projects, updateProject, contacts, getModuleName, projectManagers, setProjectManagers, setInvoices, refreshProjects } = useStore();
+  const { isStoreLoading, projects, updateProject, contacts, getModuleName, projectManagers, setProjectManagers, setInvoices, refreshProjects } = useStore();
   const location = useLocation();
   const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
@@ -520,6 +529,18 @@ export default function SalesTracker() {
   };
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
+
+  // Listen for sidebar navigation clicks to reset to root sales tracker ledger
+  useEffect(() => {
+    const handleNavReset = (e) => {
+      if (e?.detail?.path === '/sales-tracker' || e?.detail?.id === 'sales-tracker' || e?.detail?.path === '/tracker') {
+        setSelectedOrderId(null);
+        setSelectedProjectKey(null);
+      }
+    };
+    window.addEventListener('portal-nav-reset', handleNavReset);
+    return () => window.removeEventListener('portal-nav-reset', handleNavReset);
+  }, []);
   
   // Audit comparison modal state
   const [showAuditModal, setShowAuditModal] = useState(false);
@@ -1031,6 +1052,39 @@ export default function SalesTracker() {
   }, [searchQuery]);
 
   const [filterStatus, setFilterStatus] = useState('All');
+  const [subOrderFilter, setSubOrderFilter] = useState('All'); // 'All' | 'Master' | 'Sub'
+  const [expandedMasterOrders, setExpandedMasterOrders] = useState(new Set());
+  const toggleExpandMaster = (masterId, e) => {
+    if (e) e.stopPropagation();
+    React.startTransition(() => {
+      setExpandedMasterOrders(prev => {
+        const next = new Set(prev);
+        if (next.has(masterId)) next.delete(masterId);
+        else next.add(masterId);
+        return next;
+      });
+    });
+  };
+
+  const checkIsSubOrder = React.useCallback((ord) => {
+    if (!ord) return false;
+    // 1. Explicit database boolean (highest authority)
+    if (typeof ord.is_sub_order === 'boolean') {
+      if (ord.is_sub_order === false) return false;
+      if (ord.is_sub_order === true) return true;
+    }
+    if (typeof ord.isSubOrder === 'boolean') {
+      if (ord.isSubOrder === false) return false;
+      if (ord.isSubOrder === true) return true;
+    }
+    // 2. Parent PO check
+    const parent = ord.parent_po_number || ord.parentPoNumber;
+    const id = String(ord.id || ord.po_number || ord.poNumber || '').trim();
+    if (parent && String(parent).trim() !== id) return true;
+    // 3. Fallback regex: sub-order IDs strictly end with a 1-2 digit phase suffix (-01, -02) following a quote number
+    // Format: e.g. Q-2026-0667-01 (master Q-2026-0667 will NEVER match)
+    return /-\d{3,}-\d{1,2}$/.test(id);
+  }, []);
   const [projectFilterKey, setProjectFilterKey] = useState('All');
   const [clientFilter, setClientFilter] = useState('All');
   const [pmFilter, setPmFilter] = useState('All');
@@ -1074,6 +1128,7 @@ export default function SalesTracker() {
 
   // Modal creation state
   const [showCreatePoModal, setShowCreatePoModal] = useState(false);
+  const [showClientDocModal, setShowClientDocModal] = useState(false);
   const [isSubmittingPo, setIsSubmittingPo] = useState(false);
   const [newPoForm, setNewPoForm] = useState({
     projectKey: 'upper',
@@ -1226,9 +1281,15 @@ export default function SalesTracker() {
             totalDelQty += Number(delivered) || 0;
           });
 
-          const procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
-          const invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
-          const delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
+          let procPct = o.procPct !== undefined ? Number(o.procPct) : null;
+          let invPct = o.invPct !== undefined ? Number(o.invPct) : null;
+          let delPct = o.delPct !== undefined ? Number(o.delPct) : null;
+
+          if (procPct === null || invPct === null || delPct === null) {
+            procPct = totalQtyForProc > 0 ? Math.round((totalProcQty / totalQtyForProc) * 100) : 100;
+            invPct = totalQtyForInv > 0 ? Math.round((totalInvQty / totalQtyForInv) * 100) : 0;
+            delPct = totalQtyForDel > 0 ? Math.round((totalDelQty / totalQtyForDel) * 100) : 100;
+          }
 
           // Standalone Payment Status calculation
           const totalPaidVal = Number(o.paid) || 0;
@@ -1292,6 +1353,18 @@ export default function SalesTracker() {
     });
     return list;
   }, [projects]);
+
+  const subOrdersByParent = useMemo(() => {
+    const map = {};
+    allOrders.forEach(ord => {
+      if (checkIsSubOrder(ord)) {
+        const parentKey = ord.parent_po_number || ord.parentPoNumber || (String(ord.id).includes('-') ? String(ord.id).replace(/-\d{1,2}$/, '') : ord.id);
+        if (!map[parentKey]) map[parentKey] = [];
+        map[parentKey].push(ord);
+      }
+    });
+    return map;
+  }, [allOrders, checkIsSubOrder]);
 
   // Memoized unique dropdown lists for instant O(1) filter rendering
   const projectOptions = useMemo(() => {
@@ -1378,6 +1451,25 @@ export default function SalesTracker() {
       const matchesPm = pmFilter === 'All' || o.projectPm === pmFilter;
       const matchesPaymentStatus = paymentStatusFilter === 'All' || o.paymentStatus === paymentStatusFilter;
       
+      // Option 3 Sub-Order Filter & Hierarchy Matching
+      let matchesSubOrder = true;
+      const isSub = checkIsSubOrder(o);
+      if (subOrderFilter === 'Master') {
+        matchesSubOrder = !isSub;
+      } else if (subOrderFilter === 'Sub') {
+        matchesSubOrder = isSub;
+      } else if (subOrderFilter === 'All') {
+        // In 'All' view, top-level rows are master orders. Sub-orders are nested under their master order.
+        // If a sub-order directly matches search or its parent is not present, display it in root.
+        if (isSub) {
+          const parentKey = o.parent_po_number || o.parentPoNumber || (String(o.id).includes('-') ? String(o.id).replace(/-\d{1,2}$/, '') : o.id);
+          const hasParent = dateFilteredOrders.some(p => String(p.id) === String(parentKey));
+          matchesSubOrder = Boolean((debouncedSearchQuery && matchesSearch) || !hasParent);
+        } else {
+          matchesSubOrder = true;
+        }
+      }
+
       // KPI interactive filter matching
       let matchesKpi = true;
       if (activeKpiFilter === 'all') {
@@ -1390,11 +1482,15 @@ export default function SalesTracker() {
         matchesKpi = o.status === 'Complete';
       }
 
-      return matchesSearch && matchesStatus && matchesProject && matchesClient && matchesPm && matchesPaymentStatus && matchesKpi;
+      return matchesSearch && matchesStatus && matchesProject && matchesClient && matchesPm && matchesPaymentStatus && matchesKpi && matchesSubOrder;
     });
-  }, [dateFilteredOrders, debouncedSearchQuery, filterStatus, projectFilterKey, clientFilter, pmFilter, paymentStatusFilter, activeKpiFilter]);
+  }, [dateFilteredOrders, debouncedSearchQuery, filterStatus, projectFilterKey, clientFilter, pmFilter, paymentStatusFilter, activeKpiFilter, subOrderFilter]);
 
   // Sort Logic for All Columns in Sales Tracker Module
+  // Pagination with Page Memory
+  const [pageSize, setPageSize] = useState(50);
+  const [currentPage, setCurrentPage] = useState(1);
+
   const sortedOrders = useMemo(() => {
     if (!sortField) return filteredOrders;
 
@@ -1452,6 +1548,21 @@ export default function SalesTracker() {
       return 0;
     });
   }, [filteredOrders, sortField, sortDirection, marginMode, isAdmin]);
+
+  const totalPages = useMemo(() => {
+    if (pageSize === 'All') return 1;
+    return Math.max(1, Math.ceil(sortedOrders.length / Number(pageSize)));
+  }, [sortedOrders.length, pageSize]);
+
+  // Page memory: safely clamp active page
+  const activePage = Math.min(currentPage, totalPages);
+
+  const paginatedOrders = useMemo(() => {
+    if (pageSize === 'All') return sortedOrders;
+    const size = Number(pageSize);
+    const start = (activePage - 1) * size;
+    return sortedOrders.slice(start, start + size);
+  }, [sortedOrders, activePage, pageSize]);
 
   const handleSort = (field) => {
     if (sortField === field) {
@@ -1750,7 +1861,8 @@ export default function SalesTracker() {
 
   // Open the spreadsheet workspace
   const handleOpenWorkspace = (order) => {
-    setSelectedOrderId(order.id);
+    React.startTransition(() => {
+      setSelectedOrderId(order.id);
     setSelectedProjectKey(order.projectKey);
     setSelectedLedgerItemIds(new Set());
     // Dynamically calculate delivery properties from deliveryHistory on load to prevent overwrite
@@ -1901,6 +2013,7 @@ export default function SalesTracker() {
 
     setDeliveryAddress(order.deliveryAddress || proj.deliveryAddress || '7 RAVENSCRAIG ROAD, WOODSTOCK, CAPE TOWN, 7941');
     setBillingDetails(order.billingDetails || proj.billingDetails || 'TEST TSTETESSETSETEESTSETEST\nTEST TSTETESSETSETEESTSETEST');
+    });
   };
 
   const handleApplyBulkValue = () => {
@@ -2232,8 +2345,8 @@ export default function SalesTracker() {
     }));
   };
 
-  const handleDeleteWaybill = (groupedItem, waybillRef, waybillDate) => {
-    if (!window.confirm(`Are you sure you want to remove waybill "${waybillRef}"?`)) return;
+  const handleDeleteWaybill = async (groupedItem, waybillRef, waybillDate) => {
+    if (!(await window.otoConfirm(`Are you sure you want to remove waybill "${waybillRef}"?`))) return;
     
     setActiveOrderItems(prev => {
       return prev.map(item => {
@@ -2558,6 +2671,37 @@ export default function SalesTracker() {
 
     alert(`Quotation Workspace Brain Synced & Saved to Cloud SQL!\n- Billed Value: R ${Math.round(discountedValue).toLocaleString()}\n- Total Cost: R ${Math.round(totalCostTotal).toLocaleString()}\n- Recalculated dynamic project blended margins to ${blendedMargin}%.`);
     setSelectedOrderId(null);
+  };
+
+  // EXPORT SUMMARY ROWS FOR PALLADIUM SALES ORDER ITEM IMPORT (EXACTLY AS SHOWN IN SALES TRACKER)
+  const handleExportPalladiumOrder = () => {
+    if (!groupedItems || groupedItems.length === 0) {
+      alert('No summarized items in this order to export.');
+      return;
+    }
+
+    // Export the exact summarized rows as displayed in the Sales Tracker table (excluding credit items and 0 qty)
+    const validSummaryItems = groupedItems.filter(item => !item.is_credit && !item.isCredit && (Number(item.qty) || 0) > 0);
+    if (validSummaryItems.length === 0) {
+      alert('No valid summarized items with quantity found to export.');
+      return;
+    }
+
+    // Format strictly for Palladium Item Import: Column A = Number, Column B = Quantity
+    // Prefer Supplier Item Code (item.code), then 1:1 Code (item.oneOneCode)
+    const rows = validSummaryItems.map(item => ({
+      Number: (item.code || item.oneOneCode || 'ITEM').trim(),
+      Quantity: Math.round(Number(item.qty) || 0)
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+
+    worksheet['!cols'] = [{ wch: 25 }, { wch: 15 }];
+
+    const safeQuote = (quoteName || selectedOrderId || 'Order').replace(/[^a-zA-Z0-9_-]/g, '_');
+    XLSX.writeFile(workbook, `Palladium_SO_Summary_${safeQuote}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const handleBulkExcelExport = () => {
@@ -4452,11 +4596,13 @@ export default function SalesTracker() {
                 )}
                 
                 <button 
+                  type="button"
                   className="btn btn-primary" 
-                  onClick={() => setShowCreatePoModal(true)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                  onClick={() => setShowClientDocModal(true)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#0f766e', borderColor: '#0f766e' }}
+                  title="Generate Statements, Progress Reports and Client Documents"
                 >
-                  <Plus size={16} /> Create Sales Order
+                  <FileText size={16} /> Generate Document
                 </button>
               </div>
             </div>
@@ -4593,15 +4739,15 @@ export default function SalesTracker() {
 
 
           {/* SEARCH, FILTER & LEDGER GRID */}
-          <div className="card" style={{ border: '1.5px solid var(--border)' }}>
-            <div className="card-body" style={{ padding: '20px' }}>
-              
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+          <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+            
+            {/* TIER 1: TOP FILTER TOOLBAR */}
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', gap: '10px', flex: 1, minWidth: '300px' }}>
                   <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
                     <input 
-                      type="text"
+                      type="search"
                       placeholder="Search Order ID, Order name, Linked Project, Client or PM..."
                       className="form-control"
                       style={{ paddingLeft: '32px', fontSize: '13px', height: '34px' }}
@@ -4610,67 +4756,97 @@ export default function SalesTracker() {
                     />
                   </div>
                   
-                  <select 
-                    className="form-control"
-                    style={{ width: '130px', height: '34px', fontSize: '13px' }}
+                  {/* OPTION 3: SUB-ORDER HIERARCHY FILTER TOGGLE */}
+                  <div style={{ display: 'inline-flex', background: 'var(--bg-secondary)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border)', height: '34px', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => setSubOrderFilter('All')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11.5px',
+                        fontWeight: 600,
+                        border: 'none',
+                        borderRadius: '4px',
+                        background: subOrderFilter === 'All' ? 'var(--text-info)' : 'transparent',
+                        color: subOrderFilter === 'All' ? '#fff' : 'var(--text-secondary)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      All Orders
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSubOrderFilter('Master')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11.5px',
+                        fontWeight: 600,
+                        border: 'none',
+                        borderRadius: '4px',
+                        background: subOrderFilter === 'Master' ? 'var(--text-info)' : 'transparent',
+                        color: subOrderFilter === 'Master' ? '#fff' : 'var(--text-secondary)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Master Only
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSubOrderFilter('Sub')}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11.5px',
+                        fontWeight: 600,
+                        border: 'none',
+                        borderRadius: '4px',
+                        background: subOrderFilter === 'Sub' ? '#8b5cf6' : 'transparent',
+                        color: subOrderFilter === 'Sub' ? '#fff' : 'var(--text-secondary)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Sub-Orders Only
+                    </button>
+                  </div>
+
+                  <SearchableFilterDropdown 
                     value={filterStatus}
-                    onChange={e => setFilterStatus(e.target.value)}
-                  >
-                    <option value="All">All Statuses</option>
-                    <option value="Draft">Draft</option>
-                    <option value="Pending">Pending</option>
-                    <option value="Ongoing">Ongoing</option>
-                    <option value="Complete">Complete</option>
-                    <option value="Cancelled">Cancelled</option>
-                  </select>
+                    onChange={setFilterStatus}
+                    options={['Draft', 'Pending', 'Ongoing', 'Complete', 'Cancelled']}
+                    allLabel="All Statuses"
+                    width="135px"
+                  />
 
-                  <select 
-                    className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                  <SearchableFilterDropdown 
                     value={projectFilterKey}
-                    onChange={e => setProjectFilterKey(e.target.value)}
-                  >
-                    <option value="All">All Projects</option>
-                    {projectOptions.map(p => (
-                      <option key={p.key} value={p.key}>{p.name}</option>
-                    ))}
-                  </select>
+                    onChange={setProjectFilterKey}
+                    options={projectOptions}
+                    allLabel="All Projects"
+                    width="155px"
+                  />
 
-                  <select 
-                    className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                  <SearchableFilterDropdown 
                     value={clientFilter}
-                    onChange={e => setClientFilter(e.target.value)}
-                  >
-                    <option value="All">All Clients</option>
-                    {clientOptions.map(client => (
-                      <option key={client} value={client}>{client}</option>
-                    ))}
-                  </select>
+                    onChange={setClientFilter}
+                    options={clientOptions}
+                    allLabel="All Clients"
+                    width="155px"
+                  />
 
-                  <select 
-                    className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                  <SearchableFilterDropdown 
                     value={pmFilter}
-                    onChange={e => setPmFilter(e.target.value)}
-                  >
-                    <option value="All">All PMs</option>
-                    {pmOptions.map(pm => (
-                      <option key={pm} value={pm}>{pm}</option>
-                    ))}
-                  </select>
+                    onChange={setPmFilter}
+                    options={pmOptions}
+                    allLabel="All PMs"
+                    width="140px"
+                  />
 
-                  <select 
-                    className="form-control"
-                    style={{ width: '150px', height: '34px', fontSize: '13px' }}
+                  <SearchableFilterDropdown 
                     value={paymentStatusFilter}
-                    onChange={e => setPaymentStatusFilter(e.target.value)}
-                  >
-                    <option value="All">All Payments</option>
-                    <option value="Fully Paid">Fully Paid</option>
-                    <option value="Partially Paid">Partially Paid</option>
-                    <option value="Unpaid">Unpaid</option>
-                  </select>
+                    onChange={setPaymentStatusFilter}
+                    options={['Fully Paid', 'Partially Paid', 'Unpaid']}
+                    allLabel="All Payments"
+                    width="140px"
+                  />
                 </div>
 
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
@@ -4775,11 +4951,11 @@ export default function SalesTracker() {
 
               </div>
 
-              {/* ORDERS LEDGER LIST */}
-              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', position: 'relative' }}>
-                <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
-                  <thead>
-                    <tr>
+              {/* TIER 2: ORDERS LEDGER FULL-BLEED TABLE */}
+              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '68vh', position: 'relative' }}>
+                <table className="table" style={{ margin: 0, width: '100%', fontSize: '12.5px', borderCollapse: 'collapse' }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                    <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
                       <th style={{ width: '40px', textAlign: 'center' }}>
                         <input 
                           type="checkbox" 
@@ -4840,19 +5016,26 @@ export default function SalesTracker() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedOrders.map(o => {
+                    {paginatedOrders.map(o => {
                       const cost = isSupplierMarginMode ? (o.supplierCostValue || o.costValue || 0) : (o.costValue || 0);
                       const retail = o.value || 0;
                       const margin = retail > 0 ? Math.round(((retail - cost) / retail) * 100) : 0;
                       const isLowMargin = margin < 39;
                       const isSelected = selectedOrders.includes(`${o.projectKey}_${o.id}`);
+                      const isSub = checkIsSubOrder(o);
+                      const childSubs = (!isSub && subOrdersByParent[o.id]) || [];
+                      const hasChildSubs = childSubs.length > 0;
+                      const isExpanded = expandedMasterOrders.has(o.id);
 
                       return (
+                        <React.Fragment key={o.id}>
                         <tr 
-                          key={o.id} 
                           className="clickable" 
                           onClick={() => handleOpenWorkspace(o)}
-                          style={{ background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'transparent' }}
+                          style={{ 
+                            background: isSelected ? 'rgba(59, 130, 246, 0.08)' : (hasChildSubs ? 'rgba(59, 130, 246, 0.02)' : 'transparent'),
+                            borderLeft: hasChildSubs ? '3px solid #3b82f6' : (isSub ? '3px solid #8b5cf6' : '3px solid transparent')
+                          }}
                         >
                           <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                             <input 
@@ -4868,8 +5051,80 @@ export default function SalesTracker() {
                               }}
                             />
                           </td>
-                          <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>{o.id}</td>
-                          <td style={{ fontWeight: 600 }}>{o.quote_name || 'General Spec'}</td>
+                          <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              {hasChildSubs && (
+                                <button
+                                  type="button"
+                                  className="btn-ghost"
+                                  style={{
+                                    padding: 0,
+                                    height: '18px',
+                                    width: '18px',
+                                    borderRadius: '4px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: isExpanded ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                                    background: isExpanded ? 'rgba(255, 255, 255, 0.06)' : 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  onClick={(e) => toggleExpandMaster(o.id, e)}
+                                  title={isExpanded ? "Collapse Sub-Orders" : `Expand ${childSubs.length} Sub-Orders`}
+                                >
+                                  <ChevronRight 
+                                    size={12} 
+                                    style={{ 
+                                      transform: isExpanded ? 'rotate(90deg)' : 'none', 
+                                      transition: 'transform 0.15s ease' 
+                                    }} 
+                                  />
+                                </button>
+                              )}
+                              <span>{o.id}</span>
+                              {hasChildSubs && (
+                                <span 
+                                  style={{ 
+                                    fontSize: '9.5px', 
+                                    padding: '1px 6px', 
+                                    borderRadius: '3px', 
+                                    border: '1px solid var(--border)', 
+                                    background: 'var(--bg-secondary)', 
+                                    color: 'var(--text-secondary)', 
+                                    fontWeight: 600,
+                                    letterSpacing: '0.02em'
+                                  }}
+                                >
+                                  Master · {childSubs.length} {childSubs.length === 1 ? 'Phase' : 'Phases'}
+                                </span>
+                              )}
+                              {isSub && (
+                                <span 
+                                  style={{ 
+                                    fontSize: '9.5px', 
+                                    padding: '1px 6px', 
+                                    borderRadius: '3px', 
+                                    border: '1px solid var(--border)', 
+                                    background: 'var(--bg-secondary)', 
+                                    color: 'var(--text-secondary)', 
+                                    fontWeight: 600 
+                                  }}
+                                >
+                                  Phase
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ fontWeight: 600 }}>
+                            {o.quote_name || 'General Spec'}
+                            {(o.phase_name || o.phaseName) && (
+                              <span style={{ display: 'block', fontSize: '10.5px', color: '#8b5cf6', fontWeight: 500 }}>
+                                {o.phase_name || o.phaseName}
+                              </span>
+                            )}
+                          </td>
                           <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectFullName || o.projectName}</td>
                           <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: (o.clientContact || o.projectClient) } }); }}>{(o.clientCompany || o.projectClient) || '—'}</td>
                           <td style={{ fontWeight: 600 }}>{o.projectPm || '—'}</td>
@@ -4911,27 +5166,199 @@ export default function SalesTracker() {
                           </td>
                         </tr>
 
+                        {/* EXPANDED SUB-ORDER CHILDREN ROWS */}
+                        {hasChildSubs && isExpanded && subOrderFilter === 'All' && childSubs.map(sub => {
+                          const subCost = isSupplierMarginMode ? (sub.supplierCostValue || sub.costValue || 0) : (sub.costValue || 0);
+                          const subRetail = sub.value || 0;
+                          const subMargin = subRetail > 0 ? Math.round(((subRetail - subCost) / subRetail) * 100) : 0;
+                          const subIsLowMargin = subMargin < 39;
+                          const subIsSelected = selectedOrders.includes(`${sub.projectKey}_${sub.id}`);
+
+                          return (
+                            <tr
+                              key={sub.id}
+                              className="clickable"
+                              onClick={() => handleOpenWorkspace(sub)}
+                              style={{
+                                background: subIsSelected ? 'rgba(59, 130, 246, 0.08)' : 'rgba(255, 255, 255, 0.015)',
+                                borderLeft: subIsSelected ? '3px solid #3b82f6' : '3px solid transparent'
+                              }}
+                            >
+                              <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={subIsSelected}
+                                  onChange={e => {
+                                    const key = `${sub.projectKey}_${sub.id}`;
+                                    if (e.target.checked) setSelectedOrders(prev => [...prev, key]);
+                                    else setSelectedOrders(prev => prev.filter(k => k !== key));
+                                  }}
+                                />
+                              </td>
+                              <td style={{ fontFamily: 'monospace', fontWeight: 600, paddingLeft: '32px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  <span style={{ color: 'var(--text-tertiary)', fontSize: '11px', userSelect: 'none' }}>↳</span>
+                                  <span style={{ color: 'var(--text-secondary)' }}>{sub.id}</span>
+                                  <span 
+                                    style={{ 
+                                      fontSize: '9.5px', 
+                                      padding: '1px 6px', 
+                                      borderRadius: '3px', 
+                                      border: '1px solid var(--border)', 
+                                      background: 'var(--bg-secondary)', 
+                                      color: 'var(--text-secondary)', 
+                                      fontWeight: 600 
+                                    }}
+                                  >
+                                    {sub.phase_name || sub.phaseName || `Phase ${sub.sub_order_index || 1}`}
+                                  </span>
+                                </div>
+                              </td>
+                              <td style={{ fontWeight: 600 }}>
+                                {sub.quote_name || 'Phase Scope'}
+                              </td>
+                              <td style={{ color: 'var(--text-secondary)' }}>{sub.projectFullName || sub.projectName}</td>
+                              <td style={{ color: 'var(--text-secondary)' }}>{(sub.clientCompany || sub.projectClient) || '—'}</td>
+                              <td style={{ color: 'var(--text-secondary)' }}>{sub.projectPm || '—'}</td>
+                              <td style={{ fontWeight: 700, color: subMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                                {subMargin}%
+                              </td>
+                              <td style={{ fontWeight: 600 }}>R {subRetail.toLocaleString()}</td>
+                              <td style={{ color: 'var(--text-success)' }}>R {(sub.paid || 0).toLocaleString()}</td>
+                              <td style={{ fontWeight: 600, color: (sub.outstanding || 0) > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
+                                R {(sub.outstanding || 0).toLocaleString()}
+                              </td>
+                              <td>
+                                <span className={`badge ${statusColor[sub.status] || 'b-default'}`}>{sub.status}</span>
+                              </td>
+                              <td>
+                                <span className={`badge ${
+                                  sub.paymentStatus === 'Fully Paid' ? 'b-success' : sub.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
+                                }`}>{sub.paymentStatus}</span>
+                              </td>
+                              <td>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'rgba(74, 222, 128, 0.08)', color: '#4ade80' }}>
+                                  Proc: {sub.procPct || 0}%
+                                </div>
+                              </td>
+                              <td>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b' }}>
+                                  Inv: {sub.invPct || 0}%
+                                </div>
+                              </td>
+                              <td>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: 600, padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'rgba(96, 165, 250, 0.08)', color: '#60a5fa' }}>
+                                  Del: {sub.delPct || 0}%
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        </React.Fragment>
                       );
                     })}
 
-                    {filteredOrders.length === 0 && (
+                    {isStoreLoading && (
                       <tr>
-                        <td colSpan={14} style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)' }}>
-                          No active quotations or Bills of Quantity found.
+                        <td colSpan={14} style={{ textAlign: 'center', padding: '48px' }}>
+                          <OneToOneLoader size="lg" text="Loading live sales tracker..." />
                         </td>
                       </tr>
+                    )}
+                    {!isStoreLoading && filteredOrders.length === 0 && (
+                      <EmptyStateBanner
+                        colSpan={14}
+                        title="No sales tracker records found"
+                        subtitle="No active quotations or Bills of Quantity match your selected search or filters."
+                        onClear={() => { setSearchQuery(''); setFilterStatus('All'); setSubOrderFilter('All'); setProjectFilterKey('All'); }}
+                        clearLabel="Reset filters"
+                      />
                     )}
                   </tbody>
                 </table>
               </div>
 
-            </div>
+              {/* TIER 3: INTEGRATED CARD FOOTER (High-Performance Paged Pagination Toolbar) */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 20px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Showing <strong>{sortedOrders.length > 0 ? (activePage - 1) * (pageSize === 'All' ? sortedOrders.length : Number(pageSize)) + 1 : 0}</strong>–<strong>{Math.min(activePage * (pageSize === 'All' ? sortedOrders.length : Number(pageSize)), sortedOrders.length)}</strong> of <strong>{sortedOrders.length}</strong> orders
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    <span>Rows per page:</span>
+                    <select 
+                      value={pageSize} 
+                      onChange={e => {
+                        const val = e.target.value === 'All' ? 'All' : Number(e.target.value);
+                        React.startTransition(() => {
+                          setPageSize(val);
+                          setCurrentPage(1);
+                        });
+                      }}
+                      style={{ padding: '4px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 600 }}
+                    >
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value="All">All ({sortedOrders.length})</option>
+                    </select>
+                  </div>
+                  {pageSize !== 'All' && totalPages > 1 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <button 
+                        type="button"
+                        className="btn btn-ghost btn-sm" 
+                        disabled={activePage <= 1} 
+                        onClick={() => React.startTransition(() => setCurrentPage(1))}
+                        style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        title="First Page"
+                      >
+                        <ChevronsLeft size={13} /> First
+                      </button>
+                      <button 
+                        type="button"
+                        className="btn btn-ghost btn-sm" 
+                        disabled={activePage <= 1} 
+                        onClick={() => React.startTransition(() => setCurrentPage(p => Math.max(1, p - 1)))}
+                        style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        title="Previous Page"
+                      >
+                        <ChevronLeft size={13} /> Prev
+                      </button>
+                      <span style={{ fontSize: '12px', fontWeight: 600, padding: '0 8px', color: 'var(--text-primary)' }}>
+                        Page {activePage} of {totalPages}
+                      </span>
+                      <button 
+                        type="button"
+                        className="btn btn-ghost btn-sm" 
+                        disabled={activePage >= totalPages} 
+                        onClick={() => React.startTransition(() => setCurrentPage(p => Math.min(totalPages, p + 1)))}
+                        style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        title="Next Page"
+                      >
+                        Next <ChevronRight size={13} />
+                      </button>
+                      <button 
+                        type="button"
+                        className="btn btn-ghost btn-sm" 
+                        disabled={activePage >= totalPages} 
+                        onClick={() => React.startTransition(() => setCurrentPage(totalPages))}
+                        style={{ padding: '4px 8px', fontSize: '11.5px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        title="Last Page"
+                      >
+                        Last <ChevronsRight size={13} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
           </div>
         </>
         ) : (
           /* DEPOSIT PIPELINE MANAGER VIEW */
-          <div className="card" style={{ border: '1.5px solid var(--border)' }}>
-            <div className="card-body" style={{ padding: '20px' }}>
+          <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+            <div style={{ padding: '16px 20px' }}>
               {/* Pipeline Header Summary & Info Banner */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', padding: '16px 20px', background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(217, 119, 6, 0.03) 100%)', borderRadius: '12px', border: '1px solid rgba(245, 158, 11, 0.25)' }}>
                 <div>
@@ -4977,7 +5404,7 @@ export default function SalesTracker() {
                   <div style={{ position: 'relative', width: '100%', maxWidth: '320px' }}>
                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
                     <input 
-                      type="text"
+                      type="search"
                       placeholder="Search Quote, Order ID, Project, Client or PM..."
                       className="form-control"
                       style={{ paddingLeft: '32px', fontSize: '13px', height: '34px' }}
@@ -5060,11 +5487,13 @@ export default function SalesTracker() {
                 </div>
               </div>
 
-              {/* Pipeline Orders Table */}
-              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', position: 'relative' }}>
-                <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
-                  <thead>
-                    <tr>
+            </div>
+
+            {/* TIER 2: Pipeline Orders Full-Bleed Table */}
+            <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '68vh', position: 'relative' }}>
+              <table className="table" style={{ margin: 0, width: '100%', fontSize: '12.5px', borderCollapse: 'collapse' }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
                       <th onClick={() => handlePipelineSort('id')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order ID {renderPipelineSortIcon('id')}</div>
                       </th>
@@ -5199,7 +5628,6 @@ export default function SalesTracker() {
                   </tbody>
                 </table>
               </div>
-            </div>
           </div>
         )}
         </>
@@ -5257,6 +5685,24 @@ export default function SalesTracker() {
                     Cancel
                   </button>
                   
+                  <button 
+                    type="button"
+                    className="btn btn-outline btn-sm" 
+                    onClick={handleExportPalladiumOrder}
+                    title="Export clean XLSX (Number & Quantity) ready for Palladium Sales Order Item Import"
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px', 
+                      borderColor: 'var(--border)', 
+                      background: 'var(--bg-secondary)',
+                      color: 'var(--text-primary)',
+                      fontWeight: 600
+                    }}
+                  >
+                    <Download size={14} style={{ color: '#10b981' }} /> Export Palladium SO (.xlsx)
+                  </button>
+
                   <button 
                     className="btn btn-primary btn-sm" 
                     onClick={handleSaveOrderSpreadsheet}
@@ -7083,6 +7529,15 @@ export default function SalesTracker() {
       )}
 
       {/* CREATE PURCHASE ORDER MODAL */}
+      <ClientDocumentModal
+        isOpen={showClientDocModal}
+        onClose={() => setShowClientDocModal(false)}
+        projects={projects}
+        allOrders={allOrders}
+        initialProjectKey={projectFilterKey !== 'All' ? projectFilterKey : null}
+        initialOrderId={selectedOrderId || null}
+      />
+
       {showCreatePoModal && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,

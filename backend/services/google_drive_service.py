@@ -24,6 +24,14 @@ CLIENTS_ROOT_NAME = "02 - CLIENTS"
 # Project-Level Standard Starter Folders (Deprecated: Standard subfolders are housed strictly inside each Design package)
 PROJECT_STANDARD_FOLDERS = []
 
+DESIGN_STANDARD_SUBFOLDERS = [
+    {"name": "01 - Drawings & CAD", "sort": 1, "key": "01 - Drawings & CAD"},
+    {"name": "02 - Project Specifications", "sort": 2, "key": "02 - Project Specifications"},
+    {"name": "03 - Site Photos & Snags", "sort": 3, "key": "03 - Site Photos & Snags"},
+    {"name": "04 - Proposals & Contracts", "sort": 4, "key": "04 - Proposals & Contracts"},
+    {"name": "05 - Moodboards & Presentations", "sort": 5, "key": "05 - Moodboards & Presentations"}
+]
+
 
 # Order-Level Standard Subfolders
 ORDER_STANDARD_SUBFOLDERS = [
@@ -289,8 +297,14 @@ def get_or_create_drive_folder(
                 logger.info(f"Deduplication: folder '{clean_name}' matched existing '{ef_name}' ({ef.get('id')}) via normalization")
                 return ef
 
+            # Strict code protection: Never fuzzy-match across different quote/order/fee/project codes
+            target_codes = set(re.findall(r'[A-Za-z]+-\d{4}-\d+|[A-Za-z]+-\d+', clean_name.upper()))
+            ef_codes = set(re.findall(r'[A-Za-z]+-\d{4}-\d+|[A-Za-z]+-\d+', ef_name.upper()))
+            if target_codes and ef_codes and target_codes != ef_codes:
+                continue
+
             ratio = difflib.SequenceMatcher(None, target_norm, ef_norm).ratio()
-            # Significant substring match
+            # Significant substring match (only if code sets match or neither has codes)
             if len(target_norm) >= 6 and (target_norm in ef_norm or ef_norm in target_norm):
                 ratio = max(ratio, 0.90)
 

@@ -1,3 +1,6 @@
+import SearchableFilterDropdown from '../../components/common/SearchableFilterDropdown';
+import EmptyStateBanner from '../../components/common/EmptyStateBanner';
+import OneToOneLoader from '../../components/common/OneToOneLoader';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useStore } from '../../context/StoreContext';
 import { useNavigate } from 'react-router-dom';
@@ -106,7 +109,7 @@ export function calculateProjectStageAndProgress(p) {
 }
 
 export default function ProjectList() {
-  const { projects, addProject, contacts, getModuleName, bulkDeleteProjects, refreshProjects } = useStore();
+  const { isStoreLoading, projects, addProject, contacts, getModuleName, bulkDeleteProjects, refreshProjects } = useStore();
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
@@ -148,7 +151,7 @@ export default function ProjectList() {
 
   const handleBulkDelete = async () => {
     if (selectedKeys.size === 0) return;
-    if (window.confirm(`Are you sure you want to delete the ${selectedKeys.size} selected projects and all their associated orders, items, and files? This cannot be undone.`)) {
+    if (await window.otoConfirm(`Are you sure you want to delete the ${selectedKeys.size} selected projects and all their associated orders, items, and files? This cannot be undone.`, { title: "Delete Projects", confirmText: "Delete Projects" })) {
       await bulkDeleteProjects(Array.from(selectedKeys));
       setSelectedKeys(new Set());
     }
@@ -490,10 +493,7 @@ export default function ProjectList() {
   }
 
   return (
-    <div className="animation-fade-in" style={{ display: 'grid', gridTemplateColumns: isSidebarCollapsed ? '1fr 50px' : '1fr 340px', gap: '24px', alignItems: 'start' }}>
-      
-      {/* LEFT COLUMN: Main Dashboard */}
-      <div>
+    <div className="animation-fade-in" style={{ width: '100%' }}>
         {/* Title & Filter Bar Header */}
         <div className="card" style={{ marginBottom: '16px', background: 'var(--bg-primary)' }}>
           <div className="card-body" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
@@ -694,99 +694,93 @@ export default function ProjectList() {
 
         </div>
 
-        {/* FILTER & CONTROL LEDGER BAR */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-          <div style={{ display: 'flex', gap: '10px', flex: 1, minWidth: '300px' }}>
-            <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
-              <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
-              <input 
-                type="text" 
-                placeholder="Search Project name, Client, or PM..." 
-                className="form-control"
-                style={{ paddingLeft: '32px', fontSize: '13px', height: '34px' }}
-                value={search} 
-                onChange={e => setSearch(e.target.value)} 
+        {/* INTEGRATED PROJECT DIRECTORY CARD */}
+        <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+          
+          {/* TIER 1: TOP FILTER TOOLBAR */}
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '10px', flex: 1, minWidth: '300px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', width: '100%', maxWidth: '360px' }}>
+                <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
+                <input 
+                  type="search" 
+                  placeholder="Search Project name, Client, or PM..." 
+                  className="form-control"
+                  style={{ paddingLeft: '32px', fontSize: '13px', height: '34px' }}
+                  value={search} 
+                  onChange={e => setSearch(e.target.value)} 
+                />
+              </div>
+
+              {activeKpiFilter && (
+                <button 
+                  className="btn btn-sm btn-ghost" 
+                  onClick={() => setActiveKpiFilter(null)}
+                  style={{ fontSize: '11px', color: 'var(--text-danger)', height: '34px' }}
+                >
+                  Clear Filter ({activeKpiFilter})
+                </button>
+              )}
+
+              <SearchableFilterDropdown 
+                value={statusFilter} 
+                onChange={setStatusFilter}
+                options={statusesList.filter(s => s !== 'All Statuses')}
+                allLabel="All Statuses"
+                width="135px"
+              />
+
+              <SearchableFilterDropdown 
+                value={clientFilter} 
+                onChange={setClientFilter}
+                options={clientsList.filter(c => c !== 'All Clients')}
+                allLabel="All Clients"
+                width="155px"
+              />
+
+              <SearchableFilterDropdown 
+                value={pmFilter} 
+                onChange={setPmFilter}
+                options={pmList.filter(p => p !== 'All PMs')}
+                allLabel="All PMs"
+                width="140px"
               />
             </div>
 
-            {activeKpiFilter && (
-              <button 
-                className="btn btn-sm btn-ghost" 
-                onClick={() => setActiveKpiFilter(null)}
-                style={{ fontSize: '11px', color: 'var(--text-danger)', height: '34px' }}
-              >
-                Clear Filter ({activeKpiFilter})
-              </button>
-            )}
-
-            <select 
-              className="form-control" 
-              style={{ width: '130px', height: '34px', fontSize: '13px' }} 
-              value={statusFilter} 
-              onChange={e => setStatusFilter(e.target.value)}
-            >
-              {statusesList.map(st => (
-                <option key={st} value={st === 'All Statuses' ? 'All Statuses' : st}>{st}</option>
-              ))}
-            </select>
-
-            <select 
-              className="form-control" 
-              style={{ width: '150px', height: '34px', fontSize: '13px' }} 
-              value={clientFilter} 
-              onChange={e => setClientFilter(e.target.value)}
-            >
-              {clientsList.map(c => (
-                <option key={c} value={c === 'All Clients' ? 'All Clients' : c}>{c === 'All Clients' ? 'All Clients' : c}</option>
-              ))}
-            </select>
-
-            <select 
-              className="form-control" 
-              style={{ width: '150px', height: '34px', fontSize: '13px' }} 
-              value={pmFilter} 
-              onChange={e => setPmFilter(e.target.value)}
-            >
-              {pmList.map(pm => (
-                <option key={pm} value={pm === 'All PMs' ? 'All PMs' : pm}>{pm === 'All PMs' ? 'All PMs' : pm}</option>
-              ))}
-            </select>
-          </div>
-
-          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-            Showing <strong>{filteredProjects.length}</strong> active projects
-          </div>
-        </div>
-
-        {/* BULK ACTIONS TOOLBAR */}
-        {selectedKeys.size > 0 && (
-          <div className="card" style={{ padding: '12px 16px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderLeft: '4px solid var(--text-danger)', animation: 'fadeIn 0.2s ease' }}>
-            <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>
-              {selectedKeys.size} projects selected
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button 
-                className="btn btn-sm btn-ghost" 
-                onClick={() => setSelectedKeys(new Set())}
-                style={{ fontSize: '12px' }}
-              >
-                Cancel
-              </button>
-              <button 
-                className="btn btn-sm btn-danger" 
-                onClick={handleBulkDelete}
-                style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-              >
-                <AlertTriangle size={12} />
-                Delete Selected ({selectedKeys.size})
-              </button>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+              Showing <strong>{filteredProjects.length}</strong> active projects
             </div>
           </div>
-        )}
 
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', position: 'relative' }}>
-            <table className="table" style={{ margin: 0 }}>
+          {/* BULK ACTIONS TOOLBAR */}
+          {selectedKeys.size > 0 && (
+            <div style={{ padding: '10px 20px', background: 'rgba(239, 68, 68, 0.08)', borderBottom: '1px solid rgba(239, 68, 68, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+              <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>
+                {selectedKeys.size} projects selected
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  className="btn btn-sm btn-ghost" 
+                  onClick={() => setSelectedKeys(new Set())}
+                  style={{ fontSize: '12px' }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  className="btn btn-sm btn-danger" 
+                  onClick={handleBulkDelete}
+                  style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
+                  <AlertTriangle size={12} />
+                  Delete Selected ({selectedKeys.size})
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* TIER 2: FULL-BLEED LEDGER TABLE */}
+          <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '68vh', position: 'relative' }}>
+            <table className="table" style={{ margin: 0, width: '100%', borderCollapse: 'collapse' }}>
             <colgroup>
               <col style={{ width: '3%' }} />
               <col style={{ width: '13%' }} />
@@ -985,12 +979,21 @@ export default function ProjectList() {
                   </tr>
                 );
               })}
-              {sortedProjects.length === 0 && (
+              {isStoreLoading && (
                 <tr>
-                  <td colSpan={12} style={{ textAlign: 'center', padding: '30px', color: 'var(--text-tertiary)' }}>
-                    No converted projects matched the active filters.
+                  <td colSpan={12} style={{ textAlign: 'center', padding: '48px' }}>
+                    <OneToOneLoader size="lg" text="Loading live projects..." />
                   </td>
                 </tr>
+              )}
+              {!isStoreLoading && sortedProjects.length === 0 && (
+                <EmptyStateBanner
+                  colSpan={12}
+                  title="No converted projects found"
+                  subtitle="Try adjusting your project name search, PM assignment, or status filter."
+                  onClear={() => { setSearchQuery(''); setStatusFilter('All'); setPmFilter('All'); }}
+                  clearLabel="Reset filters"
+                />
               )}
             </tbody>
             {sortedProjects.length > 0 && (() => {
@@ -1013,18 +1016,18 @@ export default function ProjectList() {
                 grandOutstanding += Math.max(0, val - paid);
               });
               return (
-                <tfoot>
-                  <tr style={{ background: 'var(--bg-secondary)', borderTop: '2px solid var(--border)', fontWeight: 700, fontSize: '12px' }}>
+                <tfoot style={{ position: 'sticky', bottom: 0, background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', zIndex: 5, boxShadow: '0 -2px 6px rgba(0,0,0,0.06)' }}>
+                  <tr style={{ fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                     <td />
-                    <td colSpan={3} style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '11px' }}>
+                    <td colSpan={3} style={{ color: 'var(--text-primary)', padding: '12px 14px', whiteSpace: 'nowrap' }}>
                       PORTFOLIO TOTAL ({sortedProjects.length} {sortedProjects.length === 1 ? 'Project' : 'Projects'})
                     </td>
-                    <td>{grandFees} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 500 }}>fees</span></td>
-                    <td>{grandOrders} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 500 }}>POs</span></td>
-                    <td>—</td>
-                    <td style={{ color: 'var(--text-primary)' }}>R {Math.round(grandValue).toLocaleString()}</td>
-                    <td style={{ color: 'var(--text-success)' }}>R {Math.round(grandPaid).toLocaleString()}</td>
-                    <td style={{ color: grandOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>R {Math.round(grandOutstanding).toLocaleString()}</td>
+                    <td style={{ padding: '12px 10px', whiteSpace: 'nowrap' }}>{grandFees} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 500 }}>fees</span></td>
+                    <td style={{ padding: '12px 10px', whiteSpace: 'nowrap' }}>{grandOrders} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 500 }}>POs</span></td>
+                    <td style={{ padding: '12px 10px', color: 'var(--text-tertiary)' }}>—</td>
+                    <td style={{ color: 'var(--text-primary)', fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', padding: '12px 10px', whiteSpace: 'nowrap', fontSize: '12.5px' }}>R {Math.round(grandValue).toLocaleString()}</td>
+                    <td style={{ color: 'var(--text-success)', fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', padding: '12px 10px', whiteSpace: 'nowrap', fontSize: '12.5px' }}>R {Math.round(grandPaid).toLocaleString()}</td>
+                    <td style={{ color: grandOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', padding: '12px 10px', whiteSpace: 'nowrap', fontSize: '12.5px' }}>R {Math.round(grandOutstanding).toLocaleString()}</td>
                     <td colSpan={2} />
                   </tr>
                 </tfoot>
@@ -1033,8 +1036,6 @@ export default function ProjectList() {
           </table>
           </div>
         </div>
-      </div>
-
       {/* RIGHT COLUMN: Operational Alerts & Prompts */}
       <CollapsibleAlertSidebar 
         module="projects" 

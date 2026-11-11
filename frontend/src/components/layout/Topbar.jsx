@@ -1,9 +1,57 @@
-import React from 'react';
-import { Bell, LogOut } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Bell, LogOut, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 export default function Topbar({ title }) {
   const { user, logout } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [subContext, setSubContext] = useState(null);
+  const [alertCount, setAlertCount] = useState(0);
+
+  // Listen for alerts count updates dispatched by active modules
+  useEffect(() => {
+    const handleCount = (e) => {
+      if (typeof e.detail?.count === 'number') {
+        setAlertCount(e.detail.count);
+      }
+    };
+    window.addEventListener('portal-alerts-count-update', handleCount);
+    return () => window.removeEventListener('portal-alerts-count-update', handleCount);
+  }, []);
+
+  const handleAlertsClick = () => {
+    let handled = false;
+    const ack = () => { handled = true; };
+    window.addEventListener('portal-alerts-handled', ack, { once: true });
+    window.dispatchEvent(new CustomEvent('toggle-portal-alerts'));
+    setTimeout(() => {
+      window.removeEventListener('portal-alerts-handled', ack);
+      if (!handled && !['/orders', '/projects', '/crm', '/design'].includes(location.pathname)) {
+        navigate('/orders');
+      }
+    }, 60);
+  };
+
+  // Listen for active workspace / quotation breadcrumb changes dispatched by modules
+  useEffect(() => {
+    const handleContextChange = (e) => {
+      if (e.detail?.subContext) {
+        setSubContext(e.detail.subContext);
+      } else {
+        setSubContext(null);
+      }
+    };
+
+    window.addEventListener('portal-context-change', handleContextChange);
+    return () => window.removeEventListener('portal-context-change', handleContextChange);
+  }, []);
+
+  // Clear sub-context whenever route changes
+  useEffect(() => {
+    setSubContext(null);
+  }, [location.pathname]);
 
   const email = user?.email || '';
   let initials = 'U';
@@ -19,15 +67,103 @@ export default function Topbar({ title }) {
 
   return (
     <div className="topbar">
-      <div className="topbar-title">{title || 'Portal'}</div>
-      <div className="topbar-right" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-        <Bell size={18} color="var(--text-secondary)" style={{ cursor: 'pointer' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div className="topbar-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '15px' }}>
+        <span style={{ fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
+          {title || 'Portal'}
+        </span>
+        {subContext && (
+          <>
+            <ChevronRight size={14} color="#94a3b8" />
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: '500', color: '#64748b' }}>
+              {subContext}
+            </span>
+          </>
+        )}
+      </div>
+      <div className="topbar-right" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <button 
+          onClick={handleAlertsClick}
+          style={{
+            background: alertCount > 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(0, 0, 0, 0.03)',
+            border: alertCount > 0 ? '1px solid rgba(239, 68, 68, 0.22)' : '1px solid var(--border)',
+            color: alertCount > 0 ? '#ef4444' : 'var(--text-secondary)',
+            cursor: 'pointer',
+            padding: '4px 11px 4px 9px',
+            borderRadius: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '7px',
+            fontSize: '12px',
+            fontWeight: 600,
+            transition: 'all 0.15s ease'
+          }}
+          onMouseEnter={(e) => { 
+            e.currentTarget.style.background = alertCount > 0 ? 'rgba(239, 68, 68, 0.14)' : 'rgba(0, 0, 0, 0.06)'; 
+            e.currentTarget.style.transform = 'translateY(-1px)';
+          }}
+          onMouseLeave={(e) => { 
+            e.currentTarget.style.background = alertCount > 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(0, 0, 0, 0.03)'; 
+            e.currentTarget.style.transform = 'translateY(0)';
+          }}
+          title={alertCount > 0 ? `${alertCount} Operational Alerts active - Click to view` : "Operational Alerts & Prompts"}
+        >
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <Bell size={14} />
+            {alertCount > 0 && (
+              <span style={{ 
+                position: 'absolute', 
+                top: '-3px', 
+                right: '-3px', 
+                width: '6px', 
+                height: '6px', 
+                background: '#ef4444', 
+                borderRadius: '50%',
+                boxShadow: '0 0 5px rgba(239, 68, 68, 0.8)'
+              }} />
+            )}
+          </div>
+          <span style={{ letterSpacing: '0.01em' }}>Alerts</span>
+          {alertCount > 0 && (
+            <span style={{ 
+              background: '#ef4444', 
+              color: '#ffffff', 
+              borderRadius: '10px', 
+              padding: '1px 6px', 
+              fontSize: '10px', 
+              fontWeight: 700,
+              fontFamily: 'monospace'
+            }}>
+              {alertCount}
+            </span>
+          )}
+        </button>
+
+        <div 
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '8px',
+            padding: '3px 10px 3px 4px',
+            borderRadius: '20px',
+            background: 'rgba(0, 0, 0, 0.03)',
+            border: '1px solid rgba(0, 0, 0, 0.05)'
+          }}
+        >
           <div className="av" title={email}>{initials}</div>
-          <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'inline-block', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ 
+            fontSize: '12px', 
+            fontWeight: 500,
+            color: 'var(--text-primary)', 
+            display: 'inline-block', 
+            maxWidth: '180px', 
+            overflow: 'hidden', 
+            textOverflow: 'ellipsis', 
+            whiteSpace: 'nowrap' 
+          }}>
             {email}
           </span>
         </div>
+
         <button 
           onClick={logout}
           style={{
@@ -37,17 +173,18 @@ export default function Topbar({ title }) {
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '4px',
+            gap: '5px',
             fontSize: '12px',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            transition: 'all 0.2s',
+            fontWeight: 500,
+            padding: '6px 10px',
+            borderRadius: '6px',
+            transition: 'background 0.15s ease, color 0.15s ease',
           }}
-          onMouseEnter={(e) => e.target.style.color = '#f87171'}
-          onMouseLeave={(e) => e.target.style.color = 'var(--text-secondary)'}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)'; e.currentTarget.style.color = '#ef4444'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
           title="Sign Out"
         >
-          <LogOut size={16} />
+          <LogOut size={15} />
           <span>Logout</span>
         </button>
       </div>

@@ -342,7 +342,7 @@ export default function DriveFileExplorer({
   // Trash Folder
   const handleTrashFolder = async (folder, e) => {
     if (e) e.stopPropagation();
-    if (!window.confirm(`Are you sure you want to move the folder "${folder.name}" to Google Drive Trash?`)) {
+    if (!(await window.otoConfirm(`Are you sure you want to move the folder "${folder.name}" to Google Drive Trash?`))) {
       return;
     }
 
@@ -426,7 +426,7 @@ export default function DriveFileExplorer({
 
   // Trash File
   const handleTrashFile = async (file) => {
-    if (!window.confirm(`Move "${file.name}" to Google Drive Trash?`)) return;
+    if (!(await window.otoConfirm(`Move "${file.name}" to Google Drive Trash?`))) return;
 
     try {
       const res = await fetch(`${API_BASE}/api/documents/files/${file.id}`, {

@@ -439,7 +439,7 @@ export default function TicketLoggerPage({ initialProjectId = null, initialProje
   // Delete Ticket
   const handleDeleteTicket = async (ticketId, e) => {
     if (e) e.stopPropagation();
-    if (!window.confirm('Are you sure you want to delete this project ticket?')) return;
+    if (!(await window.otoConfirm('Are you sure you want to delete this project ticket?'))) return;
 
     try {
       const res = await fetch(`${API_BASE}/api/project-tickets/${ticketId}`, {

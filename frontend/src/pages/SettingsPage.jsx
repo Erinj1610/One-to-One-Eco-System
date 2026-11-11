@@ -3,14 +3,21 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
-import TemplateEditor from './admin/TemplateEditor';
+import TemplateSettings from './admin/TemplateSettings';
+import DropdownSettings from './admin/DropdownSettings';
+import SystemAlertSettings from './admin/SystemAlertSettings';
+import ModuleNavigationSettings from './admin/ModuleNavigationSettings';
+import ReleasesDeploymentSettings from './admin/ReleasesDeploymentSettings';
+import ApiIntegrationsSettings from './admin/ApiIntegrationsSettings';
 import WorkflowManager from './admin/WorkflowManager';
 import DriveFolderSettings from './admin/DriveFolderSettings';
+import CompanyProfileSettings from './admin/CompanyProfileSettings';
+import RateCardSettings from './admin/RateCardSettings';
 import { 
   Users, Shield, Key, Plus, Search, Check, AlertTriangle, 
   Trash2, Edit3, RefreshCw, Copy, CheckCircle2, Lock, Unlock,
   Sliders, Grid, List, Layers, ArrowRight, UserPlus, ExternalLink, X,
-  Briefcase, CheckSquare, Sparkles, RotateCcw, SlidersHorizontal
+  Briefcase, CheckSquare, Sparkles, RotateCcw, SlidersHorizontal, ChevronLeft, ArrowLeft, Building2, Percent
 } from 'lucide-react';
 
 
@@ -38,21 +45,21 @@ const PERMISSION_LEVELS = ['Full access', 'Can edit', 'View only', 'No access'];
 const getRoleBadgeStyle = (roleName) => {
   const norm = (roleName || '').toLowerCase();
   if (norm.includes('admin')) {
-    return { bg: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.3)' };
+    return { bg: '#f8fafc', color: '#0f172a', border: '1px solid #cbd5e1' };
   }
   if (norm.includes('senior')) {
-    return { bg: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)' };
+    return { bg: '#f1f5f9', color: '#1e293b', border: '1px solid #cbd5e1' };
   }
   if (norm.includes('designer')) {
-    return { bg: 'rgba(52, 211, 153, 0.15)', color: '#34d399', border: '1px solid rgba(52, 211, 153, 0.3)' };
+    return { bg: '#f8fafc', color: '#334155', border: '1px solid #e2e8f0' };
   }
   if (norm.includes('coordinator')) {
-    return { bg: 'rgba(251, 191, 36, 0.15)', color: '#fbbf24', border: '1px solid rgba(251, 191, 36, 0.3)' };
+    return { bg: '#ffffff', color: '#475569', border: '1px solid #cbd5e1' };
   }
   if (norm.includes('showroom')) {
-    return { bg: 'rgba(244, 114, 182, 0.15)', color: '#f472b6', border: '1px solid rgba(244, 114, 182, 0.3)' };
+    return { bg: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0' };
   }
-  return { bg: 'rgba(148, 163, 184, 0.15)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.3)' };
+  return { bg: '#f8fafc', color: '#64748b', border: '1px solid #e2e8f0' };
 };
 
 const getPermLevelStyle = (level) => {
@@ -339,564 +346,7 @@ function DesignFeeCostingsSettings() {
   );
 }
 
-function MasterGoogleSheetManager() {
-  const [designFeeUrl, setDesignFeeUrl] = useState('');
-  const [ordersUrl, setOrdersUrl] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState(null);
 
-  useEffect(() => {
-    Promise.all([
-      fetch(`${API_BASE}/admin/templates/master_google_sheet/url?key=MASTER_DESIGN_FEE_SHEET`).then(r => r.json()),
-      fetch(`${API_BASE}/admin/templates/master_google_sheet/url?key=MASTER_ORDERS_SHEET`).then(r => r.json()),
-      fetch(`${API_BASE}/admin/templates/master_google_sheet/url?key=MASTER_GOOGLE_SHEET`).then(r => r.json())
-    ]).then(([dfData, ordData, fallbackData]) => {
-      setDesignFeeUrl(dfData?.url || fallbackData?.url || '');
-      setOrdersUrl(ordData?.url || fallbackData?.url || '');
-    }).catch(err => console.error("Error fetching Master Google Sheet URLs:", err))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const handleSave = async () => {
-    setSaving(true);
-    setMsg(null);
-    try {
-      await Promise.all([
-        fetch(`${API_BASE}/admin/templates/master_google_sheet/url`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: 'MASTER_DESIGN_FEE_SHEET', url: designFeeUrl })
-        }),
-        fetch(`${API_BASE}/admin/templates/master_google_sheet/url`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: 'MASTER_ORDERS_SHEET', url: ordersUrl })
-        })
-      ]);
-      setMsg({ type: 'success', text: 'Dual Master Google Sheet URLs saved successfully! Design Fees and Orders will render from their dedicated workbooks.' });
-    } catch (e) {
-      setMsg({ type: 'error', text: e.message });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="animation-fade-in" style={{ paddingBottom: '30px' }}>
-      <div className="section-label">Master Google Sheet Template Workbooks</div>
-      <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
-        Link separate Master Google Sheet workbooks for <strong>Design Fees</strong> and <strong>Orders / BOQ</strong>. Document previews and Drive vaults generate directly from their dedicated master templates.
-      </div>
-
-      <div className="card" style={{ maxWidth: '650px', padding: '20px' }}>
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
-            🎨 Design Fee Master Google Sheet Link
-          </label>
-          <input 
-            type="text" 
-            className="form-control" 
-            placeholder="https://docs.google.com/spreadsheets/d/1.../edit (Design Fee Master)"
-            value={designFeeUrl}
-            onChange={e => setDesignFeeUrl(e.target.value)}
-            style={{ fontSize: '12.5px' }}
-          />
-        </div>
-
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
-            📦 Orders & BOQ Master Google Sheet Link
-          </label>
-          <input 
-            type="text" 
-            className="form-control" 
-            placeholder="https://docs.google.com/spreadsheets/d/1.../edit (Orders Master)"
-            value={ordersUrl}
-            onChange={e => setOrdersUrl(e.target.value)}
-            style={{ fontSize: '12.5px' }}
-          />
-          <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '6px', display: 'block' }}>
-            Ensure your Google Sheet links are set to "Anyone with the link can view" or shared with your Google Service Account.
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving || loading}>
-            {saving ? 'Saving Links...' : '💾 Save Dual Master Template Links'}
-          </button>
-        </div>
-
-        {msg && (
-          <div style={{ 
-            marginTop: '16px', padding: '10px 14px', borderRadius: '6px', 
-            background: msg.type === 'success' ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
-            border: msg.type === 'success' ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)',
-            color: msg.type === 'success' ? 'var(--text-success)' : 'var(--text-danger)',
-            fontSize: '12.5px'
-          }}>
-            {msg.text}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ReleasesDeploymentManager() {
-  const { user } = useAuth();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [showPromoteModal, setShowPromoteModal] = useState(false);
-  const [promoteForm, setPromoteForm] = useState({ version_tag: '', release_name: '', release_notes: '' });
-  const [actionMsg, setActionMsg] = useState(null);
-  const [actionLoading, setActionLoading] = useState(false);
-  const [showTokenConfig, setShowTokenConfig] = useState(false);
-  const [githubTokenInput, setGithubTokenInput] = useState('');
-  const [savingToken, setSavingToken] = useState(false);
-  const [cloningDb, setCloningDb] = useState(false);
-
-  const DEPLOY_BACKEND = 'https://one-to-one-backend-staging-858977785048.us-central1.run.app';
-
-  const fetchDeploymentStatus = async () => {
-    setLoading(true);
-    try {
-      // Query canonical deployment engine first so release audit history is identical across both portals
-      let res = await fetch(`${DEPLOY_BACKEND}/api/admin/deployments`).catch(() => null);
-      if (!res || !res.ok) {
-        res = await fetch(`${API_BASE}/api/admin/deployments`).catch(() => null);
-      }
-      if (res && res.ok) {
-        const statusData = await res.json();
-        setData(statusData);
-      }
-    } catch (err) {
-      console.error("Error fetching deployments status:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchDeploymentStatus();
-  }, []);
-
-  const handleSaveGithubToken = async () => {
-    if (!githubTokenInput.trim()) {
-      alert("Please enter a valid GitHub Personal Access Token.");
-      return;
-    }
-    setSavingToken(true);
-    try {
-      const payload = JSON.stringify({ token: githubTokenInput.trim() });
-      let res = await fetch(`${API_BASE}/api/admin/deployments/github-token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: payload
-      }).catch(() => null);
-
-      if (!res || !res.ok) {
-        res = await fetch(`${DEPLOY_BACKEND}/api/admin/deployments/github-token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: payload
-        }).catch(() => null);
-      }
-
-      const resData = res ? await res.json().catch(() => ({})) : {};
-      if (res && res.ok) {
-        setActionMsg({ type: 'success', text: `🟢 ${resData.message || 'GitHub Deploy Token successfully verified and connected!'}` });
-        setGithubTokenInput('');
-        setShowTokenConfig(false);
-        fetchDeploymentStatus();
-      } else {
-        alert(`Failed to save GitHub token: ${resData.detail || 'Invalid token'}`);
-      }
-    } catch (err) {
-      alert(`Error saving GitHub token: ${err.message}`);
-    } finally {
-      setSavingToken(false);
-    }
-  };
-
-  const handleCloneProdToStaging = async () => {
-    if (!window.confirm("Are you sure you want to clone the live Production database into Staging? This will overwrite Staging data with the latest Production tables.")) return;
-    setCloningDb(true);
-    setActionMsg(null);
-    try {
-      let res = await fetch(`${API_BASE}/admin/database/clone-prod-to-staging`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      }).catch(() => null);
-
-      if (!res || !res.ok) {
-        res = await fetch(`${DEPLOY_BACKEND}/admin/database/clone-prod-to-staging`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        }).catch(() => null);
-      }
-
-      const resData = res ? await res.json().catch(() => ({})) : {};
-      if (res && res.ok) {
-        setActionMsg({ type: 'success', text: `🟢 ${resData.message || 'Successfully cloned Production database into Staging!'}` });
-      } else {
-        alert(`Database clone failed: ${resData.detail || 'Error replicating database'}`);
-      }
-    } catch (err) {
-      alert(`Error replicating database: ${err.message}`);
-    } finally {
-      setCloningDb(false);
-    }
-  };
-
-  const handlePromote = async () => {
-    if (!promoteForm.release_name.trim()) {
-      alert("Please enter a custom release name.");
-      return;
-    }
-    setActionLoading(true);
-    try {
-      const payload = JSON.stringify({
-        version_tag: promoteForm.version_tag || `v1.${Date.now().toString().slice(-4)}`,
-        release_name: promoteForm.release_name,
-        release_notes: promoteForm.release_notes,
-        admin_email: user?.email || 'admin@1-to-1.world'
-      });
-
-      let res = await fetch(`${API_BASE}/api/admin/deployments/promote`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: payload
-      }).catch(() => null);
-
-      if (!res || !res.ok) {
-        res = await fetch(`${DEPLOY_BACKEND}/api/admin/deployments/promote`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: payload
-        }).catch(() => null);
-      }
-
-      const resData = res ? await res.json().catch(() => ({})) : {};
-      if (res && res.ok) {
-        setActionMsg({ type: 'success', text: resData.message || `🚀 Successfully promoted release '${promoteForm.release_name}' to Live Production!` });
-        setShowPromoteModal(false);
-        setPromoteForm({ version_tag: '', release_name: '', release_notes: '' });
-        fetchDeploymentStatus();
-      } else {
-        alert(`Error promoting release: ${resData.detail || 'Failed'}`);
-      }
-    } catch (err) {
-      alert(`Error promoting release: ${err.message}`);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleRollback = async (rev) => {
-    if (!window.confirm(`Are you sure you want to rollback live Production traffic to revision ${rev.version_tag} (${rev.release_name})?`)) return;
-    setActionLoading(true);
-    try {
-      let res = await fetch(`${API_BASE}/api/admin/deployments/rollback/${rev.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      }).catch(() => null);
-
-      if (!res || !res.ok) {
-        res = await fetch(`${DEPLOY_BACKEND}/api/admin/deployments/rollback/${rev.id}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({})
-        }).catch(() => null);
-      }
-
-      if (res && res.ok) {
-        setActionMsg({ type: 'success', text: `⏪ Successfully marked Production live traffic to revision ${rev.version_tag}!` });
-        fetchDeploymentStatus();
-      } else {
-        alert("Rollback failed.");
-      }
-    } catch (err) {
-      alert(`Rollback error: ${err.message}`);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  if (loading) {
-    return <div style={{ padding: '30px', color: 'var(--text-secondary)' }}>⏳ Loading live deployment architecture details...</div>;
-  }
-
-  const currentProd = data?.current_production;
-  const githubInfo = data?.github_integration;
-
-  return (
-    <div className="animation-fade-in" style={{ paddingBottom: '30px' }}>
-      <div className="section-label">🚀 Releases & Deployment Management Dashboard</div>
-      <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '18px' }}>
-        Manage Staging vs. Production releases, deploy tested Staging builds directly to the live production portal via automated GitHub merge, log custom release titles, and track historical audit trails.
-      </div>
-
-      {actionMsg && (
-        <div style={{
-          padding: '12px 16px', borderRadius: '8px', marginBottom: '16px',
-          background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)',
-          color: '#10b981', fontSize: '13px', fontWeight: 600
-        }}>
-          {actionMsg.text}
-        </div>
-      )}
-
-      {/* GITHUB INTEGRATION BANNER */}
-      <div style={{
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border)',
-        borderRadius: '10px',
-        padding: '14px 18px',
-        marginBottom: '20px',
-        display: 'flex',
-        flexWrap: 'wrap',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: '12px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontSize: '20px' }}>🐙</span>
-          <div>
-            <div style={{ fontSize: '13px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>GitHub Auto-Deploy Integration ({githubInfo?.repository || 'Erinj1610/One-to-One-Eco-System'})</span>
-              {githubInfo?.configured ? (
-                <span style={{ fontSize: '10px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                  🟢 Connected ({githubInfo.masked_token})
-                </span>
-              ) : (
-                <span style={{ fontSize: '10px', background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                  ⚠️ Token Not Configured
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
-              {githubInfo?.configured 
-                ? 'When you promote staging, the portal automatically merges the staging branch into main, triggering live Vercel & Cloud Run builds.' 
-                : 'Configure a GitHub Personal Access Token (PAT) with repo access to enable 1-click deployments directly from this portal.'}
-            </div>
-          </div>
-        </div>
-
-        <button 
-          onClick={() => setShowTokenConfig(!showTokenConfig)} 
-          className="btn btn-sm btn-ghost"
-          style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
-        >
-          ⚙️ {githubInfo?.configured ? 'Update GitHub Token' : 'Configure GitHub Token'}
-        </button>
-      </div>
-
-      {/* GITHUB TOKEN CONFIG MODAL / DRAWER */}
-      {showTokenConfig && (
-        <div style={{
-          background: 'var(--bg-secondary)',
-          border: '1px solid var(--border)',
-          borderRadius: '10px',
-          padding: '16px 18px',
-          marginBottom: '20px'
-        }}>
-          <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: 700 }}>🔑 Connect GitHub Personal Access Token (PAT)</h4>
-          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-            Generate a GitHub Personal Access Token (classic with <code>repo</code> scope, or Fine-Grained token with <code>Contents: Read and write</code> permission on <code>{githubInfo?.repository}</code>) and paste it below.
-          </div>
-          <div style={{ display: 'flex', gap: '10px', maxWidth: '600px' }}>
-            <input 
-              type="password"
-              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx or github_pat_xxxxxxxxxxxx"
-              value={githubTokenInput}
-              onChange={e => setGithubTokenInput(e.target.value)}
-              className="form-control"
-              style={{ fontSize: '12px', flex: 1 }}
-            />
-            <button 
-              className="btn btn-primary"
-              onClick={handleSaveGithubToken}
-              disabled={savingToken || !githubTokenInput.trim()}
-              style={{ whiteSpace: 'nowrap', fontSize: '12px', fontWeight: 600 }}
-            >
-              {savingToken ? 'Validating...' : 'Save & Connect Token'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ACTIVE PRODUCTION & STAGING CARDS GRID */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
-        
-        {/* PRODUCTION CARD */}
-        <div style={{ background: 'var(--bg-card)', border: '1.5px solid #10b981', borderRadius: '10px', padding: '18px', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.08)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
-              🟢 ACTIVE PRODUCTION LIVE
-            </span>
-            <a href="https://ejportal.vercel.app" target="_blank" rel="noreferrer" style={{ fontSize: '11px', color: '#10b981', fontWeight: 600, textDecoration: 'none' }}>
-              ejportal.vercel.app ↗
-            </a>
-          </div>
-          <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '4px' }}>
-            {currentProd?.version_tag || 'v1.5.0'} — {currentProd?.release_name || 'Live Production'}
-          </div>
-          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-            Deployed by {currentProd?.deployed_by || 'Admin'} on {currentProd?.created_at || 'Recently'}
-          </div>
-          <div style={{ fontSize: '11px', background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)', padding: '8px 12px', borderRadius: '6px', color: 'var(--text-secondary)' }}>
-            🛡️ Production Cloud SQL Database (<code style={{ color: '#60a5fa' }}>One-to-One-Portal-Database</code>) is active and protected.
-          </div>
-        </div>
-
-        {/* STAGING CARD */}
-        <div style={{ background: 'var(--bg-card)', border: '1.5px solid #3b82f6', borderRadius: '10px', padding: '18px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 800, letterSpacing: '0.5px', textTransform: 'uppercase', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', padding: '3px 8px', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-              🧪 STAGING LIVE PLAYGROUND
-            </span>
-            <a href="https://frontend-git-staging-erinj1610s-projects.vercel.app" target="_blank" rel="noreferrer" style={{ fontSize: '11px', color: '#60a5fa', fontWeight: 600, textDecoration: 'none' }}>
-              staging.ejportal ↗
-            </a>
-          </div>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
-            Live Staging Build Ready
-          </div>
-          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '14px' }}>
-            Backend: <code style={{ color: '#60a5fa' }}>one-to-one-backend-staging</code> (US Central 1).
-          </div>
-          <button 
-            onClick={() => setShowPromoteModal(true)}
-            className="glow-btn"
-            style={{ width: '100%', padding: '9px', background: '#2563eb', border: 'none', borderRadius: '6px', color: '#ffffff', fontWeight: 700, fontSize: '13px', cursor: 'pointer', marginBottom: '8px' }}
-          >
-            🚀 Promote Staging to Live Production
-          </button>
-          <button 
-            onClick={handleCloneProdToStaging}
-            disabled={cloningDb}
-            style={{ width: '100%', padding: '8px', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '6px', color: '#60a5fa', fontWeight: 600, fontSize: '12px', cursor: cloningDb ? 'not-allowed' : 'pointer' }}
-          >
-            {cloningDb ? '🔄 Replicating Prod Database to Staging...' : '📥 Sync Prod Database to Staging (Test Errors)'}
-          </button>
-        </div>
-
-      </div>
-
-      {/* HISTORICAL DEPLOYMENT AUDIT LOG TABLE */}
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '10px', padding: '18px' }}>
-        <h4 style={{ margin: '0 0 14px 0', fontSize: '14px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          📜 Deployment History & Revision Audit Trail
-        </h4>
-        <table className="modern-table" style={{ width: '100%', fontSize: '12.5px' }}>
-          <thead>
-            <tr style={{ textAlign: 'left', background: 'rgba(255,255,255,0.02)' }}>
-              <th style={{ padding: '8px' }}>Version</th>
-              <th style={{ padding: '8px' }}>Release Title</th>
-              <th style={{ padding: '8px' }}>Deployed By</th>
-              <th style={{ padding: '8px' }}>Date & Time</th>
-              <th style={{ padding: '8px' }}>Status</th>
-              <th style={{ padding: '8px', textAlign: 'right' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(data?.history || []).map((rev) => (
-              <tr key={rev.id} style={{ opacity: rev.is_active_prod ? 1 : 0.85 }}>
-                <td style={{ fontWeight: 800, color: rev.is_active_prod ? '#10b981' : 'var(--text-primary)' }}>
-                  {rev.version_tag}
-                </td>
-                <td style={{ fontWeight: 600 }}>{rev.release_name}</td>
-                <td>{rev.deployed_by}</td>
-                <td>{rev.created_at}</td>
-                <td>
-                  {rev.is_active_prod ? (
-                    <span style={{ padding: '2px 6px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: '4px', fontSize: '11px', fontWeight: 700 }}>
-                      Active Live
-                    </span>
-                  ) : (
-                    <span style={{ padding: '2px 6px', background: 'rgba(156, 163, 175, 0.15)', color: '#9ca3af', border: '1px solid rgba(156, 163, 175, 0.3)', borderRadius: '4px', fontSize: '11px' }}>
-                      Archived
-                    </span>
-                  )}
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  {!rev.is_active_prod && (
-                    <button
-                      onClick={() => handleRollback(rev)}
-                      disabled={actionLoading}
-                      style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 700 }}
-                    >
-                      ⏪ Mark Active
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* PROMOTE STAGING TO PRODUCTION MODAL */}
-      {showPromoteModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
-        }}>
-          <div style={{ width: '100%', maxWidth: '520px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', padding: '22px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: 'var(--text-primary)' }}>🚀 Promote Staging to Live Production</h3>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
-              This will merge your tested <strong>staging</strong> branch into <strong>main</strong> on GitHub, automatically triggering live <strong>Vercel</strong> frontend and <strong>Cloud Run</strong> backend deployments.
-            </div>
-
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px', color: 'var(--text-primary)' }}>Version Tag</label>
-              <input 
-                type="text" 
-                placeholder="e.g. v1.5.1" 
-                value={promoteForm.version_tag} 
-                onChange={e => setPromoteForm({ ...promoteForm, version_tag: e.target.value })} 
-                className="form-control"
-              />
-            </div>
-
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px', color: 'var(--text-primary)' }}>Release Title / Name *</label>
-              <input 
-                type="text" 
-                placeholder="e.g. Ticket Logger Redesign & Assigned Staff Users" 
-                value={promoteForm.release_name} 
-                onChange={e => setPromoteForm({ ...promoteForm, release_name: e.target.value })} 
-                className="form-control"
-              />
-            </div>
-
-            <div style={{ marginBottom: '18px' }}>
-              <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, marginBottom: '4px', color: 'var(--text-primary)' }}>Release Notes (Optional)</label>
-              <textarea 
-                rows="3" 
-                placeholder="Summary of fixes, new features, or updates included in this release..." 
-                value={promoteForm.release_notes} 
-                onChange={e => setPromoteForm({ ...promoteForm, release_notes: e.target.value })} 
-                className="form-control"
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button className="btn btn-secondary" onClick={() => setShowPromoteModal(false)} disabled={actionLoading}>Cancel</button>
-              <button className="btn btn-primary" onClick={handlePromote} disabled={actionLoading}>
-                {actionLoading ? '🚀 Merging & Triggering Live Deployments...' : '🚀 Confirm & Publish Live'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-    </div>
-  );
-}
 
 export default function SettingsPage() {
   const { isAdmin, refreshPermissions } = useAuth();
@@ -918,15 +368,123 @@ export default function SettingsPage() {
   const hostname = typeof window !== 'undefined' ? (window.location.hostname || '') : '';
   const isStaging = hostname.includes('staging') || hostname.includes('localhost') || hostname.includes('127.0.0.1');
 
-  const availableTabs = isAdmin
-    ? (isStaging 
-        ? ['General', 'Users & Permissions', 'Workflow Stages', 'Drive & Folders', 'Releases & Deployments', 'Activity log', 'Project managers', 'Dropdowns', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
-        : ['General', 'Users & Permissions', 'Workflow Stages', 'Drive & Folders', 'Activity log', 'Project managers', 'Dropdowns', 'Rate card', 'Alerts', 'Modules', 'Integrations', 'Templates']
-      )
-    : ['General', 'Users & Permissions', 'Workflow Stages', 'Rate card', 'Alerts', 'Integrations'];
+  const SETTINGS_CATEGORIES = [
+    {
+      group: 'Organization & Brand',
+      description: 'Studio identity, VAT, billing entity & financial margin baselines',
+      tabs: [
+        { 
+          id: 'General', 
+          label: 'Company Profile & Branding', 
+          desc: 'Studio address, VAT numbers, invoice banking details & document header previews.',
+          icon: Building2 
+        },
+        { 
+          id: 'Rate card', 
+          label: 'Rate Cards & Target Margins', 
+          desc: 'Default margin percentages, design fees, and commercial pricing models.',
+          icon: Percent 
+        }
+      ]
+    },
+    {
+      group: 'Team & Governance',
+      description: 'Staff accounts, role permission matrix, and access security logs',
+      tabs: [
+        { 
+          id: 'Users & Permissions', 
+          label: 'Users & Access Permissions', 
+          desc: 'Manage staff accounts, assign standard roles, and adjust granular module permissions.',
+          icon: Shield, 
+          adminOnly: true 
+        },
+        { 
+          id: 'Project managers', 
+          label: 'Project Managers & Leads', 
+          desc: 'Active studio PMs assigned to projects, client orders, and delivery pipelines.',
+          icon: Briefcase, 
+          adminOnly: true 
+        },
+        { 
+          id: 'Activity log', 
+          label: 'Activity Audit Log', 
+          desc: 'Comprehensive timestamped audit trail of logins, edits, allocations, and deletions.',
+          icon: List, 
+          adminOnly: true 
+        }
+      ]
+    },
+    {
+      group: 'Workflow & Operations',
+      description: 'Project pipeline milestones, cloud storage automation & document layouts',
+      tabs: [
+        { 
+          id: 'Workflow Stages', 
+          label: 'Workflow Stages', 
+          desc: 'Linear milestone phases and automatic blockers across all project pipelines.',
+          icon: SlidersHorizontal 
+        },
+        { 
+          id: 'Drive & Folders', 
+          label: 'Google Drive Routing', 
+          desc: 'Dynamic cloud storage folder structures, document routing, and duplicate consolidation.',
+          icon: Layers, 
+          adminOnly: true 
+        },
+        { 
+          id: 'Dropdowns', 
+          label: 'Dropdowns & Lookups', 
+          desc: 'Central management for tags, categories, client types, and custom statuses.',
+          icon: Grid, 
+          adminOnly: true 
+        },
+        { 
+          id: 'Templates', 
+          label: 'Document Templates', 
+          desc: 'Thermal sticker presets, Argox label layouts, and document export definitions.',
+          icon: Copy, 
+          adminOnly: true 
+        }
+      ]
+    },
+    {
+      group: 'System & Releases',
+      description: 'Cloud Run revision promotion, system alert rules & external integrations',
+      tabs: [
+        ...(isStaging ? [{ 
+          id: 'Releases & Deployments', 
+          label: 'Releases & Deployments', 
+          desc: 'Promote verified staging revisions directly to live production traffic.',
+          icon: Sparkles, 
+          adminOnly: true 
+        }] : []),
+        { 
+          id: 'Alerts', 
+          label: 'System Alerts & Rules', 
+          desc: 'Automated margin warnings, overdue order notifications, and threshold alerts.',
+          icon: AlertTriangle 
+        },
+        { 
+          id: 'Modules', 
+          label: 'Modules & Navigation', 
+          desc: 'Control navigation visibility and toggle specialized portal features.',
+          icon: Sliders, 
+          adminOnly: true 
+        },
+        { 
+          id: 'Integrations', 
+          label: 'API Integrations', 
+          desc: 'Google Drive, Firebase Auth, and external microservice connectivity.',
+          icon: ExternalLink 
+        }
+      ]
+    }
+  ];
 
+  const availableTabs = SETTINGS_CATEGORIES.flatMap(c => c.tabs).filter(t => !t.adminOnly || isAdmin).map(t => t.id);
 
-  const [activeTab, setActiveTab] = useState('General');
+  // When null, we show the clean Tile Directory Grid. When set to an ID, we show that setting with a back button.
+  const [activeTab, setActiveTab] = useState(null);
   const [activeRole, setActiveRole] = useState('Admin');
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [ruleForm, setRuleForm] = useState({ module: 'projects', parameter: 'margin', condition: 'less_than', value: '', label: '' });
@@ -1112,7 +670,7 @@ export default function SettingsPage() {
 
   const handleResetUserToRoleDefaults = async () => {
     if (!userPermissionsModalUser) return;
-    if (!window.confirm(`Reset all custom overrides for ${userPermissionsModalUser.name}? All permissions will cleanly inherit from ${userPermissionsModalUser.role}.`)) return;
+    if (!(await window.otoConfirm(`Reset all custom overrides for ${userPermissionsModalUser.name}? All permissions will cleanly inherit from ${userPermissionsModalUser.role}.`))) return;
     setSavingUserPerms(true);
     try {
       const res = await fetch(`${API_BASE}/admin/users/${userPermissionsModalUser.id}/permissions`, {
@@ -1180,7 +738,7 @@ export default function SettingsPage() {
     const confirmMsg = newStatus 
       ? `Disable account access for ${user.name} (${user.email})?`
       : `Re-activate account for ${user.name} (${user.email})?`;
-    if (!window.confirm(confirmMsg)) return;
+    if (!(await window.otoConfirm(confirmMsg))) return;
 
     try {
       const res = await fetch(`${API_BASE}/admin/users/${user.id}`, {
@@ -1242,8 +800,8 @@ export default function SettingsPage() {
     setHasUnsavedPerms(true);
   };
 
-  const handleBulkSetRolePermissions = (roleId, level) => {
-    if (!window.confirm(`Set all modules for this role to '${level}'?`)) return;
+  const handleBulkSetRolePermissions = async (roleId, level) => {
+    if (!(await window.otoConfirm(`Set all modules for this role to '${level}'?`))) return;
     setPermissionsData(prev => {
       const newMatrix = { ...prev.matrix };
       const roleKey = String(roleId);
@@ -1372,7 +930,7 @@ export default function SettingsPage() {
   };
 
   const handleDeleteLookup = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this option?')) return;
+    if (!(await window.otoConfirm('Are you sure you want to delete this option?'))) return;
     setLookupError('');
     setLookupSuccess('');
     try {
@@ -1421,7 +979,7 @@ export default function SettingsPage() {
   };
 
   const handleDeleteUser = async (userId) => {
-    if (!window.confirm("Are you sure you want to delete this user? This will also remove them from Firebase Auth.")) return;
+    if (!(await window.otoConfirm("Are you sure you want to delete this user? This will also remove them from Firebase Auth."))) return;
     try {
       const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
         method: 'DELETE'
@@ -1479,7 +1037,7 @@ export default function SettingsPage() {
   };
 
   const handleResetPassword = async (userId, userEmail) => {
-    if (!window.confirm(`Trigger password reset email/link for ${userEmail}?`)) return;
+    if (!(await window.otoConfirm(`Trigger password reset email/link for ${userEmail}?`, { title: "Reset Password", isDanger: false, confirmText: "Send Reset Link" }))) return;
     setResetPwLink('');
     try {
       const res = await fetch(`${API_BASE}/admin/users/${userId}/reset-password`, {
@@ -1523,68 +1081,163 @@ export default function SettingsPage() {
 
   return (
     <div className="animation-fade-in">
-      <div className="tabs" style={{ marginBottom: 18 }}>
-        {availableTabs.map(t => (
-          <button key={t} className={`tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>{t}</button>
-        ))}
-      </div>
+      {/* 1. ROOT VIEW: Clean Luxury Tile Directory Grid */}
+      {!activeTab && (
+        <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '32px', maxWidth: '1200px' }}>
+          <div>
+            <h1 style={{ fontSize: '22px', fontWeight: 700, margin: '0 0 6px 0', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+              Settings & Preferences
+            </h1>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
+              Manage studio identity, team permissions, pipeline workflows, and system infrastructure.
+            </p>
+          </div>
 
-      {activeTab === 'General' && (
-        <div>
-          <div className="section-label">Company details</div>
-          <div className="card" style={{ marginBottom: 14, maxWidth: 560 }}>
-            <div className="card-body">
-              <div className="row-2">
-                <div className="form-row"><label className="form-label">Company name</label><input className="form-control" value={general.companyName} onChange={e => setGeneral(g => ({...g, companyName: e.target.value}))} /></div>
-                <div className="form-row"><label className="form-label">Studio email</label><input className="form-control" value={general.email} onChange={e => setGeneral(g => ({...g, email: e.target.value}))} /></div>
-              </div>
-              <div className="row-2">
-                <div className="form-row"><label className="form-label">Phone</label><input className="form-control" value={general.phone} onChange={e => setGeneral(g => ({...g, phone: e.target.value}))} /></div>
-                <div className="form-row"><label className="form-label">VAT number</label><input className="form-control" value={general.vat} onChange={e => setGeneral(g => ({...g, vat: e.target.value}))} /></div>
-              </div>
-              <div className="form-row"><label className="form-label">Address</label><input className="form-control" value={general.address} onChange={e => setGeneral(g => ({...g, address: e.target.value}))} /></div>
-              <div className="row-2">
-                <div className="form-row">
-                  <label className="form-label">Currency</label>
-                  <select className="form-control" value={general.currency} onChange={e => setGeneral(g => ({...g, currency: e.target.value}))}>
-                    <option>ZAR</option><option>USD</option><option>EUR</option><option>GBP</option>
-                  </select>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+            {SETTINGS_CATEGORIES.map(cat => {
+              const visibleTabs = cat.tabs.filter(t => !t.adminOnly || isAdmin);
+              if (visibleTabs.length === 0) return null;
+
+              return (
+                <div key={cat.group}>
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+                      {cat.group}
+                    </div>
+                    {cat.description && (
+                      <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                        {cat.description}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '14px' }}>
+                    {visibleTabs.map(t => {
+                      const IconComp = t.icon || Sliders;
+                      return (
+                        <div
+                          key={t.id}
+                          onClick={() => setActiveTab(t.id)}
+                          style={{
+                            background: '#ffffff',
+                            border: '1px solid var(--border)',
+                            borderRadius: '10px',
+                            padding: '18px 20px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px',
+                            transition: 'all 0.15s cubic-bezier(0.16, 1, 0.3, 1)',
+                            position: 'relative',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                            e.currentTarget.style.borderColor = 'rgba(0, 0, 0, 0.18)';
+                            e.currentTarget.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.06)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'translateY(0)';
+                            e.currentTarget.style.borderColor = 'var(--border)';
+                            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.03)';
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div 
+                                style={{ 
+                                  width: '32px', 
+                                  height: '32px', 
+                                  borderRadius: '8px', 
+                                  background: 'var(--bg-secondary)', 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  justifyContent: 'center',
+                                  color: 'var(--text-primary)'
+                                }}
+                              >
+                                <IconComp size={16} />
+                              </div>
+                              <h3 style={{ margin: 0, fontSize: '13.5px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {t.label}
+                              </h3>
+                            </div>
+                            <ArrowRight size={14} color="#94a3b8" />
+                          </div>
+
+                          <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.45' }}>
+                            {t.desc}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="form-row">
-                  <label className="form-label">Default Target Margin (%)</label>
-                  <input 
-                    type="number" 
-                    className="form-control" 
-                    value={general.defaultTargetMargin || 39} 
-                    onChange={e => setGeneral(g => ({...g, defaultTargetMargin: parseInt(e.target.value) || 39}))} 
-                  />
-                </div>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
-                <button 
-                  className="btn btn-primary" 
-                  onClick={() => {
-                    setAlertSettings(prev => ({
-                      ...prev,
-                      general: {
-                        companyName: general.companyName,
-                        email: general.email,
-                        phone: general.phone,
-                        address: general.address,
-                        vat: general.vat,
-                        currency: general.currency
-                      },
-                      defaultTargetMargin: Number(general.defaultTargetMargin) || 39
-                    }));
-                    alert('General settings & target margins saved successfully!');
-                  }}
-                >
-                  Save changes
-                </button>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </div>
+      )}
+
+      {/* 2. SUB-VIEW HEADER: Clean Top Navigation Breadcrumb when inside a setting */}
+      {activeTab && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '22px' }}>
+          <button
+            type="button"
+            onClick={() => setActiveTab(null)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              background: '#ffffff',
+              border: '1px solid var(--border)',
+              borderRadius: '7px',
+              color: 'var(--text-primary)',
+              fontSize: '12.5px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'background 0.12s ease'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
+            onMouseLeave={(e) => e.currentTarget.style.background = '#ffffff'}
+          >
+            <ChevronLeft size={16} /> All Settings
+          </button>
+          <span style={{ color: 'var(--text-tertiary)', fontSize: '13px' }}>/</span>
+          <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+            {SETTINGS_CATEGORIES.flatMap(c => c.tabs).find(t => t.id === activeTab)?.label || activeTab}
+          </span>
+        </div>
+      )}
+
+      {activeTab === 'General' && (
+        <CompanyProfileSettings 
+          general={general} 
+          setGeneral={setGeneral} 
+          onSave={() => {
+            setAlertSettings(prev => ({
+              ...prev,
+              general: {
+                companyName: general.companyName,
+                email: general.email,
+                phone: general.phone,
+                address: general.address,
+                vat: general.vat,
+                regNumber: general.regNumber,
+                bankingDetails: general.bankingDetails,
+                currency: general.currency,
+                paymentTerms: general.paymentTerms
+              },
+              defaultTargetMargin: Number(general.defaultTargetMargin) || 39
+            }));
+            if (window.otoToast) {
+              window.otoToast('Company Profile & document branding synchronized successfully!', 'success');
+            } else {
+              alert('Company Profile & document branding synchronized successfully!');
+            }
+          }} 
+        />
       )}
 
       {activeTab === 'Workflow Stages' && (
@@ -1595,28 +1248,35 @@ export default function SettingsPage() {
         <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Main Top Header & Sub-View Switcher */}
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', paddingBottom: '18px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', gap: '16px' }}>
               <div>
-                <h3 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 4px 0', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Shield size={20} color="var(--accent)" /> Users, Access & Permissions
-                </h3>
-                <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>
+                    Team & Governance
+                  </span>
+                </div>
+                <h1 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 6px 0', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                  Users, Access & Permissions
+                </h1>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
                   Manage team accounts, assign standard role templates, customize individual user permissions, and configure system matrices.
                 </p>
               </div>
 
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                 {/* Sub-View Switcher (Members vs Role Matrix) */}
-                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '3px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', background: '#f1f5f9', padding: '3px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                   <button
                     type="button"
                     onClick={() => setTeamSubView('members')}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '6px',
-                      padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                      padding: '6px 14px', borderRadius: '6px', fontSize: '12.5px', fontWeight: 600,
                       border: 'none', cursor: 'pointer',
-                      background: teamSubView === 'members' ? 'var(--accent)' : 'transparent',
-                      color: teamSubView === 'members' ? '#fff' : 'var(--text-secondary)'
+                      background: teamSubView === 'members' ? '#ffffff' : 'transparent',
+                      color: teamSubView === 'members' ? '#0f172a' : '#64748b',
+                      boxShadow: teamSubView === 'members' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
+                      transition: 'all 0.15s ease'
                     }}
                   >
                     <Users size={14} /> Team Members & Access
@@ -1626,10 +1286,12 @@ export default function SettingsPage() {
                     onClick={() => setTeamSubView('roles')}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '6px',
-                      padding: '6px 14px', borderRadius: '6px', fontSize: '12px', fontWeight: 600,
+                      padding: '6px 14px', borderRadius: '6px', fontSize: '12.5px', fontWeight: 600,
                       border: 'none', cursor: 'pointer',
-                      background: teamSubView === 'roles' ? 'var(--accent)' : 'transparent',
-                      color: teamSubView === 'roles' ? '#fff' : 'var(--text-secondary)'
+                      background: teamSubView === 'roles' ? '#ffffff' : 'transparent',
+                      color: teamSubView === 'roles' ? '#0f172a' : '#64748b',
+                      boxShadow: teamSubView === 'roles' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
+                      transition: 'all 0.15s ease'
                     }}
                   >
                     <Shield size={14} /> Role Presets & Matrix
@@ -1649,7 +1311,6 @@ export default function SettingsPage() {
                     </button>
                     <button
                       type="button"
-                      className="btn btn-primary"
                       onClick={() => {
                         setInviteForm({ name: '', email: '', role_id: (dbRoles[0]?.id || 3), department: 'Design' });
                         setInviteError('');
@@ -1657,7 +1318,23 @@ export default function SettingsPage() {
                         setGeneratedLink('');
                         setShowInviteModal(true);
                       }}
-                      style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600 }}
+                      style={{ 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        gap: '8px', 
+                        padding: '8px 16px', 
+                        fontSize: '12.5px', 
+                        fontWeight: 600,
+                        backgroundColor: '#0f172a',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '7px',
+                        cursor: 'pointer',
+                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#1e293b'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#0f172a'; }}
                     >
                       <UserPlus size={14} /> + Invite Team Member
                     </button>
@@ -1693,88 +1370,129 @@ export default function SettingsPage() {
             </div>
 
             {/* KPI Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '16px' }}>
-              <div className="card" style={{ padding: '14px 18px', borderLeft: '3px solid #38bdf8' }}>
-                <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>Total Members</div>
-                <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px' }}>{users.length}</div>
-                <div style={{ fontSize: '11px', color: '#38bdf8', marginTop: '2px' }}>Active in database</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Total Members</div>
+                <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>{users.length}</div>
+                <div style={{ fontSize: '12px', color: '#64748b' }}>Registered team identities</div>
               </div>
-              <div className="card" style={{ padding: '14px 18px', borderLeft: '3px solid #10b981' }}>
-                <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>Active Accounts</div>
-                <div style={{ fontSize: '24px', fontWeight: 800, color: '#10b981', marginTop: '4px' }}>
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Active Accounts</div>
+                <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
                   {users.filter(u => !u.disabled).length}
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Operational logins</div>
+                <div style={{ fontSize: '12px', color: '#16a34a', fontWeight: 500 }}>● Fully operational logins</div>
               </div>
-              <div className="card" style={{ padding: '14px 18px', borderLeft: '3px solid #a855f7' }}>
-                <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>Role Presets</div>
-                <div style={{ fontSize: '24px', fontWeight: 800, color: '#c084fc', marginTop: '4px' }}>
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Role Presets</div>
+                <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
                   {dbRoles.length || 5}
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>Standard company baselines</div>
+                <div style={{ fontSize: '12px', color: '#64748b' }}>Standard company baselines</div>
               </div>
-              <div className="card" style={{ padding: '14px 18px', borderLeft: '3px solid #f59e0b' }}>
-                <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 600 }}>Customized Access</div>
-                <div style={{ fontSize: '24px', fontWeight: 800, color: '#fbbf24', marginTop: '4px' }}>
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Customized Access</div>
+                <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
                   {users.filter(u => (u.custom_override_count || 0) > 0).length}
                 </div>
-                <div style={{ fontSize: '11px', color: '#fbbf24', marginTop: '2px' }}>Members with custom overrides</div>
+                <div style={{ fontSize: '12px', color: '#b45309', fontWeight: 500 }}>Members with bespoke overrides</div>
               </div>
             </div>
 
             {/* Filter & Search Bar for Members View */}
             {teamSubView === 'members' && (
-              <div className="card" style={{ marginBottom: '16px' }}>
-                <div className="card-body" style={{ padding: '12px 16px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-                  <div style={{ position: 'relative', flex: '1 1 240px' }}>
-                    <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="Search members by name, email, or department..."
-                      value={userSearch}
-                      onChange={e => setUserSearch(e.target.value)}
-                      style={{ paddingLeft: '32px', height: '36px', fontSize: '13px', width: '100%' }}
-                    />
-                  </div>
-                  <div style={{ minWidth: '150px' }}>
-                    <select
-                      className="form-control"
-                      value={userRoleFilter}
-                      onChange={e => setUserRoleFilter(e.target.value)}
-                      style={{ height: '36px', fontSize: '12.5px', width: '100%' }}
-                    >
-                      <option value="All">All Roles ({dbRoles.length})</option>
-                      {dbRoles.map(r => (
-                        <option key={r.id} value={r.name}>{r.name} ({r.user_count})</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div style={{ minWidth: '150px' }}>
-                    <select
-                      className="form-control"
-                      value={userDeptFilter}
-                      onChange={e => setUserDeptFilter(e.target.value)}
-                      style={{ height: '36px', fontSize: '12.5px', width: '100%' }}
-                    >
-                      <option value="All">All Departments</option>
-                      {Array.from(new Set(users.map(u => u.department).filter(d => d && d !== 'None' && d !== 'General'))).map(dept => (
-                        <option key={dept} value={dept}>{dept}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div style={{ minWidth: '170px' }}>
-                    <select
-                      className="form-control"
-                      value={userOverrideFilter}
-                      onChange={e => setUserOverrideFilter(e.target.value)}
-                      style={{ height: '36px', fontSize: '12.5px', width: '100%' }}
-                    >
-                      <option value="All">All Permission Levels</option>
-                      <option value="Custom">Custom Overrides Only</option>
-                      <option value="Standard">Role Defaults Only</option>
-                    </select>
-                  </div>
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 18px', marginBottom: '20px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                <div style={{ position: 'relative', flex: '1 1 260px' }}>
+                  <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                  <input
+                    type="search"
+                    placeholder="Search members by name, email, or department..."
+                    value={userSearch}
+                    onChange={e => setUserSearch(e.target.value)}
+                    style={{
+                      width: '100%',
+                      height: '36px',
+                      paddingLeft: '34px',
+                      paddingRight: '12px',
+                      fontSize: '13px',
+                      color: '#0f172a',
+                      background: '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+                <div style={{ minWidth: '160px' }}>
+                  <select
+                    value={userRoleFilter}
+                    onChange={e => setUserRoleFilter(e.target.value)}
+                    style={{
+                      height: '36px',
+                      width: '100%',
+                      fontSize: '12.5px',
+                      fontWeight: 500,
+                      color: '#334155',
+                      background: '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      padding: '0 10px',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="All">All Roles ({dbRoles.length})</option>
+                    {dbRoles.map(r => (
+                      <option key={r.id} value={r.name}>{r.name} ({r.user_count})</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ minWidth: '160px' }}>
+                  <select
+                    value={userDeptFilter}
+                    onChange={e => setUserDeptFilter(e.target.value)}
+                    style={{
+                      height: '36px',
+                      width: '100%',
+                      fontSize: '12.5px',
+                      fontWeight: 500,
+                      color: '#334155',
+                      background: '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      padding: '0 10px',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="All">All Departments</option>
+                    {Array.from(new Set(users.map(u => u.department).filter(d => d && d !== 'None' && d !== 'General'))).map(dept => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ minWidth: '180px' }}>
+                  <select
+                    value={userOverrideFilter}
+                    onChange={e => setUserOverrideFilter(e.target.value)}
+                    style={{
+                      height: '36px',
+                      width: '100%',
+                      fontSize: '12.5px',
+                      fontWeight: 500,
+                      color: '#334155',
+                      background: '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      padding: '0 10px',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="All">All Permission Levels</option>
+                    <option value="Custom">Custom Overrides Only</option>
+                    <option value="Standard">Role Defaults Only</option>
+                  </select>
                 </div>
               </div>
             )}
@@ -1783,250 +1501,275 @@ export default function SettingsPage() {
 
           {/* Sub-View: Team Members & Access Table */}
           {teamSubView === 'members' && (
-            <div className="card" style={{ overflow: 'hidden' }}>
-              <div className="card-body" style={{ padding: 0 }}>
-                {usersLoading ? (
-                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                    <RefreshCw size={20} className="spin" style={{ margin: '0 auto 10px auto', display: 'block', color: 'var(--accent)' }} />
-                    Loading team members...
-                  </div>
-                ) : (
-                  <div style={{ overflowX: 'auto' }}>
-                    <table className="table" style={{ margin: 0, width: '100%' }}>
-                      <thead>
-                        <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--border)' }}>
-                          <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Member</th>
-                          <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Department</th>
-                          <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>System Role (1-Click Reassign)</th>
-                          <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Access Privileges</th>
-                          <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</th>
-                          <th style={{ padding: '12px 18px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {users
-                          .filter(u => {
-                            const q = userSearch.toLowerCase();
-                            const matchesSearch = !userSearch || 
-                              (u.name || '').toLowerCase().includes(q) ||
-                              (u.email || '').toLowerCase().includes(q) ||
-                              (u.department || '').toLowerCase().includes(q) ||
-                              (u.role || '').toLowerCase().includes(q);
-                            const matchesRole = userRoleFilter === 'All' || (u.role || '').toLowerCase() === userRoleFilter.toLowerCase();
-                            const matchesDept = userDeptFilter === 'All' || (u.department || '').toLowerCase() === userDeptFilter.toLowerCase();
-                            const matchesOverride = userOverrideFilter === 'All' || 
-                              (userOverrideFilter === 'Custom' ? (u.custom_override_count || 0) > 0 : (u.custom_override_count || 0) === 0);
-                            return matchesSearch && matchesRole && matchesDept && matchesOverride;
-                          })
-                          .map(u => {
-                            const roleStyle = getRoleBadgeStyle(u.role);
-                            const isUpdatingRole = roleUpdatingUserId === u.id;
-                            const overrideCount = u.custom_override_count || 0;
-                            return (
-                              <tr 
-                                key={u.id} 
-                                style={{ 
-                                  opacity: u.disabled ? 0.6 : 1,
-                                  borderBottom: '1px solid rgba(255,255,255,0.04)',
-                                  transition: 'background 0.15s ease'
-                                }}
-                              >
-                                {/* User Info & Avatar */}
-                                <td style={{ padding: '14px 18px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <div 
-                                      style={{
-                                        width: '38px',
-                                        height: '38px',
-                                        borderRadius: '50%',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        fontSize: '13px',
-                                        fontWeight: 700,
-                                        background: roleStyle.bg,
-                                        color: roleStyle.color,
-                                        border: roleStyle.border,
-                                        flexShrink: 0
-                                      }}
-                                    >
-                                      {getInitials(u.name, u.email)}
-                                    </div>
-                                    <div>
-                                      <div style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '13.5px' }}>{u.name}</div>
-                                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{u.email}</div>
-                                    </div>
-                                  </div>
-                                </td>
-
-                                {/* Department */}
-                                <td style={{ padding: '14px 18px' }}>
-                                  <span style={{
-                                    display: 'inline-block',
-                                    padding: '3px 8px',
-                                    borderRadius: '4px',
-                                    fontSize: '11.5px',
-                                    fontWeight: 500,
-                                    background: 'rgba(255,255,255,0.05)',
-                                    color: 'var(--text-primary)',
-                                    border: '1px solid rgba(255,255,255,0.08)'
-                                  }}>
-                                    {u.department || 'General'}
-                                  </span>
-                                </td>
-
-                                {/* Interactive Inline Role Switcher */}
-                                <td style={{ padding: '14px 18px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <select
-                                      className="form-control"
-                                      value={u.role_id || ''}
-                                      onChange={e => handleInlineRoleChange(u.id, e.target.value)}
-                                      disabled={isUpdatingRole}
-                                      style={{
-                                        fontSize: '12px',
-                                        fontWeight: 600,
-                                        padding: '4px 8px',
-                                        height: '32px',
-                                        borderRadius: '6px',
-                                        background: roleStyle.bg,
-                                        color: roleStyle.color,
-                                        border: roleStyle.border,
-                                        cursor: 'pointer',
-                                        minWidth: '150px'
-                                      }}
-                                    >
-                                      {dbRoles.map(r => (
-                                        <option key={r.id} value={r.id} style={{ background: '#1e293b', color: '#fff' }}>
-                                          {r.name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    {isUpdatingRole && <RefreshCw size={12} className="spin" style={{ color: roleStyle.color }} />}
-                                  </div>
-                                </td>
-
-                                {/* Access Privileges & Custom Overrides */}
-                                <td style={{ padding: '14px 18px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                    {overrideCount > 0 ? (
-                                      <span style={{
-                                        padding: '3px 9px',
-                                        borderRadius: '12px',
-                                        fontSize: '11px',
-                                        fontWeight: 600,
-                                        background: 'rgba(245, 158, 11, 0.15)',
-                                        color: '#fbbf24',
-                                        border: '1px solid rgba(245, 158, 11, 0.3)',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                      }}>
-                                        ⚡ {overrideCount} Custom Override{overrideCount > 1 ? 's' : ''}
-                                      </span>
-                                    ) : (
-                                      <span style={{
-                                        padding: '3px 9px',
-                                        borderRadius: '12px',
-                                        fontSize: '11px',
-                                        fontWeight: 500,
-                                        background: 'rgba(255,255,255,0.05)',
-                                        color: 'var(--text-secondary)',
-                                        border: '1px solid rgba(255,255,255,0.08)',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                      }}>
-                                        Role Default ({u.role || 'Standard'})
-                                      </span>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenUserPermissions(u)}
-                                      className="btn btn-sm"
-                                      style={{
-                                        fontSize: '11px',
-                                        padding: '3px 8px',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px',
-                                        background: overrideCount > 0 ? 'rgba(245, 158, 11, 0.12)' : 'rgba(255,255,255,0.06)',
-                                        color: overrideCount > 0 ? '#fbbf24' : 'var(--text-primary)',
-                                        borderColor: overrideCount > 0 ? 'rgba(245, 158, 11, 0.3)' : 'var(--border)'
-                                      }}
-                                      title="Customize individual permissions for this user"
-                                    >
-                                      <SlidersHorizontal size={11} />
-                                      {overrideCount > 0 ? 'Edit Overrides' : 'Customize'}
-                                    </button>
-                                  </div>
-                                </td>
-
-                                {/* Access Status */}
-                                <td style={{ padding: '14px 18px' }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleToggleUserStatus(u)}
-                                    title={u.disabled ? "Click to enable account" : "Click to suspend account"}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              {usersLoading ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
+                  <RefreshCw size={20} className="spin" style={{ margin: '0 auto 10px auto', display: 'block', color: '#0f172a' }} />
+                  Loading team members...
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ margin: 0, width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <th style={{ padding: '14px 20px', fontWeight: 600 }}>Member Identity</th>
+                        <th style={{ padding: '14px 16px', fontWeight: 600 }}>Department</th>
+                        <th style={{ padding: '14px 16px', fontWeight: 600, width: '190px' }}>Assigned System Role</th>
+                        <th style={{ padding: '14px 16px', fontWeight: 600 }}>Access Privileges</th>
+                        <th style={{ padding: '14px 16px', fontWeight: 600 }}>Account Status</th>
+                        <th style={{ padding: '14px 20px', fontWeight: 600, textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users
+                        .filter(u => {
+                          const q = userSearch.toLowerCase();
+                          const matchesSearch = !userSearch || 
+                            (u.name || '').toLowerCase().includes(q) ||
+                            (u.email || '').toLowerCase().includes(q) ||
+                            (u.department || '').toLowerCase().includes(q) ||
+                            (u.role || '').toLowerCase().includes(q);
+                          const matchesRole = userRoleFilter === 'All' || (u.role || '').toLowerCase() === userRoleFilter.toLowerCase();
+                          const matchesDept = userDeptFilter === 'All' || (u.department || '').toLowerCase() === userDeptFilter.toLowerCase();
+                          const matchesOverride = userOverrideFilter === 'All' || 
+                            (userOverrideFilter === 'Custom' ? (u.custom_override_count || 0) > 0 : (u.custom_override_count || 0) === 0);
+                          return matchesSearch && matchesRole && matchesDept && matchesOverride;
+                        })
+                        .map((u, idx, arr) => {
+                          const isUpdatingRole = roleUpdatingUserId === u.id;
+                          const overrideCount = u.custom_override_count || 0;
+                          return (
+                            <tr 
+                              key={u.id} 
+                              style={{ 
+                                opacity: u.disabled ? 0.6 : 1,
+                                borderBottom: idx < arr.length - 1 ? '1px solid #f1f5f9' : 'none',
+                                backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafafa',
+                                transition: 'background-color 0.15s ease'
+                              }}
+                            >
+                              {/* User Info & Neutral Avatar */}
+                              <td style={{ padding: '14px 20px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  <div 
                                     style={{
+                                      width: '36px',
+                                      height: '36px',
+                                      borderRadius: '50%',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontSize: '12px',
+                                      fontWeight: 700,
+                                      background: '#f1f5f9',
+                                      color: '#334155',
+                                      border: '1px solid #cbd5e1',
+                                      flexShrink: 0
+                                    }}
+                                  >
+                                    {getInitials(u.name, u.email)}
+                                  </div>
+                                  <div>
+                                    <div style={{ fontWeight: 600, color: '#0f172a', fontSize: '13.5px' }}>{u.name}</div>
+                                    <div style={{ fontSize: '12px', color: '#64748b' }}>{u.email}</div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Department */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <span style={{
+                                  display: 'inline-block',
+                                  padding: '3px 9px',
+                                  borderRadius: '6px',
+                                  fontSize: '11.5px',
+                                  fontWeight: 500,
+                                  background: '#f8fafc',
+                                  color: '#334155',
+                                  border: '1px solid #e2e8f0'
+                                }}>
+                                  {u.department || 'General'}
+                                </span>
+                              </td>
+
+                              {/* Interactive Inline Role Switcher (Clean Dropdown) */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <select
+                                    value={u.role_id || ''}
+                                    onChange={e => handleInlineRoleChange(u.id, e.target.value)}
+                                    disabled={isUpdatingRole}
+                                    style={{
+                                      fontSize: '12px',
+                                      fontWeight: 600,
+                                      padding: '4px 10px',
+                                      height: '32px',
+                                      borderRadius: '6px',
+                                      background: '#ffffff',
+                                      color: '#0f172a',
+                                      border: '1px solid #cbd5e1',
+                                      cursor: 'pointer',
+                                      width: '100%',
+                                      outline: 'none'
+                                    }}
+                                  >
+                                    {dbRoles.map(r => (
+                                      <option key={r.id} value={r.id}>
+                                        {r.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {isUpdatingRole && <RefreshCw size={12} className="spin" style={{ color: '#0f172a' }} />}
+                                </div>
+                              </td>
+
+                              {/* Access Privileges & Custom Overrides */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  {overrideCount > 0 ? (
+                                    <span style={{
+                                      padding: '3px 9px',
+                                      borderRadius: '6px',
+                                      fontSize: '11.5px',
+                                      fontWeight: 600,
+                                      background: '#fef3c7',
+                                      color: '#92400e',
+                                      border: '1px solid #fde68a',
                                       display: 'inline-flex',
                                       alignItems: 'center',
-                                      gap: '6px',
-                                      padding: '4px 10px',
-                                      borderRadius: '12px',
-                                      fontSize: '11px',
-                                      fontWeight: 600,
-                                      background: u.disabled ? 'rgba(239, 68, 68, 0.12)' : 'rgba(34, 197, 94, 0.12)',
-                                      color: u.disabled ? '#ef4444' : '#10b981',
-                                      border: u.disabled ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(34, 197, 94, 0.3)',
+                                      gap: '4px'
+                                    }}>
+                                      ⚡ {overrideCount} Custom Override{overrideCount > 1 ? 's' : ''}
+                                    </span>
+                                  ) : (
+                                    <span style={{
+                                      padding: '3px 9px',
+                                      borderRadius: '6px',
+                                      fontSize: '11.5px',
+                                      fontWeight: 500,
+                                      background: '#f8fafc',
+                                      color: '#64748b',
+                                      border: '1px solid #e2e8f0',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}>
+                                      Role Default ({u.role || 'Standard'})
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenUserPermissions(u)}
+                                    style={{
+                                      fontSize: '11.5px',
+                                      fontWeight: 500,
+                                      padding: '3px 9px',
+                                      borderRadius: '6px',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      background: overrideCount > 0 ? '#fffbeb' : '#ffffff',
+                                      color: overrideCount > 0 ? '#92400e' : '#334155',
+                                      border: overrideCount > 0 ? '1px solid #fde68a' : '1px solid #cbd5e1',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.15s ease'
+                                    }}
+                                    title="Customize individual permissions for this user"
+                                  >
+                                    <SlidersHorizontal size={11} />
+                                    {overrideCount > 0 ? 'Edit Overrides' : 'Customize'}
+                                  </button>
+                                </div>
+                              </td>
+
+                              {/* Access Status (Clean Pill) */}
+                              <td style={{ padding: '14px 16px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleUserStatus(u)}
+                                  title={u.disabled ? "Click to enable account" : "Click to suspend account"}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '4px 10px',
+                                    borderRadius: '12px',
+                                    fontSize: '11.5px',
+                                    fontWeight: 600,
+                                    background: u.disabled ? '#fef2f2' : '#f0fdf4',
+                                    color: u.disabled ? '#b91c1c' : '#15803d',
+                                    border: u.disabled ? '1px solid #fecaca' : '1px solid #bbf7d0',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: u.disabled ? '#ef4444' : '#16a34a' }} />
+                                  {u.disabled ? 'Suspended' : 'Active'}
+                                </button>
+                              </td>
+
+                              {/* Actions */}
+                              <td style={{ padding: '14px 20px', textAlign: 'right' }}>
+                                <div style={{ display: 'inline-flex', gap: '6px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResetPassword(u.id, u.email)}
+                                    title="Trigger password reset link"
+                                    style={{
+                                      fontSize: '11.5px',
+                                      fontWeight: 500,
+                                      color: '#2563eb',
+                                      background: '#ffffff',
+                                      border: '1px solid #cbd5e1',
+                                      borderRadius: '6px',
+                                      padding: '4px 9px',
                                       cursor: 'pointer'
                                     }}
                                   >
-                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: u.disabled ? '#ef4444' : '#10b981' }} />
-                                    {u.disabled ? 'Suspended' : 'Active'}
+                                    Reset PW
                                   </button>
-                                </td>
-
-                                {/* Actions */}
-                                <td style={{ padding: '14px 18px', textAlign: 'right' }}>
-                                  <div style={{ display: 'inline-flex', gap: '6px' }}>
-                                    <button
-                                      type="button"
-                                      className="btn btn-sm"
-                                      onClick={() => handleResetPassword(u.id, u.email)}
-                                      title="Trigger password reset link"
-                                      style={{ fontSize: '11.5px', color: '#38bdf8', padding: '4px 8px' }}
-                                    >
-                                      Reset PW
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="btn btn-sm"
-                                      onClick={() => { handleEditClick(u); setShowEditModal(true); }}
-                                      title="Edit user details"
-                                      style={{ fontSize: '11.5px', padding: '4px 8px' }}
-                                    >
-                                      Edit
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="btn btn-sm"
-                                      onClick={() => handleDeleteUser(u.id)}
-                                      title="Delete user"
-                                      style={{ fontSize: '11.5px', color: '#ef4444', padding: '4px 8px' }}
-                                    >
-                                      Delete
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => { handleEditClick(u); setShowEditModal(true); }}
+                                    title="Edit user details"
+                                    style={{
+                                      fontSize: '11.5px',
+                                      fontWeight: 500,
+                                      color: '#334155',
+                                      background: '#ffffff',
+                                      border: '1px solid #cbd5e1',
+                                      borderRadius: '6px',
+                                      padding: '4px 9px',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteUser(u.id)}
+                                    title="Delete user"
+                                    style={{
+                                      fontSize: '11.5px',
+                                      fontWeight: 500,
+                                      color: '#dc2626',
+                                      background: '#ffffff',
+                                      border: '1px solid #fecaca',
+                                      borderRadius: '6px',
+                                      padding: '4px 9px',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
@@ -2893,167 +2636,404 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'Activity log' && isAdmin && (
-        <div>
-          <div className="section-label">User Activity & Audit Logs</div>
-          <div className="card" style={{ marginBottom: '20px' }}>
-            <div className="card-body">
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '18px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
-                  <input 
-                    type="text" 
-                    placeholder="Search logs by user, action, details..." 
-                    className="form-control"
-                    value={activitySearch}
-                    onChange={e => setActivitySearch(e.target.value)}
-                    style={{ paddingLeft: '32px' }}
-                  />
-                  <span style={{ position: 'absolute', left: '10px', top: '10px', opacity: 0.5 }}>🔍</span>
-                </div>
-                <div>
-                  <select 
-                    className="form-control" 
-                    value={activityFilterType}
-                    onChange={e => setActivityFilterType(e.target.value)}
-                    style={{ width: '180px' }}
-                  >
-                    <option value="All">All Activity Types</option>
-                    <option value="login">Logins</option>
-                    <option value="logout">Logouts</option>
-                    <option value="page_view">Page Views</option>
-                    <option value="document_generation">Document Compiles</option>
-                    <option value="document_export">Document Exports</option>
-                    <option value="invoice_issue">Invoice Issues</option>
-                    <option value="waybill_edit">Logistics Edits</option>
-                  </select>
-                </div>
-                <div>
-                  <select 
-                    className="form-control" 
-                    value={selectedUserFilter}
-                    onChange={e => setSelectedUserFilter(e.target.value)}
-                    style={{ width: '220px' }}
-                  >
-                    <option value="All">All Users</option>
-                    {uniqueUsers.map(email => (
-                      <option key={email} value={email}>{email}</option>
-                    ))}
-                  </select>
-                </div>
+        <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
+          {/* Top Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '18px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>
+                  Team & Governance
+                </span>
               </div>
+              <h1 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 6px 0', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                Activity Audit Log
+              </h1>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
+                Real-time chronological telemetry, user navigation, document issuance, and security session events across the studio.
+              </p>
+            </div>
+            
+            <span style={{ 
+              display: 'inline-flex', 
+              alignItems: 'center', 
+              gap: '6px', 
+              fontSize: '12px', 
+              fontWeight: 500, 
+              color: '#15803d', 
+              background: '#f0fdf4', 
+              border: '1px solid #bbf7d0', 
+              padding: '6px 12px', 
+              borderRadius: '20px' 
+            }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#16a34a' }} />
+              Live Telemetry Active
+            </span>
+          </div>
 
-              <div style={{ overflowX: 'auto' }}>
-                <table className="table" style={{ fontSize: '12px', margin: 0 }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '160px' }}>Timestamp</th>
-                      <th style={{ width: '220px' }}>User Email</th>
-                      <th style={{ width: '150px' }}>Action Type</th>
-                      <th>Activity Details</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredActivityLogs.map(log => {
-                      const badgeColor = {
-                        login: 'rgba(74, 222, 128, 0.15)',
-                        logout: 'rgba(156, 163, 175, 0.15)',
-                        page_view: 'rgba(96, 165, 250, 0.15)',
-                        document_generation: 'rgba(251, 146, 60, 0.15)',
-                        document_export: 'rgba(139, 92, 246, 0.15)',
-                        invoice_issue: 'rgba(245, 158, 11, 0.15)',
-                        waybill_edit: 'rgba(239, 68, 68, 0.15)'
-                      }[log.type] || 'var(--bg-secondary)';
+          {/* Metric Summary Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px' }}>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Total Events Logged</div>
+              <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>{(activityLogs || []).length}</div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Recorded session telemetry</div>
+            </div>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Active Team Operators</div>
+              <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
+                {uniqueUsers.length}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Unique studio accounts</div>
+            </div>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Matching Current Filter</div>
+              <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
+                {filteredActivityLogs.length}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Display events</div>
+            </div>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Commercial Operations</div>
+              <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
+                {(activityLogs || []).filter(l => l.type === 'invoice_issue' || l.type === 'document_generation' || l.type === 'document_export').length}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Document & billing events</div>
+            </div>
+          </div>
 
-                      const textColor = {
-                        login: '#4ade80',
-                        logout: '#9ca3af',
-                        page_view: '#60a5fa',
-                        document_generation: '#fb923c',
-                        document_export: '#a78bfa',
-                        invoice_issue: '#f59e0b',
-                        waybill_edit: '#ef4444'
-                      }[log.type] || 'var(--text-secondary)';
+          {/* Filter & Search Bar */}
+          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 18px', display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ position: 'relative', flex: '1 1 280px' }}>
+              <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+              <input 
+                type="search" 
+                placeholder="Search logs by user, action, details..." 
+                value={activitySearch}
+                onChange={e => setActivitySearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  paddingLeft: '34px',
+                  paddingRight: '12px',
+                  fontSize: '13px',
+                  color: '#0f172a',
+                  background: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  outline: 'none'
+                }}
+              />
+            </div>
+            <div style={{ minWidth: '190px' }}>
+              <select 
+                value={activityFilterType}
+                onChange={e => setActivityFilterType(e.target.value)}
+                style={{
+                  height: '36px',
+                  width: '100%',
+                  fontSize: '12.5px',
+                  fontWeight: 500,
+                  color: '#334155',
+                  background: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  padding: '0 10px',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="All">All Activity Types</option>
+                <option value="login">Logins</option>
+                <option value="logout">Logouts</option>
+                <option value="page_view">Page Views</option>
+                <option value="document_generation">Document Compiles</option>
+                <option value="document_export">Document Exports</option>
+                <option value="invoice_issue">Invoice Issues</option>
+                <option value="waybill_edit">Logistics Edits</option>
+              </select>
+            </div>
+            <div style={{ minWidth: '220px' }}>
+              <select 
+                value={selectedUserFilter}
+                onChange={e => setSelectedUserFilter(e.target.value)}
+                style={{
+                  height: '36px',
+                  width: '100%',
+                  fontSize: '12.5px',
+                  fontWeight: 500,
+                  color: '#334155',
+                  background: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  padding: '0 10px',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="All">All Users ({uniqueUsers.length})</option>
+                {uniqueUsers.map(email => (
+                  <option key={email} value={email}>{email}</option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-                      return (
-                        <tr key={log.id}>
-                          <td style={{ color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
-                            {new Date(log.timestamp).toLocaleString('en-ZA')}
-                          </td>
-                          <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {log.userEmail}
-                          </td>
-                          <td>
-                            <span style={{ 
-                              padding: '2px 8px', 
-                              borderRadius: '4px', 
-                              fontSize: '10px', 
-                              fontWeight: 700, 
-                              textTransform: 'uppercase',
-                              background: badgeColor,
-                              color: textColor
-                            }}>
-                              {log.type.replace('_', ' ')}
-                            </span>
-                          </td>
-                          <td style={{ color: 'var(--text-primary)' }}>
-                            {log.details}
-                          </td>
-                        </tr>
-                      );
-                    })}
+          {/* Activity Log Table */}
+          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ margin: 0, width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    <th style={{ padding: '14px 20px', fontWeight: 600, width: '180px' }}>Timestamp</th>
+                    <th style={{ padding: '14px 16px', fontWeight: 600, width: '240px' }}>User Email</th>
+                    <th style={{ padding: '14px 16px', fontWeight: 600, width: '160px' }}>Action Type</th>
+                    <th style={{ padding: '14px 20px', fontWeight: 600 }}>Activity Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredActivityLogs.map((log, idx, arr) => {
+                    const typeConfig = {
+                      login: { label: 'Login', bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
+                      logout: { label: 'Logout', bg: '#f8fafc', color: '#64748b', border: '#e2e8f0' },
+                      page_view: { label: 'Page View', bg: '#f1f5f9', color: '#334155', border: '#cbd5e1' },
+                      document_generation: { label: 'Doc Compiled', bg: '#fffbeb', color: '#92400e', border: '#fde68a' },
+                      document_export: { label: 'Doc Export', bg: '#faf5ff', color: '#6b21a8', border: '#e9d5ff' },
+                      invoice_issue: { label: 'Invoice Issued', bg: '#ecfdf5', color: '#047857', border: '#a7f3d0' },
+                      waybill_edit: { label: 'Logistics Edit', bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' }
+                    }[log.type] || { label: (log.type || 'Event').replace('_', ' '), bg: '#f8fafc', color: '#475569', border: '#e2e8f0' };
 
-                    {filteredActivityLogs.length === 0 && (
-                      <tr>
-                        <td colSpan={4} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
-                          No activity logs found matching the filter criteria.
+                    return (
+                      <tr 
+                        key={log.id}
+                        style={{ 
+                          borderBottom: idx < arr.length - 1 ? '1px solid #f1f5f9' : 'none',
+                          backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafafa',
+                          transition: 'background-color 0.15s ease'
+                        }}
+                      >
+                        <td style={{ padding: '12px 20px', color: '#64748b', fontSize: '12px', fontFamily: 'monospace' }}>
+                          {new Date(log.timestamp).toLocaleString('en-ZA', { 
+                            year: 'numeric', 
+                            month: '2-digit', 
+                            day: '2-digit', 
+                            hour: '2-digit', 
+                            minute: '2-digit', 
+                            second: '2-digit' 
+                          })}
+                        </td>
+                        <td style={{ padding: '12px 16px', fontWeight: 600, color: '#0f172a' }}>
+                          {log.userEmail}
+                        </td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{ 
+                            display: 'inline-block',
+                            padding: '3px 8px', 
+                            borderRadius: '6px', 
+                            fontSize: '11px', 
+                            fontWeight: 600, 
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                            background: typeConfig.bg,
+                            color: typeConfig.color,
+                            border: `1px solid ${typeConfig.border}`
+                          }}>
+                            {typeConfig.label}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 20px', color: '#334155' }}>
+                          {log.details}
                         </td>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    );
+                  })}
+
+                  {filteredActivityLogs.length === 0 && (
+                    <tr>
+                      <td colSpan={4} style={{ textAlign: 'center', padding: '36px', color: '#64748b', fontSize: '13px' }}>
+                        No activity logs found matching the filter criteria.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
       )}
 
       {activeTab === 'Project managers' && isAdmin && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px' }}>
-          <div>
-            <div className="section-label">Project Managers List</div>
-            <div className="card">
-              <div className="card-body" style={{ padding: 0 }}>
-                {(!projectManagers || projectManagers.length === 0) ? (
-                  <div style={{ padding: 20, textAlign: 'center', fontSize: 13, color: 'var(--text-secondary)' }}>No project managers configured.</div>
-                ) : (
-                  <table className="table" style={{ margin: 0 }}>
+        <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px', width: '100%' }}>
+          {/* Top Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid var(--border)', paddingBottom: '18px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>
+                  Team & Governance
+                </span>
+              </div>
+              <h1 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 6px 0', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                Project Managers & Leads
+              </h1>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>
+                Manage executive studio project managers, assignment leads, and direct project contact details across client contracts.
+              </p>
+            </div>
+          </div>
+
+          {/* Metric Summary Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px' }}>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Total Leads & PMs</div>
+              <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>{(projectManagers || []).length}</div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Designated team leads</div>
+            </div>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Active Assignments</div>
+              <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
+                {(projectManagers || []).filter(pm => pm.active !== false).length}
+              </div>
+              <div style={{ fontSize: '12px', color: '#16a34a', fontWeight: 500 }}>● Available in project dropdowns</div>
+            </div>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>With Direct Email</div>
+              <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
+                {(projectManagers || []).filter(pm => pm.email && pm.email.trim()).length}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Client-facing correspondence</div>
+            </div>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#64748b', fontWeight: 700 }}>Inactive Records</div>
+              <div style={{ fontSize: '26px', fontWeight: 700, color: '#0f172a', margin: '4px 0 2px 0', letterSpacing: '-0.02em' }}>
+                {(projectManagers || []).filter(pm => pm.active === false).length}
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Archived or on leave</div>
+            </div>
+          </div>
+
+          {/* 2-Column Main Workspace */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 360px', gap: '24px', alignItems: 'start' }}>
+            {/* Left Column: Clean Table */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a', margin: '0 0 2px 0' }}>Project Managers Directory</h3>
+                  <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>Active project managers automatically populate the project creation and assignment selectors.</p>
+                </div>
+                <span style={{ fontSize: '11.5px', color: '#64748b', background: '#f8fafc', padding: '3px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  {(projectManagers || []).length} records
+                </span>
+              </div>
+
+              {(!projectManagers || projectManagers.length === 0) ? (
+                <div style={{ padding: '40px 20px', textAlign: 'center', fontSize: '13px', color: '#64748b' }}>
+                  No project managers configured. Use the form on the right to add your first project manager.
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ margin: 0, width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
                     <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Phone</th>
-                        <th>Status</th>
-                        <th style={{ width: 180, textAlign: 'right' }}>Actions</th>
+                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <th style={{ padding: '14px 20px', fontWeight: 600 }}>Project Manager</th>
+                        <th style={{ padding: '14px 16px', fontWeight: 600 }}>Email Address</th>
+                        <th style={{ padding: '14px 16px', fontWeight: 600 }}>Contact Phone</th>
+                        <th style={{ padding: '14px 16px', fontWeight: 600 }}>Status</th>
+                        <th style={{ padding: '14px 20px', fontWeight: 600, textAlign: 'right' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {projectManagers.map(pm => (
-                        <tr key={pm.id} style={{ opacity: pm.active === false ? 0.6 : 1 }}>
-                          <td style={{ fontWeight: 600 }}>{pm.name}</td>
-                          <td>{pm.email || '—'}</td>
-                          <td>{pm.phone || '—'}</td>
-                          <td>
-                            <span className="badge" style={{ 
-                              background: pm.active === false ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)', 
-                              color: pm.active === false ? '#ef4444' : '#10b981', 
-                              border: pm.active === false ? '1px solid rgba(239, 68, 68, 0.2)' : '1px solid rgba(34, 197, 94, 0.2)' 
-                            }}>
-                              {pm.active === false ? 'Inactive' : 'Active'}
-                            </span>
+                      {projectManagers.map((pm, idx, arr) => (
+                        <tr 
+                          key={pm.id} 
+                          style={{ 
+                            opacity: pm.active === false ? 0.55 : 1,
+                            borderBottom: idx < arr.length - 1 ? '1px solid #f1f5f9' : 'none',
+                            backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafafa',
+                            transition: 'background-color 0.15s ease'
+                          }}
+                        >
+                          {/* Name + Initials Avatar */}
+                          <td style={{ padding: '14px 20px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              <div 
+                                style={{
+                                  width: '34px',
+                                  height: '34px',
+                                  borderRadius: '50%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '12px',
+                                  fontWeight: 700,
+                                  background: '#f1f5f9',
+                                  color: '#334155',
+                                  border: '1px solid #cbd5e1',
+                                  flexShrink: 0
+                                }}
+                              >
+                                {(pm.name || 'PM').substring(0, 2).toUpperCase()}
+                              </div>
+                              <span style={{ fontWeight: 600, color: '#0f172a', fontSize: '13px' }}>{pm.name}</span>
+                            </div>
                           </td>
-                          <td style={{ textAlign: 'right' }}>
-                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+
+                          {/* Email */}
+                          <td style={{ padding: '14px 16px', color: pm.email ? '#334155' : '#94a3b8' }}>
+                            {pm.email ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                {pm.email}
+                              </span>
+                            ) : '—'}
+                          </td>
+
+                          {/* Phone */}
+                          <td style={{ padding: '14px 16px', color: pm.phone ? '#334155' : '#94a3b8' }}>
+                            {pm.phone || '—'}
+                          </td>
+
+                          {/* Status Pill */}
+                          <td style={{ padding: '14px 16px' }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProjectManagers(prev => prev.map(p => p.id === pm.id ? { ...p, active: p.active === false ? true : false } : p));
+                                if (window.otoToast) {
+                                  window.otoToast(`${pm.name} marked as ${pm.active === false ? 'Active' : 'Inactive'}`, 'info');
+                                }
+                              }}
+                              title={pm.active === false ? "Click to activate" : "Click to deactivate"}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '3px 10px',
+                                borderRadius: '12px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                background: pm.active === false ? '#fef2f2' : '#f0fdf4',
+                                color: pm.active === false ? '#b91c1c' : '#15803d',
+                                border: pm.active === false ? '1px solid #fecaca' : '1px solid #bbf7d0',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: pm.active === false ? '#ef4444' : '#16a34a' }} />
+                              {pm.active === false ? 'Inactive' : 'Active'}
+                            </button>
+                          </td>
+
+                          {/* Actions */}
+                          <td style={{ padding: '14px 20px', textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', gap: '6px' }}>
                               <button 
-                                className="btn btn-sm btn-ghost" 
+                                type="button"
+                                style={{
+                                  fontSize: '11.5px',
+                                  fontWeight: 500,
+                                  color: '#334155',
+                                  background: '#ffffff',
+                                  border: '1px solid #cbd5e1',
+                                  borderRadius: '6px',
+                                  padding: '4px 9px',
+                                  cursor: 'pointer'
+                                }}
                                 onClick={() => {
                                   setEditingPmId(pm.id);
                                   setNewPmName(pm.name);
@@ -3064,24 +3044,44 @@ export default function SettingsPage() {
                                 Edit
                               </button>
                               <button 
-                                className="btn btn-sm" 
+                                type="button"
                                 style={{
-                                  background: pm.active === false ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                                  color: pm.active === false ? '#10b981' : '#ef4444',
-                                  border: pm.active === false ? '1px solid rgba(34, 197, 94, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)'
+                                  fontSize: '11.5px',
+                                  fontWeight: 500,
+                                  color: pm.active === false ? '#15803d' : '#475569',
+                                  background: '#ffffff',
+                                  border: '1px solid #cbd5e1',
+                                  borderRadius: '6px',
+                                  padding: '4px 9px',
+                                  cursor: 'pointer'
                                 }}
                                 onClick={() => {
                                   setProjectManagers(prev => prev.map(p => p.id === pm.id ? { ...p, active: p.active === false ? true : false } : p));
+                                  if (window.otoToast) {
+                                    window.otoToast(`${pm.name} marked as ${pm.active === false ? 'Active' : 'Inactive'}`, 'info');
+                                  }
                                 }}
                               >
                                 {pm.active === false ? 'Activate' : 'Deactivate'}
                               </button>
                               <button 
-                                className="btn btn-sm btn-ghost" 
-                                style={{ color: '#ef4444' }}
-                                onClick={() => {
-                                  if (window.confirm(`Are you sure you want to delete ${pm.name}? This will remove them from settings, but existing projects referencing their name will keep the reference.`)) {
+                                type="button"
+                                style={{
+                                  fontSize: '11.5px',
+                                  fontWeight: 500,
+                                  color: '#dc2626',
+                                  background: '#ffffff',
+                                  border: '1px solid #fecaca',
+                                  borderRadius: '6px',
+                                  padding: '4px 9px',
+                                  cursor: 'pointer'
+                                }}
+                                onClick={async () => {
+                                  if (await window.otoConfirm(`Are you sure you want to delete ${pm.name}? Existing projects referencing this manager will retain the record.`)) {
                                     setProjectManagers(prev => prev.filter(p => p.id !== pm.id));
+                                    if (window.otoToast) {
+                                      window.otoToast(`${pm.name} deleted successfully!`, 'success');
+                                    }
                                   }
                                 }}
                               >
@@ -3093,60 +3093,130 @@ export default function SettingsPage() {
                       ))}
                     </tbody>
                   </table>
-                )}
-              </div>
+                </div>
+              )}
             </div>
-          </div>
 
-          <div>
-            <div className="section-label">{editingPmId ? 'Edit Project Manager' : 'Add Project Manager'}</div>
-            <div className="card">
-              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Full Name:</span>
+            {/* Right Column: Clean Executive Add/Edit Form Card */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a', margin: '0 0 2px 0' }}>
+                  {editingPmId ? 'Edit Project Manager' : 'Add Project Manager'}
+                </h3>
+                <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
+                  {editingPmId ? 'Update project lead credentials and contact details.' : 'Register a new project manager for assignment across the studio.'}
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                    Full Name <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
                   <input 
                     type="text" 
-                    className="form-control" 
                     value={newPmName} 
                     onChange={e => setNewPmName(e.target.value)} 
                     placeholder="e.g. Martin" 
+                    style={{
+                      width: '100%',
+                      height: '34px',
+                      padding: '4px 10px',
+                      fontSize: '13px',
+                      color: '#0f172a',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      outline: 'none'
+                    }}
                   />
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Email Address:</span>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                    Email Address
+                  </label>
                   <input 
                     type="email" 
-                    className="form-control" 
                     value={newPmEmail} 
                     onChange={e => setNewPmEmail(e.target.value)} 
                     placeholder="e.g. martin@1-to-1.world" 
+                    style={{
+                      width: '100%',
+                      height: '34px',
+                      padding: '4px 10px',
+                      fontSize: '13px',
+                      color: '#0f172a',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      outline: 'none'
+                    }}
                   />
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Phone Number:</span>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                    Phone Number
+                  </label>
                   <input 
                     type="text" 
-                    className="form-control" 
                     value={newPmPhone} 
                     onChange={e => setNewPmPhone(e.target.value)} 
                     placeholder="e.g. 082 123 4567" 
+                    style={{
+                      width: '100%',
+                      height: '34px',
+                      padding: '4px 10px',
+                      fontSize: '13px',
+                      color: '#0f172a',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      outline: 'none'
+                    }}
                   />
                 </div>
                 
-                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
                   <button 
                     type="button" 
-                    className="btn btn-primary" 
-                    style={{ flex: 1 }}
+                    style={{ 
+                      flex: 1,
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      gap: '8px', 
+                      padding: '9px 16px', 
+                      fontSize: '12.5px', 
+                      fontWeight: 600,
+                      backgroundColor: '#0f172a',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '7px',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#1e293b'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#0f172a'; }}
                     onClick={() => {
                       if (!newPmName.trim()) {
-                        alert('Name is required!');
+                        if (window.otoToast) {
+                          window.otoToast('Name is required!', 'error');
+                        } else {
+                          alert('Name is required!');
+                        }
                         return;
                       }
                       if (editingPmId) {
                         setProjectManagers(prev => prev.map(pm => pm.id === editingPmId ? { ...pm, name: newPmName.trim(), email: newPmEmail.trim(), phone: newPmPhone.trim() } : pm));
                         setEditingPmId(null);
-                        alert('Project Manager updated successfully!');
+                        if (window.otoToast) {
+                          window.otoToast('Project Manager updated successfully!', 'success');
+                        } else {
+                          alert('Project Manager updated successfully!');
+                        }
                       } else {
                         const newPM = {
                           id: `pm-${Date.now()}`,
@@ -3156,19 +3226,32 @@ export default function SettingsPage() {
                           active: true
                         };
                         setProjectManagers(prev => [...prev, newPM]);
-                        alert('Project Manager created successfully!');
+                        if (window.otoToast) {
+                          window.otoToast('Project Manager created successfully!', 'success');
+                        } else {
+                          alert('Project Manager created successfully!');
+                        }
                       }
                       setNewPmName('');
                       setNewPmEmail('');
                       setNewPmPhone('');
                     }}
                   >
-                    {editingPmId ? 'Update PM' : 'Create PM'}
+                    {editingPmId ? 'Update Lead' : 'Create Lead'}
                   </button>
                   {editingPmId && (
                     <button 
                       type="button" 
-                      className="btn" 
+                      style={{
+                        padding: '9px 14px',
+                        fontSize: '12.5px',
+                        fontWeight: 500,
+                        color: '#475569',
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '7px',
+                        cursor: 'pointer'
+                      }}
                       onClick={() => {
                         setEditingPmId(null);
                         setNewPmName('');
@@ -3187,1111 +3270,64 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'Rate card' && (
-        <DesignFeeCostingsSettings />
+        <RateCardSettings />
       )}
 
       {activeTab === 'Integrations' && (
-        <div className="animation-fade-in" style={{ paddingBottom: '30px' }}>
-          <div className="section-label">Connected Integrations & Bulk Launch Tools</div>
-          <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
-            Manage active integrations or use the **Bulk Document Auto-Generator** below to rapidly initialize past orders with matching Purchase Orders, GRNs, Invoices, and Delivery Notes to launch the system in bulk.
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px', alignItems: 'start', marginBottom: '30px' }}>
-            {/* BULK GENERATOR CARD */}
-            <div className="card">
-              <div className="card-head" style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
-                <div className="card-title" style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  🚀 Fast-Track Order Auto-Fulfillment (Bulk PO, GRN, Invoices & Delivery Notes)
-                </div>
-              </div>
-              <div className="card-body" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {/* SELECT ORDER */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase' }}>Select Project Order to Fully Auto-Fill</label>
-                  <select 
-                    className="form-control"
-                    id="bulk-order-select"
-                    style={{ width: '100%', height: '36px', fontSize: '13px' }}
-                  >
-                    <option value="">— Select Order Reference —</option>
-                    {Object.values(projects).flatMap(proj => 
-                      (proj.orders || []).map(o => (
-                        <option key={`${proj.key}_${o.id}`} value={`${proj.key}_${o.id}`}>
-                          {o.id} - {proj.name} ({o.supplier || 'No Supplier'}) [{o.itemsList?.length || 0} items]
-                        </option>
-                      ))
-                    )}
-                  </select>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Custom Document ID Reference Prefix</label>
-                    <input 
-                      type="text" 
-                      id="bulk-doc-prefix"
-                      placeholder="e.g. PO01 / INV001" 
-                      className="form-control"
-                      style={{ height: '32px', fontSize: '12.5px' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>Backdated Fulfillment Date</label>
-                    <input 
-                      type="date" 
-                      id="bulk-doc-date"
-                      className="form-control"
-                      style={{ height: '32px', fontSize: '12.5px', colorScheme: 'dark' }}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-                  <button 
-                    type="button" 
-                    className="btn btn-primary"
-                    style={{ flex: 1 }}
-                    onClick={() => {
-                      const selectVal = document.getElementById('bulk-order-select').value;
-                      if (!selectVal) {
-                        alert('Please select an order reference first.');
-                        return;
-                      }
-                      const [pKey, oId] = selectVal.split('_');
-                      const project = projects[pKey];
-                      const order = (project?.orders || []).find(o => o.id === oId);
-                      if (!order) return;
-
-                      const customPrefix = document.getElementById('bulk-doc-prefix').value.trim();
-                      const dateVal = document.getElementById('bulk-doc-date').value;
-                      const finalDateObj = dateVal ? new Date(dateVal) : new Date();
-                      const formattedDate = finalDateObj.toISOString().split('T')[0];
-                      const dateStr = finalDateObj.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-
-                      const prefixPart = customPrefix ? `${customPrefix}-` : '';
-
-                      // Construct IDs
-                      const poId = `${prefixPart}PO-${order.id}`;
-                      const grnId = `${prefixPart}GRN-${order.id}`;
-                      const plId = `${prefixPart}PL-${order.id}`;
-                      const dnId = `${prefixPart}DN-${order.id}`;
-                      const invId = `${prefixPart}INV-${order.id}`;
-
-                      if (!window.confirm(`This tool will automatically create:\n- PO: ${poId}\n- GRN: ${grnId}\n- Packing List: ${plId}\n- Delivery Note: ${dnId}\n- Client Invoice: ${invId}\n\nFor all items in this order, updating all tracking history logs. Proceed?`)) return;
-
-                      // 1. Generate lists of document items
-                      const hardwareItems = (order.itemsList || []).filter(item => (item.itemType || item.item_type) !== 'Service');
-                      const allItems = order.itemsList || [];
-
-                      const poItems = hardwareItems.map(item => ({
-                        code: item.code || 'NO-CODE',
-                        description: item.description,
-                        qtyAction: Number(item.qty) || 0,
-                        eta: formattedDate
-                      }));
-
-                      const grnItems = hardwareItems.map(item => ({
-                        code: item.code || 'NO-CODE',
-                        description: item.description,
-                        qtyAction: Number(item.qty) || 0
-                      }));
-
-                      const plItems = hardwareItems.map(item => ({
-                        id: item.id,
-                        code: item.code || 'NO-CODE',
-                        type: item.type || 'Fittings',
-                        description: item.description,
-                        qtyDelivered: Number(item.qty) || 0,
-                        boxNumber: 'Box 1',
-                        redList: 'No',
-                        firstFix: 'No'
-                      }));
-
-                      const invItems = allItems.map(item => ({
-                        code: item.code || 'NO-CODE',
-                        description: item.description,
-                        qtyAction: Number(item.qty) || 0,
-                        rate: Number(item.unitRetail || item.unit_retail || 0)
-                      }));
-
-                      // 2. Map and update individual item history states
-                      const updatedItemsList = allItems.map(item => {
-                        const isService = (item.itemType || item.item_type) === 'Service';
-                        const qty = Number(item.qty) || 0;
-
-                        const pHist = isService ? [] : [{
-                          id: poId,
-                          ref: poId,
-                          date: formattedDate,
-                          qty: qty,
-                          eta: formattedDate,
-                          supplier: order.supplier || 'Warehouse Inventory'
-                        }];
-
-                        const rHist = isService ? [] : [{
-                          qty: qty,
-                          ref: grnId,
-                          poId: poId,
-                          date: formattedDate
-                        }];
-
-                        const dHist = isService ? [] : [{
-                          qty: qty,
-                          ref: dnId,
-                          date: formattedDate
-                        }];
-
-                        const iHist = [{
-                          qty: qty,
-                          ref: invId,
-                          date: formattedDate,
-                          rate: Number(item.unitRetail || item.unit_retail || 0)
-                        }];
-
-                        return {
-                          ...item,
-                          poQtyOrdered: isService ? 0 : qty,
-                          receivedQty: isService ? 0 : qty,
-                          receivedDate: isService ? '' : formattedDate,
-                          deliveryQty: isService ? 0 : qty,
-                          deliveryDate: isService ? '' : formattedDate,
-                          deliveryStatus: isService ? 'Pending' : 'Delivered',
-                          purchaseHistory: pHist,
-                          receivingHistory: rHist,
-                          deliveryHistory: dHist,
-                          invoiceHistory: iHist
-                        };
-                      });
-
-                      // 3. Construct Document Headers
-                      const newPo = { id: poId, date: dateStr, supplier: order.supplier || 'Warehouse Inventory', notes: 'Bulk Uploaded PO', items: poItems };
-                      const newGrn = { id: grnId, poId: poId, date: dateStr, notes: 'Bulk Uploaded GRN', items: grnItems };
-                      const newPl = { id: plId, date: dateStr, notes: 'Bulk Uploaded PL', items: plItems, deliveryNoteId: dnId };
-                      const newDn = { id: dnId, date: dateStr, notes: 'Bulk Uploaded DN', items: plItems };
-                      const newInv = { id: invId, date: dateStr, notes: 'Bulk Uploaded Invoice', items: invItems };
-
-                      // 4. Update order list inside project
-                      const updatedOrders = project.orders.map(o => {
-                        if (o.id === oId) {
-                          return {
-                            ...o,
-                            purchaseOrders: [...(o.purchaseOrders || []), newPo],
-                            goodsReceivedNotes: [...(o.goodsReceivedNotes || []), newGrn],
-                            packingLists: [...(o.packingLists || []), newPl],
-                            deliveryNotes: [...(o.deliveryNotes || []), newDn],
-                            clientInvoices: [...(o.clientInvoices || []), newInv],
-                            itemsList: updatedItemsList
-                          };
-                        }
-                        return o;
-                      });
-
-                      // 5. Commit changes to Backend Database
-                      updateProject(pKey, 'orders', updatedOrders);
-                      alert(`Successfully fully auto-filled order ${order.id}! All documents have been issued.`);
-                    }}
-                  >
-                    ⚡ Fully Auto-Fill All Quantities & Issue Documents
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* INTEGRATIONS DIRECTORY CARD */}
-            <div>
-              {[
-                { name: 'Xero',    desc: 'Sync invoices and payments to accounting',       status: 'Connected',    color: 'b-success' },
-                { name: 'SAGE',    desc: 'Alternative accounting integration',              status: 'Disconnected', color: 'b-default' },
-                { name: 'Resend',  desc: 'Transactional email delivery',                   status: 'Connected',    color: 'b-success' },
-                { name: 'Firebase',desc: 'Authentication & real-time database',            status: 'Connected',    color: 'b-success' },
-                { name: 'Palladium',desc: 'Read-only Kerridge CS cloud sync (BOQ/quotes)', status: 'Connected',    color: 'b-success' },
-              ].map(int => (
-                <div key={int.name} className="card" style={{ marginBottom: 10 }}>
-                  <div className="card-body" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px' }}>
-                    <div style={{ width: 34, height: 34, background: 'var(--bg-info)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-info)', fontWeight: 600, fontSize: 13 }}>{int.name[0]}</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 500, fontSize: '12.5px', marginBottom: 2 }}>{int.name}</div>
-                      <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{int.desc}</div>
-                    </div>
-                    <span className={`badge ${int.color}`} style={{ fontSize: '9px' }}>{int.status}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <ApiIntegrationsSettings
+          projects={projects}
+          updateProject={updateProject}
+          onBack={() => setActiveTab(null)}
+        />
       )}
-
 
       {activeTab === 'Drive & Folders' && isAdmin && (
         <DriveFolderSettings />
       )}
 
       {activeTab === 'Templates' && isAdmin && (
-        <div className="animation-fade-in">
-          <TemplateEditor />
-        </div>
+        <TemplateSettings onBack={() => setActiveTab(null)} />
       )}
       {activeTab === 'Alerts' && (
-        <div className="animation-fade-in" style={{ paddingBottom: '30px' }}>
-          <div className="section-label">Manage Operational Alerts & Toggles</div>
-          <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
-            Configure which events generate alerts in the collapsible sidebar for each module. These settings apply globally.
-          </div>
-          
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-            
-            {/* CRM MODULE ALERTS */}
-            <div className="card">
-              <div className="card-head" style={{ borderBottom: '1px solid var(--border)', padding: '12px 16px' }}>
-                <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 600 }}>CRM Module Alerts</div>
-              </div>
-              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={alertSettings?.crm?.lostClients} 
-                    onChange={e => {
-                      setAlertSettings(prev => ({
-                        ...prev,
-                        crm: { ...prev.crm, lostClients: e.target.checked }
-                      }));
-                    }}
-                  />
-                  <div>
-                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Lost Clients Warnings</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Prompt to review post-mortem / check inactive client re-engagement.</span>
-                  </div>
-                </label>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={alertSettings?.crm?.inactiveClients} 
-                    onChange={e => {
-                      setAlertSettings(prev => ({
-                        ...prev,
-                        crm: { ...prev.crm, inactiveClients: e.target.checked }
-                      }));
-                    }}
-                  />
-                  <div>
-                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>At-Risk / Inactive Warnings</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alert when clients have Red health or haven't placed projects for long periods.</span>
-                  </div>
-                </label>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={alertSettings?.crm?.npsReview} 
-                    onChange={e => {
-                      setAlertSettings(prev => ({
-                        ...prev,
-                        crm: { ...prev.crm, npsReview: e.target.checked }
-                      }));
-                    }}
-                  />
-                  <div>
-                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>NPS Detractor Alerts</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Flag feedback scores below 6/10 for immediate follow-up.</span>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            {/* DESIGN MODULE ALERTS */}
-            <div className="card">
-              <div className="card-head" style={{ borderBottom: '1px solid var(--border)', padding: '12px 16px' }}>
-                <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 600 }}>Design Module Alerts</div>
-              </div>
-              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={alertSettings?.design?.outstandingFees} 
-                    onChange={e => {
-                      setAlertSettings(prev => ({
-                        ...prev,
-                        design: { ...prev.design, outstandingFees: e.target.checked }
-                      }));
-                    }}
-                  />
-                  <div>
-                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Outstanding Design Fees</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alert when design fee payments have unpaid outstanding balances.</span>
-                  </div>
-                </label>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={alertSettings?.design?.upcomingDeadlines} 
-                    onChange={e => {
-                      setAlertSettings(prev => ({
-                        ...prev,
-                        design: { ...prev.design, upcomingDeadlines: e.target.checked }
-                      }));
-                    }}
-                  />
-                  <div>
-                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Delayed Design Phases</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alert when active concept design phases are past project timeline deadlines.</span>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            {/* PROJECTS MODULE ALERTS */}
-            <div className="card" style={{ marginTop: '20px' }}>
-              <div className="card-head" style={{ borderBottom: '1px solid var(--border)', padding: '12px 16px' }}>
-                <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 600 }}>Projects Module Alerts</div>
-              </div>
-              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={alertSettings?.projects?.overdueDeadlines} 
-                    onChange={e => {
-                      setAlertSettings(prev => ({
-                        ...prev,
-                        projects: { ...prev.projects, overdueDeadlines: e.target.checked }
-                      }));
-                    }}
-                  />
-                  <div>
-                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Overdue Deadlines</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Flag projects that are behind schedule based on deadline.</span>
-                  </div>
-                </label>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={alertSettings?.projects?.lowMargins} 
-                    onChange={e => {
-                      setAlertSettings(prev => ({
-                        ...prev,
-                        projects: { ...prev.projects, lowMargins: e.target.checked }
-                      }));
-                    }}
-                  />
-                  <div>
-                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Low Margins</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Flag projects whose dynamic margins fall below target margin threshold.</span>
-                  </div>
-                </label>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={alertSettings?.projects?.outstandingDesignFees} 
-                    onChange={e => {
-                      setAlertSettings(prev => ({
-                        ...prev,
-                        projects: { ...prev.projects, outstandingDesignFees: e.target.checked }
-                      }));
-                    }}
-                  />
-                  <div>
-                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Outstanding Design Fee Balance</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Flag projects with unpaid design fees in the project dashboard.</span>
-                  </div>
-                </label>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={alertSettings?.projects?.orderLogisticsAlerts} 
-                    onChange={e => {
-                      setAlertSettings(prev => ({
-                        ...prev,
-                        projects: { ...prev.projects, orderLogisticsAlerts: e.target.checked }
-                      }));
-                    }}
-                  />
-                  <div>
-                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Order Logistics Alerts</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alert when any order is delayed, in Customs hold, or backordered.</span>
-                  </div>
-                </label>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={alertSettings?.projects?.productApprovalAlerts} 
-                    onChange={e => {
-                      setAlertSettings(prev => ({
-                        ...prev,
-                        projects: { ...prev.projects, productApprovalAlerts: e.target.checked }
-                      }));
-                    }}
-                  />
-                  <div>
-                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Product Approvals</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alert when client approvals or initial deposits are missing.</span>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            {/* ORDERS MODULE ALERTS */}
-            <div className="card" style={{ marginTop: '20px' }}>
-              <div className="card-head" style={{ borderBottom: '1px solid var(--border)', padding: '12px 16px' }}>
-                <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 600 }}>Orders Module Alerts</div>
-              </div>
-              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '16px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={alertSettings?.orders?.logisticsHolds} 
-                    onChange={e => {
-                      setAlertSettings(prev => ({
-                        ...prev,
-                        orders: { ...prev.orders, logisticsHolds: e.target.checked }
-                      }));
-                    }}
-                  />
-                  <div>
-                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Logistics Customs Holds</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alert when imported hardware orders are flagged on Customs hold status.</span>
-                  </div>
-                </label>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={alertSettings?.orders?.backorderedIssues} 
-                    onChange={e => {
-                      setAlertSettings(prev => ({
-                        ...prev,
-                        orders: { ...prev.orders, backorderedIssues: e.target.checked }
-                      }));
-                    }}
-                  />
-                  <div>
-                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Pending Deposit Clearances</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alert when initiated hardware orders are pending deposit confirmation.</span>
-                  </div>
-                </label>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', cursor: 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={alertSettings?.orders?.lowMarginOrders} 
-                    onChange={e => {
-                      setAlertSettings(prev => ({
-                        ...prev,
-                        orders: { ...prev.orders, lowMarginOrders: e.target.checked }
-                      }));
-                    }}
-                  />
-                  <div>
-                    <span style={{ fontWeight: 600, display: 'block', color: 'var(--text-primary)' }}>Low Order Margins</span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Alert when specific hardware order profit margin drops below the standard 39% target.</span>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-          </div>
-
-          {/* CUSTOM ALERTS RULE BUILDER SECTION */}
-          <div style={{ marginTop: '24px' }}>
-            <div className="section-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>Custom Alert Rules Builder</span>
-              <button 
-                className="btn btn-sm btn-primary"
-                onClick={() => setShowRuleModal(true)}
-              >
-                + Add Custom Rule
-              </button>
-            </div>
-            
-            <div className="card">
-              <div className="card-body" style={{ padding: 0 }}>
-                <table className="table" style={{ margin: 0, fontSize: '12.5px' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ padding: '10px 14px' }}>Module</th>
-                      <th>Parameter</th>
-                      <th>Condition</th>
-                      <th>Threshold Value</th>
-                      <th>Alert Label Description</th>
-                      <th style={{ textAlign: 'right', width: '80px', paddingRight: '14px' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(alertSettings?.customRules || []).length === 0 ? (
-                      <tr>
-                        <td colSpan={6} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
-                          No custom alert rules configured. Click "+ Add Custom Rule" to build one.
-                        </td>
-                      </tr>
-                    ) : (
-                      (alertSettings.customRules).map(rule => (
-                        <tr key={rule.id}>
-                          <td style={{ textTransform: 'uppercase', fontWeight: 600, padding: '10px 14px' }}>{rule.module}</td>
-                          <td><code>{rule.parameter.replace('_',' ')}</code></td>
-                          <td style={{ color: 'var(--text-info)' }}>{rule.condition.replace('_',' ')}</td>
-                          <td style={{ fontWeight: 600 }}>{rule.value}</td>
-                          <td>{rule.label}</td>
-                          <td style={{ textAlign: 'right', paddingRight: '14px' }}>
-                            <button 
-                              className="btn btn-sm btn-ghost" 
-                              style={{ color: 'var(--text-danger)', border: 'none', padding: '2px 8px' }}
-                              onClick={() => {
-                                setAlertSettings(prev => ({
-                                  ...prev,
-                                  customRules: prev.customRules.filter(r => r.id !== rule.id)
-                                }));
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-        </div>
+        <SystemAlertSettings 
+          alertSettings={alertSettings}
+          setAlertSettings={setAlertSettings}
+          setShowRuleModal={setShowRuleModal}
+          onBack={() => setActiveTab(null)}
+        />
       )}
 
       {activeTab === 'Modules' && isAdmin && (
-        <div className="animation-fade-in" style={{ paddingBottom: '30px' }}>
-          <div className="section-label">Modules Layout & Custom Naming</div>
-          <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
-            Configure visibility, custom names, section grouping, and navigation ordering for all modules. These changes propagate dynamically across the sidebar, page titles, and page headers.
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px', marginBottom: '24px' }}>
-            {/* SECTIONS MANAGER */}
-            <div className="card">
-              <div className="card-head" style={{ borderBottom: '1px solid var(--border)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 600 }}>Navigation Sections / Categories</div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input 
-                    type="text" 
-                    id="new-section-input" 
-                    placeholder="New section name..." 
-                    className="form-control" 
-                    style={{ width: '180px', padding: '4px 8px', fontSize: '12px', height: 'auto' }} 
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && e.target.value.trim()) {
-                        const newName = e.target.value.trim();
-                        const newId = newName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-                        if (moduleConfig.sections.some(s => s.id === newId)) {
-                          alert('Section ID already exists');
-                          return;
-                        }
-                        const newSections = [
-                          ...moduleConfig.sections,
-                          { id: newId, label: newName, order: moduleConfig.sections.length }
-                        ];
-                        setModuleConfig(prev => ({ ...prev, sections: newSections }));
-                        e.target.value = '';
-                      }
-                    }}
-                  />
-                  <button 
-                    className="btn btn-sm btn-primary"
-                    onClick={() => {
-                      const input = document.getElementById('new-section-input');
-                      if (input && input.value.trim()) {
-                        const newName = input.value.trim();
-                        const newId = newName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-                        if (moduleConfig.sections.some(s => s.id === newId)) {
-                          alert('Section ID already exists');
-                          return;
-                        }
-                        const newSections = [
-                          ...moduleConfig.sections,
-                          { id: newId, label: newName, order: moduleConfig.sections.length }
-                        ];
-                        setModuleConfig(prev => ({ ...prev, sections: newSections }));
-                        input.value = '';
-                      }
-                    }}
-                  >
-                    Add Section
-                  </button>
-                </div>
-              </div>
-              <div className="card-body" style={{ padding: '16px' }}>
-                <table className="table" style={{ fontSize: '12.5px' }}>
-                  <thead>
-                    <tr>
-                      <th>Section ID</th>
-                      <th>Label / Name</th>
-                      <th>Sort Order</th>
-                      <th style={{ textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...moduleConfig.sections].sort((a, b) => a.order - b.order).map((sec, index, sortedArr) => (
-                      <tr key={sec.id}>
-                        <td style={{ fontFamily: 'monospace', color: 'var(--text-tertiary)' }}>{sec.id}</td>
-                        <td>
-                          <input 
-                            type="text" 
-                            className="form-control" 
-                            style={{ padding: '2px 6px', fontSize: '12px', height: 'auto', width: '180px' }}
-                            value={sec.label}
-                            onChange={e => {
-                              const updatedSections = moduleConfig.sections.map(s => 
-                                s.id === sec.id ? { ...s, label: e.target.value } : s
-                              );
-                              setModuleConfig(prev => ({ ...prev, sections: updatedSections }));
-                            }}
-                          />
-                        </td>
-                        <td>{sec.order}</td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div style={{ display: 'inline-flex', gap: '4px' }}>
-                            <button 
-                              className="btn btn-xs"
-                              disabled={index === 0}
-                              onClick={() => {
-                                const newSecs = [...moduleConfig.sections];
-                                const current = newSecs.find(s => s.id === sec.id);
-                                const prevSec = newSecs.find(s => s.id === sortedArr[index - 1].id);
-                                if (current && prevSec) {
-                                  const temp = current.order;
-                                  current.order = prevSec.order;
-                                  prevSec.order = temp;
-                                  setModuleConfig(prev => ({ ...prev, sections: newSecs }));
-                                }
-                              }}
-                            >
-                              ▲
-                            </button>
-                            <button 
-                              className="btn btn-xs"
-                              disabled={index === sortedArr.length - 1}
-                              onClick={() => {
-                                const newSecs = [...moduleConfig.sections];
-                                const current = newSecs.find(s => s.id === sec.id);
-                                const nextSec = newSecs.find(s => s.id === sortedArr[index + 1].id);
-                                if (current && nextSec) {
-                                  const temp = current.order;
-                                  current.order = nextSec.order;
-                                  nextSec.order = temp;
-                                  setModuleConfig(prev => ({ ...prev, sections: newSecs }));
-                                }
-                              }}
-                            >
-                              ▼
-                            </button>
-                            <button 
-                              className="btn btn-xs btn-danger-outline"
-                              disabled={['general', 'clients_sales', 'projects_sec', 'other_modules'].includes(sec.id)}
-                              onClick={() => {
-                                if (confirm(`Are you sure you want to delete the section "${sec.label}"? Any modules in this section will be reassigned to General.`)) {
-                                  const updatedSections = moduleConfig.sections.filter(s => s.id !== sec.id);
-                                  const updatedModules = moduleConfig.modules.map(m => 
-                                    m.sectionId === sec.id ? { ...m, sectionId: 'general' } : m
-                                  );
-                                  setModuleConfig({ sections: updatedSections, modules: updatedModules });
-                                }
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* MODULES CONFIGURATION */}
-            <div className="card">
-              <div className="card-head" style={{ borderBottom: '1px solid var(--border)', padding: '12px 16px' }}>
-                <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 600 }}>Modules Layout & Renaming</div>
-              </div>
-              <div className="card-body" style={{ padding: '16px' }}>
-                <table className="table" style={{ fontSize: '12.5px' }}>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '50px', textAlign: 'center' }}>Show</th>
-                      <th>Module ID</th>
-                      <th>Display Name</th>
-                      <th>Section</th>
-                      <th>Sort Order</th>
-                      <th style={{ textAlign: 'right' }}>Order Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...moduleConfig.modules].sort((a, b) => a.order - b.order).map((mod, index, sortedArr) => (
-                      <tr key={mod.id}>
-                        <td style={{ textAlign: 'center' }}>
-                          <input 
-                            type="checkbox"
-                            checked={mod.visible}
-                            onChange={e => {
-                              const updatedModules = moduleConfig.modules.map(m => 
-                                m.id === mod.id ? { ...m, visible: e.target.checked } : m
-                              );
-                              setModuleConfig(prev => ({ ...prev, modules: updatedModules }));
-                            }}
-                          />
-                        </td>
-                        <td style={{ fontFamily: 'monospace', color: 'var(--text-tertiary)' }}>{mod.id}</td>
-                        <td>
-                          <input 
-                            type="text"
-                            className="form-control"
-                            style={{ padding: '2px 6px', fontSize: '12px', height: 'auto', width: '180px' }}
-                            value={mod.label}
-                            onChange={e => {
-                              const updatedModules = moduleConfig.modules.map(m => 
-                                m.id === mod.id ? { ...m, label: e.target.value } : m
-                              );
-                              setModuleConfig(prev => ({ ...prev, modules: updatedModules }));
-                            }}
-                          />
-                        </td>
-                        <td>
-                          <select
-                            className="form-control"
-                            style={{ padding: '2px 6px', fontSize: '12px', height: 'auto', width: '150px' }}
-                            value={mod.sectionId}
-                            onChange={e => {
-                              const updatedModules = moduleConfig.modules.map(m => 
-                                m.id === mod.id ? { ...m, sectionId: e.target.value } : m
-                              );
-                              setModuleConfig(prev => ({ ...prev, modules: updatedModules }));
-                            }}
-                          >
-                            {moduleConfig.sections.map(s => (
-                              <option key={s.id} value={s.id}>{s.label}</option>
-                            ))}
-                          </select>
-                        </td>
-                        <td>{mod.order}</td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div style={{ display: 'inline-flex', gap: '4px' }}>
-                            <button 
-                              className="btn btn-xs"
-                              disabled={index === 0}
-                              onClick={() => {
-                                const newMods = [...moduleConfig.modules];
-                                const current = newMods.find(m => m.id === mod.id);
-                                const prevMod = newMods.find(m => m.id === sortedArr[index - 1].id);
-                                if (current && prevMod) {
-                                  const temp = current.order;
-                                  current.order = prevMod.order;
-                                  prevMod.order = temp;
-                                  setModuleConfig(prev => ({ ...prev, modules: newMods }));
-                                }
-                              }}
-                            >
-                              ▲
-                            </button>
-                            <button 
-                              className="btn btn-xs"
-                              disabled={index === sortedArr.length - 1}
-                              onClick={() => {
-                                const newMods = [...moduleConfig.modules];
-                                const current = newMods.find(m => m.id === mod.id);
-                                const nextMod = newMods.find(m => m.id === sortedArr[index + 1].id);
-                                if (current && nextMod) {
-                                  const temp = current.order;
-                                  current.order = nextMod.order;
-                                  nextMod.order = temp;
-                                  setModuleConfig(prev => ({ ...prev, modules: newMods }));
-                                }
-                              }}
-                            >
-                              ▼
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ModuleNavigationSettings
+          moduleConfig={moduleConfig}
+          setModuleConfig={setModuleConfig}
+          onBack={() => setActiveTab(null)}
+        />
       )}
 
       {activeTab === 'Dropdowns' && isAdmin && (
-        <div className="animation-fade-in" style={{ paddingBottom: '30px' }}>
-          <div className="section-label">System Dropdowns & Lookup Lists</div>
-          <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
-            Configure and manage dynamic values for all dropdown lists and status fields in the portal. Any changes will immediately reflect in the respective modules.
-          </div>
-
-          {lookupError && (
-            <div className="alert alert-danger" style={{ marginBottom: '15px', padding: '10px 15px', borderRadius: '4px', fontSize: '12.5px' }}>
-              {lookupError}
-            </div>
-          )}
-          {lookupSuccess && (
-            <div className="alert alert-success" style={{ marginBottom: '15px', padding: '10px 15px', borderRadius: '4px', fontSize: '12.5px' }}>
-              {lookupSuccess}
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '20px' }}>
-            {/* Category selection list */}
-            <div>
-              <div className="card" style={{ marginBottom: '15px' }}>
-                <div className="card-head" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-                  <div className="card-title" style={{ fontSize: '13px', fontWeight: 600 }}>Select Lookup List</div>
-                </div>
-                <div className="card-body" style={{ padding: '8px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    {lookupCategories.map(cat => {
-                      const displayNames = {
-                        client_type: 'Client Types',
-                        loss_reason: 'Loss Reasons',
-                        project_status: 'Project Statuses',
-                        delay_reason: 'Delay Reasons'
-                      };
-                      const isSelected = selectedLookupCategory === cat;
-                      return (
-                        <button
-                          key={cat}
-                          onClick={() => {
-                            setSelectedLookupCategory(cat);
-                            setEditingLookup(null);
-                            setNewLookup({ label: '', value: '', sort_order: 1, is_active: true, color: 'default' });
-                          }}
-                          style={{
-                            width: '100%',
-                            textAlign: 'left',
-                            padding: '8px 12px',
-                            background: isSelected ? 'var(--bg-active)' : 'transparent',
-                            color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            fontSize: '12.5px',
-                            fontWeight: isSelected ? 600 : 500
-                          }}
-                        >
-                          {displayNames[cat] || cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Create new category */}
-              <div className="card">
-                <div className="card-head" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-                  <div className="card-title" style={{ fontSize: '13px', fontWeight: 600 }}>New Dropdown List</div>
-                </div>
-                <div className="card-body" style={{ padding: '12px' }}>
-                  <input
-                    type="text"
-                    placeholder="e.g. lead_source..."
-                    className="form-control"
-                    style={{ fontSize: '12px', marginBottom: '8px' }}
-                    id="new-category-input"
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && e.target.value.trim()) {
-                        const newCat = e.target.value.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_');
-                        if (lookupCategories.includes(newCat)) {
-                          alert('Lookup category already exists');
-                          return;
-                        }
-                        setLookupCategories(prev => [...prev, newCat].sort());
-                        setSelectedLookupCategory(newCat);
-                        e.target.value = '';
-                      }
-                    }}
-                  />
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                    Type key name (lowercase, no spaces) and press Enter to initialize a new dropdown.
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* List and form */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {/* Form card */}
-              <div className="card">
-                <div className="card-head" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 600 }}>
-                    {editingLookup ? 'Edit Option' : 'Add New Option'} to list: <strong style={{ color: 'var(--text-primary)' }}>{selectedLookupCategory}</strong>
-                  </div>
-                  {editingLookup && (
-                    <button
-                      className="btn btn-secondary btn-xs"
-                      onClick={() => {
-                        setEditingLookup(null);
-                        setNewLookup({ label: '', value: '', sort_order: 1, is_active: true, color: 'default' });
-                      }}
-                    >
-                      Cancel Edit
-                    </button>
-                  )}
-                </div>
-                <div className="card-body" style={{ padding: '16px' }}>
-                  <form onSubmit={handleSaveLookup} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', alignItems: 'end' }}>
-                    <div className="form-row">
-                      <label className="form-label" style={{ fontSize: '12px', marginBottom: '4px' }}>Display Label</label>
-                      <input
-                        type="text"
-                        required
-                        className="form-control"
-                        placeholder="e.g. Consultant"
-                        value={newLookup.label}
-                        onChange={e => setNewLookup(prev => ({ ...prev, label: e.target.value, value: prev.value ? prev.value : e.target.value }))}
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label className="form-label" style={{ fontSize: '12px', marginBottom: '4px' }}>System Value</label>
-                      <input
-                        type="text"
-                        required
-                        className="form-control"
-                        placeholder="e.g. Consultant"
-                        value={newLookup.value}
-                        onChange={e => setNewLookup(prev => ({ ...prev, value: e.target.value }))}
-                      />
-                    </div>
-                    <div className="form-row" style={{ maxWidth: '100px' }}>
-                      <label className="form-label" style={{ fontSize: '12px', marginBottom: '4px' }}>Sort Order</label>
-                      <input
-                        type="number"
-                        required
-                        className="form-control"
-                        value={newLookup.sort_order}
-                        onChange={e => setNewLookup(prev => ({ ...prev, sort_order: Number(e.target.value) }))}
-                      />
-                    </div>
-                    <div className="form-row">
-                      <label className="form-label" style={{ fontSize: '12px', marginBottom: '4px' }}>Color Badge (Optional)</label>
-                      <select
-                        className="form-control"
-                        value={newLookup.color}
-                        onChange={e => setNewLookup(prev => ({ ...prev, color: e.target.value }))}
-                      >
-                        <option value="default">Default (Gray)</option>
-                        <option value="primary">Primary (Blue)</option>
-                        <option value="success">Success (Green)</option>
-                        <option value="info">Info (Cyan)</option>
-                        <option value="warning">Warning (Orange/Yellow)</option>
-                        <option value="danger">Danger (Red)</option>
-                      </select>
-                    </div>
-                    <div className="form-row" style={{ display: 'flex', gap: '10px', alignItems: 'center', height: 'var(--form-control-height)' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={newLookup.is_active}
-                          onChange={e => setNewLookup(prev => ({ ...prev, is_active: e.target.checked }))}
-                        />
-                        Active
-                      </label>
-                    </div>
-                    <div>
-                      <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
-                        {editingLookup ? 'Update Option' : 'Add Option'}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-
-              {/* Data Table */}
-              <div className="card">
-                <div className="card-head" style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-                  <div className="card-title" style={{ fontSize: '13.5px', fontWeight: 600 }}>Active options in selected list</div>
-                </div>
-                <div className="card-body" style={{ padding: 0 }}>
-                  {lookupsLoading ? (
-                    <div style={{ padding: '20px', textAlign: 'center', fontSize: '13px', color: 'var(--text-secondary)' }}>Loading dropdown items...</div>
-                  ) : (
-                    <table className="table" style={{ margin: 0 }}>
-                      <thead>
-                        <tr>
-                          <th style={{ width: '60px' }}>Sort</th>
-                          <th>Display Label</th>
-                          <th>Value</th>
-                          <th>Color Badge</th>
-                          <th>Status</th>
-                          <th style={{ width: '120px', textAlign: 'right' }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {lookups
-                          .filter(item => item.category === selectedLookupCategory)
-                          .map(item => (
-                            <tr key={item.id} style={{ opacity: item.is_active ? 1 : 0.5 }}>
-                              <td style={{ fontWeight: 600 }}>{item.sort_order}</td>
-                              <td style={{ fontWeight: 600 }}>{item.label}</td>
-                              <td><code>{item.value}</code></td>
-                              <td>
-                                {item.metadata_json?.color && (
-                                  <span className={`badge b-${item.metadata_json.color}`}>
-                                    {item.metadata_json.color}
-                                  </span>
-                                )}
-                              </td>
-                              <td>
-                                <span className={`badge ${item.is_active ? 'badge-success' : 'badge-danger'}`} style={{
-                                  background: item.is_active ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                                  color: item.is_active ? '#10b981' : '#ef4444',
-                                  border: item.is_active ? '1px solid rgba(34, 197, 94, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)'
-                                }}>
-                                  {item.is_active ? 'Active' : 'Disabled'}
-                                </span>
-                              </td>
-                              <td style={{ textAlign: 'right' }}>
-                                <button
-                                  onClick={() => handleEditLookupClick(item)}
-                                  style={{ background: 'transparent', border: 'none', color: '#e09924', cursor: 'pointer', fontSize: '11px', padding: '4px 6px', marginRight: '4px' }}
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteLookup(item.id)}
-                                  style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: '11px', padding: '4px 6px' }}
-                                >
-                                  Delete
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        {lookups.filter(item => item.category === selectedLookupCategory).length === 0 && (
-                          <tr>
-                            <td colSpan="6" style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
-                              No options configured for this category yet. Add one above!
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'Templates' && isAdmin && (
-        <MasterGoogleSheetManager />
+        <DropdownSettings
+          lookups={lookups}
+          lookupCategories={lookupCategories}
+          selectedLookupCategory={selectedLookupCategory}
+          setSelectedLookupCategory={setSelectedLookupCategory}
+          lookupsLoading={lookupsLoading}
+          newLookup={newLookup}
+          setNewLookup={setNewLookup}
+          editingLookup={editingLookup}
+          setEditingLookup={setEditingLookup}
+          handleSaveLookup={handleSaveLookup}
+          handleEditLookupClick={handleEditLookupClick}
+          handleDeleteLookup={handleDeleteLookup}
+          lookupError={lookupError}
+          lookupSuccess={lookupSuccess}
+          setLookupCategories={setLookupCategories}
+          onBack={() => setActiveTab(null)}
+        />
       )}
 
       {activeTab === 'Releases & Deployments' && isAdmin && (
-        <ReleasesDeploymentManager />
+        <ReleasesDeploymentSettings onBack={() => setActiveTab(null)} />
       )}
 
 

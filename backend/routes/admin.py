@@ -333,14 +333,266 @@ async def get_template_metadata(doc_type: str, db: Session = Depends(get_db)):
 import tempfile
 from fastapi import Body
 
+JASPER_DOC_MAP = {
+    "quote": "one_to_one_quotation",
+    "quotation": "one_to_one_quotation",
+    "boq": "one_to_one_boq",
+    "boq_doc": "one_to_one_boq",
+    "summary": "one_to_one_summary",
+    "summary_doc": "one_to_one_summary",
+    "schedule": "one_to_one_lighting_schedule",
+    "lighting_schedule": "one_to_one_lighting_schedule",
+    "lighting_schedule_doc": "one_to_one_lighting_schedule",
+    "invoice": "one_to_one_tax_invoice",
+    "tax_invoice": "one_to_one_tax_invoice",
+    "tax_invoice_doc": "one_to_one_tax_invoice",
+    "tax_invoice_(full)": "one_to_one_tax_invoice",
+    "deposit_invoice": "one_to_one_tax_invoice",
+    "balance_invoice": "one_to_one_tax_invoice",
+    "pro_forma_invoice": "one_to_one_tax_invoice",
+    "pro-forma_invoice": "one_to_one_tax_invoice",
+    "statement": "one_to_one_progress_report",
+    "progress_statement": "one_to_one_progress_report",
+    "progress_report": "one_to_one_progress_report"
+}
+
+def render_jasper_document_for_order(doc_type: str, data: dict):
+    norm_key = doc_type.lower().strip()
+    template_name = JASPER_DOC_MAP.get(norm_key)
+    if not template_name:
+        return None
+
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    possible_paths = [
+        os.path.join(base_dir, "jasper_templates", f"{template_name}.jrxml"),
+        os.path.join(os.path.dirname(base_dir), "jasper_templates", f"{template_name}.jrxml"),
+        os.path.join("backend", "jasper_templates", f"{template_name}.jrxml"),
+        os.path.join("jasper_templates", f"{template_name}.jrxml"),
+        f"{template_name}.jrxml"
+    ]
+    template_path = None
+    for p in possible_paths:
+        if os.path.exists(p):
+            template_path = p
+            break
+
+    if not template_path:
+        return None
+
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            template_xml = f.read()
+
+        inv_title = "Tax Invoice"
+        if "deposit" in norm_key:
+            inv_title = "Deposit Invoice"
+        elif "balance" in norm_key:
+            inv_title = "Balance Invoice"
+        elif "pro" in norm_key:
+            inv_title = "Pro-Forma Invoice"
+
+        # Resolve logo path reliably across environments
+        logo_candidates = [
+            os.path.join(base_dir, "assets", "onetoone_logo.jpg"),
+            os.path.join(base_dir, "backend", "assets", "onetoone_logo.jpg"),
+            os.path.join(os.path.dirname(base_dir), "backend", "assets", "onetoone_logo.jpg"),
+            "backend/assets/onetoone_logo.jpg",
+            "assets/onetoone_logo.jpg"
+        ]
+        resolved_logo_path = "backend/assets/onetoone_logo.jpg"
+        for lc in logo_candidates:
+            if os.path.exists(lc):
+                resolved_logo_path = lc
+                break
+
+        params = {
+            "OrderName": str(data.get("ORDER_NAME") or data.get("PROJECT_NAME") or "Order"),
+            "ProjectName": str(data.get("PROJECT_NAME") or data.get("ORDER_NAME") or "Project"),
+            "ReportDate": str(data.get("DATE") or "Today"),
+            "OneOneRep": str(data.get("ONEONE_REP") or "Martin Doller"),
+            "PmPhone": str(data.get("PM_PHONE") or "087 711 0660"),
+            "PmEmail": str(data.get("PM_EMAIL") or "info@onetoone.co.za"),
+            "ClientCompany": str(data.get("CLIENT_COMPANY") or ""),
+            "ClientContact": str(data.get("CLIENT_CONTACT_PERSON") or data.get("CLIENT_NAME") or ""),
+            "ClientPhone": str(data.get("CLIENT_PHONE") or ""),
+            "ClientEmail": str(data.get("CLIENT_EMAIL") or ""),
+            "DeliveryAddress": str(data.get("DELIVERY_ADDRESS") or "Site Address"),
+            "BillingDetails": str(data.get("BILLING_DETAILS") or "VAT: 4590312965\nReg: 2022/863083/07"),
+            "Subtotal": str(data.get("SUBTOTAL") or "R 0.00"),
+            "DiscountPercent": str(data.get("DISCOUNT_PERCENT") or "0%"),
+            "DiscountAmount": str(data.get("DISCOUNT_AMOUNT") or "R 0.00"),
+            "VatPercent": str(data.get("VAT_PERCENT") or "15%"),
+            "VatAmount": str(data.get("VAT_AMOUNT") or "R 0.00"),
+            "TotalRetail": str(data.get("TOTAL_RETAIL") or "R 0.00"),
+            "DepositAmount": str(data.get("DEPOSIT") or "R 0.00"),
+            "TotalPaid": str(data.get("TOTAL_PAID") or "R 0.00"),
+            "BalanceOutstanding": str(data.get("BALANCE_OUTSTANDING") or "R 0.00"),
+            "InvoiceTitle": inv_title,
+            "InvoiceNumber": str(data.get("DOCUMENT_NUMBER") or data.get("ORDER_NUMBER") or data.get("ORDER_ID") or ""),
+            "TotalEstimatedWattage": str(data.get("TOTAL_WATTAGE") or "0W"),
+            "LogoPath": resolved_logo_path
+        }
+
+        raw_items = data.get("items") or []
+        items_data = []
+
+        if template_name == "one_to_one_quotation":
+            floors = {}
+            for it in raw_items:
+                fl = str(it.get("floor") or "General").strip()
+                ar = str(it.get("area") or "All Areas").strip()
+                try:
+                    tot = float(it.get("totalRetail") or it.get("total_price") or it.get("total") or 0)
+                except Exception:
+                    tot = 0.0
+                if fl not in floors:
+                    floors[fl] = {}
+                floors[fl][ar] = floors[fl].get(ar, 0.0) + tot
+
+            for fl, areas in floors.items():
+                fl_tot = sum(areas.values())
+                for ar, ar_tot in areas.items():
+                    items_data.append({
+                        "floor": fl,
+                        "area": ar,
+                        "totalRetail": f"R {ar_tot:,.2f}",
+                        "floorSubtotal": f"R {fl_tot:,.2f}"
+                    })
+            if not items_data:
+                items_data.append({
+                    "floor": "General",
+                    "area": "Whole Order",
+                    "totalRetail": str(data.get("TOTAL_RETAIL") or "R 0.00"),
+                    "floorSubtotal": str(data.get("TOTAL_RETAIL") or "R 0.00")
+                })
+        else:
+            for it in raw_items:
+                r_val = it.get("retail") or it.get("unit_price") or 0
+                tot_val = it.get("totalRetail") or it.get("total_price") or 0
+                try:
+                    r_num = float(r_val)
+                except Exception:
+                    r_num = 0.0
+                try:
+                    tot_num = float(tot_val)
+                except Exception:
+                    tot_num = 0.0
+
+                is_cred = bool(it.get("isCredit") or r_num < 0 or tot_num < 0)
+
+                items_data.append({
+                    "qty": str(it.get("quantity") or it.get("qty") or "1"),
+                    "oneOneCode": str(it.get("oneOneCode") or it.get("make_code") or it.get("code") or ""),
+                    "planCode": str(it.get("planCode") or it.get("type") or it.get("plan_code") or ""),
+                    "description": str(it.get("description") or ""),
+                    "floor": str(it.get("floor") or "General"),
+                    "area": str(it.get("area") or "All"),
+                    "material": str(it.get("material") or it.get("colour") or ""),
+                    "eta": str(it.get("eta") or it.get("lead_time") or ""),
+                    "itemClass": str(it.get("class") or it.get("itemClass") or "Standard"),
+                    "retail": f"R {abs(r_num):,.2f}" if is_cred else f"R {r_num:,.2f}",
+                    "totalRetail": f"-R {abs(tot_num):,.2f}" if is_cred else f"R {tot_num:,.2f}",
+                    "isCredit": is_cred,
+                    "cutOut": str(it.get("cut_out") or it.get("cutOut") or "-"),
+                    "dimming": str(it.get("dimming") or "-"),
+                    "lightSource": str(it.get("light_source") or it.get("lightSource") or "-"),
+                    "wattage": str(it.get("wattage") or "-"),
+                    "driverInfo": str(it.get("driver_information") or it.get("driverInfo") or "-"),
+                    "wireInfo": str(it.get("wire_information") or it.get("wireInfo") or "-"),
+                    "redList": str(it.get("red_list") or it.get("redList") or ""),
+                    "qrCodeLink": str(it.get("qr_code") or it.get("qrCodeLink") or "")
+                })
+
+        from services.jasper_engine import compile_and_render_jasper_report
+        fd, temp_pdf = tempfile.mkstemp(suffix=".pdf")
+        os.close(fd)
+        
+        pdf_path = compile_and_render_jasper_report(
+            jrxml_path=template_path,
+            data=items_data,
+            parameters=params,
+            output_pdf_path=temp_pdf
+        )
+        if pdf_path and os.path.exists(pdf_path):
+            return pdf_path
+        return None
+    except Exception as e:
+        print(f"Jasper exception for {doc_type}: {e}", flush=True)
+        return None
+
+@router.get("/debug-jasper/{doc_type}")
+def debug_jasper(doc_type: str):
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    template_name = JASPER_DOC_MAP.get(doc_type.lower().strip())
+    possible_paths = [
+        os.path.join(base_dir, "jasper_templates", f"{template_name}.jrxml") if template_name else "",
+        os.path.join(os.path.dirname(base_dir), "jasper_templates", f"{template_name}.jrxml") if template_name else "",
+        os.path.join("backend", "jasper_templates", f"{template_name}.jrxml") if template_name else "",
+        os.path.join("jasper_templates", f"{template_name}.jrxml") if template_name else "",
+        f"{template_name}.jrxml" if template_name else ""
+    ]
+    resolved_path = None
+    for p in possible_paths:
+        if p and os.path.exists(p):
+            resolved_path = p
+            break
+
+    pyreportjasper_installed = False
+    pyreportjasper_error = None
+    try:
+        import pyreportjasper
+        pyreportjasper_installed = True
+    except Exception as e:
+        pyreportjasper_error = str(e)
+
+    sample_render_error = None
+    rendered_output_pdf = None
+    if resolved_path and pyreportjasper_installed:
+        try:
+            from services.jasper_engine import compile_and_render_jasper_report
+            fd, temp_pdf = tempfile.mkstemp(suffix=".pdf")
+            os.close(fd)
+            out_pdf = compile_and_render_jasper_report(
+                jrxml_path=resolved_path,
+                data=[{"qty": 1, "description": "Test Item", "isCredit": False}],
+                parameters={"ProjectName": "Test", "OrderName": "Test Order", "LogoPath": (os.path.join(base_dir, "assets", "onetoone_logo.jpg") if os.path.exists(os.path.join(base_dir, "assets", "onetoone_logo.jpg")) else "backend/assets/onetoone_logo.jpg")},
+                output_pdf_path=temp_pdf
+            )
+            rendered_output_pdf = out_pdf
+        except Exception as e:
+            sample_render_error = str(e)
+
+    return {
+        "doc_type": doc_type,
+        "template_name": template_name,
+        "base_dir": base_dir,
+        "resolved_path": resolved_path,
+        "possible_paths": possible_paths,
+        "pyreportjasper_installed": pyreportjasper_installed,
+        "pyreportjasper_error": pyreportjasper_error,
+        "sample_render_error": sample_render_error,
+        "rendered_output_pdf": rendered_output_pdf
+    }
+
 @router.post("/generate/{doc_type}")
 def generate_document(doc_type: str, page: int = None, format: str = 'pdf', is_save_action: bool = False, data: dict = Body(...), db: Session = Depends(get_db)):
     """
-    100% Google Sheets Document Generator Engine.
-    Supports Dual Master Templates: MASTER_DESIGN_FEE_SHEET for Design Fees & MASTER_ORDERS_SHEET for Orders/BOQ.
-    Pass is_save_action=true to trigger Drive vault revision archival.
+    Dual-engine Document Generator:
+    1. First tries authentic Jaspersoft Reports engine (.jrxml) for high-performance pixel-perfect PDFs.
+    2. Falls back cleanly to Google Sheets engine if no Jasper template exists or on failure.
     """
-    print(f"DEBUG: Generating {doc_type} via Master Google Sheets Engine with tokens: {list(data.keys())} (is_save_action={is_save_action})")
+    print(f"DEBUG: Generating {doc_type} (tokens={list(data.keys())}, is_save={is_save_action})")
+
+    # Try Jasper Engine First
+    jasper_pdf = render_jasper_document_for_order(doc_type, data)
+    if jasper_pdf and os.path.exists(jasper_pdf):
+        print(f"SUCCESS: Rendered {doc_type} via JasperReports Engine!")
+        return FileResponse(
+            jasper_pdf,
+            media_type='application/pdf',
+            filename=f"Proposal_{doc_type.lower()}.pdf",
+            headers={"X-Engine": "JasperReports-7"}
+        )
     
     # 1. Determine specific template key based on document type
     target_key = "MASTER_DESIGN_FEE_SHEET" if doc_type == "DESIGN_FEE_PROPOSAL" else "MASTER_ORDERS_SHEET"

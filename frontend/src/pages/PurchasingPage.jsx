@@ -1,3 +1,4 @@
+import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -5,7 +6,7 @@ import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
 import { 
   ClipboardList, Search, RefreshCw, AlertTriangle, Check, Layers, ExternalLink, Filter, 
-  ArrowLeft, ArrowRight, ShieldCheck, ChevronDown, ChevronRight, X, Sparkles, Box, 
+  ArrowLeft, ArrowRight, ShieldCheck, ChevronDown, ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight, X, Sparkles, Box, 
   CheckCircle2, Clock, Trash2, FileText, Package, CheckSquare, Square,
   ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
@@ -826,7 +827,7 @@ export default function PurchasingPage() {
   };
 
   const handleUnallocate = async (allocationId, docNo) => {
-    if (!window.confirm(`Release this allocation from ${docNo}? The quantity will return to Unallocated.`)) {
+    if (!(await window.otoConfirm(`Release this allocation from ${docNo}? The quantity will return to Unallocated.`))) {
       return;
     }
     try {
@@ -855,7 +856,7 @@ export default function PurchasingPage() {
   // Unallocate Entire Line (All allocations for a specific line item)
   const handleUnallocateLine = async (line, docNo) => {
     const allocIds = (line.allocations || []).map(a => a.id).filter(Boolean);
-    if (!window.confirm(`Unallocate ${line.item_code} from ${docNo}? All allocated quantities for this item will return to unallocated.`)) {
+    if (!(await window.otoConfirm(`Unallocate ${line.item_code} from ${docNo}? All allocated quantities for this item will return to unallocated.`))) {
       return;
     }
     try {
@@ -908,7 +909,7 @@ export default function PurchasingPage() {
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to unallocate all active allocations for the ${selectedLines.length} selected item(s)?`)) {
+    if (!(await window.otoConfirm(`Are you sure you want to unallocate all active allocations for the ${selectedLines.length} selected item(s)?`))) {
       return;
     }
 
@@ -941,7 +942,7 @@ export default function PurchasingPage() {
   // Bulk Unallocate Entire Document
   const handleUnallocateEntireDocument = async (docNo) => {
     if (!docNo) return;
-    if (!window.confirm(`Are you sure you want to unallocate ALL items from ${docNo}? Every item in this document will return to unallocated.`)) {
+    if (!(await window.otoConfirm(`Are you sure you want to unallocate ALL items from ${docNo}? Every item in this document will return to unallocated.`))) {
       return;
     }
     try {
@@ -1137,7 +1138,7 @@ export default function PurchasingPage() {
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to delete manual ${doc.doc_type} '${doc.document_no}'?\n\nThis will remove the manual record and roll back any allocations and order line progress.`)) {
+    if (!(await window.otoConfirm(`Are you sure you want to delete manual ${doc.doc_type} '${doc.document_no}'?\n\nThis will remove the manual record and roll back any allocations and order line progress.`))) {
       return;
     }
 
@@ -1265,7 +1266,7 @@ export default function PurchasingPage() {
       return;
     }
 
-    if (!window.confirm(`Allocate ${selectedDocs.length} Purchase Orders to their selected projects and update ETAs?`)) {
+    if (!(await window.otoConfirm(`Allocate ${selectedDocs.length} Purchase Orders to their selected projects and update ETAs?`, { title: "Allocate Purchase Orders", confirmText: "Allocate" }))) {
       return;
     }
 
@@ -1364,7 +1365,7 @@ export default function PurchasingPage() {
     const docNo = docOrLine.document_no;
     const moduleType = (docOrLine.document_type || docOrLine.doc_type || (docNo?.startsWith('GRN') ? 'GRN' : 'PO')).toUpperCase();
 
-    if (!window.confirm(`Mark ${moduleType} "${docNo}" as Internal Company Purchase / Office Expense?\n\nThis will remove it from the unallocated and issues lists and place it under the "Internal / Office" tab.`)) {
+    if (!(await window.otoConfirm(`Mark ${moduleType} "${docNo}" as Internal Company Purchase / Office Expense?\n\nThis will remove it from the unallocated and issues lists and place it under the "Internal / Office" tab.`, { title: "Mark Internal", confirmText: "Mark Internal" }))) {
       return;
     }
 
@@ -1398,7 +1399,7 @@ export default function PurchasingPage() {
     const docNo = docOrLine.document_no;
     const moduleType = (docOrLine.document_type || docOrLine.doc_type || (docNo?.startsWith('GRN') ? 'GRN' : 'PO')).toUpperCase();
 
-    if (!window.confirm(`Archive ${moduleType} "${docNo}"?\n\nChoose this for old purchase orders/GRNs whose client orders are no longer on the portal. It will be moved into the "Archived / Old Orders" tab and cleared from all active counters.`)) {
+    if (!(await window.otoConfirm(`Archive ${moduleType} "${docNo}"?\n\nChoose this for old purchase orders/GRNs whose client orders are no longer on the portal. It will be moved into the "Archived / Old Orders" tab and cleared from all active counters.`, { title: "Archive Order", confirmText: "Archive" }))) {
       return;
     }
 
@@ -1432,7 +1433,7 @@ export default function PurchasingPage() {
     const docNo = docOrLine.document_no;
     const moduleType = (docOrLine.document_type || docOrLine.doc_type || (docNo?.startsWith('GRN') ? 'GRN' : 'PO')).toUpperCase();
 
-    if (!window.confirm(`Restore ${moduleType} "${docNo}" back to active unallocated queue?`)) {
+    if (!(await window.otoConfirm(`Restore ${moduleType} "${docNo}" back to active unallocated queue?`, { title: "Restore Order", confirmText: "Restore" }))) {
       return;
     }
 
@@ -2258,7 +2259,7 @@ export default function PurchasingPage() {
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '2px' }}
                                 title="View allocated projects & orders"
                               >
-                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                <ChevronRight size={12} style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease', color: isExpanded ? 'var(--text-primary)' : 'var(--text-tertiary)' }} />
                               </button>
                             )}
                           </td>
@@ -2482,7 +2483,7 @@ export default function PurchasingPage() {
                     <tfoot>
                       <tr style={{
                         background: 'var(--bg-secondary)',
-                        borderTop: '2px solid var(--border-strong, var(--border))',
+                        borderTop: '1px solid var(--border)',
                         fontWeight: 800,
                         position: 'sticky',
                         bottom: 0,
@@ -2515,9 +2516,9 @@ export default function PurchasingPage() {
           /* ============================================================ */
           /* VIEW B: PRIMARY DOCUMENT LIST (One row per PO / GRN Document)*/
           /* ============================================================ */
-          <>
-            {/* FILTER TABS & SEARCH BAR */}
-            <div className="card" style={{ padding: '12px 16px', marginBottom: '14px', borderRadius: '10px' }}>
+          <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+            {/* TIER 1: FILTER TABS & SEARCH BAR */}
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                 
                 {/* Tab Filters */}
@@ -2616,7 +2617,7 @@ export default function PurchasingPage() {
                   <div style={{ position: 'relative', width: '240px' }}>
                     <Search size={13} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-tertiary)' }} />
                     <input
-                      type="text"
+                      type="search"
                       placeholder="Search Doc #, Supplier, Ref, SKU..."
                       className="form-control"
                       style={{ paddingLeft: '28px', height: '30px', fontSize: '11.5px' }}
@@ -2633,28 +2634,23 @@ export default function PurchasingPage() {
                     )}
                   </div>
 
-                  <select
-                    className="form-control"
-                    style={{ height: '30px', fontSize: '11.5px', padding: '2px 8px', maxWidth: '160px' }}
+                  <SearchableFilterDropdown
                     value={supplierFilter}
-                    onChange={(e) => setSupplierFilter(e.target.value)}
-                  >
-                    <option value="All Suppliers">All Suppliers</option>
-                    {uniqueSuppliers.map(s => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
+                    onChange={setSupplierFilter}
+                    options={uniqueSuppliers.filter(s => s !== 'All Suppliers')}
+                    allLabel="All Suppliers"
+                    width="160px"
+                  />
                 </div>
 
               </div>
             </div>
 
-            {/* DOCUMENTS LIST TABLE */}
-            <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: '10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <div style={{ overflowX: 'auto', flex: 1 }}>
-                <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+            {/* TIER 2: DOCUMENTS LIST FULL-BLEED TABLE */}
+            <div style={{ overflowX: 'auto', maxHeight: '68vh', position: 'relative' }}>
+              <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
                       <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('document_no')}>
                         <div style={{ display: 'inline-flex', alignItems: 'center' }}>
                           Document #{renderDocSortIcon('document_no')}
@@ -3071,12 +3067,12 @@ export default function PurchasingPage() {
                 </table>
               </div>
 
-            {/* PAGINATION FOOTER */}
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center', 
-              padding: '12px 18px', 
+            {/* TIER 3: PAGINATION FOOTER */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '11px 20px',
               borderTop: '1px solid var(--border)',
               background: 'var(--bg-secondary)',
               fontSize: '12px',
@@ -3122,9 +3118,8 @@ export default function PurchasingPage() {
                   disabled={page <= 1}
                   className="btn btn-xs btn-ghost"
                   style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
-                  title="Jump to First Page"
-                >
-                  ⏮ First
+                  title="Jump to First Page" style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <ChevronsLeft size={13} /> First
                 </button>
 
                 <button
@@ -3134,10 +3129,8 @@ export default function PurchasingPage() {
                     fetchProcurementDocuments(prev, activeFilterTab, supplierFilter, searchQuery, limit);
                   }}
                   disabled={page <= 1}
-                  className="btn btn-xs btn-ghost"
-                  style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
-                >
-                  ◀ Prev
+                  className="btn btn-xs btn-ghost" style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <ChevronLeft size={13} /> Prev
                 </button>
 
                 {getPaginationPages().map((p, idx) => {
@@ -3180,10 +3173,8 @@ export default function PurchasingPage() {
                     fetchProcurementDocuments(next, activeFilterTab, supplierFilter, searchQuery, limit);
                   }}
                   disabled={page >= totalPages}
-                  className="btn btn-xs btn-ghost"
-                  style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
-                >
-                  Next ▶
+                  className="btn btn-xs btn-ghost" style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  Next <ChevronRight size={13} />
                 </button>
 
                 <button
@@ -3194,9 +3185,8 @@ export default function PurchasingPage() {
                   disabled={page >= totalPages}
                   className="btn btn-xs btn-ghost"
                   style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
-                  title="Jump to Last Page"
-                >
-                  Last ⏭
+                  title="Jump to Last Page" style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  Last <ChevronsRight size={13} />
                 </button>
 
                 <form
@@ -3233,7 +3223,6 @@ export default function PurchasingPage() {
               </div>
             </div>
           </div>
-        </>
       )}
 
       {/* ============================================================ */}
@@ -3303,7 +3292,7 @@ export default function PurchasingPage() {
                     <div style={{ position: 'relative', width: '230px' }}>
                       <Search size={12} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
                       <input
-                        type="text"
+                        type="search"
                         placeholder="Search any order, PO#, client..."
                         value={batchSearch}
                         onChange={e => setBatchSearch(e.target.value)}
@@ -3847,7 +3836,7 @@ export default function PurchasingPage() {
                       <div style={{ position: 'relative', width: '200px' }}>
                         <Search size={12} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
                         <input
-                          type="text"
+                          type="search"
                           placeholder="Search orders, PO #..."
                           value={allocSearch}
                           onChange={e => setAllocSearch(e.target.value)}
@@ -4700,7 +4689,7 @@ export default function PurchasingPage() {
                 <div style={{ position: 'relative', width: '260px' }}>
                   <Search size={13} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-secondary)' }} />
                   <input
-                    type="text"
+                    type="search"
                     value={wizardSearchQuery}
                     onChange={(e) => setWizardSearchQuery(e.target.value)}
                     placeholder="Search PO #, supplier, ref..."

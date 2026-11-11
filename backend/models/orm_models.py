@@ -292,6 +292,13 @@ class Order(Base):
     vat_percentage = Column(Float, default=15.0, nullable=True)
     expected_deposit_month = Column(String, nullable=True)
 
+    # Sub-order and phase hierarchy fields
+    parent_order_id = Column(Integer, ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    parent_po_number = Column(String, nullable=True)
+    is_sub_order = Column(Boolean, default=False, nullable=True)
+    sub_order_index = Column(Integer, default=0, nullable=True)
+    phase_name = Column(String, nullable=True)
+
 
 
 
@@ -341,6 +348,11 @@ class OrderItem(Base):
     sort_order = Column(Integer, default=0, nullable=True)
     notes = Column(Text, nullable=True)
     first_fix = Column(String, default="No", nullable=True)
+    # Sub-order tagging and revision/audit tracking
+    sub_order_ref = Column(String, nullable=True)
+    revision_status = Column(String, default="Active", nullable=True) # Active, Swapped, Credited, Added
+    swap_parent_id = Column(String, nullable=True)
+    swap_reason = Column(Text, nullable=True)
 
 
 
@@ -351,6 +363,27 @@ class OrderDocument(Base):
     order_id = Column(Integer, ForeignKey("orders.id"))
     doc_type = Column(String, nullable=False) # Quote, PO, Delivery Note, Progress Statement, Invoice
     file_path = Column(String, nullable=True)
+
+class OrderAuditLog(Base):
+    __tablename__ = "order_audit_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=True, index=True)
+    order_po = Column(String, nullable=False, index=True)
+    action = Column(String, nullable=False) # SUB_ORDER_CREATED, ITEM_SWAPPED, ITEM_CREDITED, ITEM_ADDED, ITEM_REMOVED, QTY_CHANGED, PRICE_CHANGED, STATUS_CHANGED, REVISION_SAVED
+    item_id = Column(String, nullable=True)
+    item_code = Column(String, nullable=True)
+    item_description = Column(String, nullable=True)
+    room = Column(String, nullable=True)
+    previous_qty = Column(Float, nullable=True)
+    new_qty = Column(Float, nullable=True)
+    previous_value = Column(Float, nullable=True)
+    new_value = Column(Float, nullable=True)
+    delta_value = Column(Float, nullable=True)
+    reason = Column(Text, nullable=True)
+    performed_by = Column(String, nullable=True)
+    metadata_json = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 class Invoice(Base):
     __tablename__ = "invoices"

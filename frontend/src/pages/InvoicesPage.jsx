@@ -1,3 +1,4 @@
+import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -6,7 +7,7 @@ import { API_BASE } from '../api_config';
 import MobileInvoicesViewer from '../components/mobile/MobileInvoicesViewer';
 import { 
   FileText, Search, RefreshCw, AlertTriangle, Check, Layers, ExternalLink, Filter, 
-  ArrowLeft, ArrowRight, ShieldCheck, ChevronDown, ChevronRight, X, Sparkles, Box, 
+  ArrowLeft, ArrowRight, ShieldCheck, ChevronDown, ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight, X, Sparkles, Box, 
   CheckCircle2, Clock, Trash2, Package, CheckSquare, Square, DollarSign, Receipt,
   ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
@@ -949,7 +950,7 @@ export default function InvoicesPage() {
 
   // Unallocate Single Allocation Handler
   const handleUnallocate = async (allocationId, docNo) => {
-    if (!window.confirm(`Release this invoice allocation from ${docNo}? The quantity will return to Unallocated.`)) {
+    if (!(await window.otoConfirm(`Release this invoice allocation from ${docNo}? The quantity will return to Unallocated.`))) {
       return;
     }
     try {
@@ -978,7 +979,7 @@ export default function InvoicesPage() {
   // Unallocate Entire Line (All allocations for a specific line item)
   const handleUnallocateLine = async (line, docNo) => {
     const allocIds = (line.allocations || []).map(a => a.id || a.allocation_id).filter(Boolean);
-    if (!window.confirm(`Unallocate ${line.item_code} from ${docNo}? All allocated quantities for this item will return to unallocated.`)) {
+    if (!(await window.otoConfirm(`Unallocate ${line.item_code} from ${docNo}? All allocated quantities for this item will return to unallocated.`))) {
       return;
     }
     try {
@@ -1034,7 +1035,7 @@ export default function InvoicesPage() {
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to unallocate all active allocations for the ${selectedLines.length} selected item(s)?`)) {
+    if (!(await window.otoConfirm(`Are you sure you want to unallocate all active allocations for the ${selectedLines.length} selected item(s)?`))) {
       return;
     }
 
@@ -1067,7 +1068,7 @@ export default function InvoicesPage() {
   // Bulk Unallocate Entire Document
   const handleUnallocateEntireDocument = async (docNo) => {
     if (!docNo) return;
-    if (!window.confirm(`Are you sure you want to unallocate ALL items from invoice ${docNo}? Every item in this document will return to unallocated.`)) {
+    if (!(await window.otoConfirm(`Are you sure you want to unallocate ALL items from invoice ${docNo}? Every item in this document will return to unallocated.`))) {
       return;
     }
     try {
@@ -1168,7 +1169,7 @@ export default function InvoicesPage() {
       return;
     }
 
-    if (!window.confirm(`Are you sure you want to delete manual Tax Invoice '${doc.document_no}'?\n\nThis will remove the manual record and roll back any invoicing allocations and order line progress.`)) {
+    if (!(await window.otoConfirm(`Are you sure you want to delete manual Tax Invoice '${doc.document_no}'?\n\nThis will remove the manual record and roll back any invoicing allocations and order line progress.`))) {
       return;
     }
 
@@ -1954,7 +1955,7 @@ export default function InvoicesPage() {
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '2px' }}
                                 title="View allocated projects & orders"
                               >
-                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                <ChevronRight size={12} style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s ease', color: isExpanded ? 'var(--text-primary)' : 'var(--text-tertiary)' }} />
                               </button>
                             )}
                           </td>
@@ -2149,8 +2150,15 @@ export default function InvoicesPage() {
                                           {alloc.project_name || `Project #${alloc.project_id}`}
                                         </span>
                                         {alloc.order_id && (
-                                          <span style={{ color: 'var(--text-secondary)' }}>
-                                            (Order #{alloc.order_id}{alloc.fitting_code ? ` • Fitting: ${alloc.fitting_code}` : ''})
+                                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', color: 'var(--text-secondary)' }}>
+                                            <span>(Order #{alloc.order_id}</span>
+                                            {/-\d{1,2}$/.test(String(alloc.order_id)) && (
+                                              <span style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 700 }}>
+                                                Phase {String(alloc.order_id).split('-').pop()}
+                                              </span>
+                                            )}
+                                            {alloc.fitting_code ? <span>• Fitting: {alloc.fitting_code}</span> : null}
+                                            <span>)</span>
                                           </span>
                                         )}
                                         {isCreditDoc && (
@@ -2239,9 +2247,9 @@ export default function InvoicesPage() {
         /* ============================================================ */
         /* VIEW B: PRIMARY DOCUMENT LIST (One row per Invoice Document) */
         /* ============================================================ */
-        <>
-          {/* FILTER TABS & SEARCH BAR */}
-          <div className="card" style={{ padding: '12px 16px', marginBottom: '14px', borderRadius: '10px' }}>
+        <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+          {/* TIER 1: FILTER TABS & SEARCH BAR */}
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
               
               {/* Tab Filters */}
@@ -2314,7 +2322,7 @@ export default function InvoicesPage() {
                 <div style={{ position: 'relative', width: '240px' }}>
                   <Search size={13} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-tertiary)' }} />
                   <input
-                    type="text"
+                    type="search"
                     placeholder="Search Doc #, Client, Ref, SKU..."
                     className="form-control"
                     style={{ paddingLeft: '28px', height: '30px', fontSize: '11.5px' }}
@@ -2334,28 +2342,23 @@ export default function InvoicesPage() {
                   )}
                 </div>
 
-                <select
-                  className="form-control"
-                  style={{ height: '30px', fontSize: '11.5px', padding: '2px 8px', maxWidth: '160px' }}
+                <SearchableFilterDropdown
                   value={customerFilter}
-                  onChange={(e) => handleCustomerChange(e.target.value)}
-                >
-                  <option value="All Clients">All Clients</option>
-                  {uniqueCustomers.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
+                  onChange={handleCustomerChange}
+                  options={uniqueCustomers.filter(c => c !== 'All Clients')}
+                  allLabel="All Clients"
+                  width="160px"
+                />
               </div>
 
             </div>
           </div>
 
-          {/* DOCUMENTS LIST TABLE */}
-          <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: '10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ overflowX: 'auto', flex: 1 }}>
-              <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+          {/* TIER 2: DOCUMENTS LIST FULL-BLEED TABLE */}
+          <div style={{ overflowX: 'auto', maxHeight: '68vh', position: 'relative' }}>
+            <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
                     <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('document_no')}>
                       <div style={{ display: 'inline-flex', alignItems: 'center' }}>
                         Document #{renderDocSortIcon('document_no')}
@@ -2637,17 +2640,19 @@ export default function InvoicesPage() {
               </table>
             </div>
 
-            {/* Pagination Controls */}
-            <div style={{ 
-              padding: '10px 16px', 
-              borderTop: '1px solid var(--border)', 
-              background: 'var(--bg-secondary)', 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '10px'
-            }}>
+            {/* TIER 3: PAGINATION FOOTER */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '11px 20px',
+            borderTop: '1px solid var(--border)',
+            background: 'var(--bg-secondary)',
+            fontSize: '12px',
+            color: 'var(--text-secondary)',
+            flexWrap: 'wrap',
+            gap: '12px'
+          }}>
               <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
                 Showing <strong>{invoicingDocs.length}</strong> of <strong>{totalCount}</strong> documents
               </div>
@@ -2661,9 +2666,8 @@ export default function InvoicesPage() {
                   disabled={page <= 1}
                   className="btn btn-xs btn-ghost"
                   style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
-                  title="Jump to First Page"
-                >
-                  ⏮ First
+                  title="Jump to First Page" style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <ChevronsLeft size={13} /> First
                 </button>
 
                 <button
@@ -2673,10 +2677,8 @@ export default function InvoicesPage() {
                     fetchInvoicingDocuments(prev, activeFilterTab, customerFilter, searchQuery, limit);
                   }}
                   disabled={page <= 1}
-                  className="btn btn-xs btn-ghost"
-                  style={{ border: '1px solid var(--border)', padding: '4px 8px' }}
-                >
-                  ◀ Prev
+                  className="btn btn-xs btn-ghost" style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <ChevronLeft size={13} /> Prev
                 </button>
 
                 <span style={{ fontSize: '11.5px', fontWeight: 700, padding: '0 8px', color: 'var(--text-primary)' }}>
@@ -2690,10 +2692,8 @@ export default function InvoicesPage() {
                     fetchInvoicingDocuments(next, activeFilterTab, customerFilter, searchQuery, limit);
                   }}
                   disabled={page >= totalPages}
-                  className="btn btn-xs btn-ghost"
-                  style={{ border: '1px solid var(--border)', padding: '4px 8px' }}
-                >
-                  Next ▶
+                  className="btn btn-xs btn-ghost" style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                Next <ChevronRight size={13} />
                 </button>
 
                 <button
@@ -2704,9 +2704,8 @@ export default function InvoicesPage() {
                   disabled={page >= totalPages}
                   className="btn btn-xs btn-ghost"
                   style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11px' }}
-                  title="Jump to Last Page"
-                >
-                  Last ⏭
+                  title="Jump to Last Page" style={{ border: '1px solid var(--border)', padding: '4px 8px', fontWeight: 600, fontSize: '11.5px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                Last <ChevronsRight size={13} />
                 </button>
 
                 <form
@@ -2743,7 +2742,6 @@ export default function InvoicesPage() {
               </div>
             </div>
           </div>
-        </>
       )}
 
       {/* ============================================================ */}
@@ -2813,7 +2811,7 @@ export default function InvoicesPage() {
                     <div style={{ position: 'relative', width: '230px' }}>
                       <Search size={12} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
                       <input
-                        type="text"
+                        type="search"
                         placeholder="Search any order, PO#, client..."
                         value={batchSearch}
                         onChange={e => setBatchSearch(e.target.value)}
@@ -3387,7 +3385,7 @@ export default function InvoicesPage() {
                       <div style={{ position: 'relative', width: '200px' }}>
                         <Search size={12} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
                         <input
-                          type="text"
+                          type="search"
                           placeholder="Search orders, PO #..."
                           value={allocSearch}
                           onChange={e => setAllocSearch(e.target.value)}
@@ -3451,8 +3449,15 @@ export default function InvoicesPage() {
                             }}
                           >
                             <div>
-                              <div style={{ fontWeight: 700, fontSize: '12px', color: 'var(--text-primary)' }}>
-                                {cand.project_name} <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>•</span> {cand.order_title}
+                              <div style={{ fontWeight: 700, fontSize: '12px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span>{cand.project_name}</span>
+                                <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>•</span>
+                                <span>{cand.order_title}</span>
+                                {/-\d{1,2}$/.test(String(cand.po_number || cand.order_title || '')) && (
+                                  <span style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', padding: '1px 6px', borderRadius: '4px', fontSize: '9.5px', fontWeight: 700 }}>
+                                    Phase {String(cand.po_number || cand.order_title).split('-').pop()}
+                                  </span>
+                                )}
                               </div>
                               <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
                                 Client: <strong style={{ color: 'var(--text-primary)' }}>{cand.client}</strong> • Match: <span style={{ color: '#3b82f6', fontWeight: 600 }}>{cand.match_type}</span>
@@ -3522,8 +3527,13 @@ export default function InvoicesPage() {
                             }}
                           >
                             <div>
-                              <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '12px' }}>
-                                {ord.quote_name} ({ord.poNumber || ord.order_id})
+                              <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span>{ord.quote_name} ({ord.poNumber || ord.order_id})</span>
+                                {/-\d{1,2}$/.test(String(ord.poNumber || ord.order_id || '')) && (
+                                  <span style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', padding: '1px 6px', borderRadius: '4px', fontSize: '9.5px', fontWeight: 700 }}>
+                                    Phase {String(ord.poNumber || ord.order_id).split('-').pop()}
+                                  </span>
+                                )}
                               </div>
                               <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                                 Project: <strong style={{ color: 'var(--text-primary)' }}>{ord.project_name}</strong> {ord.client ? `| Client: ${ord.client}` : ''}

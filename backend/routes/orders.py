@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from database.cloud_sql import get_db
-from models.orm_models import Order, OrderItem, Project, ProcurementAllocation
+from models.orm_models import Order, OrderItem, Project, ProcurementAllocation, OrderAuditLog
 from pydantic import BaseModel
 from typing import Optional, List, Any, Dict
 from datetime import datetime, timezone
 import json
 import re
 import logging
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -291,6 +292,14 @@ class OrderItemSchema(BaseModel):
     notes: Optional[str] = None
     first_fix: Optional[str] = "No"
     firstFix: Optional[str] = None
+    sub_order_ref: Optional[str] = None
+    subOrderRef: Optional[str] = None
+    revision_status: Optional[str] = "Active"
+    revisionStatus: Optional[str] = None
+    swap_parent_id: Optional[str] = None
+    swapParentId: Optional[str] = None
+    swap_reason: Optional[str] = None
+    swapReason: Optional[str] = None
 
 
 class OrderSchema(BaseModel):
@@ -303,6 +312,16 @@ class OrderSchema(BaseModel):
     outstanding: float = 0.0
     status: Optional[str] = "Pending"
     eta: Optional[str] = "—"
+    parent_order_id: Optional[int] = None
+    parentOrderId: Optional[int] = None
+    parent_po_number: Optional[str] = None
+    parentPoNumber: Optional[str] = None
+    is_sub_order: Optional[bool] = False
+    isSubOrder: Optional[bool] = None
+    sub_order_index: Optional[int] = 0
+    subOrderIndex: Optional[int] = None
+    phase_name: Optional[str] = None
+    phaseName: Optional[str] = None
 
 @router.get("/")
 def list_orders(db: Session = Depends(get_db)):
@@ -435,6 +454,18 @@ def apply_order_fields(order, order_data: dict, project_id=None, project_key=Non
         order.expected_deposit_month = order_data.get("expected_deposit_month") or order_data.get("expectedDepositMonth")
     if "notes" in order_data:
         order.notes = order_data.get("notes")
+    if "parentOrderId" in order_data or "parent_order_id" in order_data:
+        order.parent_order_id = order_data.get("parentOrderId") if "parentOrderId" in order_data else order_data.get("parent_order_id")
+    if "parentPoNumber" in order_data or "parent_po_number" in order_data:
+        order.parent_po_number = order_data.get("parentPoNumber") or order_data.get("parent_po_number")
+    if "isSubOrder" in order_data or "is_sub_order" in order_data:
+        v = order_data.get("isSubOrder") if "isSubOrder" in order_data else order_data.get("is_sub_order")
+        order.is_sub_order = bool(v) if v is not None else False
+    if "subOrderIndex" in order_data or "sub_order_index" in order_data:
+        v = order_data.get("subOrderIndex") if "subOrderIndex" in order_data else order_data.get("sub_order_index")
+        order.sub_order_index = int(v) if v is not None else 0
+    if "phaseName" in order_data or "phase_name" in order_data:
+        order.phase_name = order_data.get("phaseName") or order_data.get("phase_name")
 
 @router.post("/")
 def create_order(order_data: dict, db: Session = Depends(get_db)):
@@ -914,6 +945,15 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
             if not item_dict.get('one_one_code') and prod.one_to_one_code:
                 item_dict['one_one_code'] = prod.one_to_one_code
 
+        item_dict['sub_order_ref'] = getattr(item, 'sub_order_ref', None)
+        item_dict['subOrderRef'] = getattr(item, 'sub_order_ref', None)
+        item_dict['revision_status'] = getattr(item, 'revision_status', 'Active') or 'Active'
+        item_dict['revisionStatus'] = item_dict['revision_status']
+        item_dict['swap_parent_id'] = getattr(item, 'swap_parent_id', None)
+        item_dict['swapParentId'] = getattr(item, 'swap_parent_id', None)
+        item_dict['swap_reason'] = getattr(item, 'swap_reason', None)
+        item_dict['swapReason'] = getattr(item, 'swap_reason', None)
+
         res.append(item_dict)
     
     try:
@@ -1017,6 +1057,10 @@ def create_order_items_batch(po_number: str, items_data: List[OrderItemSchema], 
             existing.sort_order = item_data.sort_order
             existing.notes = item_data.notes
             existing.first_fix = item_data.first_fix or item_data.firstFix or "No"
+            existing.sub_order_ref = item_data.sub_order_ref or item_data.subOrderRef or existing.sub_order_ref
+            existing.revision_status = item_data.revision_status or item_data.revisionStatus or existing.revision_status or 'Active'
+            existing.swap_parent_id = item_data.swap_parent_id or item_data.swapParentId or existing.swap_parent_id
+            existing.swap_reason = item_data.swap_reason or item_data.swapReason or existing.swap_reason
         else:
             allow_inv = has_active_allocs or has_legacy_inv
             inv_qty_to_set = item_data.invoice_qty if allow_inv else 0
@@ -1068,9 +1112,35 @@ def create_order_items_batch(po_number: str, items_data: List[OrderItemSchema], 
                 item_type=item_data.item_type,
                 sort_order=item_data.sort_order,
                 notes=item_data.notes,
-                first_fix=item_data.first_fix or item_data.firstFix or "No"
+                first_fix=item_data.first_fix or item_data.firstFix or "No",
+                sub_order_ref=item_data.sub_order_ref or item_data.subOrderRef,
+                revision_status=item_data.revision_status or item_data.revisionStatus or "Active",
+                swap_parent_id=item_data.swap_parent_id or item_data.swapParentId,
+                swap_reason=item_data.swap_reason or item_data.swapReason
             )
             db.add(new_item)
+
+    # Automatic Sync: Push specification & pricing updates from Master Order down to child Sub-Orders
+    sub_refs = {it.sub_order_ref for it in items_data if it.sub_order_ref}
+    if sub_refs:
+        master_by_code = {it.one_one_code: it for it in items_data if it.one_one_code}
+        for ref in sub_refs:
+            sub_items = db.query(OrderItem).filter(OrderItem.order_id == ref).all()
+            for s_it in sub_items:
+                m_match = master_by_code.get(s_it.one_one_code)
+                if m_match:
+                    s_it.code = m_match.code
+                    s_it.description = m_match.description
+                    s_it.brand = m_match.brand
+                    s_it.supplier = m_match.supplier
+                    s_it.unit_cost = m_match.unit_cost
+                    s_it.unit_retail = m_match.unit_retail
+                    s_it.unit_trade = m_match.unit_trade
+                    s_it.dimming = m_match.dimming
+                    s_it.first_fix = m_match.first_fix or m_match.firstFix or 'No'
+                    s_it.floor = m_match.floor
+                    s_it.area = m_match.area
+                    db.add(s_it)
 
     db.commit()
     return {"status": "ok", "saved_count": len(items_data)}
@@ -1520,3 +1590,598 @@ def clear_order_legacy_baseline(
         raise HTTPException(status_code=500, detail=str(e))
 
 # trigger redeploy
+
+
+# ==============================================================================
+# SUB-ORDERS, REVISION AUDITS & VARIATION WORKFLOWS
+# ==============================================================================
+
+class CreateSubOrderSchema(BaseModel):
+    phase_name: str
+    items: List[Dict[str, Any]] # [ { "item_id": "...", "qty": 5, "room": "..." } ]
+    notes: Optional[str] = None
+    created_by: Optional[str] = "User"
+
+@router.post("/{po_number}/sub-orders")
+def create_sub_order(po_number: str, payload: CreateSubOrderSchema, db: Session = Depends(get_db)):
+    """
+    Creates a formal Sub-Order / Phase (e.g. Q-2026-0667-01) from the master workspace.
+    Allocates selected items or whole rooms, tags master order items with sub_order_ref,
+    and logs an authentic audit trail event.
+    """
+    master_order = find_order_by_identifier(po_number, db)
+    if not master_order:
+        raise HTTPException(status_code=404, detail=f"Master order {po_number} not found")
+
+    if master_order.is_sub_order:
+        raise HTTPException(status_code=400, detail="Cannot create a sub-order from an existing sub-order. Sub-orders must be created from the master order.")
+
+    # Determine next sub-order sequential index (-01, -02, etc.)
+    existing_subs = db.query(Order).filter(
+        (Order.parent_order_id == master_order.id) | (Order.parent_po_number == master_order.po_number)
+    ).all()
+    
+    max_idx = 0
+    for s in existing_subs:
+        if s.sub_order_index and s.sub_order_index > max_idx:
+            max_idx = s.sub_order_index
+        if s.po_number:
+            m = re.search(r'-(\d+)$', s.po_number)
+            if m:
+                try:
+                    num = int(m.group(1))
+                    if num > max_idx:
+                        max_idx = num
+                except ValueError:
+                    pass
+
+    next_idx = max_idx + 1
+    sub_po_number = f"{master_order.po_number}-{next_idx:02d}"
+    phase_clean = payload.phase_name.strip() if payload.phase_name else f"Phase {next_idx}"
+
+    base_name = master_order.quote_name or master_order.po_number
+    sub_quote_name = f"{base_name} ({phase_clean})"
+
+    sub_order = Order(
+        project_id=master_order.project_id,
+        project_key=master_order.project_key,
+        po_number=sub_po_number,
+        quote_name=sub_quote_name,
+        supplier_name=master_order.supplier_name,
+        status="Draft",
+        expected_delivery_date=master_order.expected_delivery_date,
+        parent_order_id=master_order.id,
+        parent_po_number=master_order.po_number,
+        is_sub_order=True,
+        sub_order_index=next_idx,
+        phase_name=phase_clean,
+        client_name=master_order.client_name,
+        client_company=master_order.client_company,
+        client_contact=master_order.client_contact,
+        client_phone=master_order.client_phone,
+        client_email=master_order.client_email,
+        client=master_order.client,
+        project_full_name=master_order.project_full_name,
+        project_tier=master_order.project_tier,
+        project_size=master_order.project_size,
+        electrician=master_order.electrician,
+        electrician_phone=master_order.electrician_phone,
+        contractor=master_order.contractor,
+        contractor_phone=master_order.contractor_phone,
+        interior_designer=master_order.interior_designer,
+        interior_designer_phone=master_order.interior_designer_phone,
+        one_one_rep=master_order.one_one_rep,
+        pm_name=master_order.pm_name,
+        pm_phone=master_order.pm_phone,
+        pm_email=master_order.pm_email,
+        delivery_address=master_order.delivery_address,
+        billing_details=master_order.billing_details,
+        file_source=master_order.file_source,
+        project_class=master_order.project_class,
+        division=master_order.division,
+        pf_number=master_order.pf_number,
+        discount=master_order.discount or 0.0,
+        vat_percentage=master_order.vat_percentage or 15.0,
+        order_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        notes=payload.notes or f"Sub-order created from {master_order.po_number}"
+    )
+    db.add(sub_order)
+    db.flush()
+
+    sub_total_value = 0.0
+    sub_items_count = 0
+    allocated_master_items = []
+
+    for it_req in payload.items:
+        m_item_id = str(it_req.get("item_id") or it_req.get("id"))
+        alloc_qty = int(it_req.get("qty") or it_req.get("qty_to_allocate") or 0)
+        if alloc_qty <= 0:
+            continue
+
+        master_item = db.query(OrderItem).filter(OrderItem.id == m_item_id).first()
+        if not master_item:
+            continue
+
+        if alloc_qty >= master_item.qty:
+            master_item.sub_order_ref = sub_po_number
+            db.add(master_item)
+
+            sub_item_id = f"sub_{uuid.uuid4().hex[:10]}"
+            sub_item = OrderItem(
+                id=sub_item_id,
+                order_id=sub_po_number,
+                qty=alloc_qty,
+                type=master_item.type,
+                one_one_code=master_item.one_one_code,
+                code=master_item.code,
+                description=master_item.description,
+                floor=master_item.floor,
+                area=master_item.area,
+                dimming=master_item.dimming,
+                brand=master_item.brand,
+                supplier=master_item.supplier,
+                unit_cost=master_item.unit_cost,
+                unit_trade=master_item.unit_trade,
+                unit_retail=master_item.unit_retail,
+                selection=master_item.selection,
+                stock_status=master_item.stock_status,
+                eta=master_item.eta,
+                first_fix=master_item.first_fix,
+                notes=master_item.notes,
+                sort_order=master_item.sort_order,
+                sub_order_ref=sub_po_number,
+                revision_status="Active"
+            )
+            db.add(sub_item)
+            sub_total_value += alloc_qty * float(master_item.unit_retail or 0.0)
+            sub_items_count += alloc_qty
+            allocated_master_items.append(master_item.id)
+        else:
+            remaining_qty = master_item.qty - alloc_qty
+            master_item.qty = remaining_qty
+            db.add(master_item)
+
+            split_m_id = f"spl_{uuid.uuid4().hex[:10]}"
+            split_m_item = OrderItem(
+                id=split_m_id,
+                order_id=master_order.po_number,
+                qty=alloc_qty,
+                type=master_item.type,
+                one_one_code=master_item.one_one_code,
+                code=master_item.code,
+                description=master_item.description,
+                floor=master_item.floor,
+                area=master_item.area,
+                dimming=master_item.dimming,
+                brand=master_item.brand,
+                supplier=master_item.supplier,
+                unit_cost=master_item.unit_cost,
+                unit_trade=master_item.unit_trade,
+                unit_retail=master_item.unit_retail,
+                selection=master_item.selection,
+                stock_status=master_item.stock_status,
+                eta=master_item.eta,
+                first_fix=master_item.first_fix,
+                notes=master_item.notes,
+                sort_order=(master_item.sort_order or 0) + 1,
+                sub_order_ref=sub_po_number,
+                revision_status="Active"
+            )
+            db.add(split_m_item)
+
+            sub_item_id = f"sub_{uuid.uuid4().hex[:10]}"
+            sub_item = OrderItem(
+                id=sub_item_id,
+                order_id=sub_po_number,
+                qty=alloc_qty,
+                type=master_item.type,
+                one_one_code=master_item.one_one_code,
+                code=master_item.code,
+                description=master_item.description,
+                floor=master_item.floor,
+                area=master_item.area,
+                dimming=master_item.dimming,
+                brand=master_item.brand,
+                supplier=master_item.supplier,
+                unit_cost=master_item.unit_cost,
+                unit_trade=master_item.unit_trade,
+                unit_retail=master_item.unit_retail,
+                selection=master_item.selection,
+                stock_status=master_item.stock_status,
+                eta=master_item.eta,
+                first_fix=master_item.first_fix,
+                notes=master_item.notes,
+                sort_order=master_item.sort_order,
+                sub_order_ref=sub_po_number,
+                revision_status="Active"
+            )
+            db.add(sub_item)
+            sub_total_value += alloc_qty * float(master_item.unit_retail or 0.0)
+            sub_items_count += alloc_qty
+            allocated_master_items.append(split_m_id)
+
+    sub_order.value = round(sub_total_value, 2)
+    sub_order.items_count = sub_items_count
+    sub_order.outstanding = round(sub_total_value, 2)
+    db.add(sub_order)
+
+    audit_entry = OrderAuditLog(
+        order_id=master_order.id,
+        order_po=master_order.po_number,
+        action="SUB_ORDER_CREATED",
+        previous_qty=0,
+        new_qty=sub_items_count,
+        delta_value=sub_total_value,
+        reason=f"Created sub-order {sub_po_number} ({phase_clean}) with {len(payload.items)} item lines",
+        performed_by=payload.created_by or "User",
+        metadata_json={
+            "sub_po_number": sub_po_number,
+            "phase_name": phase_clean,
+            "sub_order_value": sub_total_value,
+            "items_count": sub_items_count
+        }
+    )
+    db.add(audit_entry)
+    db.commit()
+
+    return {
+        "status": "ok",
+        "sub_po_number": sub_po_number,
+        "phase_name": phase_clean,
+        "items_allocated": len(allocated_master_items),
+        "sub_order_value": sub_total_value,
+        "sub_order_id": sub_order.id
+    }
+
+
+class ItemSwapSchema(BaseModel):
+    replacement: Dict[str, Any]
+    replacement_qty: Optional[int] = None
+    reason: str
+    performed_by: Optional[str] = "User"
+
+@router.post("/{po_number}/items/{item_id}/swap")
+def swap_order_item(po_number: str, item_id: str, payload: ItemSwapSchema, db: Session = Depends(get_db)):
+    """
+    On-Site Fitting Variation / Swap:
+    Preserves original item row with revision_status='Swapped' for clean Palladium ERP credit matching.
+    Inserts replacement item row with revision_status='Added' and records audit entry.
+    """
+    if not payload.reason or not payload.reason.strip():
+        raise HTTPException(status_code=400, detail="A reason is mandatory for item swaps and variation audits.")
+
+    item = db.query(OrderItem).filter(OrderItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Original item not found")
+
+    order = find_order_by_identifier(po_number, db)
+    if not order:
+        raise HTTPException(status_code=404, detail=f"Order {po_number} not found")
+
+    repl = payload.replacement
+    rep_qty = int(payload.replacement_qty or item.qty or 1)
+    rep_retail = float(repl.get("unit_retail") or repl.get("unitRetail") or 0.0)
+    rep_cost = float(repl.get("unit_cost") or repl.get("unitCost") or 0.0)
+    rep_code = repl.get("code") or repl.get("sku") or "SWAP-ITEM"
+    rep_1to1 = repl.get("one_one_code") or repl.get("oneToOneCode") or repl.get("one_to_one_code")
+    rep_desc = repl.get("description") or f"Replacement for {item.code or item.description}"
+    rep_brand = repl.get("brand") or item.brand
+    rep_supplier = repl.get("supplier") or item.supplier
+    rep_area = repl.get("area") or item.area
+    rep_floor = repl.get("floor") or item.floor
+    rep_first_fix = repl.get("first_fix") or repl.get("firstFix") or item.first_fix or "No"
+
+    # 1. Mark original item as Swapped
+    item.revision_status = "Swapped"
+    item.swap_reason = payload.reason.strip()
+    db.add(item)
+
+    # 2. Insert new replacement item
+    new_item_id = f"swp_{uuid.uuid4().hex[:10]}"
+    new_item = OrderItem(
+        id=new_item_id,
+        order_id=item.order_id,
+        qty=rep_qty,
+        type=item.type,
+        one_one_code=rep_1to1,
+        code=rep_code,
+        description=rep_desc,
+        floor=rep_floor,
+        area=rep_area,
+        dimming=repl.get("dimming") or item.dimming,
+        brand=rep_brand,
+        supplier=rep_supplier,
+        unit_cost=rep_cost,
+        unit_trade=float(repl.get("unit_trade") or repl.get("unitTrade") or 0.0),
+        unit_retail=rep_retail,
+        selection=repl.get("selection") or item.selection,
+        stock_status=repl.get("stock_status") or "Pending",
+        eta=repl.get("eta") or item.eta,
+        first_fix=rep_first_fix,
+        notes=f"Replacement for {item.code or item.id}. Reason: {payload.reason.strip()}",
+        sort_order=(item.sort_order or 0) + 1,
+        sub_order_ref=item.sub_order_ref,
+        revision_status="Added",
+        swap_parent_id=str(item.id),
+        swap_reason=payload.reason.strip()
+    )
+    db.add(new_item)
+
+    # 3. Recalculate order totals
+    orig_val = float(item.qty or 0) * float(item.unit_retail or 0.0)
+    new_val = rep_qty * rep_retail
+    delta_val = round(new_val - orig_val, 2)
+    order.value = round((order.value or 0.0) + delta_val, 2)
+    order.outstanding = round((order.outstanding or 0.0) + delta_val, 2)
+    db.add(order)
+
+    # 4. Record in OrderAuditLog
+    audit_entry = OrderAuditLog(
+        order_id=order.id,
+        order_po=order.po_number,
+        action="ITEM_SWAPPED",
+        item_id=str(item.id),
+        item_code=f"{item.code} ➔ {rep_code}",
+        item_description=f"Swapped '{item.description}' with '{rep_desc}'",
+        room=rep_area,
+        previous_qty=item.qty,
+        new_qty=rep_qty,
+        previous_value=orig_val,
+        new_value=new_val,
+        delta_value=delta_val,
+        reason=payload.reason.strip(),
+        performed_by=payload.performed_by or "User",
+        metadata_json={
+            "original_item_id": str(item.id),
+            "original_code": item.code,
+            "original_qty": item.qty,
+            "original_unit_retail": item.unit_retail,
+            "replacement_item_id": new_item_id,
+            "replacement_code": rep_code,
+            "replacement_qty": rep_qty,
+            "replacement_unit_retail": rep_retail,
+            "delta_value": delta_val
+        }
+    )
+    db.add(audit_entry)
+    db.commit()
+
+    return {
+        "status": "ok",
+        "original_item_id": str(item.id),
+        "replacement_item_id": new_item_id,
+        "delta_value": delta_val,
+        "new_order_value": order.value
+    }
+
+
+@router.get("/{po_number}/audit-logs")
+def get_order_audit_logs(po_number: str, db: Session = Depends(get_db)):
+    """
+    Returns full chronological audit timeline of changes, swaps, sub-orders, and notes.
+    """
+    order = find_order_by_identifier(po_number, db)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    relevant_pos = {order.po_number}
+    if order.parent_po_number:
+        relevant_pos.add(order.parent_po_number)
+    else:
+        subs = db.query(Order.po_number).filter(Order.parent_order_id == order.id).all()
+        for s in subs:
+            relevant_pos.add(s[0])
+
+    logs = db.query(OrderAuditLog).filter(
+        OrderAuditLog.order_po.in_(list(relevant_pos))
+    ).order_by(OrderAuditLog.created_at.desc()).all()
+
+    res = []
+    for l in logs:
+        res.append({
+            "id": l.id,
+            "order_id": l.order_id,
+            "order_po": l.order_po,
+            "action": l.action,
+            "item_id": l.item_id,
+            "item_code": l.item_code,
+            "item_description": l.item_description,
+            "room": l.room,
+            "previous_qty": l.previous_qty,
+            "new_qty": l.new_qty,
+            "previous_value": l.previous_value,
+            "new_value": l.new_value,
+            "delta_value": l.delta_value,
+            "reason": l.reason,
+            "performed_by": l.performed_by,
+            "metadata": l.metadata_json,
+            "created_at": l.created_at.isoformat() if l.created_at else None
+        })
+    return res
+
+
+class CreateAuditNoteSchema(BaseModel):
+    action: Optional[str] = "NOTE_ADDED"
+    reason: str
+    performed_by: Optional[str] = "User"
+    item_code: Optional[str] = None
+    room: Optional[str] = None
+
+@router.post("/{po_number}/audit-logs")
+def add_order_audit_note(po_number: str, payload: CreateAuditNoteSchema, db: Session = Depends(get_db)):
+    """
+    Records an authentic manual audit entry or client-instruction note on the order.
+    """
+    order = find_order_by_identifier(po_number, db)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    entry = OrderAuditLog(
+        order_id=order.id,
+        order_po=order.po_number,
+        action=payload.action or "NOTE_ADDED",
+        item_code=payload.item_code,
+        room=payload.room,
+        reason=payload.reason.strip(),
+        performed_by=payload.performed_by or "User"
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return {"status": "ok", "id": entry.id}
+
+
+@router.get("/{po_number}/variation-document-data")
+def get_variation_document_data(po_number: str, db: Session = Depends(get_db)):
+    """
+    Assembles clean official document structure for:
+    [Order Name] — Revision & Variation Audit Document
+    Includes: Executive Financial Summary, Itemized Changes Ledger, and Client Sign-off block.
+    """
+    order = find_order_by_identifier(po_number, db)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    all_items = db.query(OrderItem).filter(OrderItem.order_id == order.po_number).order_by(OrderItem.sort_order.asc()).all()
+
+    active_items = [it for it in all_items if getattr(it, 'revision_status', 'Active') not in ('Swapped', 'Credited')]
+    swapped_items = [it for it in all_items if getattr(it, 'revision_status', 'Active') in ('Swapped', 'Credited')]
+    added_items = [it for it in all_items if getattr(it, 'revision_status', 'Active') == 'Added']
+
+    baseline_active = [it for it in active_items if getattr(it, 'revision_status', 'Active') != 'Added']
+    original_total = sum(float(it.qty or 0) * float(it.unit_retail or 0.0) for it in baseline_active + swapped_items)
+    credits_total = sum(float(it.qty or 0) * float(it.unit_retail or 0.0) for it in swapped_items)
+    additions_total = sum(float(it.qty or 0) * float(it.unit_retail or 0.0) for it in added_items)
+    net_variation = additions_total - credits_total
+    revised_total = original_total - credits_total + additions_total
+
+    ledger = []
+    for it in swapped_items:
+        line_val = float(it.qty or 0) * float(it.unit_retail or 0.0)
+        ledger.append({
+            "id": it.id,
+            "change_type": "Credit / Swapped Out",
+            "badge_color": "error",
+            "room": it.area or "—",
+            "code": it.code or it.one_one_code or "—",
+            "description": it.description or "—",
+            "qty_delta": -int(it.qty or 0),
+            "unit_retail": float(it.unit_retail or 0.0),
+            "line_delta": -round(line_val, 2),
+            "reason": it.swap_reason or "Site change / client request",
+            "revision_status": it.revision_status
+        })
+
+    for it in added_items:
+        line_val = float(it.qty or 0) * float(it.unit_retail or 0.0)
+        ledger.append({
+            "id": it.id,
+            "change_type": "Addition / Replacement",
+            "badge_color": "success",
+            "room": it.area or "—",
+            "code": it.code or it.one_one_code or "—",
+            "description": it.description or "—",
+            "qty_delta": int(it.qty or 0),
+            "unit_retail": float(it.unit_retail or 0.0),
+            "line_delta": round(line_val, 2),
+            "reason": it.swap_reason or "Approved replacement",
+            "revision_status": it.revision_status
+        })
+
+    audit_logs = db.query(OrderAuditLog).filter(
+        OrderAuditLog.order_po == order.po_number
+    ).order_by(OrderAuditLog.created_at.desc()).limit(20).all()
+
+    paired_variations = []
+    used_added_ids = set()
+
+    for sw in swapped_items:
+        matching_add = next((ad for ad in added_items if getattr(ad, 'swap_parent_id', None) == sw.id and ad.id not in used_added_ids), None)
+        if not matching_add:
+            matching_add = next((ad for ad in added_items if ad.area == sw.area and ad.id not in used_added_ids), None)
+        
+        orig_val = float(sw.qty or 0) * float(sw.unit_retail or 0.0)
+        rep_val = float(matching_add.qty or 0) * float(matching_add.unit_retail or 0.0) if matching_add else 0.0
+        diff = rep_val - orig_val
+
+        if matching_add:
+            used_added_ids.add(matching_add.id)
+
+        paired_variations.append({
+            "room": sw.area or "General Scope",
+            "original_code": sw.code or sw.one_one_code or "—",
+            "original_desc": sw.description or "—",
+            "original_qty": int(sw.qty or 0),
+            "original_unit_retail": float(sw.unit_retail or 0.0),
+            "original_total": round(orig_val, 2),
+            "replacement_code": (matching_add.code or matching_add.one_one_code) if matching_add else "—",
+            "replacement_desc": matching_add.description if matching_add else "Credit Only (No Replacement)",
+            "replacement_qty": int(matching_add.qty or 0) if matching_add else 0,
+            "replacement_unit_retail": float(matching_add.unit_retail or 0.0) if matching_add else 0.0,
+            "replacement_total": round(rep_val, 2),
+            "line_net_diff": round(diff, 2),
+            "reason": sw.swap_reason or (matching_add.swap_reason if matching_add else "Site change / client request")
+        })
+
+    for ad in added_items:
+        if ad.id not in used_added_ids:
+            rep_val = float(ad.qty or 0) * float(ad.unit_retail or 0.0)
+            paired_variations.append({
+                "room": ad.area or "General Scope",
+                "original_code": "—",
+                "original_desc": "None (New Addition to Scope)",
+                "original_qty": 0,
+                "original_unit_retail": 0.0,
+                "original_total": 0.0,
+                "replacement_code": ad.code or ad.one_one_code or "—",
+                "replacement_desc": ad.description or "—",
+                "replacement_qty": int(ad.qty or 0),
+                "replacement_unit_retail": float(ad.unit_retail or 0.0),
+                "replacement_total": round(rep_val, 2),
+                "line_net_diff": round(rep_val, 2),
+                "reason": ad.swap_reason or "New scope addition"
+            })
+
+    audit_history = [{
+        "date": l.created_at.strftime("%d %b %Y %H:%M") if l.created_at else "—",
+        "action": l.action,
+        "description": l.item_description or l.reason,
+        "delta_value": l.delta_value,
+        "performed_by": l.performed_by
+    } for l in audit_logs]
+
+    return {
+        "paired_variations": paired_variations,
+        "order_po": order.po_number,
+        "order_name": order.quote_name or order.po_number,
+        "parent_po": order.parent_po_number,
+        "is_sub_order": bool(order.is_sub_order),
+        "phase_name": order.phase_name,
+        "document_ref": f"VAR-{order.po_number}",
+        "document_date": datetime.now(timezone.utc).strftime("%d %b %Y"),
+        "client": {
+            "name": order.client or order.client_name,
+            "company": order.client_company,
+            "contact": order.client_contact,
+            "email": order.client_email,
+            "phone": order.client_phone,
+            "address": order.delivery_address
+        },
+        "project": {
+            "name": order.project_full_name or order.project_key,
+            "pm": order.pm_name,
+            "pm_phone": order.pm_phone,
+            "pm_email": order.pm_email
+        },
+        "financial_summary": {
+            "original_order_value": round(original_total, 2),
+            "total_credits": round(credits_total, 2),
+            "total_additions": round(additions_total, 2),
+            "net_variation": round(net_variation, 2),
+            "revised_order_value": round(revised_total, 2),
+            "vat_percentage": order.vat_percentage or 15.0,
+            "revised_order_value_incl_vat": round(revised_total * (1 + ((order.vat_percentage or 15.0) / 100)), 2)
+        },
+        "itemized_ledger": ledger,
+        "audit_history": audit_history
+    }

@@ -1250,6 +1250,7 @@ export function StoreProvider({ children }) {
     projectManagers: false,
     activity_logs: false
   });
+  const [isStoreLoading, setIsStoreLoading] = React.useState(true);
 
   const getModuleName = (moduleId, fallback) => {
     const found = moduleConfig?.modules?.find(m => m.id === moduleId);
@@ -1373,6 +1374,26 @@ export function StoreProvider({ children }) {
                   }
                 });
               }
+              // Smart structural equality guard: Prevent resetting React trees on 15s poll if data is unchanged
+              if (prev && typeof prev === 'object' && Object.keys(prev).length === Object.keys(merged).length) {
+                const prevKeys = Object.keys(prev);
+                let isSame = true;
+                for (let i = 0; i < prevKeys.length; i++) {
+                  const pk = prevKeys[i];
+                  const pPrev = prev[pk];
+                  const pMerged = merged[pk];
+                  if (!pMerged) { isSame = false; break; }
+                  if ((pPrev.orders || []).length !== (pMerged.orders || []).length) { isSame = false; break; }
+                  const oSame = (pPrev.orders || []).every((o1, idx) => {
+                    const o2 = pMerged.orders[idx];
+                    return o2 && o1.id === o2.id && o1.value === o2.value && o1.status === o2.status && o1.paid === o2.paid;
+                  });
+                  if (!oSame) { isSame = false; break; }
+                }
+                if (isSame) {
+                  return prev; // Prevents whole-app re-render cycle!
+                }
+              }
               projectsRef.current = merged;
               return merged;
             });
@@ -1406,6 +1427,7 @@ export function StoreProvider({ children }) {
           setter(defaultPMs);
         }
         isLoaded.current[key] = true;
+        if (key === 'projects') setIsStoreLoading(false);
       })
       .catch(err => {
         console.error(`Error loading ${key}:`, err);
@@ -2501,6 +2523,7 @@ export function StoreProvider({ children }) {
 
   return (
     <StoreContext.Provider value={{ 
+      isStoreLoading,
       projects, 
       setProjects,
       updateProject, 

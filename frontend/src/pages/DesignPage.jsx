@@ -746,8 +746,7 @@ export default function DesignPage() {
       
       {/* HEADER BANNER */}
       {selectedFeeId === null ? (
-        <div style={{ display: 'grid', gridTemplateColumns: isSidebarCollapsed ? '1fr 50px' : '1fr 340px', gap: '24px', alignItems: 'start' }}>
-          <div style={{ minWidth: 0 }}>
+        <div style={{ width: '100%' }}>
           <div className="card" style={{ marginBottom: '16px', background: 'var(--bg-primary)' }}>
             <div className="card-body" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1020,7 +1019,6 @@ export default function DesignPage() {
               </div>
 
             </div>
-          </div>
           </div>
           <CollapsibleAlertSidebar 
             module="design" 

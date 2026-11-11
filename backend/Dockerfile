@@ -9,12 +9,15 @@ FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1
 
-# Install LibreOffice and fonts for PDF rendering
+# Install Java JRE (for JasperReports engine), LibreOffice and fonts for PDF rendering
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    default-jre-headless \
     libreoffice \
     fonts-dejavu \
     fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
+
+ENV JAVA_HOME=/usr/lib/jvm/default-java
 
 WORKDIR /app
 

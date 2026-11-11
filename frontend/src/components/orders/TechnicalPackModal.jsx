@@ -497,6 +497,18 @@ export default function TechnicalPackModal({
               }}>
                 ORDER {orderId}
               </span>
+              {orderId && /-\d{3,}-\d{1,2}$/.test(orderId) && (
+                <span style={{
+                  background: 'rgba(139, 92, 246, 0.15)',
+                  color: '#8b5cf6',
+                  fontSize: '10.5px',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  fontWeight: 700
+                }}>
+                  🔒 Phase Scope ({orderItems.length} fittings)
+                </span>
+              )}
               <span style={{
                 background: 'rgba(24, 95, 165, 0.1)',
                 color: '#185fa5',

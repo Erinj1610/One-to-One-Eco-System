@@ -1,3 +1,4 @@
+import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
@@ -844,7 +845,7 @@ export default function LogisticsPage() {
         alert(`Packing List ${doc.id} is linked to Delivery Note ${doc.deliveryNoteId}. Void the Delivery Note first to release this Packing List.`);
         return;
       }
-      if (!window.confirm(`Delete Packing List ${doc.id}?`)) return;
+      if (!(await window.otoConfirm(`Delete Packing List ${doc.id}?`))) return;
       try {
         const res = await fetch(`${API_BASE}/api/logistics/packing-list/${encodeURIComponent(doc.id)}`, {
           method: 'DELETE',
@@ -1060,8 +1061,11 @@ export default function LogisticsPage() {
         </div>
       </div>
 
-      {/* FILTER TABS & CONTROL BAR */}
-      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px', marginBottom: '18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {/* INTEGRATED LOGISTICS CARD */}
+      <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)', marginBottom: '20px' }}>
+        
+        {/* TIER 1: FILTER TABS & CONTROL BAR */}
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
             <button
@@ -1135,26 +1139,21 @@ export default function LogisticsPage() {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>PM:</span>
-            <select
-              className="form-control"
-              style={{ height: '32px', padding: '2px 8px', fontSize: '12px', background: 'var(--bg-primary)' }}
+            <SearchableFilterDropdown
               value={filterPm}
-              onChange={e => setFilterPm(e.target.value)}
-            >
-              <option value="All">All Project Managers</option>
-              {uniquePms.map(pm => (
-                <option key={pm} value={pm}>{pm}</option>
-              ))}
-            </select>
+              onChange={setFilterPm}
+              options={uniquePms.filter(p => p !== 'All')}
+              allLabel="All PMs"
+              width="140px"
+            />
           </div>
         </div>
-      </div>
+        </div>
 
-      {/* MAIN DOCUMENT LEDGER */}
-      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
-        <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-          <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <FileText size={15} style={{ color: 'var(--text-info)' }} />
+        {/* TIER 2: MAIN DOCUMENT LEDGER FULL-BLEED TABLE */}
+        <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+          <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <FileText size={14} style={{ color: 'var(--text-info)' }} />
             Logistics Documents Ledger ({sortedDocs.length})
           </span>
           <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
@@ -1169,10 +1168,10 @@ export default function LogisticsPage() {
             <span style={{ fontSize: '11px', marginTop: '4px', display: 'block' }}>Click "New Packing List" or "New Delivery Note" above to issue one.</span>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ background: 'var(--bg-primary)', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
+          <div style={{ overflowX: 'auto', maxHeight: '68vh', position: 'relative' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left', margin: 0 }}>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                <tr style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
                   {renderSortHeader('Document ID', 'id', 'left', { width: '190px' })}
                   {renderSortHeader('Type', 'type', 'left', { width: '130px' })}
                   {renderSortHeader('Project & Order', 'project', 'left', { minWidth: '190px' })}

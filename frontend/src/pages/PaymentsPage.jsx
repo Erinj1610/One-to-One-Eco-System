@@ -1,3 +1,4 @@
+import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -961,14 +962,20 @@ export default function PaymentsPage() {
         /* ============================================================ */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1 }}>
           
-          {/* FILTER PILLS & SEARCH BAR (Matching Image 2 exactly) */}
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center', 
-            flexWrap: 'wrap', 
-            gap: '10px' 
-          }}>
+          {/* INTEGRATED PAYMENTS CARD */}
+          <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+            
+            {/* TIER 1: FILTER & SEARCH TOOLBAR */}
+            <div style={{ 
+              padding: '14px 20px', 
+              borderBottom: '1px solid var(--border)', 
+              background: 'var(--bg-primary)', 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              flexWrap: 'wrap', 
+              gap: '12px' 
+            }}>
             {/* Left side: Filter Tab Pills */}
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               <button
@@ -1083,23 +1090,18 @@ export default function PaymentsPage() {
               </div>
 
               {activeFilterTab !== 'AUDIT' && (
-                <select
+                <SearchableFilterDropdown
                   value={customerFilter}
-                  onChange={(e) => setCustomerFilter(e.target.value)}
-                  className="input input-sm"
-                  style={{ height: '32px', fontSize: '11.5px', borderRadius: '6px', maxWidth: '170px' }}
-                >
-                  <option value="All Clients">All Clients</option>
-                  {uniqueCustomers.map(cust => (
-                    <option key={cust} value={cust}>{cust}</option>
-                  ))}
-                </select>
+                  onChange={setCustomerFilter}
+                  options={uniqueCustomers.filter(c => c !== 'All Clients')}
+                  allLabel="All Clients"
+                  width="160px"
+                />
               )}
             </div>
           </div>
-
-          {/* MAIN TABLE (Matching Image 2 Layout exactly) */}
-          <div className="card" style={{ borderRadius: '12px', overflow: 'hidden', padding: 0, border: '1px solid var(--border)' }}>
+            
+          {/* TIER 2: FULL-BLEED TABLE */}
             
             {activeFilterTab === 'AUDIT' ? (
               /* AUDIT TRAIL TABLE */

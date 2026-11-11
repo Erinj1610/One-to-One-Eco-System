@@ -1,4 +1,7 @@
+import EmptyStateBanner from '../components/common/EmptyStateBanner';
+import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useMemo, useEffect } from 'react';
+import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -38,7 +41,8 @@ export default function CrmPage() {
     attritionLogs, 
     logAttrition,
     addProject,
-    getModuleName
+    getModuleName,
+    isStoreLoading
   } = useStore();
   const { user, userProfile } = useAuth();
   const currentStaffName = useMemo(() => {
@@ -347,8 +351,10 @@ export default function CrmPage() {
           }
         });
 
-        // Sum scoped product orders
+        // Sum scoped product orders (filter out sub-orders to prevent double counting with master order)
         (p.orders || []).forEach(o => {
+          const isSub = o.is_sub_order === true || o.isSubOrder === true || (o.parent_po_number && String(o.parent_po_number).trim() !== String(o.id).trim()) || /-\d{3,}-\d{1,2}$/.test(String(o.id || ''));
+          if (isSub) return;
           if (matchesThisClient(p.client) || matchesThisClient(o.client) || matchesThisClient(o.clientCompany) || matchesThisClient(o.clientContact) || matchesThisClient(o.companyName)) {
             const ordVal = Number(o.value || 0);
             dynamicLtv += ordVal;
@@ -692,10 +698,12 @@ export default function CrmPage() {
           let actualMargin = p.actualMargin || 18;
           if (p.scopedDesignFees && p.scopedOrders) {
             const dfVal = p.scopedDesignFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
-            const poVal = p.scopedOrders.reduce((sum, o) => sum + (o.value || 0), 0);
+            const masterOrders = p.scopedOrders.filter(o => !o.is_sub_order && !o.isSubOrder && !/-\d{3,}-\d{1,2}$/.test(String(o.id || '')));
+            const ordsToSum = masterOrders.length > 0 ? masterOrders : p.scopedOrders;
+            const poVal = ordsToSum.reduce((sum, o) => sum + (o.value || 0), 0);
             totalValue = dfVal + poVal;
             const totalCost = p.scopedDesignFees.reduce((sum, d) => sum + (d.feeValue * (1 - (d.margin || 18)/100)), 0) +
-                              p.scopedOrders.reduce((sum, o) => sum + (o.value * 0.8), 0);
+                              ordsToSum.reduce((sum, o) => sum + (o.value * 0.8), 0);
             actualMargin = totalValue > 0 ? Math.round(((totalValue - totalCost) / totalValue) * 100) : 18;
           }
           return actualMargin;
@@ -708,8 +716,10 @@ export default function CrmPage() {
           if (p.scopedDesignFees && p.scopedOrders) {
             const dfVal = p.scopedDesignFees.reduce((sum, d) => sum + (d.feeValue || 0), 0);
             const dfPaid = p.scopedDesignFees.reduce((sum, d) => sum + (d.paid || 0), 0);
-            const poVal = p.scopedOrders.reduce((sum, o) => sum + (o.value || 0), 0);
-            const poPaid = p.scopedOrders.reduce((sum, o) => sum + (o.paid || 0), 0);
+            const masterOrders = p.scopedOrders.filter(o => !o.is_sub_order && !o.isSubOrder && !/-\d{3,}-\d{1,2}$/.test(String(o.id || '')));
+            const ordsToSum = masterOrders.length > 0 ? masterOrders : p.scopedOrders;
+            const poVal = ordsToSum.reduce((sum, o) => sum + (o.value || 0), 0);
+            const poPaid = ordsToSum.reduce((sum, o) => sum + (o.paid || 0), 0);
             totalValue = dfVal + poVal;
             totalOutstanding = Math.max(0, totalValue - (dfPaid + poPaid));
           }
@@ -801,8 +811,8 @@ export default function CrmPage() {
     }
 
     return (
-      <div className="animation-fade-in" style={{ display: 'grid', gridTemplateColumns: isSidebarCollapsed ? '1fr 50px' : '1fr 340px', gap: '24px', alignItems: 'start' }}>
-        <div style={{ minWidth: 0, position: 'relative' }}>
+      <div className="animation-fade-in" style={{ width: '100%' }}>
+        <div style={{ width: '100%', position: 'relative' }}>
         {/* Success Toasts container */}
         <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {toasts.map(t => (
@@ -1009,9 +1019,13 @@ export default function CrmPage() {
         <div className="crm-grid" style={{ marginTop: '20px' }}>
           {/* Main List */}
           <div>
-            <div className="card">
-              <div className="card-head" style={{ background: 'none', borderBottom: 'none', flexWrap: 'wrap', gap: '10px' }}>
-                <div className="card-title">Client directory database</div>
+            <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+              
+              {/* TIER 1: TOP FILTER TOOLBAR */}
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)', letterSpacing: '0.02em' }}>
+                  Client Directory Database
+                </div>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                   {activeKpiFilter && (
                     <button 
@@ -1022,36 +1036,35 @@ export default function CrmPage() {
                       Clear Metric Filter ({activeKpiFilter})
                     </button>
                   )}
-                  <select
-                    className="form-control"
-                    style={{ width: '145px', fontSize: '12px', padding: '5px 8px' }}
+                  <SearchableFilterDropdown
                     value={filterType}
-                    onChange={e => setFilterType(e.target.value)}
-                  >
-                    <option value="All">All Categories</option>
-                    {clientTypes.map(t => (
-                      <option key={t.id || t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </select>
+                    onChange={setFilterType}
+                    options={clientTypes.map(t => ({ value: t.value, label: t.label }))}
+                    allLabel="All Categories"
+                    width="150px"
+                  />
                   <div style={{ position: 'relative' }}>
                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-                    <input className="form-control" style={{ width: '220px', paddingLeft: '32px' }} placeholder="Search clients or projects..." value={search} onChange={e => setSearch(e.target.value)} />
+                    <input type="search" className="form-control" style={{ width: '220px', paddingLeft: '32px' }} placeholder="Search clients or projects..." value={search} onChange={e => setSearch(e.target.value)} />
                   </div>
                   <button className="btn btn-primary" onClick={() => setShowModal(true)}><Plus size={14} /> New Contact</button>
                 </div>
               </div>
-              <table className="table" style={{ fontSize: '13px' }}>
-                <thead>
-                  <tr>
-                    <th>Client Name</th>
-                    <th>Projects (Lifetime)</th>
-                    <th>Lifetime Revenue</th>
-                    <th>Status</th>
-                    <th>Current Project</th>
-                    <th>Last Completed Project</th>
-                    <th>Last Completed Date</th>
-                  </tr>
-                </thead>
+
+              {/* TIER 2: FULL-BLEED LEDGER TABLE */}
+              <div style={{ overflowX: 'auto', maxHeight: '68vh', position: 'relative' }}>
+                <table className="table" style={{ margin: 0, width: '100%', fontSize: '12.5px', borderCollapse: 'collapse' }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                    <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Client Name</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap', textAlign: 'center' }}>Projects (Lifetime)</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Lifetime Revenue</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Status</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Current Project</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Last Completed Project</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Last Completed Date</th>
+                    </tr>
+                  </thead>
                 <tbody>
                   {directoryDisplayList.map(c => (
                     <tr key={c.id} className="clickable hover-row" onClick={() => setSelectedClient(c)}>
@@ -1104,18 +1117,29 @@ export default function CrmPage() {
                       <td>{c.lastCompletedProjectDate !== '—' ? new Date(c.lastCompletedProjectDate).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
                     </tr>
                   ))}
-                  {directoryDisplayList.length === 0 && (
+                  {isStoreLoading && (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
-                        No clients match the selected filters.
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '48px' }}>
+                        <OneToOneLoader size="lg" text="Loading client directory..." />
                       </td>
                     </tr>
+                  )}
+                  {!isStoreLoading && directoryDisplayList.length === 0 && (
+                    <EmptyStateBanner
+                      colSpan={7}
+                      title="No clients found in directory"
+                      subtitle="No client accounts match your current search query or active tags."
+                      onClear={() => { setSearch(''); }}
+                      clearLabel="Clear search"
+                    />
                   )}
                 </tbody>
               </table>
 
-              {/* View All / Full List toggle */}
-              <div style={{ padding: '12px 16px', borderTop: '0.5px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              </div>
+
+              {/* TIER 3: INTEGRATED FOOTER */}
+              <div style={{ padding: '11px 20px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
                   Showing {directoryDisplayList.length} of {kpiFilteredClients.length} clients
                 </span>
@@ -1716,10 +1740,13 @@ export default function CrmPage() {
                    let totalOutstanding = 0;
                    let actualMargin = p.actualMargin || 18;
 
-                   if (p.scopedOrders && p.scopedOrders.length > 0) {
-                      const totalOrderVal = p.scopedOrders.reduce((sum, o) => sum + (o.value || 0), 0);
+                   const pMasterOrders = (p.scopedOrders || []).filter(o => !o.is_sub_order && !o.isSubOrder && !/-\d{3,}-\d{1,2}$/.test(String(o.id || '')));
+                   const pOrdsToSum = pMasterOrders.length > 0 ? pMasterOrders : (p.scopedOrders || []);
+
+                   if (pOrdsToSum && pOrdsToSum.length > 0) {
+                      const totalOrderVal = pOrdsToSum.reduce((sum, o) => sum + (o.value || 0), 0);
                       if (totalOrderVal > 0) {
-                        const orderCost = p.scopedOrders.reduce((sum, o) => {
+                        const orderCost = pOrdsToSum.reduce((sum, o) => {
                           return sum + (o.costValue !== undefined ? o.costValue : (o.value * 0.8));
                         }, 0);
                         actualMargin = Math.round(((totalOrderVal - orderCost) / totalOrderVal) * 100);
@@ -1733,8 +1760,8 @@ export default function CrmPage() {
                    if (p.scopedDesignFees || p.scopedOrders) {
                      const dfVal = (p.scopedDesignFees || []).reduce((sum, d) => sum + (d.feeValue || 0), 0);
                      const dfPaid = (p.scopedDesignFees || []).reduce((sum, d) => sum + (d.paid || 0), 0);
-                     const poVal = (p.scopedOrders || []).reduce((sum, o) => sum + (o.value || 0), 0);
-                     const poPaid = (p.scopedOrders || []).reduce((sum, o) => sum + (o.paid || 0), 0);
+                     const poVal = pOrdsToSum.reduce((sum, o) => sum + (o.value || 0), 0);
+                     const poPaid = pOrdsToSum.reduce((sum, o) => sum + (o.paid || 0), 0);
 
                      totalValue = dfVal + poVal;
                      totalPaid = dfPaid + poPaid;
@@ -1912,7 +1939,7 @@ export default function CrmPage() {
           };
 
           const handleDeleteActivity = async (entry) => {
-            if (!window.confirm('Delete this interaction entry?')) return;
+            if (!(await window.otoConfirm('Delete this interaction entry?'))) return;
             const updated = clientActivities.filter(item => item.id !== entry.id);
             await persistActivities(updated);
             showToast('Interaction removed');
@@ -2226,7 +2253,9 @@ export default function CrmPage() {
                 designPaid += fp;
                 designOut += fo;
               });
-              const ords = p.scopedOrders || p.orders || [];
+              const rawOrds = p.scopedOrders || p.orders || [];
+              const masterOrds = rawOrds.filter(ord => !ord.is_sub_order && !ord.isSubOrder && !/-\d{3,}-\d{1,2}$/.test(String(ord.id || '')));
+              const ords = masterOrds.length > 0 ? masterOrds : rawOrds;
               ords.forEach(ord => {
                 const ov = Number(ord.value || 0);
                 const op = Number(ord.paid || 0);
@@ -2594,7 +2623,7 @@ export default function CrmPage() {
               className="btn btn-ghost"
               style={{ color: 'var(--text-danger)', display: 'flex', alignItems: 'center', gap: '6px' }}
               onClick={async () => {
-                if (!window.confirm(`Are you sure you want to delete "${currentContact.name}"?`)) return;
+                if (!(await window.otoConfirm(`Are you sure you want to delete "${currentContact.name}"?`))) return;
                 if (deleteClient) {
                   await deleteClient(selectedClient.id);
                 }
