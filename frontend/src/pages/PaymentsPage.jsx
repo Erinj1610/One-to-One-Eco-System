@@ -642,22 +642,25 @@ export default function PaymentsPage() {
         display: 'flex', 
         justifyContent: 'space-between', 
         alignItems: 'center', 
-        marginBottom: '16px', 
+        marginBottom: '20px', 
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '16px'
       }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-            <span className="badge b-info" style={{ textTransform: 'uppercase', fontSize: '9.5px', fontWeight: 700, letterSpacing: '0.5px' }}>
-              {getModuleName('payments', 'Customer Payments')} Suite
+            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>
+              {getModuleName('payments', 'Customer Payments')} SUITE
             </span>
-            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Live Read-Only Feed from Palladium ERP</span>
+            <span style={{ color: '#cbd5e1' }}>•</span>
+            <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>
+              Live Read-Only Feed from Palladium ERP
+            </span>
           </div>
-          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <CreditCard size={22} style={{ color: '#3b82f6' }} />
+          <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <CreditCard size={22} style={{ color: '#0f172a' }} />
             {selectedDocument ? (
               <span>
-                Receipt Workspace: <span style={{ fontFamily: 'monospace', color: '#3b82f6' }}>{selectedDocument.receipt_no}</span>
+                Receipt Workspace: <span style={{ fontFamily: 'monospace', color: '#0f172a' }}>{selectedDocument.receipt_no}</span>
               </span>
             ) : (
               'Customer Payments & Order Allocation Hub'
@@ -669,8 +672,21 @@ export default function PaymentsPage() {
           {selectedDocument && (
             <button
               onClick={() => setSelectedDocument(null)}
-              className="btn btn-sm btn-ghost"
-              style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '32px', fontWeight: 600 }}
+              style={{ 
+                border: '1px solid #cbd5e1', 
+                background: '#ffffff',
+                color: '#0f172a',
+                display: 'inline-flex', 
+                alignItems: 'center', 
+                gap: '6px', 
+                fontSize: '12.5px', 
+                height: '36px', 
+                padding: '0 14px',
+                borderRadius: '8px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+              }}
             >
               <ArrowLeft size={14} /> Back to All Receipts
             </button>
@@ -679,86 +695,89 @@ export default function PaymentsPage() {
           <button
             onClick={handleTriggerMasterSync}
             disabled={isSyncingPalladium}
-            className="btn btn-sm"
             title="Ingest live customer receipts from Palladium ERP (tblCustPay)"
             style={{ 
-              border: '1px solid #10b981', 
-              color: '#10b981', 
-              background: 'rgba(16, 185, 129, 0.08)', 
+              border: '1px solid #cbd5e1', 
+              color: '#0f172a', 
+              background: '#f8fafc', 
               display: 'inline-flex', 
               alignItems: 'center', 
               gap: '6px', 
-              fontSize: '12px', 
-              height: '32px',
-              fontWeight: 600
+              fontSize: '12.5px', 
+              height: '36px', 
+              padding: '0 14px',
+              borderRadius: '8px',
+              fontWeight: 600,
+              cursor: isSyncingPalladium ? 'not-allowed' : 'pointer',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
             }}
           >
             <RefreshCw size={13} className={isSyncingPalladium ? 'animate-spin' : ''} />
-            {isSyncingPalladium ? 'Syncing...' : 'Sync Palladium'}
+            <span>{isSyncingPalladium ? 'Syncing...' : 'Sync Palladium'}</span>
           </button>
         </div>
       </div>
 
-      {/* TOP 4 KPI CARDS (Matching Purchasing/Receiving) */}
+      {/* TOP 4 KPI CARDS (Architectural Studio Cards) */}
       {!selectedDocument && (
         <div style={{ 
           display: 'grid', 
           gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', 
-          gap: '12px', 
-          marginBottom: '16px' 
+          gap: '16px', 
+          marginBottom: '20px' 
         }}>
-          {/* CARD 1: NEEDS ALLOCATION (AMBER ALERT) */}
+          {/* CARD 1: NEEDS ALLOCATION */}
           <div 
             onClick={() => setActiveFilterTab('NEEDS_ALLOCATION')}
-            className="card" 
             style={{ 
-              padding: '14px 18px', 
+              padding: '16px 20px', 
               borderRadius: '12px',
-              border: activeFilterTab === 'NEEDS_ALLOCATION' ? '1.5px solid #f59e0b' : '1px solid rgba(245, 158, 11, 0.25)',
-              background: activeFilterTab === 'NEEDS_ALLOCATION' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.04)',
+              border: activeFilterTab === 'NEEDS_ALLOCATION' ? '2px solid #0f172a' : '1px solid #e2e8f0',
+              background: '#ffffff',
               cursor: 'pointer',
-              transition: 'all 0.2s ease'
+              transition: 'all 0.15s ease',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                🚨 Needs Allocation
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', color: '#b45309', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Needs Allocation
               </span>
-              <span style={{ background: '#f59e0b', color: '#000', fontSize: '9px', fontWeight: 800, padding: '1px 6px', borderRadius: '10px' }}>
+              <span style={{ background: '#fef3c7', color: '#b45309', fontSize: '9px', fontWeight: 800, padding: '1px 6px', borderRadius: '4px' }}>
                 ACTION
               </span>
             </div>
-            <div style={{ fontSize: '26px', fontWeight: 800, color: '#f59e0b', marginTop: '4px', lineHeight: 1.1 }}>
-              {(paymentsSummary.unallocated_count || 0).toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500 }}>docs</span>
+            <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', marginTop: '6px', fontFamily: 'monospace' }}>
+              {(paymentsSummary.unallocated_count || 0).toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}>docs</span>
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Receipts with unallocated balance (R {(paymentsSummary.total_amount_unallocated || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })})
+            <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
+              Unallocated balance: <strong style={{ color: '#0f172a' }}>R {(paymentsSummary.total_amount_unallocated || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
             </div>
           </div>
 
           {/* CARD 2: PARTIALLY ALLOCATED */}
           <div 
             onClick={() => setActiveFilterTab('PARTIAL')}
-            className="card" 
             style={{ 
-              padding: '14px 18px', 
+              padding: '16px 20px', 
               borderRadius: '12px',
-              border: activeFilterTab === 'PARTIAL' ? '1.5px solid #3b82f6' : '1px solid rgba(59, 130, 246, 0.25)',
-              background: activeFilterTab === 'PARTIAL' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.04)',
+              border: activeFilterTab === 'PARTIAL' ? '2px solid #0f172a' : '1px solid #e2e8f0',
+              background: '#ffffff',
               cursor: 'pointer',
-              transition: 'all 0.2s ease'
+              transition: 'all 0.15s ease',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: '11px', color: '#3b82f6', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                ⏳ Partially Allocated
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', color: '#0369a1', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Partially Allocated
               </span>
-              <Clock size={14} color="#3b82f6" />
+              <Clock size={14} color="#0369a1" />
             </div>
-            <div style={{ fontSize: '26px', fontWeight: 800, color: '#3b82f6', marginTop: '4px', lineHeight: 1.1 }}>
-              {(paymentsSummary.partially_allocated_count || 0).toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500 }}>docs</span>
+            <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', marginTop: '6px', fontFamily: 'monospace' }}>
+              {(paymentsSummary.partially_allocated_count || 0).toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}>docs</span>
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+            <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
               Receipts partially split across project orders
             </div>
           </div>
@@ -766,54 +785,54 @@ export default function PaymentsPage() {
           {/* CARD 3: FULLY ALLOCATED */}
           <div 
             onClick={() => setActiveFilterTab('FULLY_ALLOCATED')}
-            className="card" 
             style={{ 
-              padding: '14px 18px', 
+              padding: '16px 20px', 
               borderRadius: '12px',
-              border: activeFilterTab === 'FULLY_ALLOCATED' ? '1.5px solid #10b981' : '1px solid rgba(16, 185, 129, 0.25)',
-              background: activeFilterTab === 'FULLY_ALLOCATED' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.04)',
+              border: activeFilterTab === 'FULLY_ALLOCATED' ? '2px solid #0f172a' : '1px solid #e2e8f0',
+              background: '#ffffff',
               cursor: 'pointer',
-              transition: 'all 0.2s ease'
+              transition: 'all 0.15s ease',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                ✅ Fully Allocated
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', color: '#047857', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Fully Allocated
               </span>
-              <CheckCircle2 size={14} color="#10b981" />
+              <CheckCircle2 size={14} color="#047857" />
             </div>
-            <div style={{ fontSize: '26px', fontWeight: 800, color: '#10b981', marginTop: '4px', lineHeight: 1.1 }}>
-              {(paymentsSummary.fully_allocated_count || 0).toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500 }}>docs</span>
+            <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', marginTop: '6px', fontFamily: 'monospace' }}>
+              {(paymentsSummary.fully_allocated_count || 0).toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}>docs</span>
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              100% matched to project orders (R {(paymentsSummary.total_amount_allocated || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })})
+            <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
+              100% matched: <strong style={{ color: '#047857' }}>R {(paymentsSummary.total_amount_allocated || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
             </div>
           </div>
 
           {/* CARD 4: TOTAL VOLUME */}
           <div 
             onClick={() => setActiveFilterTab('ALL')}
-            className="card" 
             style={{ 
-              padding: '14px 18px', 
+              padding: '16px 20px', 
               borderRadius: '12px',
-              border: activeFilterTab === 'ALL' ? '1.5px solid var(--text-tertiary)' : '1px solid var(--border)',
-              background: 'var(--bg-secondary)',
+              border: activeFilterTab === 'ALL' ? '2px solid #0f172a' : '1px solid #e2e8f0',
+              background: '#ffffff',
               cursor: 'pointer',
-              transition: 'all 0.2s ease'
+              transition: 'all 0.15s ease',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                📦 Total ERP Receipts
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Total ERP Receipts
               </span>
-              <Box size={14} color="var(--text-tertiary)" />
+              <Box size={14} color="#64748b" />
             </div>
-            <div style={{ fontSize: '26px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px', lineHeight: 1.1 }}>
+            <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', marginTop: '6px', fontFamily: 'monospace' }}>
               {(paymentsSummary.total_payments_count || 0).toLocaleString()}
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Totaling R {(paymentsSummary.total_amount_synced || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
+              Totaling <strong style={{ color: '#0f172a' }}>R {(paymentsSummary.total_amount_synced || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
             </div>
           </div>
         </div>
@@ -826,63 +845,75 @@ export default function PaymentsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1 }}>
           
           {/* Receipt Header Card */}
-          <div className="card" style={{ padding: '16px 20px', borderRadius: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ padding: '20px 24px', borderRadius: '14px', background: '#ffffff', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                   <span style={{ 
                     padding: '3px 8px', 
                     borderRadius: '6px', 
                     fontSize: '11px', 
                     fontWeight: 700,
-                    background: 'rgba(16, 185, 129, 0.12)',
-                    color: '#10b981',
-                    border: '1px solid rgba(16, 185, 129, 0.3)'
+                    background: '#f8fafc',
+                    color: '#0f172a',
+                    border: '1px solid #cbd5e1'
                   }}>
                     Customer Receipt
                   </span>
-                  <span style={{ fontSize: '18px', fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
+                  <span style={{ fontSize: '20px', fontWeight: 800, fontFamily: 'monospace', color: '#0f172a' }}>
                     {selectedDocument.receipt_no}
                   </span>
                 </div>
                 
-                <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
-                  <div>Client: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.customer_name} ({selectedDocument.customer_code})</strong></div>
-                  <div>Date: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.payment_date || '—'}</strong></div>
-                  <div>Method: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.payment_method || 'EFT'}</strong></div>
+                <div style={{ display: 'flex', gap: '20px', fontSize: '12.5px', color: '#64748b', flexWrap: 'wrap' }}>
+                  <div>Client: <strong style={{ color: '#0f172a' }}>{selectedDocument.customer_name} ({selectedDocument.customer_code})</strong></div>
+                  <div>Date: <strong style={{ color: '#0f172a' }}>{selectedDocument.payment_date || '—'}</strong></div>
+                  <div>Method: <strong style={{ color: '#0f172a' }}>{selectedDocument.payment_method || 'EFT'}</strong></div>
                   {selectedDocument.reference && (
-                    <div>Ref/Comment: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.reference}</strong></div>
+                    <div>Ref/Comment: <strong style={{ color: '#0f172a' }}>{selectedDocument.reference}</strong></div>
                   )}
                 </div>
               </div>
 
               {/* Status Badge & Value Summary */}
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace' }}>
                   R {selectedDocument.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                  Allocated: <strong style={{ color: '#10b981' }}>R {selectedDocument.allocated_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong> | Remaining: <strong style={{ color: '#f59e0b' }}>R {selectedDocument.remaining_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
+                  Allocated: <strong style={{ color: '#047857' }}>R {selectedDocument.allocated_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong> | Remaining: <strong style={{ color: '#b45309' }}>R {selectedDocument.remaining_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Existing Allocations on this Receipt */}
-          <div className="card" style={{ padding: '20px', borderRadius: '12px' }}>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Layers size={16} color="#3b82f6" />
+          <div style={{ padding: '22px 24px', borderRadius: '14px', background: '#ffffff', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '15px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', color: '#0f172a' }}>
+              <Layers size={16} color="#64748b" />
               Active Allocations for this Receipt ({selectedDocument.allocations?.length || 0})
             </h3>
 
             {(!selectedDocument.allocations || selectedDocument.allocations.length === 0) ? (
-              <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
-                <Receipt size={28} style={{ margin: '0 auto 8px auto', opacity: 0.5 }} />
-                <div style={{ fontSize: '13px', fontWeight: 600 }}>This receipt is not yet allocated to any project order.</div>
+              <div style={{ padding: '40px 20px', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '10px', border: '1px dashed #cbd5e1' }}>
+                <Receipt size={32} style={{ margin: '0 auto 10px auto', opacity: 0.4 }} />
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>This receipt is not yet allocated to any project order.</div>
                 <button
                   onClick={() => handleOpenAllocModal(selectedDocument)}
-                  className="btn btn-sm btn-primary"
-                  style={{ marginTop: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  style={{ 
+                    marginTop: '14px', 
+                    display: 'inline-flex', 
+                    alignItems: 'center', 
+                    gap: '6px',
+                    padding: '8px 18px',
+                    borderRadius: '8px',
+                    background: '#0f172a',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: '12.5px',
+                    cursor: 'pointer'
+                  }}
                 >
                   <PlusCircle size={14} /> Allocate to an Order Now
                 </button>
@@ -945,8 +976,20 @@ export default function PaymentsPage() {
               <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
                 <button
                   onClick={() => handleOpenAllocModal(selectedDocument)}
-                  className="btn btn-sm btn-primary"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  style={{ 
+                    display: 'inline-flex', 
+                    alignItems: 'center', 
+                    gap: '6px',
+                    padding: '8px 18px',
+                    borderRadius: '8px',
+                    background: '#0f172a',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: '12.5px',
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                  }}
                 >
                   <PlusCircle size={14} /> Allocate Remaining R {selectedDocument.remaining_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </button>
@@ -963,13 +1006,13 @@ export default function PaymentsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1 }}>
           
           {/* INTEGRATED PAYMENTS CARD */}
-          <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+          <div style={{ border: '1px solid #e2e8f0', borderRadius: '14px', overflow: 'hidden', background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
             
             {/* TIER 1: FILTER & SEARCH TOOLBAR */}
             <div style={{ 
-              padding: '14px 20px', 
-              borderBottom: '1px solid var(--border)', 
-              background: 'var(--bg-primary)', 
+              padding: '16px 20px', 
+              borderBottom: '1px solid #e2e8f0', 
+              background: '#ffffff', 
               display: 'flex', 
               justifyContent: 'space-between', 
               alignItems: 'center', 
@@ -1106,9 +1149,9 @@ export default function PaymentsPage() {
             {activeFilterTab === 'AUDIT' ? (
               /* AUDIT TRAIL TABLE */
               <div style={{ overflowX: 'auto' }}>
-                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                   <thead>
-                    <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', fontSize: '10.5px', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
                       <th onClick={() => handleAuditSort('receipt_no')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
                         Document # {auditSortConfig.key === 'receipt_no' ? (auditSortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                       </th>
@@ -1202,9 +1245,9 @@ export default function PaymentsPage() {
             ) : (
               /* STANDARD RECEIPTS TABLE (Matching Image 2) */
               <div style={{ overflowX: 'auto' }}>
-                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
                   <thead>
-                    <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', textTransform: 'uppercase', fontSize: '10.5px', letterSpacing: '0.5px', color: 'var(--text-secondary)' }}>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
                       <th onClick={() => handleSort('receipt_no')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
                         DOCUMENT # {sortConfig.key === 'receipt_no' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                       </th>
@@ -1347,21 +1390,23 @@ export default function PaymentsPage() {
                             <td style={{ padding: '12px 16px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={() => handleOpenAllocModal(p)}
-                                className="btn btn-sm btn-primary"
                                 style={{
-                                  background: '#3b82f6',
-                                  color: '#fff',
+                                  background: '#0f172a',
+                                  color: '#ffffff',
+                                  border: 'none',
                                   display: 'inline-flex',
                                   alignItems: 'center',
                                   gap: '6px',
                                   fontSize: '11.5px',
-                                  fontWeight: 600,
-                                  padding: '5px 12px',
-                                  borderRadius: '6px'
+                                  fontWeight: 700,
+                                  padding: '6px 14px',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
                                 }}
                               >
                                 <ExternalLink size={13} />
-                                Allocate
+                                <span>Allocate</span>
                               </button>
 
                               <button
@@ -1438,25 +1483,35 @@ export default function PaymentsPage() {
           }}>
             {/* Modal Header */}
             <div style={{
-              padding: '16px 20px',
-              borderBottom: '1px solid var(--border)',
+              padding: '18px 24px',
+              borderBottom: '1px solid #e2e8f0',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              background: 'var(--bg-secondary)'
+              background: '#f8fafc'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <CreditCard size={18} color="#3b82f6" />
-                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Allocate Receipt: <span style={{ fontFamily: 'monospace', color: '#3b82f6' }}>{allocTargetItem.receipt_no}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <CreditCard size={18} color="#0f172a" />
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>
+                  Allocate Receipt: <span style={{ fontFamily: 'monospace', color: '#0f172a' }}>{allocTargetItem.receipt_no}</span>
                 </h3>
               </div>
               <button
                 onClick={() => setAllocModalOpen(false)}
-                className="btn btn-sm btn-ghost"
-                style={{ padding: '4px', borderRadius: '4px' }}
+                style={{ 
+                  background: '#ffffff', 
+                  border: '1px solid #cbd5e1', 
+                  width: '30px', 
+                  height: '30px', 
+                  borderRadius: '50%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: '#64748b'
+                }}
               >
-                <X size={18} />
+                <X size={16} />
               </button>
             </div>
 
@@ -1465,30 +1520,30 @@ export default function PaymentsPage() {
               
               {/* Receipt Summary Info Banner */}
               <div style={{
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border)',
-                borderRadius: '8px',
-                padding: '12px 16px',
-                fontSize: '12px',
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '10px',
+                padding: '14px 18px',
+                fontSize: '12.5px',
                 display: 'grid',
                 gridTemplateColumns: '1fr 1fr',
-                gap: '8px'
+                gap: '10px'
               }}>
                 <div>
-                  <span style={{ color: 'var(--text-secondary)' }}>Client:</span>{' '}
-                  <strong style={{ color: 'var(--text-primary)' }}>{allocTargetItem.customer_name}</strong>
+                  <span style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', fontWeight: 600 }}>Client:</span>{' '}
+                  <div style={{ color: '#0f172a', fontWeight: 800 }}>{allocTargetItem.customer_name}</div>
                 </div>
                 <div>
-                  <span style={{ color: 'var(--text-secondary)' }}>Date:</span>{' '}
-                  <strong style={{ color: 'var(--text-primary)' }}>{allocTargetItem.payment_date || '—'}</strong>
+                  <span style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', fontWeight: 600 }}>Date:</span>{' '}
+                  <div style={{ color: '#0f172a', fontWeight: 700 }}>{allocTargetItem.payment_date || '—'}</div>
                 </div>
                 <div>
-                  <span style={{ color: 'var(--text-secondary)' }}>Total Value:</span>{' '}
-                  <strong style={{ color: 'var(--text-primary)' }}>R {allocTargetItem.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                  <span style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', fontWeight: 600 }}>Total Value:</span>{' '}
+                  <div style={{ color: '#0f172a', fontWeight: 800, fontFamily: 'monospace' }}>R {allocTargetItem.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
                 </div>
                 <div>
-                  <span style={{ color: 'var(--text-secondary)' }}>Available Pool:</span>{' '}
-                  <strong style={{ color: '#f59e0b' }}>R {(allocTargetItem.remaining_amount || allocTargetItem.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                  <span style={{ color: '#64748b', fontSize: '11px', textTransform: 'uppercase', fontWeight: 600 }}>Available Pool:</span>{' '}
+                  <div style={{ color: '#b45309', fontWeight: 800, fontFamily: 'monospace' }}>R {(allocTargetItem.remaining_amount || allocTargetItem.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
                 </div>
               </div>
 
@@ -1895,8 +1950,7 @@ export default function PaymentsPage() {
                   <button
                     type="button"
                     onClick={() => setAllocModalOpen(false)}
-                    className="btn btn-sm btn-ghost"
-                    style={{ border: '1px solid var(--border)' }}
+                    style={{ border: '1px solid #cbd5e1', background: '#ffffff', color: '#475569', borderRadius: '8px', padding: '8px 16px', fontSize: '12.5px', fontWeight: 600, cursor: 'pointer' }}
                   >
                     Cancel
                   </button>
@@ -1904,19 +1958,24 @@ export default function PaymentsPage() {
                   <button
                     type="submit"
                     disabled={isSavingAlloc || (!selectedCandidateKey && !manualOrderId)}
-                    className="btn btn-sm btn-primary"
                     style={{
-                      background: '#3b82f6',
-                      color: '#fff',
-                      fontWeight: 700,
-                      padding: '6px 18px',
+                      background: '#0f172a',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '8px 20px',
+                      fontSize: '12.5px',
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '6px'
+                      gap: '6px',
+                      fontWeight: 700,
+                      cursor: (isSavingAlloc || (!selectedCandidateKey && !manualOrderId)) ? 'not-allowed' : 'pointer',
+                      opacity: (isSavingAlloc || (!selectedCandidateKey && !manualOrderId)) ? 0.5 : 1,
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
                     }}
                   >
                     {isSavingAlloc && <RefreshCw size={13} className="animate-spin" />}
-                    {isSavingAlloc ? 'Allocating...' : 'Confirm Allocation'}
+                    <span>{isSavingAlloc ? 'Allocating...' : 'Confirm Allocation'}</span>
                   </button>
                 </div>
               </div>
