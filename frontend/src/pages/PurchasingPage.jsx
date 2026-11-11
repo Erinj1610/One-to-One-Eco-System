@@ -2210,6 +2210,11 @@ export default function PurchasingPage() {
                         Ordered Qty{renderLineSortIcon('ordered_qty')}
                       </div>
                     </th>
+                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('eta')}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                        ETA{renderLineSortIcon('eta')}
+                      </div>
+                    </th>
                     <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('allocated_qty')}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                         Allocated{renderLineSortIcon('allocated_qty')}
@@ -2282,6 +2287,24 @@ export default function PurchasingPage() {
                           {/* Ordered Qty */}
                           <td style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600 }}>
                             {line.total_qty} <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{line.item_unit}</span>
+                          </td>
+
+                          {/* Supplier ETA */}
+                          <td style={{ padding: '10px 10px', textAlign: 'center', fontSize: '11px', fontWeight: 600 }}>
+                            {line.eta || line.order_required_date ? (
+                              <span style={{ 
+                                background: 'rgba(59, 130, 246, 0.08)', 
+                                color: 'var(--text-info)', 
+                                padding: '2px 6px', 
+                                borderRadius: '4px',
+                                fontFamily: 'monospace',
+                                border: '1px solid rgba(59, 130, 246, 0.2)'
+                              }}>
+                                {line.eta || line.order_required_date}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--text-tertiary)' }}>-</span>
+                            )}
                           </td>
 
                           {/* Allocated Qty */}

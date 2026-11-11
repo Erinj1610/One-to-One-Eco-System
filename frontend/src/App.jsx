@@ -40,6 +40,7 @@ const DesignFeePage = lazyWithRetry(() => import('./pages/DesignFeePage'));
 const DesignPage = lazyWithRetry(() => import('./pages/DesignPage'));
 const TemplateEditor = lazyWithRetry(() => import('./pages/admin/TemplateEditor'));
 const SalesTracker = lazyWithRetry(() => import('./pages/SalesTracker'));
+const DebtorsForecastHub = lazyWithRetry(() => import('./pages/DebtorsForecastHub'));
 const MyWorkspace = lazyWithRetry(() => import('./pages/MyWorkspace'));
 
 const CrmPage = lazyWithRetry(() => import('./pages/CrmPage'));
@@ -132,6 +133,7 @@ function AppInner({ devBypass, setDevBypass }) {
             <Route path="crm" element={<PermissionRoute module="CRM"><CrmPage /></PermissionRoute>} />
             <Route path="pipeline" element={<PermissionRoute module="Pipeline"><PipelinePage /></PermissionRoute>} />
             <Route path="sales-tracker" element={<PermissionRoute module="Pipeline"><SalesTracker /></PermissionRoute>} />
+            <Route path="debtors-hub" element={<PermissionRoute module="Pipeline"><DebtorsForecastHub /></PermissionRoute>} />
             <Route path="time" element={<PermissionRoute module="Time tracking"><TimePage /></PermissionRoute>} />
             <Route path="products" element={<PermissionRoute module="Products"><ProductsPage /></PermissionRoute>} />
             <Route path="boq" element={<PermissionRoute module="BOQ Maker"><BoqPage /></PermissionRoute>} />

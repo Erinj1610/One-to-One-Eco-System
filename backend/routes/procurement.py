@@ -798,6 +798,8 @@ def get_document_details(
                     "allocated_qty": round(line_allocated, 2),
                     "unallocated_qty": round(rem_qty, 2),
                     "allocation_status": l_status,
+                    "order_required_date": r.order_required_date.isoformat().split("T")[0] if r.order_required_date else None,
+                    "eta": r.order_required_date.isoformat().split("T")[0] if r.order_required_date else None,
                     "reference": r.reference or None,
                     "allocations": active_allocs
                 })
@@ -837,6 +839,8 @@ def get_document_details(
                     "allocated_qty": round(line_allocated, 2),
                     "unallocated_qty": round(rem_qty, 2),
                     "allocation_status": l_status,
+                    "order_required_date": r.order_required_date.isoformat().split("T")[0] if r.order_required_date else None,
+                    "eta": r.order_required_date.isoformat().split("T")[0] if r.order_required_date else None,
                     "reference": r.reference or None,
                     "allocations": active_allocs
                 })

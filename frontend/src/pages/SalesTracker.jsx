@@ -4597,6 +4597,24 @@ export default function SalesTracker() {
                 
                 <button 
                   type="button"
+                  className="btn btn-outline" 
+                  onClick={() => navigate('/debtors-hub')}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px', 
+                    background: 'rgba(59, 130, 246, 0.08)', 
+                    color: '#3b82f6', 
+                    borderColor: 'rgba(59, 130, 246, 0.3)',
+                    fontWeight: 700
+                  }}
+                  title="Open Debtors & Billing Forecast Hub (Dynamic Pivot: Division -> Project -> Order)"
+                >
+                  <TrendingUp size={16} /> Debtors Forecast Hub
+                </button>
+
+                <button 
+                  type="button"
                   className="btn btn-primary" 
                   onClick={() => setShowClientDocModal(true)}
                   style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#0f766e', borderColor: '#0f766e' }}
