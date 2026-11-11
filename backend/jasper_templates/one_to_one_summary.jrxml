@@ -168,6 +168,14 @@
 			</element>
 		</band>
 	</detail>
+	<pageFooter height="20">
+		<element kind="textField" uuid="e1f2a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b" x="355" y="0" width="200" height="18" fontName="SansSerif" fontSize="8.0" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA["Page " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+		<element kind="textField" uuid="f2a3b4c5-d6e7-8f9a-0b1c-2d3e4f5a6b7c" x="0" y="0" width="300" height="18" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
+			<expression><![CDATA["ONE:ONE Summary — " + $P{OrderName}]]></expression>
+		</element>
+	</pageFooter>
 	<summary height="260" splitType="Prevent">
 		<element kind="rectangle" uuid="a0b1c2d3-e4f5-6a7b-8c9d-0e1f2a3b4c5d" x="0" y="10" width="555" height="95">
 			<pen lineWidth="1.0" lineColor="#000000"/>
@@ -236,12 +244,4 @@
 			<text><![CDATA[VAT No: 4590312965 - Reg No. 2022/863083/07 - Tell No. 087 711 0660]]></text>
 		</element>
 	</summary>
-	<pageFooter height="20">
-		<element kind="textField" uuid="e1f2a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b" x="355" y="0" width="200" height="18" fontName="SansSerif" fontSize="8.0" hTextAlign="Right" vTextAlign="Middle">
-			<expression><![CDATA["Page " + $V{PAGE_NUMBER}]]></expression>
-		</element>
-		<element kind="textField" uuid="f2a3b4c5-d6e7-8f9a-0b1c-2d3e4f5a6b7c" x="0" y="0" width="300" height="18" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
-			<expression><![CDATA["ONE:ONE Summary — " + $P{OrderName}]]></expression>
-		</element>
-	</pageFooter>
 </jasperReport>

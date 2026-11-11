@@ -119,6 +119,14 @@
 			</element>
 		</band>
 	</detail>
+	<pageFooter height="20">
+		<element kind="textField" uuid="e1f2a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b" x="355" y="0" width="200" height="18" fontName="SansSerif" fontSize="8.0" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA["Page " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+		<element kind="textField" uuid="f2a3b4c5-d6e7-8f9a-0b1c-2d3e4f5a6b7c" x="0" y="0" width="300" height="18" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
+			<expression><![CDATA["ONE:ONE Lighting Schedule — " + $P{OrderName}]]></expression>
+		</element>
+	</pageFooter>
 	<summary height="40" splitType="Prevent">
 		<element kind="rectangle" uuid="12a3b4c5-d6e7-8f9a-0b1c-4a5b6c7d8e9f" x="0" y="8" width="555" height="24" backcolor="#000000" mode="Opaque">
 			<pen lineWidth="0.0"/>
@@ -130,12 +138,4 @@
 			<expression><![CDATA[$P{TotalEstimatedWattage}]]></expression>
 		</element>
 	</summary>
-	<pageFooter height="20">
-		<element kind="textField" uuid="e1f2a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b" x="355" y="0" width="200" height="18" fontName="SansSerif" fontSize="8.0" hTextAlign="Right" vTextAlign="Middle">
-			<expression><![CDATA["Page " + $V{PAGE_NUMBER}]]></expression>
-		</element>
-		<element kind="textField" uuid="f2a3b4c5-d6e7-8f9a-0b1c-2d3e4f5a6b7c" x="0" y="0" width="300" height="18" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
-			<expression><![CDATA["ONE:ONE Lighting Schedule — " + $P{OrderName}]]></expression>
-		</element>
-	</pageFooter>
 </jasperReport>
