@@ -386,6 +386,20 @@ def render_jasper_document_for_order(doc_type: str, data: dict):
         elif "pro" in norm_key:
             inv_title = "Pro-Forma Invoice"
 
+        # Resolve logo path reliably across environments
+        logo_candidates = [
+            os.path.join(base_dir, "assets", "onetoone_logo.jpg"),
+            os.path.join(base_dir, "backend", "assets", "onetoone_logo.jpg"),
+            os.path.join(os.path.dirname(base_dir), "backend", "assets", "onetoone_logo.jpg"),
+            "backend/assets/onetoone_logo.jpg",
+            "assets/onetoone_logo.jpg"
+        ]
+        resolved_logo_path = "backend/assets/onetoone_logo.jpg"
+        for lc in logo_candidates:
+            if os.path.exists(lc):
+                resolved_logo_path = lc
+                break
+
         params = {
             "OrderName": str(data.get("ORDER_NAME") or data.get("PROJECT_NAME") or "Order"),
             "ProjectName": str(data.get("PROJECT_NAME") or data.get("ORDER_NAME") or "Project"),
@@ -411,7 +425,7 @@ def render_jasper_document_for_order(doc_type: str, data: dict):
             "InvoiceTitle": inv_title,
             "InvoiceNumber": str(data.get("DOCUMENT_NUMBER") or data.get("ORDER_NUMBER") or data.get("ORDER_ID") or ""),
             "TotalEstimatedWattage": str(data.get("TOTAL_WATTAGE") or "0W"),
-            "LogoPath": "backend/assets/onetoone_logo.jpg"
+            "LogoPath": resolved_logo_path
         }
 
         raw_items = data.get("items") or []
@@ -536,7 +550,7 @@ def debug_jasper(doc_type: str):
             out_pdf = compile_and_render_jasper_report(
                 jrxml_path=resolved_path,
                 data=[{"qty": 1, "description": "Test Item", "isCredit": False}],
-                parameters={"ProjectName": "Test", "OrderName": "Test Order"},
+                parameters={"ProjectName": "Test", "OrderName": "Test Order", "LogoPath": (os.path.join(base_dir, "assets", "onetoone_logo.jpg") if os.path.exists(os.path.join(base_dir, "assets", "onetoone_logo.jpg")) else "backend/assets/onetoone_logo.jpg")},
                 output_pdf_path=temp_pdf
             )
             rendered_output_pdf = out_pdf
