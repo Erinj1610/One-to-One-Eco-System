@@ -142,7 +142,7 @@ def normalize_jrxml_for_engine(source_jrxml_path: str) -> str:
                             child.remove(c)
                             break
 
-                    if has_text_props or has_font_props or paragraph_child is not None:
+                    if (has_text_props or has_font_props or paragraph_child is not None) and kind in ("textField", "staticText"):
                         txt_elem = ET.Element(f"{ns_prefix}textElement")
                         if "hTextAlign" in child.attrib:
                             txt_elem.attrib["textAlignment"] = child.attrib.pop("hTextAlign")

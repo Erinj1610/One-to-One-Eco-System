@@ -1,0 +1,276 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Created with Jaspersoft Studio version 7.0.8.final using JasperReports Library version 7.0.8-6f896111  -->
+<jasperReport name="one_to_one_boq" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="25" bottomMargin="25" uuid="f3b95a6b-c741-477a-a63e-b816a19f20e2">
+	<parameter name="OrderName" class="java.lang.String">
+		<defaultValueExpression><![CDATA["551 House Botha"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="ReportDate" class="java.lang.String">
+		<defaultValueExpression><![CDATA["11 November 2026"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="OneOneRep" class="java.lang.String">
+		<defaultValueExpression><![CDATA["Martin Doller"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="PmPhone" class="java.lang.String">
+		<defaultValueExpression><![CDATA["087 711 0660"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="PmEmail" class="java.lang.String">
+		<defaultValueExpression><![CDATA["martin@onetoone.co.za"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="Subtotal" class="java.lang.String">
+		<defaultValueExpression><![CDATA["R 0.00"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="DiscountPercent" class="java.lang.String">
+		<defaultValueExpression><![CDATA["0%"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="DiscountAmount" class="java.lang.String">
+		<defaultValueExpression><![CDATA["R 0.00"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="VatPercent" class="java.lang.String">
+		<defaultValueExpression><![CDATA["15%"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="VatAmount" class="java.lang.String">
+		<defaultValueExpression><![CDATA["R 0.00"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="TotalRetail" class="java.lang.String">
+		<defaultValueExpression><![CDATA["R 0.00"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="DepositAmount" class="java.lang.String">
+		<defaultValueExpression><![CDATA["R 0.00"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="LogoPath" class="java.lang.String">
+		<defaultValueExpression><![CDATA["backend/assets/onetoone_logo.jpg"]]></defaultValueExpression>
+	</parameter>
+	<field name="qty" class="java.lang.String"/>
+	<field name="oneOneCode" class="java.lang.String"/>
+	<field name="planCode" class="java.lang.String"/>
+	<field name="description" class="java.lang.String"/>
+	<field name="floor" class="java.lang.String"/>
+	<field name="area" class="java.lang.String"/>
+	<field name="material" class="java.lang.String"/>
+	<field name="eta" class="java.lang.String"/>
+	<field name="itemClass" class="java.lang.String"/>
+	<field name="retail" class="java.lang.String"/>
+	<field name="totalRetail" class="java.lang.String"/>
+	<field name="isCredit" class="java.lang.Boolean"/>
+	<group name="CreditGroup">
+		<groupExpression><![CDATA[$F{isCredit} != null && $F{isCredit}]]></groupExpression>
+		<groupHeader>
+			<band height="18">
+				<printWhenExpression><![CDATA[$F{isCredit} != null && $F{isCredit}]]></printWhenExpression>
+				<element kind="rectangle" uuid="9b8a7c6d-5e4f-3a2b-1c0d-0e1f2a3b4c5d" x="0" y="0" width="555" height="18" backcolor="#000000" mode="Opaque">
+					<pen lineWidth="0.0"/>
+				</element>
+				<element kind="staticText" uuid="a1b2c3d4-e5f6-7a8b-9c0d-0e1f2a3b4c5d" x="0" y="0" width="22" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Center" vTextAlign="Middle">
+					<text><![CDATA[Qty]]></text>
+				</element>
+				<element kind="staticText" uuid="b2c3d4e5-f6a7-8b9c-0d1e-0e1f2a3b4c5d" x="22" y="0" width="48" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+					<text><![CDATA[Made Code]]></text>
+				</element>
+				<element kind="staticText" uuid="c3d4e5f6-a7b8-9c0d-1e2f-0e1f2a3b4c5d" x="70" y="0" width="45" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+					<text><![CDATA[Plan Code]]></text>
+				</element>
+				<element kind="staticText" uuid="d4e5f6a7-b8c9-0d1e-2f3a-0e1f2a3b4c5d" x="115" y="0" width="125" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+					<text><![CDATA[Description (CREDIT)]]></text>
+				</element>
+				<element kind="staticText" uuid="e5f6a7b8-c9d0-1e2f-3a4b-0e1f2a3b4c5d" x="240" y="0" width="42" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+					<text><![CDATA[Floor]]></text>
+				</element>
+				<element kind="staticText" uuid="f6a7b8c9-d0e1-2f3a-4b5c-0e1f2a3b4c5d" x="282" y="0" width="48" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+					<text><![CDATA[Area]]></text>
+				</element>
+				<element kind="staticText" uuid="a7b8c9d0-e1f2-3a4b-5c6d-0e1f2a3b4c5d" x="330" y="0" width="48" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+					<text><![CDATA[Material/Colour]]></text>
+				</element>
+				<element kind="staticText" uuid="b8c9d0e1-f2a3-4b5c-6d7e-0e1f2a3b4c5d" x="378" y="0" width="45" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Center" vTextAlign="Middle">
+					<text><![CDATA[Lead Times]]></text>
+				</element>
+				<element kind="staticText" uuid="c9d0e1f2-a3b4-5c6d-7e8f-0e1f2a3b4c5d" x="423" y="0" width="32" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Center" vTextAlign="Middle">
+					<text><![CDATA[Class]]></text>
+				</element>
+				<element kind="staticText" uuid="d0e1f2a3-b4c5-6d7e-8f9a-0b1c2d3e4f5a" x="455" y="0" width="45" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+					<text><![CDATA[Unit Price]]></text>
+				</element>
+				<element kind="staticText" uuid="e1f2a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b" x="500" y="0" width="55" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+					<text><![CDATA[Total]]></text>
+				</element>
+			</band>
+		</groupHeader>
+	</group>
+	<title height="95" splitType="Stretch">
+		<element kind="textField" uuid="3c4d5e6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f" x="0" y="0" width="380" height="26" forecolor="#000000" fontName="SansSerif" fontSize="18.0" bold="true" vTextAlign="Middle">
+			<expression><![CDATA["Bill of Quantity"]]></expression>
+		</element>
+		<element kind="textField" uuid="1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" x="0" y="26" width="380" height="18" forecolor="#000000" fontName="SansSerif" fontSize="11.0" bold="true" vTextAlign="Middle">
+			<expression><![CDATA["Project - " + $P{OrderName}]]></expression>
+		</element>
+		<element kind="textField" uuid="2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e" x="0" y="52" width="380" height="14" forecolor="#000000" fontName="SansSerif" fontSize="8.0" bold="true" vTextAlign="Middle">
+			<expression><![CDATA["Date: " + $P{ReportDate}]]></expression>
+		</element>
+		<element kind="textField" uuid="4d5e6f7a-8b9c-0d1e-2f3a-4b5c6d7e8f9a" x="0" y="68" width="555" height="16" forecolor="#000000" fontName="SansSerif" fontSize="8.0" bold="true" vTextAlign="Middle">
+			<expression><![CDATA["One to One Rep : " + $P{OneOneRep} + "             Mobile : " + $P{PmPhone} + "               Email : " + $P{PmEmail}]]></expression>
+		</element>
+		<element kind="image" uuid="3a595667-dffa-4666-b8aa-a0063a7c5bcd" x="450" y="0" width="105" height="52" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$P{LogoPath}]]></expression>
+		</element>
+	</title>
+	<columnHeader height="20" splitType="Stretch">
+		<element kind="rectangle" uuid="1c2d3e4f-5a6b-7c8d-9e0f-1a2b3c4d5e6f" x="0" y="0" width="555" height="18" backcolor="#000000" mode="Opaque">
+			<pen lineWidth="0.0"/>
+		</element>
+		<element kind="staticText" uuid="a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d" x="0" y="0" width="22" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Qty]]></text>
+		</element>
+		<element kind="staticText" uuid="b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e" x="22" y="0" width="48" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<text><![CDATA[Made Code]]></text>
+		</element>
+		<element kind="staticText" uuid="c3d4e5f6-a7b8-9c0d-1e2f-3a4b5c6d7e8f" x="70" y="0" width="45" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<text><![CDATA[Plan Code]]></text>
+		</element>
+		<element kind="staticText" uuid="d4e5f6a7-b8c9-0d1e-2f3a-4b5c6d7e8f9a" x="115" y="0" width="125" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<text><![CDATA[Description]]></text>
+		</element>
+		<element kind="staticText" uuid="e5f6a7b8-c9d0-1e2f-3a4b-5c6d7e8f9a0b" x="240" y="0" width="42" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<text><![CDATA[Floor]]></text>
+		</element>
+		<element kind="staticText" uuid="f6a7b8c9-d0e1-2f3a-4b5c-6d7e8f9a0b1c" x="282" y="0" width="48" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<text><![CDATA[Area]]></text>
+		</element>
+		<element kind="staticText" uuid="a7b8c9d0-e1f2-3a4b-5c6d-7e8f9a0b1c2d" x="330" y="0" width="48" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Left" vTextAlign="Middle">
+			<text><![CDATA[Material/Colour]]></text>
+		</element>
+		<element kind="staticText" uuid="b8c9d0e1-f2a3-4b5c-6d7e-8f9a0b1c2d3e" x="378" y="0" width="45" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Lead Times]]></text>
+		</element>
+		<element kind="staticText" uuid="c9d0e1f2-a3b4-5c6d-7e8f-9a0b1c2d3e4f" x="423" y="0" width="32" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Class]]></text>
+		</element>
+		<element kind="staticText" uuid="d0e1f2a3-b4c5-6d7e-8f9a-0b1c2d3e4f5a" x="455" y="0" width="45" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[Unit Price]]></text>
+		</element>
+		<element kind="staticText" uuid="e1f2a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b" x="500" y="0" width="55" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="6.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[Total]]></text>
+		</element>
+	</columnHeader>
+	<detail>
+		<band height="16" splitType="Prevent">
+			<element kind="textField" uuid="0a1b2c3d-4e5f-6a7b-8c9d-1e2f3a4b5c6d" x="0" y="0" width="22" height="16" fontName="SansSerif" fontSize="6.5" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{qty}]]></expression>
+			</element>
+			<element kind="textField" uuid="1a2b3c4d-5e6f-7a8b-9c0d-2e3f4a5b6c7d" x="22" y="0" width="48" height="16" fontName="SansSerif" fontSize="6.5" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[$F{oneOneCode}]]></expression>
+			</element>
+			<element kind="textField" uuid="2a3b4c5d-6e7f-8a9b-0c1d-3e4f5a6b7c8d" x="70" y="0" width="45" height="16" fontName="SansSerif" fontSize="6.5" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[$F{planCode}]]></expression>
+			</element>
+			<element kind="textField" uuid="3a4b5c6d-7e8f-9a0b-1c2d-4e5f6a7b8c9d" x="115" y="0" width="125" height="16" fontName="SansSerif" fontSize="6.5" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[$F{description}]]></expression>
+			</element>
+			<element kind="textField" uuid="4a5b6c7d-8e9f-0a1b-2c3d-5e6f7a8b9c0d" x="240" y="0" width="42" height="16" fontName="SansSerif" fontSize="6.5" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[$F{floor}]]></expression>
+			</element>
+			<element kind="textField" uuid="5a6b7c8d-9e0f-1a2b-3c4d-6e7f8a9b0c1d" x="282" y="0" width="48" height="16" fontName="SansSerif" fontSize="6.5" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[$F{area}]]></expression>
+			</element>
+			<element kind="textField" uuid="6a7b8c9d-0e1f-2a3b-4c5d-7e8f9a0b1c2d" x="330" y="0" width="48" height="16" fontName="SansSerif" fontSize="6.5" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle">
+				<expression><![CDATA[$F{material}]]></expression>
+			</element>
+			<element kind="textField" uuid="7a8b9c0d-1e2f-3a4b-5c6d-8e9f0a1b2c3d" x="378" y="0" width="45" height="16" fontName="SansSerif" fontSize="6.5" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{eta}]]></expression>
+			</element>
+			<element kind="textField" uuid="8a9b0c1d-2e3f-4a5b-6c7d-9e0f1a2b3c4d" x="423" y="0" width="32" height="16" fontName="SansSerif" fontSize="6.5" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{itemClass}]]></expression>
+			</element>
+			<element kind="textField" uuid="9a0b1c2d-3e4f-5a6b-7c8d-0e1f2a3b4c5d" x="455" y="0" width="45" height="16" fontName="SansSerif" fontSize="6.5" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{retail}]]></expression>
+			</element>
+			<element kind="textField" uuid="0b1c2d3e-4f5a-6b7c-8d9e-1f2a3b4c5d6e" x="500" y="0" width="55" height="16" fontName="SansSerif" fontSize="6.5" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{totalRetail}]]></expression>
+			</element>
+		</band>
+	</detail>
+	<summary height="280" splitType="Prevent">
+		<element kind="rectangle" uuid="a0b1c2d3-e4f5-6a7b-8c9d-0e1f2a3b4c5d" x="0" y="10" width="555" height="95">
+			<pen lineWidth="1.0" lineColor="#000000"/>
+		</element>
+		<element kind="staticText" uuid="b1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e" x="10" y="14" width="380" height="15" fontName="SansSerif" fontSize="8.0" bold="true" vTextAlign="Middle">
+			<text><![CDATA[ORDER VALUE (Excl. VAT) :]]></text>
+		</element>
+		<element kind="textField" uuid="c2d3e4f5-a6b7-8c9d-0e1f-2a3b4c5d6e7f" x="400" y="14" width="145" height="15" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$P{Subtotal}]]></expression>
+		</element>
+		<element kind="textField" uuid="d3e4f5a6-b7c8-9d0e-1f2a-3b4c5d6e7f8a" x="10" y="29" width="380" height="15" forecolor="#FF0000" fontName="SansSerif" fontSize="8.0" bold="true" vTextAlign="Middle">
+			<expression><![CDATA["DISCOUNT (" + $P{DiscountPercent} + " ) :"]]></expression>
+		</element>
+		<element kind="textField" uuid="e4f5a6b7-c8d9-0e1f-2a3b-4c5d6e7f8a9b" x="400" y="29" width="145" height="15" forecolor="#FF0000" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$P{DiscountAmount}]]></expression>
+		</element>
+		<element kind="textField" uuid="f5a6b7c8-d9e0-1f2a-3b4c-5d6e7f8a9b0c" x="10" y="44" width="380" height="15" fontName="SansSerif" fontSize="8.0" bold="true" vTextAlign="Middle">
+			<expression><![CDATA["VAT (" + $P{VatPercent} + ") :"]]></expression>
+		</element>
+		<element kind="textField" uuid="a6b7c8d9-e0f1-2a3b-4c5d-6e7f8a9b0c1d" x="400" y="44" width="145" height="15" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$P{VatAmount}]]></expression>
+		</element>
+		<element kind="rectangle" uuid="b7c8d9e0-f1a2-3b4c-5d6e-7f8a9b0c1d2e" x="0" y="60" width="555" height="20" backcolor="#000000" mode="Opaque">
+			<pen lineWidth="0.0"/>
+		</element>
+		<element kind="staticText" uuid="c8d9e0f1-a2b3-4c5d-6e7f-8a9b0c1d2e3f" x="10" y="60" width="380" height="20" forecolor="#FFFFFF" fontName="SansSerif" fontSize="9.0" bold="true" vTextAlign="Middle">
+			<text><![CDATA[TOTAL VALUE (Incl. VAT) :]]></text>
+		</element>
+		<element kind="textField" uuid="d9e0f1a2-b3c4-5d6e-7f8a-9b0c1d2e3f4a" x="400" y="60" width="145" height="20" forecolor="#FFFFFF" fontName="SansSerif" fontSize="9.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$P{TotalRetail}]]></expression>
+		</element>
+		<element kind="staticText" uuid="e0f1a2b3-c4d5-6e7f-8a9b-0c1d2e3f4a5b" x="10" y="82" width="380" height="16" forecolor="#FF0000" fontName="SansSerif" fontSize="8.0" bold="true" vTextAlign="Middle">
+			<text><![CDATA[DEPOSIT INCL VAT :]]></text>
+		</element>
+		<element kind="textField" uuid="f1a2b3c4-d5e6-7f8a-9b0c-1d2e3f4a5b6c" x="400" y="82" width="145" height="16" forecolor="#FF0000" fontName="SansSerif" fontSize="8.0" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$P{DepositAmount}]]></expression>
+		</element>
+		<element kind="rectangle" uuid="a2b3c4d5-e6f7-8a9b-0c1d-2e3f4a5b6c7d" x="0" y="112" width="555" height="22">
+			<pen lineWidth="1.0" lineColor="#000000"/>
+		</element>
+		<element kind="staticText" uuid="b3c4d5e6-f7a8-9b0c-1d2e-3f4a5b6c7d8e" x="0" y="112" width="555" height="22" fontName="SansSerif" fontSize="8.5" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Please see Terms and Conditions which are applicable to all purchases. (Attached)]]></text>
+		</element>
+		<element kind="staticText" uuid="c4d5e6f7-a8b9-0c1d-2e3f-4a5b6c7d8e9f" x="0" y="138" width="555" height="12" forecolor="#FF0000" fontName="SansSerif" fontSize="7.0">
+			<text><![CDATA[* Delivery Fee have not been included in this quote. Should you require 1TO1 Design Studio to deliver, an additional fee will apply.]]></text>
+		</element>
+		<element kind="staticText" uuid="d5e6f7a8-b9c0-1d2e-3f4a-5b6c7d8e9f0a" x="0" y="150" width="555" height="12" forecolor="#FF0000" fontName="SansSerif" fontSize="7.0">
+			<text><![CDATA[**This quote does not include the LED assembly. If required, please inform the Project Manager and we will revise the quote accordingly.]]></text>
+		</element>
+		<element kind="rectangle" uuid="f7e8d9c0-b1a2-3c4d-5e6f-7a8b9c0d1e2f" x="0" y="166" width="555" height="38">
+			<pen lineWidth="1.0" lineColor="#000000"/>
+		</element>
+		<element kind="staticText" uuid="a8b9c0d1-e2f3-4a5b-6c7d-8e9f0a1b2c3d" x="10" y="168" width="535" height="14" fontName="SansSerif" fontSize="8.0" bold="true">
+			<text><![CDATA[Approval of this Bill of Quantities (BOQ)]]></text>
+		</element>
+		<element kind="staticText" uuid="b9c0d1e2-f3a4-5b6c-7d8e-9f0a1b2c3d4e" x="10" y="184" width="535" height="16" fontName="SansSerif" fontSize="7.0">
+			<text><![CDATA[Signature : ________________________________________     Print Name:_________________________________________     Date:___________________________]]></text>
+		</element>
+		<element kind="staticText" uuid="e6f7a8b9-c0d1-2e3f-4a5b-6c7d8e9f0a1b" x="0" y="210" width="555" height="12" fontName="SansSerif" fontSize="7.0" bold="true">
+			<text><![CDATA[BANKING DETAILS: - 1TO1 Design Studio - FNB Cape Town City - BC 201409 - Acc 630 430 807 36 - Swift Code - FIRNZAJJ]]></text>
+		</element>
+		<element kind="staticText" uuid="f7a8b9c0-d1e2-3f4a-5b6c-7d8e9f0a1b2c" x="0" y="222" width="555" height="12" fontName="SansSerif" fontSize="7.0">
+			<text><![CDATA[Should this be your first payment made to ONE:ONE. Kindly contact your Rep or office to confirm banking details]]></text>
+		</element>
+		<element kind="staticText" uuid="a8b9c0d1-e2f3-4a5b-6c7d-8e9f0a1b2c3d" x="0" y="236" width="555" height="12" fontName="SansSerif" fontSize="7.0">
+			<text><![CDATA[*Stock on hand is ONLY available while stock last. ETA will be confirm on the deposit.]]></text>
+		</element>
+		<element kind="staticText" uuid="b9c0d1e2-f3a4-5b6c-7d8e-9f0a1b2c3d4e" x="0" y="248" width="555" height="12" fontName="SansSerif" fontSize="7.0">
+			<text><![CDATA[* Standard ETA turn around time is : 4-8 Weeks for Imported Stock]]></text>
+		</element>
+		<element kind="staticText" uuid="c0d1e2f3-a4b5-6c7d-8e9f-0a1b2c3d4e5f" x="0" y="262" width="555" height="11" fontName="SansSerif" fontSize="6.5">
+			<text><![CDATA[1TO1 Design Studio - 7 Ravenscraig Road, Woodstock ,Unit 116 Masons Press Building]]></text>
+		</element>
+		<element kind="staticText" uuid="d1e2f3a4-b5c6-7d8e-9f0a-1b2c3d4e5f6a" x="0" y="271" width="555" height="11" fontName="SansSerif" fontSize="6.5">
+			<text><![CDATA[VAT No: 4590312965 - Reg No. 2022/863083/07 - Tell No. 087 711 0660]]></text>
+		</element>
+	</summary>
+	<pageFooter height="20">
+		<element kind="textField" uuid="e1f2a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b" x="355" y="0" width="200" height="18" fontName="SansSerif" fontSize="8.0" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA["Page " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+		<element kind="textField" uuid="f2a3b4c5-d6e7-8f9a-0b1c-2d3e4f5a6b7c" x="0" y="0" width="300" height="18" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
+			<expression><![CDATA["ONE:ONE Bill of Quantity — " + $P{OrderName}]]></expression>
+		</element>
+	</pageFooter>
+</jasperReport>

@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Created with Jaspersoft Studio version 7.0.8.final using JasperReports Library version 7.0.8-6f896111  -->
+<jasperReport name="one_to_one_lighting_schedule" language="java" pageWidth="595" pageHeight="842" columnWidth="555" leftMargin="20" rightMargin="20" topMargin="25" bottomMargin="25" uuid="e6b84a6b-c741-477a-a63e-b816a19f20e5">
+	<parameter name="OrderName" class="java.lang.String">
+		<defaultValueExpression><![CDATA["551 House Botha"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="ReportDate" class="java.lang.String">
+		<defaultValueExpression><![CDATA["11 November 2026"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="OneOneRep" class="java.lang.String">
+		<defaultValueExpression><![CDATA["Martin Doller"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="PmPhone" class="java.lang.String">
+		<defaultValueExpression><![CDATA["087 711 0660"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="PmEmail" class="java.lang.String">
+		<defaultValueExpression><![CDATA["martin@onetoone.co.za"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="TotalEstimatedWattage" class="java.lang.String">
+		<defaultValueExpression><![CDATA["0W"]]></defaultValueExpression>
+	</parameter>
+	<parameter name="LogoPath" class="java.lang.String">
+		<defaultValueExpression><![CDATA["backend/assets/onetoone_logo.jpg"]]></defaultValueExpression>
+	</parameter>
+	<field name="qty" class="java.lang.String"/>
+	<field name="oneOneCode" class="java.lang.String"/>
+	<field name="planCode" class="java.lang.String"/>
+	<field name="description" class="java.lang.String"/>
+	<field name="technicalImage" class="java.lang.String"/>
+	<field name="material" class="java.lang.String"/>
+	<field name="cutOut" class="java.lang.String"/>
+	<field name="dimming" class="java.lang.String"/>
+	<field name="lightSource" class="java.lang.String"/>
+	<field name="wattage" class="java.lang.String"/>
+	<field name="driverInfo" class="java.lang.String"/>
+	<field name="wireInfo" class="java.lang.String"/>
+	<field name="redList" class="java.lang.String"/>
+	<field name="qrCodeLink" class="java.lang.String"/>
+	<title height="90" splitType="Stretch">
+		<element kind="textField" uuid="3c4d5e6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f" x="0" y="0" width="380" height="26" forecolor="#000000" fontName="SansSerif" fontSize="18.0" bold="true" vTextAlign="Middle">
+			<expression><![CDATA["Lighting Schedule"]]></expression>
+		</element>
+		<element kind="textField" uuid="1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d" x="0" y="26" width="380" height="18" forecolor="#000000" fontName="SansSerif" fontSize="11.0" bold="true" vTextAlign="Middle">
+			<expression><![CDATA["Project - " + $P{OrderName}]]></expression>
+		</element>
+		<element kind="textField" uuid="2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e" x="0" y="52" width="380" height="14" forecolor="#000000" fontName="SansSerif" fontSize="8.0" bold="true" vTextAlign="Middle">
+			<expression><![CDATA["Date: " + $P{ReportDate}]]></expression>
+		</element>
+		<element kind="textField" uuid="4d5e6f7a-8b9c-0d1e-2f3a-4b5c6d7e8f9a" x="0" y="68" width="555" height="16" forecolor="#000000" fontName="SansSerif" fontSize="8.0" bold="true" vTextAlign="Middle">
+			<expression><![CDATA["One to One Rep : " + $P{OneOneRep} + "             Mobile : " + $P{PmPhone} + "               Email : " + $P{PmEmail}]]></expression>
+		</element>
+		<element kind="image" uuid="3a595667-dffa-4666-b8aa-a0063a7c5bcd" x="450" y="0" width="105" height="52" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$P{LogoPath}]]></expression>
+		</element>
+	</title>
+	<columnHeader height="20" splitType="Stretch">
+		<element kind="rectangle" uuid="1c2d3e4f-5a6b-7c8d-9e0f-1a2b3c4d5e6f" x="0" y="0" width="555" height="18" backcolor="#000000" mode="Opaque">
+			<pen lineWidth="0.0"/>
+		</element>
+		<element kind="staticText" uuid="a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d" x="10" y="0" width="100" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="7.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[Plan & Made Code]]></text>
+		</element>
+		<element kind="staticText" uuid="b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e" x="120" y="0" width="100" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="7.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[Technical Image]]></text>
+		</element>
+		<element kind="staticText" uuid="c3d4e5f6-a7b8-9c0d-1e2f-3a4b5c6d7e8f" x="225" y="0" width="30" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="7.5" bold="true" hTextAlign="Center" vTextAlign="Middle">
+			<text><![CDATA[Qty]]></text>
+		</element>
+		<element kind="staticText" uuid="d4e5f6a7-b8c9-0d1e-2f3a-4b5c6d7e8f9a" x="260" y="0" width="220" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="7.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[Specification Details]]></text>
+		</element>
+		<element kind="staticText" uuid="e5f6a7b8-c9d0-1e2f-3a4b-5c6d7e8f9a0b" x="485" y="0" width="65" height="18" forecolor="#FFFFFF" fontName="SansSerif" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<text><![CDATA[Load / Red List]]></text>
+		</element>
+	</columnHeader>
+	<detail>
+		<band height="95" splitType="Prevent">
+			<element kind="rectangle" uuid="f0e1d2c3-b4a5-6789-0123-456789abcdef" x="0" y="2" width="555" height="90" backcolor="#FFFFFF">
+				<pen lineWidth="0.5" lineColor="#CBD5E1"/>
+			</element>
+			<element kind="textField" uuid="a0b1c2d3-e4f5-6a7b-8c9d-1e2f3a4b5c6d" x="10" y="8" width="105" height="14" fontName="SansSerif" fontSize="8.5" bold="true" vTextAlign="Middle">
+				<expression><![CDATA[$F{planCode}]]></expression>
+			</element>
+			<element kind="textField" uuid="b1c2d3e4-f5a6-7b8c-9d0e-2f3a4b5c6d7e" x="10" y="22" width="105" height="14" forecolor="#475569" fontName="SansSerif" fontSize="7.5" vTextAlign="Middle">
+				<expression><![CDATA[$F{oneOneCode}]]></expression>
+			</element>
+			<element kind="textField" uuid="c2d3e4f5-a6b7-8c9d-0e1f-3a4b5c6d7e8f" x="10" y="60" width="105" height="12" forecolor="#2563EB" fontName="SansSerif" fontSize="6.5">
+				<expression><![CDATA[$F{qrCodeLink} != null ? "Scan for Datasheet" : ""]]></expression>
+			</element>
+			<element kind="rectangle" uuid="d3e4f5a6-b7c8-9d0e-1f2a-4a5b6c7d8e9f" x="120" y="8" width="95" height="78" backcolor="#F8FAFC">
+				<pen lineWidth="0.5" lineColor="#E2E8F0"/>
+			</element>
+			<element kind="staticText" uuid="e4f5a6b7-c8d9-0e1f-2a3b-5a6b7c8d9e0f" x="120" y="38" width="95" height="14" forecolor="#94A3B8" fontName="SansSerif" fontSize="7.0" hTextAlign="Center" vTextAlign="Middle">
+				<text><![CDATA[[ Technical Image ]]]></text>
+			</element>
+			<element kind="textField" uuid="f5a6b7c8-d9e0-1f2a-3b4c-6a7b8c9d0e1f" x="225" y="8" width="30" height="78" fontName="SansSerif" fontSize="11.0" bold="true" hTextAlign="Center" vTextAlign="Middle">
+				<expression><![CDATA[$F{qty}]]></expression>
+			</element>
+			<element kind="textField" uuid="a6b7c8d9-e0f1-2a3b-4c5d-7a8b9c0d1e2f" x="260" y="8" width="220" height="24" fontName="SansSerif" fontSize="7.5" bold="true">
+				<expression><![CDATA[$F{description}]]></expression>
+			</element>
+			<element kind="textField" uuid="b7c8d9e0-f1a2-3b4c-5d6e-8a9b0c1d2e3f" x="260" y="34" width="220" height="12" fontName="SansSerif" fontSize="7.0">
+				<expression><![CDATA["Material/Colour: " + ($F{material} != null ? $F{material} : "-")]]></expression>
+			</element>
+			<element kind="textField" uuid="c8d9e0f1-a2b3-4c5d-6e7f-9a0b1c2d3e4a" x="260" y="47" width="220" height="12" fontName="SansSerif" fontSize="7.0">
+				<expression><![CDATA["Cut Out Size: " + ($F{cutOut} != null ? $F{cutOut} : "-") + "    |    Dimming: " + ($F{dimming} != null ? $F{dimming} : "-")]]></expression>
+			</element>
+			<element kind="textField" uuid="d9e0f1a2-b3c4-5d6e-7f8a-0a1b2c3d4e5b" x="260" y="60" width="220" height="12" fontName="SansSerif" fontSize="7.0">
+				<expression><![CDATA["Light Source: " + ($F{lightSource} != null ? $F{lightSource} : "-") + "    |    Wattage: " + ($F{wattage} != null ? $F{wattage} : "-")]]></expression>
+			</element>
+			<element kind="textField" uuid="e0f1a2b3-c4d5-6e7f-8a9b-1a2b3c4d5e6c" x="260" y="73" width="220" height="12" fontName="SansSerif" fontSize="7.0">
+				<expression><![CDATA["Driver: " + ($F{driverInfo} != null ? $F{driverInfo} : "-")]]></expression>
+			</element>
+			<element kind="textField" uuid="f1a2b3c4-d5e6-7f8a-9b0c-2a3b4c5d6e7d" x="485" y="8" width="65" height="14" fontName="SansSerif" fontSize="7.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{wattage}]]></expression>
+			</element>
+			<element kind="textField" uuid="01a2b3c4-d5e6-7f8a-9b0c-3a4b5c6d7e8e" x="485" y="24" width="65" height="14" forecolor="#DC2626" fontName="SansSerif" fontSize="7.0" hTextAlign="Right" vTextAlign="Middle">
+				<expression><![CDATA[$F{redList} != null ? "Red List: " + $F{redList} : ""]]></expression>
+			</element>
+		</band>
+	</detail>
+	<summary height="40" splitType="Prevent">
+		<element kind="rectangle" uuid="12a3b4c5-d6e7-8f9a-0b1c-4a5b6c7d8e9f" x="0" y="8" width="555" height="24" backcolor="#000000" mode="Opaque">
+			<pen lineWidth="0.0"/>
+		</element>
+		<element kind="staticText" uuid="23a4b5c6-e7f8-9a0b-1c2d-5a6b7c8d9e0a" x="10" y="8" width="380" height="24" forecolor="#FFFFFF" fontName="SansSerif" fontSize="8.5" bold="true" vTextAlign="Middle">
+			<text><![CDATA[Total Estimated Wattage :]]></text>
+		</element>
+		<element kind="textField" uuid="34b5c6d7-f8a9-0b1c-2d3e-6a7b8c9d0e1b" x="400" y="8" width="145" height="24" forecolor="#FFFFFF" fontName="SansSerif" fontSize="8.5" bold="true" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA[$P{TotalEstimatedWattage}]]></expression>
+		</element>
+	</summary>
+	<pageFooter height="20">
+		<element kind="textField" uuid="e1f2a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b" x="355" y="0" width="200" height="18" fontName="SansSerif" fontSize="8.0" hTextAlign="Right" vTextAlign="Middle">
+			<expression><![CDATA["Page " + $V{PAGE_NUMBER}]]></expression>
+		</element>
+		<element kind="textField" uuid="f2a3b4c5-d6e7-8f9a-0b1c-2d3e4f5a6b7c" x="0" y="0" width="300" height="18" fontName="SansSerif" fontSize="8.0" vTextAlign="Middle">
+			<expression><![CDATA["ONE:ONE Lighting Schedule — " + $P{OrderName}]]></expression>
+		</element>
+	</pageFooter>
+</jasperReport>
