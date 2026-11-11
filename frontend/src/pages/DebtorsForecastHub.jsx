@@ -121,7 +121,13 @@ export default function DebtorsForecastHub() {
       };
     });
 
-    projects.forEach(proj => {
+    // Ensure projects is an array (StoreContext provides an object/dictionary { [key]: project })
+    const projectList = Array.isArray(projects) 
+      ? projects 
+      : (projects && typeof projects === 'object' ? Object.values(projects) : []);
+
+    projectList.forEach(proj => {
+      if (!proj) return;
       const orders = Array.isArray(proj.orders) ? proj.orders : [];
       orders.forEach(order => {
         if (order.status === 'Draft' || !order.status) return;
