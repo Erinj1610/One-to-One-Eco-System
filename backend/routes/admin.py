@@ -485,22 +485,20 @@ def render_jasper_document_for_order(doc_type: str, data: dict):
                 })
 
         from services.jasper_engine import compile_and_render_jasper_report
-        report_data = {
-            "parameters": params,
-            "data": items_data
-        }
-        result = compile_and_render_jasper_report(template_xml, report_data)
-        if result.get("success") and result.get("pdf_bytes"):
-            fd, temp_pdf = tempfile.mkstemp(suffix=".pdf")
-            os.close(fd)
-            with open(temp_pdf, "wb") as f:
-                f.write(result["pdf_bytes"])
-            return temp_pdf
-        else:
-            print(f"Jasper render warning for {doc_type}: {result.get('error')}")
-            return None
+        fd, temp_pdf = tempfile.mkstemp(suffix=".pdf")
+        os.close(fd)
+        
+        pdf_path = compile_and_render_jasper_report(
+            jrxml_path=template_path,
+            data=items_data,
+            parameters=params,
+            output_pdf_path=temp_pdf
+        )
+        if pdf_path and os.path.exists(pdf_path):
+            return pdf_path
+        return None
     except Exception as e:
-        print(f"Jasper exception for {doc_type}: {e}")
+        print(f"Jasper exception for {doc_type}: {e}", flush=True)
         return None
 
 @router.get("/debug-jasper/{doc_type}")
