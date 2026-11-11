@@ -357,7 +357,10 @@ def render_jasper_document_for_order(doc_type: str, data: dict):
     if not template_name:
         return None
 
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     possible_paths = [
+        os.path.join(base_dir, "jasper_templates", f"{template_name}.jrxml"),
+        os.path.join(os.path.dirname(base_dir), "jasper_templates", f"{template_name}.jrxml"),
         os.path.join("backend", "jasper_templates", f"{template_name}.jrxml"),
         os.path.join("jasper_templates", f"{template_name}.jrxml"),
         f"{template_name}.jrxml"
