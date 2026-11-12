@@ -4527,36 +4527,52 @@ export default function SalesTracker() {
           <MobileSalesViewer orders={sortedOrders} kpis={kpis} onRefresh={refreshProjects} />
         ) : (
         <>
-          <div style={{ background: 'linear-gradient(135deg, rgba(24,95,165,0.06) 0%, rgba(139,92,246,0.02) 100%)', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '24px', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ background: 'transparent', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                  <span className="badge b-info" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700, letterSpacing: '0.5px' }}>Sales Suite</span>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Central Quotations & Area-by-Area BOQ Builder</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                  <span style={{ 
+                    display: 'inline-flex', 
+                    alignItems: 'center', 
+                    padding: '2px 8px', 
+                    borderRadius: '6px', 
+                    fontSize: '11px', 
+                    fontWeight: 600, 
+                    letterSpacing: '0.04em', 
+                    textTransform: 'uppercase', 
+                    background: '#f1f5f9', 
+                    color: '#475569', 
+                    border: '1px solid #e2e8f0' 
+                  }}>
+                    Sales Suite
+                  </span>
+                  <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 400 }}>
+                    Central Quotations, Production Pipeline & Area-by-Area BOQ Builder
+                  </span>
                 </div>
-                <h1 style={{ margin: '0 0 10px 0', fontSize: '24px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  📈 Sales Tracker Mirror View Dashboard
+                <h1 style={{ margin: '0 0 14px 0', fontSize: '26px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  Sales Tracker
                 </h1>
 
                 {/* VIEW MODE TOGGLE BUTTONS */}
-                <div style={{ display: 'inline-flex', gap: '6px', background: 'var(--bg-secondary)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'inline-flex', gap: '4px', background: '#f8fafc', padding: '3px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                   <button
                     type="button"
                     onClick={() => setViewMode('ledger')}
                     className="btn btn-sm"
                     style={{
                       padding: '6px 14px',
-                      fontSize: '12.5px',
+                      fontSize: '12px',
                       fontWeight: 600,
                       borderRadius: '6px',
                       border: 'none',
-                      background: viewMode === 'ledger' ? 'var(--text-info)' : 'transparent',
-                      color: viewMode === 'ledger' ? '#ffffff' : 'var(--text-secondary)',
+                      background: viewMode === 'ledger' ? '#0f172a' : 'transparent',
+                      color: viewMode === 'ledger' ? '#ffffff' : '#64748b',
                       transition: 'all 0.15s ease',
-                      boxShadow: viewMode === 'ledger' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none'
+                      boxShadow: viewMode === 'ledger' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
                     }}
                   >
-                    📑 Orders Ledger ({sortedOrders.length})
+                    Orders Ledger ({sortedOrders.length})
                   </button>
                   <button
                     type="button"
@@ -4564,19 +4580,27 @@ export default function SalesTracker() {
                     className="btn btn-sm"
                     style={{
                       padding: '6px 14px',
-                      fontSize: '12.5px',
+                      fontSize: '12px',
                       fontWeight: 600,
                       borderRadius: '6px',
                       border: 'none',
-                      background: viewMode === 'pipeline' ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' : 'transparent',
-                      color: viewMode === 'pipeline' ? '#ffffff' : 'var(--text-secondary)',
+                      background: viewMode === 'pipeline' ? '#0f172a' : 'transparent',
+                      color: viewMode === 'pipeline' ? '#ffffff' : '#64748b',
                       transition: 'all 0.15s ease',
-                      boxShadow: viewMode === 'pipeline' ? '0 1px 3px rgba(0,0,0,0.15)' : 'none'
+                      boxShadow: viewMode === 'pipeline' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
                     }}
                   >
-                    ⚡ Deposit Pipeline Manager ({preDepositOrders.length})
+                    Deposit Pipeline Manager ({preDepositOrders.length})
                     {preDepositOrders.filter(o => !o.expected_deposit_month || o.expected_deposit_month === 'TBC').length > 0 && (
-                      <span style={{ marginLeft: '6px', background: 'rgba(255,255,255,0.3)', padding: '1px 6px', borderRadius: '10px', fontSize: '11px', fontWeight: 700 }}>
+                      <span style={{ 
+                        marginLeft: '6px', 
+                        background: viewMode === 'pipeline' ? 'rgba(255,255,255,0.2)' : '#fee2e2', 
+                        color: viewMode === 'pipeline' ? '#ffffff' : '#b91c1c', 
+                        padding: '1px 6px', 
+                        borderRadius: '10px', 
+                        fontSize: '10.5px', 
+                        fontWeight: 700 
+                      }}>
                         {preDepositOrders.filter(o => !o.expected_deposit_month || o.expected_deposit_month === 'TBC').length} TBC
                       </span>
                     )}
@@ -4584,176 +4608,298 @@ export default function SalesTracker() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                 {projectFilterKey !== 'All' && (
                   <button 
-                    className="btn btn-ghost" 
+                    className="btn btn-sm" 
                     onClick={() => setProjectFilterKey('All')}
-                    style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid var(--border)' }}
+                    style={{ 
+                      fontSize: '12px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px', 
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      color: '#64748b',
+                      borderRadius: '8px',
+                      padding: '6px 12px'
+                    }}
                   >
-                    Clear Project Filter ×
+                    Clear Filter ({projectFilterKey}) ×
                   </button>
                 )}
                 
                 <button 
                   type="button"
-                  className="btn btn-outline" 
+                  className="btn btn-sm" 
                   onClick={() => navigate('/debtors-hub')}
                   style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
-                    gap: '8px', 
-                    background: 'rgba(59, 130, 246, 0.08)', 
-                    color: '#3b82f6', 
-                    borderColor: 'rgba(59, 130, 246, 0.3)',
-                    fontWeight: 700
+                    gap: '6px', 
+                    background: '#ffffff', 
+                    color: '#0f172a', 
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
                   }}
                   title="Open Debtors & Billing Forecast Hub (Dynamic Pivot: Division -> Project -> Order)"
                 >
-                  <TrendingUp size={16} /> Debtors Forecast Hub
+                  <TrendingUp size={14} color="#64748b" /> Debtors Forecast Hub
                 </button>
 
                 <button 
                   type="button"
-                  className="btn btn-primary" 
+                  className="btn btn-sm" 
                   onClick={() => setShowClientDocModal(true)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#0f766e', borderColor: '#0f766e' }}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '6px', 
+                    background: '#0f172a', 
+                    color: '#ffffff', 
+                    border: '1px solid #0f172a',
+                    borderRadius: '8px',
+                    padding: '6px 14px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                  }}
                   title="Generate Statements, Progress Reports and Client Documents"
                 >
-                  <FileText size={16} /> Generate Document
+                  <FileText size={14} /> Generate Document
                 </button>
               </div>
             </div>
           </div>
-
           {viewMode === 'ledger' ? (
             <>
               {/* Date range filter banner */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '12px', padding: '14px 20px', marginBottom: '20px' }}>
+          <div style={{ 
+            display: 'flex', 
+            flexWrap: 'wrap', 
+            gap: '12px', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            background: '#ffffff', 
+            border: '1px solid #e2e8f0', 
+            borderRadius: '12px', 
+            padding: '12px 16px', 
+            marginBottom: '20px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+          }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <Calendar size={15} color="var(--text-info)" />
-              <span style={{ fontSize: '13.5px', fontWeight: 600 }}>Filter Orders by Date:</span>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                {['All Time', 'Last Week', 'Last 30 Days', 'Financial Year'].map(preset => (
-                  <button
-                    key={preset}
-                    onClick={() => applyPreset(preset)}
-                    className={`btn btn-sm ${datePreset === preset ? 'btn-primary' : 'btn-ghost'}`}
-                    style={{ padding: '4px 10px', height: 'auto', fontSize: '11.5px', borderRadius: '6px' }}
-                  >
-                    {preset}
-                  </button>
-                ))}
+              <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Date Range
+              </span>
+              <div style={{ display: 'flex', gap: '4px', background: '#f8fafc', padding: '2px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                {['All Time', 'Last Week', 'Last 30 Days', 'Financial Year'].map(preset => {
+                  const isActive = datePreset === preset;
+                  return (
+                    <button
+                      key={preset}
+                      onClick={() => applyPreset(preset)}
+                      type="button"
+                      style={{ 
+                        padding: '4px 10px', 
+                        fontSize: '11.5px', 
+                        fontWeight: 600,
+                        borderRadius: '4px',
+                        border: 'none',
+                        background: isActive ? '#0f172a' : 'transparent',
+                        color: isActive ? '#ffffff' : '#64748b',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {preset}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Custom Range:</span>
+              <span style={{ fontSize: '11.5px', color: '#64748b' }}>Custom:</span>
               <input
                 type="date"
                 className="form-control"
-                style={{ width: '130px', height: '28px', padding: '2px 8px', fontSize: '11.5px' }}
+                style={{ width: '130px', height: '30px', padding: '2px 8px', fontSize: '11.5px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}
                 value={startDate}
                 onChange={e => { setStartDate(e.target.value); setDatePreset('Custom'); }}
               />
-              <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>to</span>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>to</span>
               <input
                 type="date"
                 className="form-control"
-                style={{ width: '130px', height: '28px', padding: '2px 8px', fontSize: '11.5px' }}
+                style={{ width: '130px', height: '30px', padding: '2px 8px', fontSize: '11.5px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}
                 value={endDate}
                 onChange={e => { setEndDate(e.target.value); setDatePreset('Custom'); }}
               />
             </div>
           </div>
-
           {/* KPI STATS GRID */}
-          <div className="stat-grid stat-grid-4" style={{ marginBottom: '20px' }}>
+          {/* KPI STATS GRID */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '14px', marginBottom: '20px' }}>
+            {/* Total Orders Card */}
             <div 
-              className={`stat clickable hover-scale ${activeKpiFilter === 'all' ? 'active-filter' : ''}`}
               onClick={() => setActiveKpiFilter(activeKpiFilter === 'all' ? null : 'all')}
-              style={{ border: activeKpiFilter === 'all' ? '2.5px solid var(--text-info)' : '1px solid var(--border)', cursor: 'pointer', background: 'var(--bg-primary)', transition: 'all 0.2s', padding: '16px', borderRadius: '12px' }}
+              style={{ 
+                background: '#ffffff', 
+                border: activeKpiFilter === 'all' ? '1.5px solid #0f172a' : '1px solid #e2e8f0', 
+                borderRadius: '12px', 
+                padding: '16px 18px', 
+                cursor: 'pointer',
+                boxShadow: activeKpiFilter === 'all' ? '0 2px 6px rgba(15,23,42,0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
+                transition: 'all 0.15s ease'
+              }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>Total Orders</span>
-                <Layers size={14} color="var(--text-info)" />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Total Orders
+                </span>
+                <span style={{ 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  padding: '1px 6px', 
+                  borderRadius: '4px', 
+                  fontSize: '10px', 
+                  fontWeight: 600, 
+                  background: '#f1f5f9', 
+                  color: '#475569' 
+                }}>
+                  {kpis.all.qty} docs
+                </span>
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {kpis.all.qty} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Qty</span>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', fontFamily: 'monospace' }}>
+                R {kpis.all.value.toLocaleString()}
               </div>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-info)', marginTop: '4px' }}>
-                R {kpis.all.value.toLocaleString()} <span style={{ fontSize: '10px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Val</span>
-              </div>
-              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
-                <span>Paid: <strong>R {kpis.all.paid.toLocaleString()}</strong></span>
-                <span>Outstanding: <strong>R {kpis.all.outstanding.toLocaleString()}</strong></span>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '6px' }}>
+                <span>Paid: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {kpis.all.paid.toLocaleString()}</strong></span>
+                <span>Bal: <strong style={{ color: '#64748b', fontFamily: 'monospace' }}>R {kpis.all.outstanding.toLocaleString()}</strong></span>
               </div>
             </div>
 
+            {/* Pending Orders Card */}
             <div 
-              className={`stat clickable hover-scale ${activeKpiFilter === 'pending' ? 'active-filter' : ''}`}
               onClick={() => setActiveKpiFilter(activeKpiFilter === 'pending' ? null : 'pending')}
-              style={{ border: activeKpiFilter === 'pending' ? '2.5px solid var(--text-warning)' : '1px solid var(--border)', cursor: 'pointer', background: 'var(--bg-primary)', transition: 'all 0.2s', padding: '16px', borderRadius: '12px' }}
+              style={{ 
+                background: '#ffffff', 
+                border: activeKpiFilter === 'pending' ? '1.5px solid #0f172a' : '1px solid #e2e8f0', 
+                borderRadius: '12px', 
+                padding: '16px 18px', 
+                cursor: 'pointer',
+                boxShadow: activeKpiFilter === 'pending' ? '0 2px 6px rgba(15,23,42,0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
+                transition: 'all 0.15s ease'
+              }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>Pending Orders</span>
-                <Clock size={14} color="var(--text-warning)" />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Pending Orders
+                </span>
+                <span style={{ 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  padding: '1px 6px', 
+                  borderRadius: '4px', 
+                  fontSize: '10px', 
+                  fontWeight: 600, 
+                  background: '#fef3c7', 
+                  color: '#b45309' 
+                }}>
+                  {kpis.pending.qty} docs
+                </span>
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {kpis.pending.qty} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Qty</span>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', fontFamily: 'monospace' }}>
+                R {kpis.pending.value.toLocaleString()}
               </div>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-warning)', marginTop: '4px' }}>
-                R {kpis.pending.value.toLocaleString()} <span style={{ fontSize: '10px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Val</span>
-              </div>
-              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
-                <span>Paid: <strong>R {kpis.pending.paid.toLocaleString()}</strong></span>
-                <span>Outstanding: <strong>R {kpis.pending.outstanding.toLocaleString()}</strong></span>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '6px' }}>
+                <span>Paid: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {kpis.pending.paid.toLocaleString()}</strong></span>
+                <span>Bal: <strong style={{ color: '#64748b', fontFamily: 'monospace' }}>R {kpis.pending.outstanding.toLocaleString()}</strong></span>
               </div>
             </div>
 
+            {/* Active Orders Card */}
             <div 
-              className={`stat clickable hover-scale ${activeKpiFilter === 'active' ? 'active-filter' : ''}`}
               onClick={() => setActiveKpiFilter(activeKpiFilter === 'active' ? null : 'active')}
-              style={{ border: activeKpiFilter === 'active' ? '2.5px solid var(--text-success)' : '1px solid var(--border)', cursor: 'pointer', background: 'var(--bg-primary)', transition: 'all 0.2s', padding: '16px', borderRadius: '12px' }}
+              style={{ 
+                background: '#ffffff', 
+                border: activeKpiFilter === 'active' ? '1.5px solid #0f172a' : '1px solid #e2e8f0', 
+                borderRadius: '12px', 
+                padding: '16px 18px', 
+                cursor: 'pointer',
+                boxShadow: activeKpiFilter === 'active' ? '0 2px 6px rgba(15,23,42,0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
+                transition: 'all 0.15s ease'
+              }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>Active Orders</span>
-                <Play size={14} color="var(--text-success)" />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Active Orders
+                </span>
+                <span style={{ 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  padding: '1px 6px', 
+                  borderRadius: '4px', 
+                  fontSize: '10px', 
+                  fontWeight: 600, 
+                  background: '#dcfce7', 
+                  color: '#15803d' 
+                }}>
+                  {kpis.active.qty} docs
+                </span>
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {kpis.active.qty} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Qty</span>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', fontFamily: 'monospace' }}>
+                R {kpis.active.value.toLocaleString()}
               </div>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-success)', marginTop: '4px' }}>
-                R {kpis.active.value.toLocaleString()} <span style={{ fontSize: '10px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Val</span>
-              </div>
-              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
-                <span>Paid: <strong>R {kpis.active.paid.toLocaleString()}</strong></span>
-                <span>Outstanding: <strong>R {kpis.active.outstanding.toLocaleString()}</strong></span>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '6px' }}>
+                <span>Paid: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {kpis.active.paid.toLocaleString()}</strong></span>
+                <span>Bal: <strong style={{ color: '#64748b', fontFamily: 'monospace' }}>R {kpis.active.outstanding.toLocaleString()}</strong></span>
               </div>
             </div>
 
+            {/* Complete Orders Card */}
             <div 
-              className={`stat clickable hover-scale ${activeKpiFilter === 'complete' ? 'active-filter' : ''}`}
               onClick={() => setActiveKpiFilter(activeKpiFilter === 'complete' ? null : 'complete')}
-              style={{ border: activeKpiFilter === 'complete' ? '2.5px solid var(--text-muted)' : '1px solid var(--border)', cursor: 'pointer', background: 'var(--bg-primary)', transition: 'all 0.2s', padding: '16px', borderRadius: '12px' }}
+              style={{ 
+                background: '#ffffff', 
+                border: activeKpiFilter === 'complete' ? '1.5px solid #0f172a' : '1px solid #e2e8f0', 
+                borderRadius: '12px', 
+                padding: '16px 18px', 
+                cursor: 'pointer',
+                boxShadow: activeKpiFilter === 'complete' ? '0 2px 6px rgba(15,23,42,0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
+                transition: 'all 0.15s ease'
+              }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ fontSize: '10px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>Complete Orders</span>
-                <CheckCircle size={14} color="var(--text-muted)" />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Complete Orders
+                </span>
+                <span style={{ 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  padding: '1px 6px', 
+                  borderRadius: '4px', 
+                  fontSize: '10px', 
+                  fontWeight: 600, 
+                  background: '#f1f5f9', 
+                  color: '#475569' 
+                }}>
+                  {kpis.complete.qty} docs
+                </span>
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {kpis.complete.qty} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Qty</span>
+              <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', fontFamily: 'monospace' }}>
+                R {kpis.complete.value.toLocaleString()}
               </div>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-muted)', marginTop: '4px' }}>
-                R {kpis.complete.value.toLocaleString()} <span style={{ fontSize: '10px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Val</span>
-              </div>
-              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
-                <span>Paid: <strong>R {kpis.complete.paid.toLocaleString()}</strong></span>
-                <span>Outstanding: <strong>R {kpis.complete.outstanding.toLocaleString()}</strong></span>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '6px' }}>
+                <span>Paid: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {kpis.complete.paid.toLocaleString()}</strong></span>
+                <span>Bal: <strong style={{ color: '#64748b', fontFamily: 'monospace' }}>R {kpis.complete.outstanding.toLocaleString()}</strong></span>
               </div>
             </div>
           </div>
-
 
 
           {/* SEARCH, FILTER & LEDGER GRID */}
@@ -4933,9 +5079,9 @@ export default function SalesTracker() {
               {/* TIER 2: ORDERS LEDGER FULL-BLEED TABLE */}
               <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '68vh', position: 'relative' }}>
                 <table className="table" style={{ margin: 0, width: '100%', fontSize: '12.5px', borderCollapse: 'collapse' }}>
-                  <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
-                    <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
-                      <th style={{ width: '40px', textAlign: 'center' }}>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f8fafc' }}>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                      <th style={{ width: '40px', textAlign: 'center', padding: '10px 8px', fontSize: '11px', fontWeight: 600, color: '#64748b' }}>
                         <input 
                           type="checkbox" 
                           checked={sortedOrders.length > 0 && selectedOrders.length === sortedOrders.length}
@@ -4948,49 +5094,49 @@ export default function SalesTracker() {
                           }}
                         />
                       </th>
-                      <th onClick={() => handleSort('id')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      <th onClick={() => handleSort('id')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order ID {renderSortIcon('id')}</div>
                       </th>
-                      <th onClick={() => handleSort('quote_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      <th onClick={() => handleSort('quote_name')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Name {renderSortIcon('quote_name')}</div>
                       </th>
-                      <th onClick={() => handleSort('project')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      <th onClick={() => handleSort('project')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Linked Project {renderSortIcon('project')}</div>
                       </th>
-                      <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderSortIcon('client')}</div>
                       </th>
-                      <th onClick={() => handleSort('pm')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      <th onClick={() => handleSort('pm')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Manager {renderSortIcon('pm')}</div>
                       </th>
-                      <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none', background: isSupplierMarginMode ? 'rgba(239, 68, 68, 0.08)' : undefined }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: isSupplierMarginMode ? '#ef4444' : undefined }}>
-                          {isSupplierMarginMode ? '🔒 Factory Margin' : 'Order Margin'} {renderSortIcon('margin')}
+                      <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', background: isSupplierMarginMode ? '#fee2e2' : undefined }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: isSupplierMarginMode ? '#b91c1c' : undefined }}>
+                          {isSupplierMarginMode ? '🔒 Factory Margin' : 'Margin'} {renderSortIcon('margin')}
                         </div>
                       </th>
-                      <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Value {renderSortIcon('value')}</div>
                       </th>
-                      <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Amount Paid {renderSortIcon('paid')}</div>
+                      <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Paid {renderSortIcon('paid')}</div>
                       </th>
-                      <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Balance Outstanding {renderSortIcon('outstanding')}</div>
+                      <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Balance {renderSortIcon('outstanding')}</div>
                       </th>
-                      <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Status {renderSortIcon('status')}</div>
+                      <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Status {renderSortIcon('status')}</div>
                       </th>
-                      <th onClick={() => handleSort('paymentStatus')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Payment Status {renderSortIcon('paymentStatus')}</div>
+                      <th onClick={() => handleSort('paymentStatus')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Payment {renderSortIcon('paymentStatus')}</div>
                       </th>
-                      <th onClick={() => handleSort('procPct')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Procurement % {renderSortIcon('procPct')}</div>
+                      <th onClick={() => handleSort('procPct')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Proc % {renderSortIcon('procPct')}</div>
                       </th>
-                      <th onClick={() => handleSort('invPct')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Invoiced % {renderSortIcon('invPct')}</div>
+                      <th onClick={() => handleSort('invPct')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Inv % {renderSortIcon('invPct')}</div>
                       </th>
-                      <th onClick={() => handleSort('delPct')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Delivered % {renderSortIcon('delPct')}</div>
+                      <th onClick={() => handleSort('delPct')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Del % {renderSortIcon('delPct')}</div>
                       </th>
                     </tr>
                   </thead>
@@ -5471,43 +5617,43 @@ export default function SalesTracker() {
             {/* TIER 2: Pipeline Orders Full-Bleed Table */}
             <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '68vh', position: 'relative' }}>
               <table className="table" style={{ margin: 0, width: '100%', fontSize: '12.5px', borderCollapse: 'collapse' }}>
-                <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
-                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
-                      <th onClick={() => handlePipelineSort('id')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f8fafc' }}>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                      <th onClick={() => handlePipelineSort('id')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order ID {renderPipelineSortIcon('id')}</div>
                       </th>
-                      <th onClick={() => handlePipelineSort('quote_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      <th onClick={() => handlePipelineSort('quote_name')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Quote / Order Name {renderPipelineSortIcon('quote_name')}</div>
                       </th>
-                      <th onClick={() => handlePipelineSort('projectName')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      <th onClick={() => handlePipelineSort('projectName')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Linked Project {renderPipelineSortIcon('projectName')}</div>
                       </th>
-                      <th onClick={() => handlePipelineSort('projectClient')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      <th onClick={() => handlePipelineSort('projectClient')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderPipelineSortIcon('projectClient')}</div>
                       </th>
-                      <th onClick={() => handlePipelineSort('projectPm')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      <th onClick={() => handlePipelineSort('projectPm')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Manager {renderPipelineSortIcon('projectPm')}</div>
                       </th>
-                      <th onClick={() => handlePipelineSort('division')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      <th onClick={() => handlePipelineSort('division')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Division {renderPipelineSortIcon('division')}</div>
                       </th>
-                      <th onClick={() => handlePipelineSort('value')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>
+                      <th onClick={() => handlePipelineSort('value')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', width: '100%' }}>Order Value (Ex-VAT) {renderPipelineSortIcon('value')}</div>
                       </th>
-                      <th onClick={() => handlePipelineSort('deposit_value')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right', background: 'rgba(245, 158, 11, 0.05)' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', width: '100%', color: '#f59e0b', fontWeight: 700 }}>
-                          Projected Deposit (Ex-VAT) {renderPipelineSortIcon('deposit_value')}
+                      <th onClick={() => handlePipelineSort('deposit_value')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#b45309', textTransform: 'uppercase', letterSpacing: '0.04em', background: '#fef3c7' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'flex-end', width: '100%', color: '#b45309', fontWeight: 700 }}>
+                          Projected Deposit {renderPipelineSortIcon('deposit_value')}
                         </div>
                       </th>
-                      <th onClick={() => handlePipelineSort('status')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}>
+                      <th onClick={() => handlePipelineSort('status')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Status {renderPipelineSortIcon('status')}</div>
                       </th>
-                      <th onClick={() => handlePipelineSort('expected_deposit_month')} style={{ cursor: 'pointer', userSelect: 'none', minWidth: '220px', background: 'rgba(245, 158, 11, 0.08)' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#f59e0b', fontWeight: 700 }}>
-                          ⚡ Expected Deposit Month {renderPipelineSortIcon('expected_deposit_month')}
+                      <th onClick={() => handlePipelineSort('expected_deposit_month')} style={{ cursor: 'pointer', userSelect: 'none', minWidth: '220px', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#b45309', textTransform: 'uppercase', letterSpacing: '0.04em', background: '#fef3c7' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#b45309', fontWeight: 700 }}>
+                          Expected Deposit Month {renderPipelineSortIcon('expected_deposit_month')}
                         </div>
                       </th>
-                      <th style={{ width: '80px', textAlign: 'center' }}>Action</th>
+                      <th style={{ width: '80px', textAlign: 'center', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -5632,33 +5778,66 @@ export default function SalesTracker() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '14px', marginBottom: '16px', width: '100%' }}>
               
               {/* TIER 1: ORDER TITLE & NAV (LEFT) + ACTIONS (RIGHT) */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', width: '100%' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', width: '100%', marginBottom: '4px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                     <button 
-                      className="btn btn-ghost btn-sm" 
-                      style={{ padding: '3px 8px', height: 'auto', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}
+                      type="button"
+                      className="btn btn-sm" 
+                      style={{ 
+                        padding: '4px 10px', 
+                        height: 'auto', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '6px', 
+                        fontSize: '11.5px', 
+                        fontWeight: 600,
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        color: '#475569',
+                        borderRadius: '6px'
+                      }}
                       onClick={() => {
                         if (confirm('Exit Workspace? Ensure you have saved your revisions.')) setSelectedOrderId(null);
                       }}
                     >
-                      <ArrowLeft size={12} /> Back to Ledger
+                      <ArrowLeft size={13} /> Back to Ledger
                     </button>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1px', background: 'rgba(59,130,246,0.12)', color: 'var(--text-info)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                      Sales Tracker Workspace Engine
+                    <span style={{ 
+                      fontSize: '11px', 
+                      textTransform: 'uppercase', 
+                      letterSpacing: '0.04em', 
+                      background: '#f1f5f9', 
+                      color: '#475569', 
+                      border: '1px solid #e2e8f0',
+                      padding: '2px 8px', 
+                      borderRadius: '6px', 
+                      fontWeight: 600 
+                    }}>
+                      Sales Tracker Workspace
                     </span>
                   </div>
-                  <h2 style={{ margin: '2px 0 0 0', fontSize: 'clamp(17px, 1.5vw, 22px)', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span>{quoteName}</span> — <span style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{selectedOrderId}</span>
+                  <h2 style={{ margin: '2px 0 0 0', fontSize: '22px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span>{quoteName}</span> <span style={{ color: '#64748b', fontWeight: 400 }}>·</span> <span style={{ color: '#0f172a', fontFamily: 'monospace', fontSize: '18px' }}>{selectedOrderId}</span>
                   </h2>
                 </div>
 
                 {/* ACTION BUTTONS */}
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <button 
-                    className="btn btn-ghost btn-sm" 
+                    type="button"
+                    className="btn btn-sm" 
                     onClick={() => {
                       if (confirm('Discard edits and close workspace?')) setSelectedOrderId(null);
+                    }}
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      color: '#64748b',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      borderRadius: '8px',
+                      padding: '6px 14px'
                     }}
                   >
                     Cancel
@@ -5666,26 +5845,43 @@ export default function SalesTracker() {
                   
                   <button 
                     type="button"
-                    className="btn btn-outline btn-sm" 
+                    className="btn btn-sm" 
                     onClick={handleExportPalladiumOrder}
                     title="Export clean XLSX (Number & Quantity) ready for Palladium Sales Order Item Import"
                     style={{ 
                       display: 'flex', 
                       alignItems: 'center', 
                       gap: '6px', 
-                      borderColor: 'var(--border)', 
-                      background: 'var(--bg-secondary)',
-                      color: 'var(--text-primary)',
-                      fontWeight: 600
+                      border: '1px solid #e2e8f0', 
+                      background: '#ffffff',
+                      color: '#0f172a',
+                      fontWeight: 600,
+                      fontSize: '12px',
+                      borderRadius: '8px',
+                      padding: '6px 14px',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
                     }}
                   >
-                    <Download size={14} style={{ color: '#10b981' }} /> Export Palladium SO (.xlsx)
+                    <Download size={14} style={{ color: '#64748b' }} /> Export Palladium SO (.xlsx)
                   </button>
 
                   <button 
-                    className="btn btn-primary btn-sm" 
+                    type="button"
+                    className="btn btn-sm" 
                     onClick={handleSaveOrderSpreadsheet}
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '6px',
+                      background: '#0f172a',
+                      border: '1px solid #0f172a',
+                      color: '#ffffff',
+                      fontWeight: 600,
+                      fontSize: '12px',
+                      borderRadius: '8px',
+                      padding: '6px 16px',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.06)'
+                    }}
                   >
                     <Save size={14} /> Save & Sync Sales Record
                   </button>
@@ -5774,52 +5970,65 @@ export default function SalesTracker() {
                     display: 'grid', 
                     gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', 
                     gap: '8px', 
-                    background: 'rgba(255,255,255,0.7)', 
-                    padding: '8px 12px', 
-                    borderRadius: 'var(--radius-md)', 
-                    border: '1px solid var(--border)', 
+                    background: '#ffffff', 
+                    padding: '10px 14px', 
+                    borderRadius: '10px', 
+                    border: '1px solid #e2e8f0', 
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
                     width: '100%' 
                   }}>
-                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Status</span>
-                      <span className={`badge ${computedStatus === 'Complete' ? 'b-success' : computedStatus === 'Ongoing' ? 'b-info' : computedStatus === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '10px', display: 'inline-block', marginTop: '2px' }}>{computedStatus}</span>
+                    <div style={{ textAlign: 'center', borderRight: '1px solid #f1f5f9', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.04em' }}>Status</span>
+                      <span style={{ 
+                        fontSize: '11px', 
+                        display: 'inline-block', 
+                        marginTop: '3px',
+                        padding: '1px 8px',
+                        borderRadius: '4px',
+                        fontWeight: 600,
+                        background: computedStatus === 'Complete' ? '#f1f5f9' : computedStatus === 'Ongoing' ? '#f8fafc' : '#fef3c7',
+                        color: computedStatus === 'Complete' ? '#0f172a' : computedStatus === 'Ongoing' ? '#0f172a' : '#b45309',
+                        border: '1px solid #e2e8f0'
+                      }}>
+                        {computedStatus}
+                      </span>
                     </div>
-                    <div style={{ borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9.5px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', background: 'rgba(74, 222, 128, 0.08)', color: '#4ade80' }}>
-                        <span>Proc:</span> <span style={{ color: 'var(--text-primary)' }}>{procPct}%</span>
+                    <div style={{ borderRight: '1px solid #f1f5f9', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', background: '#f8fafc', color: '#475569' }}>
+                        <span>Proc:</span> <span style={{ color: '#0f172a', fontFamily: 'monospace' }}>{procPct}%</span>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9.5px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', background: 'rgba(245, 158, 11, 0.08)', color: '#f59e0b' }}>
-                        <span>Inv:</span> <span style={{ color: 'var(--text-primary)' }}>{invPct}%</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', background: '#f8fafc', color: '#475569' }}>
+                        <span>Inv:</span> <span style={{ color: '#0f172a', fontFamily: 'monospace' }}>{invPct}%</span>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9.5px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', background: 'rgba(96, 165, 250, 0.08)', color: '#60a5fa' }}>
-                        <span>Del:</span> <span style={{ color: 'var(--text-primary)' }}>{delPct}%</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px', background: '#f8fafc', color: '#475569' }}>
+                        <span>Del:</span> <span style={{ color: '#0f172a', fontFamily: 'monospace' }}>{delPct}%</span>
                       </div>
                     </div>
-                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Order Value</span>
-                      <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginTop: '2px' }}>R {Math.round(valueInclVat).toLocaleString()}</span>
+                    <div style={{ textAlign: 'center', borderRight: '1px solid #f1f5f9', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.04em' }}>Order Value</span>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', display: 'block', marginTop: '2px', fontFamily: 'monospace' }}>R {Math.round(valueInclVat).toLocaleString()}</span>
                     </div>
                     {totalCreditVal > 0 && (
                       <div 
-                        style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center', cursor: 'pointer', background: 'rgba(239, 68, 68, 0.06)', borderRadius: '4px', padding: '2px 4px' }}
+                        style={{ textAlign: 'center', borderRight: '1px solid #f1f5f9', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center', cursor: 'pointer', background: '#fee2e2', borderRadius: '6px', padding: '2px 6px' }}
                         onClick={() => setSalesTrackerCreditsOpen(true)}
                         title="Click to view Credited Items & Returns"
                       >
-                        <span style={{ fontSize: '9px', color: 'var(--text-danger)', textTransform: 'uppercase', display: 'block', fontWeight: 700, letterSpacing: '0.5px' }}>Credits 🔴</span>
-                        <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-danger)', display: 'block', marginTop: '2px' }}>-R {Math.round(totalCreditVal).toLocaleString()}</span>
+                        <span style={{ fontSize: '9px', color: '#b91c1c', textTransform: 'uppercase', display: 'block', fontWeight: 700, letterSpacing: '0.04em' }}>Credits</span>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: '#b91c1c', display: 'block', marginTop: '1px', fontFamily: 'monospace' }}>-R {Math.round(totalCreditVal).toLocaleString()}</span>
                       </div>
                     )}
-                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Value Paid</span>
-                      <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(orderPaidAmount).toLocaleString()}</span>
+                    <div style={{ textAlign: 'center', borderRight: '1px solid #f1f5f9', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.04em' }}>Paid</span>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', display: 'block', marginTop: '2px', fontFamily: 'monospace' }}>R {Math.round(orderPaidAmount).toLocaleString()}</span>
                     </div>
-                    <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Outstanding</span>
-                      <span style={{ fontSize: '12.5px', fontWeight: 700, color: balanceOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>R {Math.round(balanceOutstanding).toLocaleString()}</span>
+                    <div style={{ textAlign: 'center', borderRight: '1px solid #f1f5f9', paddingRight: '6px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.04em' }}>Outstanding</span>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: balanceOutstanding > 0 ? '#b45309' : '#0f172a', display: 'block', marginTop: '2px', fontFamily: 'monospace' }}>R {Math.round(balanceOutstanding).toLocaleString()}</span>
                     </div>
                     <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                      <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Margin</span>
-                      <span style={{ fontSize: '12.5px', fontWeight: 700, color: overallMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>{overallMargin}%</span>
+                      <span style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.04em' }}>Margin</span>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: overallMargin < 39 ? '#dc2626' : '#0f172a', display: 'block', marginTop: '2px', fontFamily: 'monospace' }}>{overallMargin}%</span>
                     </div>
                   </div>
                 );
@@ -6119,12 +6328,12 @@ export default function SalesTracker() {
                             )}
 
                             {/* Phase tabs */}
-                            <div style={{ display: 'flex', gap: '6px', background: 'var(--bg-primary)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                            <div style={{ display: 'flex', gap: '4px', background: '#f8fafc', padding: '3px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                             {[
-                              { id: 'order', label: 'Order Spec', color: 'var(--text-primary)', bg: 'rgba(255, 255, 255, 0.05)' },
-                              { id: 'purchasing', label: 'Purchasing & Receiving', color: 'var(--text-info)', bg: 'rgba(59, 130, 246, 0.15)' },
-                              { id: 'invoicing', label: 'Invoicing', color: 'var(--text-warning)', bg: 'rgba(245, 158, 11, 0.15)' },
-                              { id: 'delivery', label: 'Delivery Logistics', color: 'var(--text-danger)', bg: 'rgba(236, 72, 153, 0.15)' }
+                              { id: 'order', label: 'Order Spec' },
+                              { id: 'purchasing', label: 'Purchasing & Receiving' },
+                              { id: 'invoicing', label: 'Invoicing' },
+                              { id: 'delivery', label: 'Delivery Logistics' }
                             ].map(tab => {
                               const isActive = activeTab === tab.id;
                               return (
@@ -6139,10 +6348,10 @@ export default function SalesTracker() {
                                     fontWeight: 600,
                                     borderRadius: '6px',
                                     border: 'none',
-                                    background: isActive ? tab.bg : 'transparent',
-                                    color: isActive ? tab.color : 'var(--text-secondary)',
+                                    background: isActive ? '#0f172a' : 'transparent',
+                                    color: isActive ? '#ffffff' : '#64748b',
                                     transition: 'all 0.15s ease',
-                                    boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                                    boxShadow: isActive ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
                                   }}
                                 >
                                   {tab.label}
