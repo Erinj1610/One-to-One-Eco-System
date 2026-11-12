@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, LogOut, ChevronRight } from 'lucide-react';
+import { Bell, LogOut, ChevronRight, Search } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -81,6 +81,42 @@ export default function Topbar({ title }) {
         )}
       </div>
       <div className="topbar-right" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <button
+          onClick={() => {
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '5px 10px',
+            borderRadius: '8px',
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            color: '#64748b',
+            fontSize: '12px',
+            cursor: 'pointer',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+            transition: 'all 0.15s ease'
+          }}
+          title="Global Quick Jump (Ctrl + K)"
+        >
+          <Search size={13} color="#94a3b8" />
+          <span style={{ fontSize: '11.5px', color: '#64748b' }}>Search or jump...</span>
+          <span style={{
+            fontSize: '10px',
+            fontWeight: 700,
+            padding: '1px 5px',
+            borderRadius: '4px',
+            background: '#f1f5f9',
+            color: '#64748b',
+            border: '1px solid #e2e8f0',
+            fontFamily: 'monospace'
+          }}>
+            Ctrl K
+          </span>
+        </button>
+
         <button 
           onClick={handleAlertsClick}
           style={{

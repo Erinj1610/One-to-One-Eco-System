@@ -613,38 +613,58 @@ export default function DebtorsForecastHub() {
   return (
     <div style={{ padding: '24px', maxWidth: '1850px', margin: '0 auto', color: 'var(--text-primary)' }}>
       
-      {/* TOP HEADER & NAVIGATION */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '14px' }}>
+      {/* TOP HEADER & NAVIGATION (ARCHITECTURAL STUDIO DESIGN) */}
+      <div style={{
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: '12px',
+        padding: '16px 20px',
+        marginBottom: '20px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '14px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+      }}>
         <div>
           <button 
             onClick={() => navigate('/sales-tracker')}
             className="btn btn-ghost btn-sm"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px', padding: '4px 8px' }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: '#64748b', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', marginBottom: '8px', padding: '4px 10px' }}
           >
-            <ArrowLeft size={14} /> Back to Sales Tracker
+            <ArrowLeft size={13} /> Back to Sales Tracker
           </button>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-            <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)' }}>
-              Debtors & Billing Forecast Hub
-            </h1>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', background: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                  FINANCIAL FORECASTING
+                </span>
+                <span style={{ fontSize: '11.5px', color: '#64748b' }}>ETA Item Splits & Balance Cashflow</span>
+              </div>
+              <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em' }}>
+                Debtors & Billing Forecast Hub
+              </h1>
+            </div>
 
-            {/* DYNAMIC REPORT DROPDOWN SELECTOR */}
-            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '10px', padding: '3px 6px', gap: '4px' }}>
+            {/* DYNAMIC REPORT DROPDOWN SELECTOR (STUDIO PILL CONTROL) */}
+            <div style={{ display: 'flex', alignItems: 'center', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '4px', gap: '4px' }}>
               <button 
                 onClick={() => setActiveReportMode('TO_BE_INVOICED')}
                 style={{
                   padding: '6px 12px',
-                  borderRadius: '7px',
+                  borderRadius: '6px',
                   fontSize: '11.5px',
-                  fontWeight: 700,
+                  fontWeight: activeReportMode === 'TO_BE_INVOICED' ? 600 : 500,
                   border: 'none',
                   cursor: 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
-                  background: activeReportMode === 'TO_BE_INVOICED' ? '#10b981' : 'transparent',
-                  color: activeReportMode === 'TO_BE_INVOICED' ? '#fff' : 'var(--text-secondary)',
+                  background: activeReportMode === 'TO_BE_INVOICED' ? '#0f172a' : 'transparent',
+                  color: activeReportMode === 'TO_BE_INVOICED' ? '#ffffff' : '#64748b',
                   transition: 'all 0.15s ease'
                 }}
               >
@@ -655,16 +675,16 @@ export default function DebtorsForecastHub() {
                 onClick={() => setActiveReportMode('BALANCE_PAYMENTS')}
                 style={{
                   padding: '6px 12px',
-                  borderRadius: '7px',
+                  borderRadius: '6px',
                   fontSize: '11.5px',
-                  fontWeight: 700,
+                  fontWeight: activeReportMode === 'BALANCE_PAYMENTS' ? 600 : 500,
                   border: 'none',
                   cursor: 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
-                  background: activeReportMode === 'BALANCE_PAYMENTS' ? '#8b5cf6' : 'transparent',
-                  color: activeReportMode === 'BALANCE_PAYMENTS' ? '#fff' : 'var(--text-secondary)',
+                  background: activeReportMode === 'BALANCE_PAYMENTS' ? '#0f172a' : 'transparent',
+                  color: activeReportMode === 'BALANCE_PAYMENTS' ? '#ffffff' : '#64748b',
                   transition: 'all 0.15s ease'
                 }}
               >
@@ -675,16 +695,16 @@ export default function DebtorsForecastHub() {
                 onClick={() => setActiveReportMode('INVOICED_DONE')}
                 style={{
                   padding: '6px 12px',
-                  borderRadius: '7px',
+                  borderRadius: '6px',
                   fontSize: '11.5px',
-                  fontWeight: 700,
+                  fontWeight: activeReportMode === 'INVOICED_DONE' ? 600 : 500,
                   border: 'none',
                   cursor: 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
-                  background: activeReportMode === 'INVOICED_DONE' ? '#3b82f6' : 'transparent',
-                  color: activeReportMode === 'INVOICED_DONE' ? '#fff' : 'var(--text-secondary)',
+                  background: activeReportMode === 'INVOICED_DONE' ? '#0f172a' : 'transparent',
+                  color: activeReportMode === 'INVOICED_DONE' ? '#ffffff' : '#64748b',
                   transition: 'all 0.15s ease'
                 }}
               >

@@ -1,336 +1,358 @@
-import React, { useMemo } from 'react';
+import React from 'react';
+import { 
+  Briefcase, 
+  DollarSign, 
+  TrendingUp, 
+  AlertCircle, 
+  Flame, 
+  Folder, 
+  ArrowRight, 
+  Clock, 
+  CheckCircle2,
+  Calendar,
+  Layers,
+  ChevronRight
+} from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Briefcase, DollarSign, TrendingUp, Users, FolderPlus, 
-  ArrowRight, Activity, ClipboardList, CheckCircle, Clock, 
-  ChevronRight, Award, Flame, AlertCircle, Percent
-} from 'lucide-react';
 
 export default function Dashboard() {
-  const { projects, contacts, leads } = useStore();
+  const { contacts, projects } = useStore();
   const navigate = useNavigate();
 
-  // 1. Calculate Core Financials & Metrics
-  const metrics = useMemo(() => {
-    const projList = Object.values(projects);
-    const active = projList.filter(p => p.complete !== 'Complete');
-    const offTrack = projList.filter(p => p.status === 'Off track');
-    
-    // Total portfolio value & billed
+  // Compute live portfolio metrics
+  const computeMetrics = () => {
     let totalPortfolioVal = 0;
     let totalPaid = 0;
     let totalOutstanding = 0;
+    let activeCount = 0;
+    let offTrackCount = 0;
 
-    projList.forEach(p => {
-      totalPortfolioVal += p.feeValue || 0;
+    const projectList = Object.values(projects || {});
+
+    projectList.forEach(p => {
+      const orders = Array.isArray(p.orders) ? p.orders : Object.values(p.orders || {});
+      const pVal = orders.reduce((sum, o) => sum + (Number(o.total_price || o.totalValue || o.value || 0)), 0);
+      const pPaid = orders.reduce((sum, o) => sum + (Number(o.paid_amount || o.paidAmount || 0)), 0);
       
-      const paidVal = parseInt(p.paid?.replace(/[^\d]/g, '') || 0);
-      const outVal = parseInt(p.outstanding?.replace(/[^\d]/g, '') || 0);
-      
-      totalPaid += paidVal;
-      totalOutstanding += outVal;
+      totalPortfolioVal += pVal;
+      totalPaid += pPaid;
+      totalOutstanding += Math.max(0, pVal - pPaid);
+
+      if (p.stage !== 'Completed' && p.stage !== 'Archived') {
+        activeCount++;
+      }
+      if (p.health === 'At Risk' || p.health === 'Critical' || p.status === 'Blocked') {
+        offTrackCount++;
+      }
     });
 
-    // Opportunities
-    const leadList = Object.values(leads).flat();
-    const pipelineValue = leadList.reduce((sum, l) => sum + (l.value || 0), 0);
-
     return {
-      activeCount: active.length,
-      offTrackCount: offTrack.length,
       totalPortfolioVal,
       totalPaid,
       totalOutstanding,
-      pipelineValue,
-      leadCount: leadList.length
+      activeCount,
+      offTrackCount,
+      projectList
     };
-  }, [projects, leads]);
+  };
 
-  // 2. Stage Breakdown
-  const stageStats = useMemo(() => {
-    const stats = { 'Stage 1': 0, 'Stage 2': 0, 'Stage 3': 0, 'Snags': 0, 'Complete': 0 };
-    Object.values(projects).forEach(p => {
-      const stage = p.stage;
-      if (stats[stage] !== undefined) {
-        stats[stage]++;
-      } else if (p.complete === 'Complete') {
-        stats['Complete']++;
-      }
-    });
-    return stats;
-  }, [projects]);
-
-  const activeProjects = Object.values(projects).filter(p => p.complete !== 'Complete');
+  const metrics = computeMetrics();
 
   return (
-    <div className="animation-fade-in">
-      {/* 1. Stat Cards Row */}
-      <div className="stat-grid stat-grid-4">
-        <div className="stat">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div className="av-md" style={{ background: 'var(--bg-info)', color: 'var(--text-info)' }}><Briefcase size={18} /></div>
-            <span className="trend trend-up"><TrendingUp size={10} /> +2 New</span>
+    <div className="animation-fade-in" style={{ padding: '0 4px', maxWidth: '1600px', margin: '0 auto' }}>
+      
+      {/* 1. STUDIO HERO HEADER */}
+      <div style={{
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: '12px',
+        padding: '16px 20px',
+        marginBottom: '18px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '14px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+      }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <span style={{
+              fontSize: '10px',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              background: '#f1f5f9',
+              color: '#475569',
+              padding: '3px 8px',
+              borderRadius: '4px',
+              border: '1px solid #e2e8f0'
+            }}>
+              EXECUTIVE INTELLIGENCE
+            </span>
+            <span style={{ fontSize: '11.5px', color: '#64748b' }}>Live Portfolio & Billing Vitals</span>
           </div>
-          <div className="stat-label">Active Projects</div>
-          <div className="stat-value">{metrics.activeCount}</div>
-          <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px' }}>Across {contacts.length} core clients</div>
+          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em' }}>
+            Operations & Performance Dashboard
+          </h1>
         </div>
 
-        <div className="stat">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div className="av-md" style={{ background: 'var(--bg-success)', color: 'var(--text-success)' }}><DollarSign size={18} /></div>
-            <span className="trend trend-up"><TrendingUp size={10} /> 12%</span>
-          </div>
-          <div className="stat-label">Revenue Target</div>
-          <div className="stat-value">R {(metrics.totalPortfolioVal / 1000000).toFixed(2)}M</div>
-          <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px' }}>R {(metrics.totalPaid / 1000000).toFixed(2)}M cash collected</div>
-        </div>
-
-        <div className="stat">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div className="av-md" style={{ background: 'var(--bg-warning)', color: 'var(--text-warning)' }}><TrendingUp size={18} /></div>
-            <span className="trend trend-up"><TrendingUp size={10} /> 8%</span>
-          </div>
-          <div className="stat-label">Outstanding Invoices</div>
-          <div className="stat-value">R {(metrics.totalOutstanding / 1000000).toFixed(2)}M</div>
-          <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px' }}>Aging average: 18 days</div>
-        </div>
-
-        <div className="stat">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div className="av-md" style={{ background: 'var(--bg-danger)', color: 'var(--text-danger)' }}><AlertCircle size={18} /></div>
-            {metrics.offTrackCount > 0 ? (
-              <span className="trend trend-down" style={{ background: 'rgba(239,83,80,0.1)', color: 'var(--text-danger)' }}><Flame size={10} /> Urgent</span>
-            ) : (
-              <span className="trend trend-up">All clear</span>
-            )}
-          </div>
-          <div className="stat-label">Off-Track Risk</div>
-          <div className="stat-value" style={{ color: metrics.offTrackCount > 0 ? 'var(--text-danger)' : 'var(--text-primary)' }}>
-            {metrics.offTrackCount} {metrics.offTrackCount === 1 ? 'Project' : 'Projects'}
-          </div>
-          <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px' }}>Awaiting client decisions</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={() => navigate('/projects')}
+            className="btn btn-sm"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '6px 12px',
+              fontSize: '12px',
+              color: '#475569',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            <Folder size={13} /> View Projects
+          </button>
+          <button
+            onClick={() => navigate('/sales-tracker')}
+            className="btn btn-sm"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: '#0f172a',
+              border: '1px solid #0f172a',
+              borderRadius: '8px',
+              padding: '6px 14px',
+              fontSize: '12px',
+              color: '#ffffff',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            <TrendingUp size={13} /> Sales Tracker
+          </button>
         </div>
       </div>
 
-      {/* 2. Main Double-Column Layout */}
-      <div className="crm-grid" style={{ marginTop: '24px' }}>
-        {/* Left Side: Projects Portfolio and Lead Opportunities */}
-        <div>
-          {/* Active Projects Card */}
-          <div className="card">
-            <div className="card-head" style={{ background: 'none', borderBottom: 'none' }}>
-              <div>
-                <div className="card-title">Live Portfolio Tracking</div>
-                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Real-time execution phases & outstanding billing</div>
-              </div>
-              <button className="btn btn-secondary" style={{ fontSize: '11px', padding: '6px 12px' }} onClick={() => navigate('/projects')}>
-                View Portfolio <ArrowRight size={12} style={{ marginLeft: '4px' }} />
-              </button>
-            </div>
-            <div className="desktop-only">
-              <table className="table">
-                <colgroup>
-                  <col style={{ width: '25%' }} />
-                  <col style={{ width: '15%' }} />
-                  <col style={{ width: '10%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '14%' }} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th>Project Name</th>
-                    <th>Offering</th>
-                    <th>PM</th>
-                    <th>Stage</th>
-                    <th>Deadline</th>
-                    <th>Status</th>
-                    <th style={{ textAlign: 'right' }}>Outstanding</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeProjects.map(p => (
-                    <tr key={p.key} className="clickable" onClick={() => navigate(`/projects/${p.key}`)}>
-                      <td>
-                        <div>
-                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</div>
-                          <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{p.client}</div>
-                        </div>
-                      </td>
-                      <td>{p.offering}</td>
-                      <td><span className="av" style={{ width: '22px', height: '22px', fontSize: '9px' }}>{p.pm}</span></td>
-                      <td><span className="badge b-default">{p.stage}</span></td>
-                      <td>{p.deadline}</td>
-                      <td>
-                        <span className={`badge ${p.status === 'Complete' ? 'b-success' : p.status === 'Ongoing' ? 'b-info' : p.status === 'Pending' ? 'b-warning' : 'b-default'}`}>
-                          {p.status || 'Draft'}
-                        </span>
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-warning)' }}>
-                        {p.outstanding}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile Touch Feed */}
-            <div className="mobile-only" style={{ padding: '0 14px 14px' }}>
-              {activeProjects.slice(0, 8).map(p => (
-                <div
-                  key={p.key}
-                  onClick={() => navigate(`/projects/${p.key}`)}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px 0',
-                    borderBottom: '1px solid var(--border)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <div style={{ minWidth: 0, flex: 1, paddingRight: '10px' }}>
-                    <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {p.name}
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                      {p.client || 'Client'} • {p.stage || 'In Progress'}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-warning)' }}>
-                      {p.outstanding || 'R 0'}
-                    </div>
-                    <span
-                      className={`badge ${p.status === 'Complete' ? 'b-success' : p.status === 'Ongoing' ? 'b-info' : 'b-warning'}`}
-                      style={{ fontSize: '9px', marginTop: '2px' }}
-                    >
-                      {p.status || 'Active'}
-                    </span>
-                  </div>
-                </div>
-              ))}
+      {/* 2. STAT CARDS ROW (ARCHITECTURAL STUDIO DESIGN) */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 230px), 1fr))',
+        gap: '14px',
+        marginBottom: '22px'
+      }}>
+        {/* Card 1: Active Projects */}
+        <div style={{
+          background: '#ffffff',
+          padding: '16px 18px',
+          borderRadius: '12px',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
+              ACTIVE PROJECTS
+            </span>
+            <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Briefcase size={14} color="#0f172a" />
             </div>
           </div>
-
-          {/* Sales Pipeline Opportunity Value */}
-          <div className="card" style={{ marginTop: '20px' }}>
-            <div className="card-head" style={{ background: 'none', borderBottom: 'none' }}>
-              <div>
-                <div className="card-title">Opportunities & Estimations</div>
-                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Active proposals in the high-fidelity Sales Pipeline</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Pipeline Total</div>
-                <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-info)' }}>R {metrics.pipelineValue.toLocaleString()}</div>
-              </div>
-            </div>
-            <div style={{ padding: '0 16px 16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', gap: '12px' }}>
-                {Object.entries(leads).slice(0, 4).map(([stage, items]) => {
-                  const val = items.reduce((s, i) => s + i.value, 0);
-                  return (
-                    <div key={stage} style={{ background: 'var(--bg-secondary)', borderRadius: '8px', padding: '12px', border: '0.5px solid var(--border)' }}>
-                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>{stage}</div>
-                      <div style={{ fontSize: '14px', fontWeight: 700, marginTop: '4px', color: 'var(--text-primary)' }}>R {(val/1000).toFixed(0)}k</div>
-                      <div style={{ fontSize: '9px', color: 'var(--text-secondary)', marginTop: '2px' }}>{items.length} opportunities</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+            {metrics.activeCount} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>Sites</span>
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+            Across {contacts?.length || 0} registered client accounts
           </div>
         </div>
 
-        {/* Right Side: Visual Stage Breakdown, Tasks & Updates */}
-        <div>
-          {/* Visual Progress Breakdown */}
-          <div className="crm-sidebar-section">
-            <div className="section-label">Portfolio Stages Breakdown</div>
-            <div className="card">
-              <div className="card-body">
-                {Object.entries(stageStats).map(([stage, count]) => {
-                  const total = Object.values(projects).length;
-                  const pct = total > 0 ? (count / total) * 100 : 0;
+        {/* Card 2: Portfolio Revenue */}
+        <div style={{
+          background: '#ffffff',
+          padding: '16px 18px',
+          borderRadius: '12px',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
+              PORTFOLIO VALUE
+            </span>
+            <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <DollarSign size={14} color="#16a34a" />
+            </div>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+            R {(metrics.totalPortfolioVal / 1000000).toFixed(2)}M
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+            R {(metrics.totalPaid / 1000000).toFixed(2)}M cash receipts collected
+          </div>
+        </div>
+
+        {/* Card 3: Outstanding Balance */}
+        <div style={{
+          background: '#ffffff',
+          padding: '16px 18px',
+          borderRadius: '12px',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
+              OUTSTANDING BALANCE
+            </span>
+            <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <TrendingUp size={14} color="#d97706" />
+            </div>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+            R {(metrics.totalOutstanding / 1000000).toFixed(2)}M
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+            Awaiting invoice & payment settlement
+          </div>
+        </div>
+
+        {/* Card 4: Off-Track Risk */}
+        <div style={{
+          background: '#ffffff',
+          padding: '16px 18px',
+          borderRadius: '12px',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
+              SITE RISK STATUS
+            </span>
+            <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <AlertCircle size={14} color={metrics.offTrackCount > 0 ? '#ef4444' : '#16a34a'} />
+            </div>
+          </div>
+          <div style={{ fontSize: '24px', fontWeight: 700, color: metrics.offTrackCount > 0 ? '#ef4444' : '#0f172a', fontFamily: 'monospace' }}>
+            {metrics.offTrackCount} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>Flagged</span>
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+            {metrics.offTrackCount > 0 ? 'Requires site PM intervention' : 'All live projects on track'}
+          </div>
+        </div>
+      </div>
+
+      {/* 3. MAIN PORTFOLIO & RECENT SITES TABLE */}
+      <div style={{
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: '12px',
+        overflow: 'hidden',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+      }}>
+        <div style={{
+          padding: '14px 18px',
+          borderBottom: '1px solid #e2e8f0',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          background: '#f8fafc'
+        }}>
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>Live Projects Portfolio</div>
+            <div style={{ fontSize: '11.5px', color: '#64748b' }}>Active architectural specifications and execution stages</div>
+          </div>
+          <button
+            onClick={() => navigate('/projects')}
+            className="btn btn-ghost btn-sm"
+            style={{
+              fontSize: '11.5px',
+              color: '#0f172a',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontWeight: 600
+            }}
+          >
+            Explore all <ChevronRight size={13} />
+          </button>
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table className="table" style={{ margin: 0, width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+            <thead>
+              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>Project Name</th>
+                <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>Client Account</th>
+                <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>Stage</th>
+                <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>Health</th>
+                <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', textAlign: 'right' }}>Portfolio Value</th>
+                <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', textAlign: 'center' }}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {metrics.projectList.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
+                    No active projects found in ecosystem.
+                  </td>
+                </tr>
+              ) : (
+                metrics.projectList.slice(0, 8).map(p => {
+                  const orders = Array.isArray(p.orders) ? p.orders : Object.values(p.orders || {});
+                  const pVal = orders.reduce((sum, o) => sum + (Number(o.total_price || o.totalValue || o.value || 0)), 0);
                   return (
-                    <div key={stage} style={{ marginBottom: '14px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 500, marginBottom: '4px' }}>
-                        <span>{stage}</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>{count} ({pct.toFixed(0)}%)</span>
-                      </div>
-                      <div style={{ height: '6px', background: 'var(--bg-secondary)', borderRadius: '3px', overflow: 'hidden' }}>
-                        <div style={{ 
-                          height: '100%', 
-                          width: `${pct}%`, 
-                          background: stage === 'Complete' ? 'var(--text-success)' : stage === 'Snags' ? 'var(--text-warning)' : 'var(--text-info)', 
-                          borderRadius: '3px' 
-                        }}></div>
-                      </div>
-                    </div>
+                    <tr 
+                      key={p.key || p.id} 
+                      style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.1s ease' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <td style={{ padding: '12px 14px', fontWeight: 600, color: '#0f172a' }}>
+                        {p.name}
+                      </td>
+                      <td style={{ padding: '12px 14px', color: '#64748b' }}>
+                        {p.client || 'Client Direct'}
+                      </td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <span className="badge badge-default" style={{ fontSize: '10.5px' }}>
+                          {p.stage || 'Design'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <span className={`badge ${p.health === 'Critical' || p.status === 'Blocked' ? 'badge-danger' : 'badge-success'}`} style={{ fontSize: '10.5px' }}>
+                          {p.health || 'On Track'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 14px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: '#0f172a' }}>
+                        R {Math.round(pVal).toLocaleString()}
+                      </td>
+                      <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                        <button
+                          onClick={() => navigate(`/projects/${p.key || p.id}`)}
+                          className="btn btn-xs"
+                          style={{
+                            background: '#f1f5f9',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '6px',
+                            padding: '4px 8px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            color: '#0f172a',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Workspace →
+                        </button>
+                      </td>
+                    </tr>
                   );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Action Center */}
-          <div className="crm-sidebar-section">
-            <div className="section-label">Staff Actions Hub</div>
-            <div className="card">
-              <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <button className="btn btn-primary" style={{ justifyContent: 'center' }} onClick={() => navigate('/crm')}>
-                  <FolderPlus size={14} style={{ marginRight: '8px' }} /> Launch CRM Detail View
-                </button>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <button className="btn btn-secondary" style={{ fontSize: '11px', padding: '10px 0', justifyContent: 'center' }} onClick={() => navigate('/sales-pipeline')}>
-                    Sales Pipeline
-                  </button>
-                  <button className="btn btn-secondary" style={{ fontSize: '11px', padding: '10px 0', justifyContent: 'center' }} onClick={() => navigate('/time-tracking')}>
-                    Time Tracking
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Live System Activity Feed */}
-          <div className="crm-sidebar-section">
-            <div className="section-label">Recent Activity Feed</div>
-            <div className="card">
-              <div className="card-body" style={{ padding: '12px' }}>
-                {[
-                  { desc: 'Dani updated Upper Primrose target to Stage 1', time: '10 mins ago', icon: <Activity size={10} /> },
-                  { desc: 'Invoiced Kalahari project snag balance', time: '2 hours ago', icon: <DollarSign size={10} /> },
-                  { desc: 'Martin Review requested on Villa Z layout', time: 'Yesterday', icon: <ClipboardList size={10} /> },
-                  { desc: 'Nando’s Stellenbosch successfully set to Complete', time: '2 days ago', icon: <CheckCircle size={10} /> }
-                ].map((a, i) => (
-                  <div key={i} style={{ display: 'flex', gap: '10px', padding: '10px 0', borderBottom: i < 3 ? '0.5px solid var(--border)' : 'none' }}>
-                    <div style={{ 
-                      width: '20px', 
-                      height: '20px', 
-                      borderRadius: '50%', 
-                      background: 'var(--bg-secondary)', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      color: 'var(--text-info)',
-                      marginTop: '2px'
-                    }}>
-                      {a.icon}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-primary)' }}>{a.desc}</div>
-                      <div style={{ fontSize: '9px', color: 'var(--text-tertiary)', marginTop: '2px' }}><Clock size={8} inline /> {a.time}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

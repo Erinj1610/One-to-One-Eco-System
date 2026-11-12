@@ -463,3 +463,74 @@ kbd,
   font-weight: 600 !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.04) !important;
 }
+
+/* ------------------------------------------------------------- */
+/* UNIVERSAL STATUS PILL DESIGN SYSTEM (FINESSED MICRO-DOTS)     */
+/* ------------------------------------------------------------- */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.status-pill-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-pill.draft,
+.status-pill.cancelled {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+.status-pill.draft .status-pill-dot {
+  background: #94a3b8;
+}
+
+.status-pill.pending,
+.status-pill.partial {
+  background: rgba(245, 158, 11, 0.08);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+.status-pill.pending .status-pill-dot,
+.status-pill.partial .status-pill-dot {
+  background: #f59e0b;
+  box-shadow: 0 0 4px rgba(245, 158, 11, 0.6);
+}
+
+.status-pill.ongoing,
+.status-pill.active,
+.status-pill.transit {
+  background: rgba(15, 23, 42, 0.06);
+  color: #0f172a;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+}
+.status-pill.ongoing .status-pill-dot,
+.status-pill.active .status-pill-dot {
+  background: #0f172a;
+}
+
+.status-pill.complete,
+.status-pill.allocated,
+.status-pill.delivered,
+.status-pill.paid {
+  background: rgba(22, 163, 74, 0.08);
+  color: #16a34a;
+  border: 1px solid rgba(22, 163, 74, 0.25);
+}
+.status-pill.complete .status-pill-dot,
+.status-pill.allocated .status-pill-dot,
+.status-pill.delivered .status-pill-dot {
+  background: #16a34a;
+  box-shadow: 0 0 4px rgba(22, 163, 74, 0.6);
+}

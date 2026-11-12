@@ -134,6 +134,7 @@ function AppInner({ devBypass, setDevBypass }) {
             <Route path="pipeline" element={<PermissionRoute module="Pipeline"><PipelinePage /></PermissionRoute>} />
             <Route path="sales-tracker" element={<PermissionRoute module="Pipeline"><SalesTracker /></PermissionRoute>} />
             <Route path="debtors-hub" element={<PermissionRoute module="Pipeline"><DebtorsForecastHub /></PermissionRoute>} />
+            <Route path="debtors-hub" element={<PermissionRoute module="Pipeline"><DebtorsForecastHub /></PermissionRoute>} />
             <Route path="time" element={<PermissionRoute module="Time tracking"><TimePage /></PermissionRoute>} />
             <Route path="products" element={<PermissionRoute module="Products"><ProductsPage /></PermissionRoute>} />
             <Route path="boq" element={<PermissionRoute module="BOQ Maker"><BoqPage /></PermissionRoute>} />

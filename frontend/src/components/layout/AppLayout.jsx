@@ -5,6 +5,7 @@ import Topbar from './Topbar';
 import MobileHeader from '../mobile/MobileHeader';
 import MobileBottomBar from '../mobile/MobileBottomBar';
 import PulseSurveyModal from '../common/PulseSurveyModal';
+import CommandPalette from '../common/CommandPalette';
 import { useStore } from '../../context/StoreContext';
 
 export default function AppLayout() {
@@ -94,6 +95,7 @@ export default function AppLayout() {
       </div>
       {isMobile && <MobileBottomBar />}
       <PulseSurveyModal />
+      <CommandPalette />
     </div>
   );
 }
