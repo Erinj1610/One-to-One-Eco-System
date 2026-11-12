@@ -495,51 +495,102 @@ export default function ProjectList() {
   return (
     <div className="animation-fade-in" style={{ width: '100%' }}>
         {/* Title & Filter Bar Header */}
-        <div className="card" style={{ marginBottom: '16px', background: 'var(--bg-primary)' }}>
-          <div className="card-body" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div className="av-md" style={{ background: 'rgba(24, 95, 165, 0.1)', color: 'var(--text-info)' }}>
-                <Briefcase size={18} />
-              </div>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>{getModuleName('projects', 'Projects')} Module</h2>
-                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Track converted projects, manage design sub-fees, product orders, and consolidated project statements.</div>
-              </div>
+      {/* Title & Filter Bar Header */}
+      <div style={{ background: 'transparent', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+              <span style={{ 
+                display: 'inline-flex', 
+                alignItems: 'center', 
+                padding: '2px 8px', 
+                borderRadius: '6px', 
+                fontSize: '11px', 
+                fontWeight: 600, 
+                letterSpacing: '0.04em', 
+                textTransform: 'uppercase', 
+                background: '#f1f5f9', 
+                color: '#475569', 
+                border: '1px solid #e2e8f0' 
+              }}>
+                Projects Suite
+              </span>
+              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 400 }}>
+                Track active architectural projects, design fees, and milestone execution
+              </span>
             </div>
+            <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span>{getModuleName('projects', 'Projects')}</span>
+              <span 
+                style={{ 
+                  fontSize: '11.5px', 
+                  background: '#f1f5f9', 
+                  color: '#475569', 
+                  padding: '2px 10px', 
+                  borderRadius: '20px', 
+                  border: '1px solid #e2e8f0',
+                  fontWeight: 600
+                }}
+              >
+                {kpis.total.qty} Projects
+              </span>
+            </h1>
+          </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '6px', padding: '2px', border: '0.5px solid var(--border)' }}>
-                {['All Time', 'Last Week', 'Last 30 Days', 'Financial Year'].map(preset => (
-                  <button 
-                    key={preset} 
-                    className={`btn btn-sm ${datePreset === preset ? 'btn-primary' : 'btn-ghost'}`} 
-                    style={{ border: 'none', background: datePreset === preset ? 'var(--text-info)' : 'none', color: datePreset === preset ? 'white' : 'var(--text-secondary)' }}
-                    onClick={() => applyPreset(preset)}
-                  >
-                    {preset}
-                  </button>
-                ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '10px', 
+              background: '#ffffff', 
+              border: '1px solid #e2e8f0', 
+              borderRadius: '10px', 
+              padding: '6px 10px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+            }}>
+              <div style={{ display: 'flex', background: '#f8fafc', borderRadius: '6px', padding: '2px', border: '1px solid #e2e8f0', gap: '3px' }}>
+                {['All Time', 'Last Week', 'Last 30 Days', 'Financial Year'].map(preset => {
+                  const isActive = datePreset === preset;
+                  return (
+                    <button
+                      key={preset}
+                      type="button"
+                      style={{ 
+                        border: 'none', 
+                        background: isActive ? '#0f172a' : 'transparent', 
+                        color: isActive ? '#ffffff' : '#64748b', 
+                        fontSize: '11.5px', 
+                        padding: '4px 10px',
+                        borderRadius: '4px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                      onClick={() => applyPreset(preset)}
+                    >
+                      {preset}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Custom Date Inputs */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', borderLeft: '1px solid var(--border)', paddingLeft: '8px' }}>
-                <Calendar size={13} color="var(--text-tertiary)" />
-                <input 
-                  type="date" 
-                  className="form-control" 
-                  style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  type="date"
+                  className="form-control"
+                  style={{ width: '125px', height: '28px', padding: '2px 8px', fontSize: '11px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}
                   value={startDate}
                   onChange={e => {
                     setStartDate(e.target.value);
                     setDatePreset('Custom');
                   }}
                 />
-                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>to</span>
-                <input 
-                  type="date" 
-                  className="form-control" 
-                  style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }}
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>to</span>
+                <input
+                  type="date"
+                  className="form-control"
+                  style={{ width: '125px', height: '28px', padding: '2px 8px', fontSize: '11px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}
                   value={endDate}
                   onChange={e => {
                     setEndDate(e.target.value);
@@ -547,153 +598,174 @@ export default function ProjectList() {
                   }}
                 />
               </div>
-
-              <button 
-                className="btn btn-primary" 
-                onClick={async () => {
-                  const todayStr = new Date().toISOString().split('T')[0];
-                  const newKey = await addProject({
-                    name: '',
-                    client: '',
-                    projectType: 'Design & Orders',
-                    offering: 'Signature',
-                    sqm: '',
-                    pm: 'Dani',
-                    targetMargin: 39,
-                    actualMargin: 39,
-                    designFees: [],
-                    orders: [],
-                    isDraft: true,
-                    stage: 'Stage 1',
-                    status: 'Draft',
-                    start: todayStr,
-                    deadline: 'TBD'
-                  });
-                  if (newKey) {
-                    navigate(`/projects/${newKey}`);
-                  }
-                }}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', height: '28px', fontSize: '12px' }}
-              >
-                <Plus size={16} /> New Project
-              </button>
             </div>
+
+            <button
+              className="btn btn-sm"
+              onClick={async () => {
+                const todayStr = new Date().toISOString().split('T')[0];
+                const newKey = await addProject({
+                  name: '',
+                  client: '',
+                  projectType: 'Design & Orders',
+                  offering: 'Signature',
+                  sqm: '',
+                  pm: 'Dani',
+                  targetMargin: 39,
+                  actualMargin: 39,
+                  designFees: [],
+                  orders: [],
+                  isDraft: true,
+                  stage: 'Stage 1',
+                  status: 'Draft',
+                  start: todayStr,
+                  deadline: 'TBD'
+                });
+                if (newKey) {
+                  navigate(`/projects/${newKey}`);
+                }
+              }}
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '6px', 
+                background: '#0f172a',
+                color: '#ffffff',
+                border: '1px solid #0f172a',
+                borderRadius: '8px',
+                padding: '6px 14px',
+                fontSize: '12px',
+                fontWeight: 600,
+                boxShadow: '0 1px 2px rgba(0,0,0,0.06)'
+              }}
+            >
+              <Plus size={14} /> New Project
+            </button>
+          </div>
+        </div>
+      </div>
+      {/* 4-COLUMN HIGH-FIDELITY KPI METRICS GRID (Modern Architectural Cards) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '14px', marginBottom: '20px' }}>
+        <div
+          className="clickable"
+          onClick={() => setActiveKpiFilter(activeKpiFilter === 'total' ? null : 'total')}
+          style={{
+            background: '#ffffff',
+            padding: '16px 18px',
+            borderRadius: '12px',
+            border: activeKpiFilter === 'total' ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
+            boxShadow: activeKpiFilter === 'total' ? '0 2px 6px rgba(15,23,42,0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Total Projects
+            </span>
+            <span style={{ fontSize: '10px', fontWeight: 600, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: '4px' }}>
+              {kpis.total.qty} projects
+            </span>
+          </div>
+          <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+            R {Math.round(kpis.total.totalVal / 1000)}k
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
+            <span>Design: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {Math.round(kpis.total.designVal / 1000)}k</strong></span>
+            <span>Product: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {Math.round(kpis.total.productVal / 1000)}k</strong></span>
           </div>
         </div>
 
-        {/* 4-COLUMN HIGH-FIDELITY KPI METRICS GRID (FLUID PROPORTIONAL) */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: '12px', marginBottom: '20px' }}>
-          
-          <div 
-            className={`stat-card clickable hover-scale ${activeKpiFilter === 'total' ? 'active-filter' : ''}`}
-            onClick={() => setActiveKpiFilter(activeKpiFilter === 'total' ? null : 'total')}
-            style={{ 
-              background: 'var(--bg-primary)', 
-              padding: '16px', 
-              borderRadius: '12px', 
-              border: activeKpiFilter === 'total' ? '2px solid var(--text-info)' : '1px solid var(--border)',
-              cursor: 'pointer'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>TOTAL PROJECTS</span>
-              <Briefcase size={16} color="var(--text-info)" />
-            </div>
-            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
-              {kpis.total.qty} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Qty</span>
-            </div>
-            <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-info)', marginTop: '4px' }}>
-              R {Math.round(kpis.total.totalVal / 1000)}k <span style={{ fontSize: '10px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Total</span>
-            </div>
-            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
-              <span>Design: <strong>R {Math.round(kpis.total.designVal / 1000)}k</strong></span>
-              <span>Product: <strong>R {Math.round(kpis.total.productVal / 1000)}k</strong></span>
-            </div>
+        <div
+          className="clickable"
+          onClick={() => setActiveKpiFilter(activeKpiFilter === 'pending' ? null : 'pending')}
+          style={{
+            background: '#ffffff',
+            padding: '16px 18px',
+            borderRadius: '12px',
+            border: activeKpiFilter === 'pending' ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
+            boxShadow: activeKpiFilter === 'pending' ? '0 2px 6px rgba(15,23,42,0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Pending Projects
+            </span>
+            <span style={{ fontSize: '10px', fontWeight: 600, background: '#fef3c7', color: '#b45309', padding: '1px 6px', borderRadius: '4px' }}>
+              {kpis.pending.qty} projects
+            </span>
           </div>
-
-          <div 
-            className={`stat-card clickable hover-scale ${activeKpiFilter === 'pending' ? 'active-filter' : ''}`}
-            onClick={() => setActiveKpiFilter(activeKpiFilter === 'pending' ? null : 'pending')}
-            style={{ 
-              background: 'var(--bg-primary)', 
-              padding: '16px', 
-              borderRadius: '12px', 
-              border: activeKpiFilter === 'pending' ? '2px solid var(--text-warning)' : '1px solid var(--border)',
-              cursor: 'pointer'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>PENDING PROJECTS</span>
-              <Clock size={16} color="var(--text-warning)" />
-            </div>
-            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
-              {kpis.pending.qty} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Qty</span>
-            </div>
-            <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-warning)', marginTop: '4px' }}>
-              R {Math.round(kpis.pending.totalVal / 1000)}k <span style={{ fontSize: '10px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Total</span>
-            </div>
-            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
-              <span>Design: <strong>R {Math.round(kpis.pending.designVal / 1000)}k</strong></span>
-              <span>Product: <strong>R {Math.round(kpis.pending.productVal / 1000)}k</strong></span>
-            </div>
+          <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+            R {Math.round(kpis.pending.totalVal / 1000)}k
           </div>
-
-          <div 
-            className={`stat-card clickable hover-scale ${activeKpiFilter === 'active' ? 'active-filter' : ''}`}
-            onClick={() => setActiveKpiFilter(activeKpiFilter === 'active' ? null : 'active')}
-            style={{ 
-              background: 'var(--bg-primary)', 
-              padding: '16px', 
-              borderRadius: '12px', 
-              border: activeKpiFilter === 'active' ? '2px solid var(--text-success)' : '1px solid var(--border)',
-              cursor: 'pointer'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>ACTIVE PROJECTS</span>
-              <Play size={16} color="var(--text-success)" />
-            </div>
-            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
-              {kpis.active.qty} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Qty</span>
-            </div>
-            <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-success)', marginTop: '4px' }}>
-              R {Math.round(kpis.active.totalVal / 1000)}k <span style={{ fontSize: '10px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Total</span>
-            </div>
-            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
-              <span>Design: <strong>R {Math.round(kpis.active.designVal / 1000)}k</strong></span>
-              <span>Product: <strong>R {Math.round(kpis.active.productVal / 1000)}k</strong></span>
-            </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
+            <span>Design: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {Math.round(kpis.pending.designVal / 1000)}k</strong></span>
+            <span>Product: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {Math.round(kpis.pending.productVal / 1000)}k</strong></span>
           </div>
-
-          <div 
-            className={`stat-card clickable hover-scale ${activeKpiFilter === 'complete' ? 'active-filter' : ''}`}
-            onClick={() => setActiveKpiFilter(activeKpiFilter === 'complete' ? null : 'complete')}
-            style={{ 
-              background: 'var(--bg-primary)', 
-              padding: '16px', 
-              borderRadius: '12px', 
-              border: activeKpiFilter === 'complete' ? '2px solid var(--text-muted)' : '1px solid var(--border)',
-              cursor: 'pointer'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>COMPLETE PROJECTS</span>
-              <CheckCircle size={16} color="var(--text-muted)" />
-            </div>
-            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
-              {kpis.complete.qty} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Qty</span>
-            </div>
-            <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-muted)', marginTop: '4px' }}>
-              R {Math.round(kpis.complete.totalVal / 1000)}k <span style={{ fontSize: '10px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Total</span>
-            </div>
-            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
-              <span>Design: <strong>R {Math.round(kpis.complete.designVal / 1000)}k</strong></span>
-              <span>Product: <strong>R {Math.round(kpis.complete.productVal / 1000)}k</strong></span>
-            </div>
-          </div>
-
         </div>
 
+        <div
+          className="clickable"
+          onClick={() => setActiveKpiFilter(activeKpiFilter === 'active' ? null : 'active')}
+          style={{
+            background: '#ffffff',
+            padding: '16px 18px',
+            borderRadius: '12px',
+            border: activeKpiFilter === 'active' ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
+            boxShadow: activeKpiFilter === 'active' ? '0 2px 6px rgba(15,23,42,0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Active Projects
+            </span>
+            <span style={{ fontSize: '10px', fontWeight: 600, background: '#dcfce7', color: '#15803d', padding: '1px 6px', borderRadius: '4px' }}>
+              {kpis.active.qty} projects
+            </span>
+          </div>
+          <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+            R {Math.round(kpis.active.totalVal / 1000)}k
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
+            <span>Design: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {Math.round(kpis.active.designVal / 1000)}k</strong></span>
+            <span>Product: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {Math.round(kpis.active.productVal / 1000)}k</strong></span>
+          </div>
+        </div>
+
+        <div
+          className="clickable"
+          onClick={() => setActiveKpiFilter(activeKpiFilter === 'complete' ? null : 'complete')}
+          style={{
+            background: '#ffffff',
+            padding: '16px 18px',
+            borderRadius: '12px',
+            border: activeKpiFilter === 'complete' ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
+            boxShadow: activeKpiFilter === 'complete' ? '0 2px 6px rgba(15,23,42,0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Complete Projects
+            </span>
+            <span style={{ fontSize: '10px', fontWeight: 600, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: '4px' }}>
+              {kpis.complete.qty} projects
+            </span>
+          </div>
+          <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+            R {Math.round(kpis.complete.totalVal / 1000)}k
+          </div>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
+            <span>Design: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {Math.round(kpis.complete.designVal / 1000)}k</strong></span>
+            <span>Product: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {Math.round(kpis.complete.productVal / 1000)}k</strong></span>
+          </div>
+        </div>
+      </div>
         {/* INTEGRATED PROJECT DIRECTORY CARD */}
         <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
           
@@ -794,9 +866,9 @@ export default function ProjectList() {
               <col style={{ width: '9%' }} />
               <col style={{ width: '11%' }} />
             </colgroup>
-            <thead>
-              <tr>
-                <th style={{ width: '3%', textAlign: 'center' }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f8fafc' }}>
+              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                <th style={{ width: '3%', textAlign: 'center', padding: '10px 8px', fontSize: '11px', fontWeight: 600, color: '#64748b' }}>
                   <input 
                     type="checkbox" 
                     checked={sortedProjects.length > 0 && sortedProjects.every(p => selectedKeys.has(p.key))}
@@ -804,42 +876,41 @@ export default function ProjectList() {
                     style={{ cursor: 'pointer' }}
                   />
                 </th>
-                <th onClick={() => handleSort('name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                <th onClick={() => handleSort('name')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project {renderSortIcon('name')}</div>
                 </th>
-                <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderSortIcon('client')}</div>
                 </th>
-                <th onClick={() => handleSort('pm')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Manager {renderSortIcon('pm')}</div>
+                <th onClick={() => handleSort('pm')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>PM {renderSortIcon('pm')}</div>
                 </th>
-                <th onClick={() => handleSort('designFees')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                <th onClick={() => handleSort('designFees')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Design Fees {renderSortIcon('designFees')}</div>
                 </th>
-                <th onClick={() => handleSort('orders')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                <th onClick={() => handleSort('orders')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Orders {renderSortIcon('orders')}</div>
                 </th>
-                <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Margin {renderSortIcon('margin')}</div>
+                <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Margin {renderSortIcon('margin')}</div>
                 </th>
-                <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Value {renderSortIcon('value')}</div>
                 </th>
-                <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Paid {renderSortIcon('paid')}</div>
                 </th>
-                <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Outstanding {renderSortIcon('outstanding')}</div>
                 </th>
-                <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Status {renderSortIcon('status')}</div>
                 </th>
-                <th onClick={() => handleSort('stage')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                <th onClick={() => handleSort('stage')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Stage {renderSortIcon('stage')}</div>
                 </th>
               </tr>
-            </thead>
-            <tbody>
+            </thead>            <tbody>
               {sortedProjects.map(p => {
                 const { progressPct } = calculateProjectStageAndProgress(p);
                 

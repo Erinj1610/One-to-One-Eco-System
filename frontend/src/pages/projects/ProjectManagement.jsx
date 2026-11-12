@@ -954,30 +954,52 @@ export default function ProjectManagement() {
       </button>
 
       {/* Hero Header Card */}
-      <div style={{ 
-        background: 'linear-gradient(135deg, var(--bg-secondary) 0%, rgba(24,95,165,0.02) 100%)', 
-        border: '1.5px solid var(--border)', 
-        borderRadius: 'var(--radius-lg)', 
-        padding: '20px 24px', 
+      {/* Hero Header Card */}
+      <div style={{
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: '12px',
+        padding: '20px 24px',
         marginBottom: '20px',
-        boxShadow: '0 2px 12px rgba(0,0,0,0.01)',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
         display: 'grid',
-        gridTemplateColumns: '1.5fr 1.2fr',
+        gridTemplateColumns: '1.4fr 1.3fr',
         gap: '24px',
         alignItems: 'center'
       }}>
         {/* Left side: Project Info, Client, PM, badges */}
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
-            <Lightbulb size={22} color="var(--text-info)" style={{ filter: 'drop-shadow(0 2px 8px rgba(24,95,165,0.2))' }} />
-            <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.3px' }}>{overviewForm.name || (p.name?.startsWith('new-project') ? 'New Project Draft' : p.name) || 'Draft Project'}</span>
-            <span className={`badge ${p.status === 'Complete' ? 'b-success' : p.status === 'Ongoing' ? 'b-info' : p.status === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '10.5px', padding: '3px 10px', fontWeight: 600 }}>{p.status || 'Draft'}</span>
-            <span className="badge b-info" style={{ fontSize: '10.5px', padding: '3px 10px', fontWeight: 600 }}>{p.projectType}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em' }}>
+              {p.name || 'Untitled Project'}
+            </span>
+            <span style={{ 
+              fontSize: '11px', 
+              padding: '2px 8px', 
+              fontWeight: 600, 
+              borderRadius: '6px',
+              background: p.status === 'Complete' ? '#f1f5f9' : p.status === 'Ongoing' ? '#f8fafc' : '#fef3c7',
+              color: p.status === 'Complete' ? '#0f172a' : p.status === 'Ongoing' ? '#0f172a' : '#b45309',
+              border: '1px solid #e2e8f0'
+            }}>
+              {p.status}
+            </span>
+            <span style={{ 
+              fontSize: '11px', 
+              padding: '2px 8px', 
+              fontWeight: 600, 
+              borderRadius: '6px',
+              background: '#f1f5f9',
+              color: '#475569',
+              border: '1px solid #e2e8f0'
+            }}>
+              {p.stage || 'Stage 1'}
+            </span>
           </div>
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
             <div 
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: 'var(--text-secondary)', cursor: p.client && p.client !== '—' ? 'pointer' : 'default' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#64748b', cursor: p.client && p.client !== '—' ? 'pointer' : 'default' }}
               onClick={() => {
                 if (p.client && p.client !== '—') {
                   navigate('/crm', { state: { selectedClientName: p.client } });
@@ -985,75 +1007,76 @@ export default function ProjectManagement() {
               }}
               title={p.client && p.client !== '—' ? `Open ${p.client} in CRM` : ''}
             >
-              <User size={14} style={{ color: 'var(--text-info)' }} />
-              <span style={{ fontWeight: 600, color: 'var(--text-info)', textDecoration: p.client && p.client !== '—' ? 'underline' : 'none' }}>{p.client || '—'}</span>
+              <User size={13} style={{ color: '#64748b' }} />
+              <span>Client: <strong style={{ color: '#0f172a' }}>{p.client || '—'}</strong></span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-              <Users size={14} style={{ color: 'var(--text-tertiary)' }} />
-              <span>Project Manager: <strong style={{ color: 'var(--text-primary)' }}>{p.pm}</strong></span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#64748b' }}>
+              <Users size={13} style={{ color: '#64748b' }} />
+              <span>PM: <strong style={{ color: '#0f172a' }}>{p.pm}</strong></span>
             </div>
             {p.sqm && p.sqm !== '—' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
-                <Award size={14} style={{ color: 'var(--text-tertiary)' }} />
-                <span>Scope Area: <strong style={{ color: 'var(--text-primary)' }}>{p.sqm} m²</strong></span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', color: '#64748b' }}>
+                <Award size={13} style={{ color: '#64748b' }} />
+                <span>Scope: <strong style={{ color: '#0f172a' }}>{p.sqm} m²</strong></span>
               </div>
             )}
           </div>
         </div>
 
         {/* Right side: Vitals Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '8px', background: 'rgba(255,255,255,0.6)', padding: '12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-          <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
-            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Project Status</span>
-            <span className={`badge ${p.status === 'Complete' ? 'b-success' : p.status === 'Ongoing' ? 'b-info' : p.status === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '11px', display: 'inline-block', marginTop: '2px' }}>{p.status || 'Draft'}</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '8px', background: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+          <div style={{ textAlign: 'center', borderRight: '1px solid #e2e8f0' }}>
+            <span style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.04em' }}>Status</span>
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#0f172a', display: 'block', marginTop: '2px' }}>{p.status}</span>
           </div>
-          <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
-            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Stage</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-info)', display: 'block', marginTop: '2px' }}>{p.isDraft ? '—' : computedStage}</span>
+          <div style={{ textAlign: 'center', borderRight: '1px solid #e2e8f0' }}>
+            <span style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.04em' }}>Orders</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', display: 'block', marginTop: '2px', fontFamily: 'monospace' }}>{orders.length}</span>
           </div>
-          <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
-            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Project Value</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginTop: '2px' }}>{p.isDraft ? '—' : `R ${grandContractValue.toLocaleString()}`}</span>
+          <div style={{ textAlign: 'center', borderRight: '1px solid #e2e8f0' }}>
+            <span style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.04em' }}>Value</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', display: 'block', marginTop: '2px', fontFamily: 'monospace' }}>R {Math.round(totalProjectValue).toLocaleString()}</span>
           </div>
-          <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
-            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Value Paid</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-success)', display: 'block', marginTop: '2px' }}>{p.isDraft ? '—' : `R ${grandPaidValue.toLocaleString()}`}</span>
+          <div style={{ textAlign: 'center', borderRight: '1px solid #e2e8f0' }}>
+            <span style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.04em' }}>Paid</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', display: 'block', marginTop: '2px', fontFamily: 'monospace' }}>R {Math.round(totalProjectPaid).toLocaleString()}</span>
           </div>
-          <div style={{ textAlign: 'center', borderRight: '1px solid var(--border)' }}>
-            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Outstanding</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: p.isDraft ? 'var(--text-secondary)' : grandOutstandingValue > 0 ? 'var(--text-warning)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>{p.isDraft ? '—' : `R ${grandOutstandingValue.toLocaleString()}`}</span>
+          <div style={{ textAlign: 'center', borderRight: '1px solid #e2e8f0' }}>
+            <span style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.04em' }}>Balance</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: totalProjectOutstanding > 0 ? '#b45309' : '#0f172a', display: 'block', marginTop: '2px', fontFamily: 'monospace' }}>
+              R {Math.round(totalProjectOutstanding).toLocaleString()}
+            </span>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <span style={{ fontSize: '9px', color: 'var(--text-tertiary)', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.5px' }}>Margin</span>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: p.isDraft || orders.length === 0 ? 'var(--text-secondary)' : blendedMargin < (p.targetMargin || alertSettings?.defaultTargetMargin || 39) ? 'var(--text-danger)' : 'var(--text-success)', display: 'block', marginTop: '2px' }}>
+            <span style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', display: 'block', fontWeight: 600, letterSpacing: '0.04em' }}>Margin</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', display: 'block', marginTop: '2px', fontFamily: 'monospace' }}>
               {p.isDraft || orders.length === 0 ? '—' : `${blendedMargin}%`}
             </span>
           </div>
         </div>
       </div>
-
       {/* Segmented Tab Navigation Switcher */}
-      <div style={{ 
-        display: 'flex', 
-        background: 'var(--bg-secondary)', 
-        padding: '5px', 
-        borderRadius: 'var(--radius-lg)', 
-        border: '1.5px solid var(--border)',
+      <div style={{
+        display: 'flex',
+        background: '#f8fafc',
+        padding: '3px',
+        borderRadius: '10px',
+        border: '1px solid #e2e8f0',
         marginBottom: '20px',
         gap: '4px'
       }}>
         {[
-          { id: 'overview', label: '1. Overview (Project Info)', icon: <ClipboardList size={15} />, disabled: false },
-          { id: 'design', label: '2. Design Section (Sub-fees)', icon: <Award size={15} />, disabled: p.isDraft || p.projectType === 'Orders-Only' },
-          { id: 'orders', label: '3. Orders Section', icon: <ShoppingBag size={15} />, disabled: p.isDraft || p.projectType === 'Design-Only' },
-          { id: 'summary', label: '4. Summary (Statement Overview)', icon: <Layers size={15} />, disabled: p.isDraft },
-          { id: 'documents', label: '5. Documents (G-Drive Portal)', icon: <Folder size={15} />, disabled: p.isDraft },
-          { id: 'tickets', label: '6. Tickets & Snags', icon: <Ticket size={15} />, disabled: p.isDraft },
-          { id: 'payments', label: '💳 Payments Ledger', icon: <Wallet size={15} />, disabled: p.isDraft }
+          { id: 'overview', label: '1. Overview (Project Info)', icon: <ClipboardList size={14} />, disabled: false },
+          { id: 'design', label: '2. Design Section (Sub-fees)', icon: <Award size={14} />, disabled: p.isDraft },
+          { id: 'orders', label: '3. Orders Section', icon: <ShoppingBag size={14} />, disabled: p.isDraft },
+          { id: 'summary', label: '4. Summary (Statement Overview)', icon: <Layers size={14} />, disabled: p.isDraft },
+          { id: 'documents', label: '5. Documents (G-Drive Portal)', icon: <Folder size={14} />, disabled: p.isDraft },
+          { id: 'tickets', label: '6. Tickets & Snags', icon: <Ticket size={14} />, disabled: p.isDraft },
+          { id: 'payments', label: 'Payments Ledger', icon: <Wallet size={14} />, disabled: p.isDraft }
         ].map(tab => {
           const isActive = activeTab === tab.id;
           return (
-            <button 
+            <button
               key={tab.id}
               onClick={() => !tab.disabled && setActiveTab(tab.id)}
               disabled={tab.disabled}
@@ -1062,18 +1085,18 @@ export default function ProjectManagement() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '8px',
-                padding: '10px 14px',
-                fontSize: '12.5px',
+                gap: '6px',
+                padding: '8px 12px',
+                fontSize: '12px',
                 cursor: tab.disabled ? 'not-allowed' : 'pointer',
-                color: tab.disabled ? 'var(--text-tertiary)' : isActive ? 'var(--text-info)' : 'var(--text-secondary)',
-                opacity: tab.disabled ? 0.35 : 1,
+                color: tab.disabled ? '#94a3b8' : isActive ? '#ffffff' : '#64748b',
+                opacity: tab.disabled ? 0.4 : 1,
                 border: 'none',
-                borderRadius: 'var(--radius-md)',
-                background: isActive ? 'var(--bg-primary)' : 'transparent',
-                boxShadow: isActive ? '0 1px 4px rgba(0,0,0,0.05)' : 'none',
+                borderRadius: '6px',
+                background: isActive ? '#0f172a' : 'transparent',
+                boxShadow: isActive ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
                 fontFamily: 'inherit',
-                fontWeight: isActive ? 600 : 500,
+                fontWeight: 600,
                 transition: 'all 0.15s ease'
               }}
             >
@@ -1083,7 +1106,6 @@ export default function ProjectManagement() {
           );
         })}
       </div>
-
       {/* Main Active Tab Workspace Card Container */}
       <div className="card" style={{ border: '1.5px solid var(--border)', boxShadow: '0 4px 20px rgba(0,0,0,0.01)', background: 'var(--bg-primary)', overflow: 'visible' }}>
         <div className="card-body" style={{ padding: '24px' }}>

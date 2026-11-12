@@ -811,8 +811,8 @@ export default function CrmPage() {
     }
 
     return (
-      <div className="animation-fade-in" style={{ width: '100%' }}>
-        <div style={{ width: '100%', position: 'relative' }}>
+      <div className="animation-fade-in" style={{ display: 'grid', gridTemplateColumns: isSidebarCollapsed ? '1fr 50px' : '1fr 340px', gap: '24px', alignItems: 'start' }}>
+        <div style={{ minWidth: 0, position: 'relative' }}>
         {/* Success Toasts container */}
         <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {toasts.map(t => (
@@ -823,6 +823,7 @@ export default function CrmPage() {
           ))}
         </div>
 
+        {/* Title & Filter Bar Header */}
           {/* Title & Filter Bar Header */}
           <div style={{ background: 'transparent', marginBottom: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
@@ -922,7 +923,7 @@ export default function CrmPage() {
                 </div>
               </div>
             </div>
-          </div>
+          </div>        {/* Clickable Intelligent KPI Funnel Cards (FLUID PROPORTIONAL) */}
           {/* Clickable Intelligent KPI Funnel Cards (Modern Architectural Grid) */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '20px' }}>
             {/* Total Clients */}
@@ -1080,8 +1081,7 @@ export default function CrmPage() {
                 <span>Rate: <strong style={{ color: '#64748b' }}>{((funnels.lostClients.length / (funnels.totalCount || 1)) * 100).toFixed(0)}%</strong></span>
               </div>
             </div>
-          </div>
-        <div className="crm-grid" style={{ marginTop: '20px' }}>
+          </div>        <div className="crm-grid" style={{ marginTop: '20px' }}>
           {/* Main List */}
           <div>
             <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>

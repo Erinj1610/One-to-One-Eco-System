@@ -203,7 +203,7 @@ export default function MyWorkspace() {
             </div>
           </div>
         </div>
-      </div>
+      </div>            <div style={{ fontSize: '24px', fontWeight: 700, color: urgentCount > 0 ? '#dc2626' : '#0f172a', fontFamily: 'monospace' }}>
       {/* FILTER & SEARCH STRIP */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
         {/* SCOPE TOGGLE: MY TASKS VS ALL COMPANY */}
@@ -245,6 +245,37 @@ export default function MyWorkspace() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '420px' }}>
+          <div style={{ position: 'relative', width: '100%' }}>
+            <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+            <input 
+              type="text" 
+              className="form-control" 
+              placeholder="Search by project, client, or action required..." 
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              style={{ paddingLeft: '34px', width: '100%', fontSize: '12.5px', height: '34px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff' }}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Stage:</span>
+          <select 
+            className="form-control" 
+            value={filterRole} 
+            onChange={e => setFilterRole(e.target.value)}
+            style={{ fontSize: '12px', fontWeight: 500, height: '34px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}
+          >
+            <option value="All">All Stages</option>
+            <option value="Design & Specification">Design & Specification</option>
+            <option value="Sales & Estimating">Sales & Estimating</option>
+            <option value="Procurement / Purchasing">Procurement / Purchasing</option>
+            <option value="Warehouse & Receiving">Warehouse & Receiving</option>
+            <option value="Invoicing / Debtors">Invoicing / Debtors</option>
+            <option value="Logistics & Delivery">Logistics & Delivery</option>
+          </select>
+        </div>
+      </div>        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '420px' }}>
           <div style={{ position: 'relative', width: '100%' }}>
             <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
             <input 
