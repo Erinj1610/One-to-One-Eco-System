@@ -1688,22 +1688,32 @@ export default function PurchasingPage() {
         display: 'flex', 
         justifyContent: 'space-between', 
         alignItems: 'center', 
-        marginBottom: '16px', 
+        marginBottom: '20px', 
         flexWrap: 'wrap',
         gap: '12px'
       }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-            <span className="badge b-info" style={{ textTransform: 'uppercase', fontSize: '9.5px', fontWeight: 700, letterSpacing: '0.5px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+            <span style={{ 
+              background: '#f1f5f9', 
+              color: '#475569', 
+              fontSize: '10px', 
+              fontWeight: 700, 
+              letterSpacing: '0.06em', 
+              textTransform: 'uppercase', 
+              padding: '3px 8px', 
+              borderRadius: '4px',
+              border: '1px solid #e2e8f0'
+            }}>
               {getModuleName('purchasing', 'Purchasing & Receiving')} Suite
             </span>
-            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Live Read-Only Feed from Palladium ERP</span>
+            <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>Live Read-Only Feed from Palladium ERP</span>
           </div>
-          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <ClipboardList size={22} style={{ color: '#3b82f6' }} />
+          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '10px', letterSpacing: '-0.02em' }}>
+            <ClipboardList size={22} style={{ color: '#0f172a' }} />
             {selectedDocument ? (
               <span>
-                Document Workspace: <span style={{ fontFamily: 'monospace', color: '#3b82f6' }}>{selectedDocument.document_no}</span>
+                Document Workspace: <span style={{ fontFamily: 'monospace', color: '#0f172a', fontWeight: 700 }}>{selectedDocument.document_no}</span>
               </span>
             ) : (
               'Procurement & Order Allocation Hub'
@@ -1711,12 +1721,27 @@ export default function PurchasingPage() {
           </h1>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {selectedDocument && (
             <button
               onClick={() => setSelectedDocument(null)}
-              className="btn btn-sm btn-ghost"
-              style={{ border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', height: '32px', fontWeight: 600 }}
+              style={{ 
+                background: '#ffffff',
+                border: '1px solid #e2e8f0', 
+                color: '#334155',
+                display: 'inline-flex', 
+                alignItems: 'center', 
+                gap: '6px', 
+                fontSize: '12px', 
+                height: '34px', 
+                fontWeight: 600,
+                padding: '0 14px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#f8fafc'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.background = '#ffffff'; }}
             >
               <ArrowLeft size={14} /> Back to All Documents
             </button>
@@ -1726,66 +1751,72 @@ export default function PurchasingPage() {
             <>
               <button
                 onClick={() => handleOpenManualProcModal('PO')}
-                className="btn btn-sm"
                 title="Record pre-March 2026 paper POs directly against order line items"
                 style={{
-                  background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                  color: '#fff',
-                  border: 'none',
+                  background: '#ffffff',
+                  color: '#334155',
+                  border: '1px solid #e2e8f0',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
                   fontSize: '12px',
-                  height: '32px',
-                  fontWeight: 700,
-                  boxShadow: '0 2px 8px rgba(37, 99, 235, 0.3)',
-                  padding: '0 12px',
-                  borderRadius: '8px'
+                  height: '34px',
+                  fontWeight: 600,
+                  padding: '0 14px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
                 }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#f8fafc'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.background = '#ffffff'; }}
               >
-                <ClipboardList size={14} /> 📝 Record Paper PO
+                <ClipboardList size={14} style={{ color: '#0284c7' }} /> Record Paper PO
               </button>
 
               <button
                 onClick={() => handleOpenManualProcModal('GRN')}
-                className="btn btn-sm"
                 title="Record pre-March 2026 paper GRNs directly against order line items"
                 style={{
-                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                  color: '#fff',
-                  border: 'none',
+                  background: '#ffffff',
+                  color: '#334155',
+                  border: '1px solid #e2e8f0',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
                   fontSize: '12px',
-                  height: '32px',
-                  fontWeight: 700,
-                  boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
-                  padding: '0 12px',
-                  borderRadius: '8px'
+                  height: '34px',
+                  fontWeight: 600,
+                  padding: '0 14px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
                 }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#f8fafc'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.background = '#ffffff'; }}
               >
-                <Package size={14} /> 📦 Record Paper GRN
+                <Package size={14} style={{ color: '#059669' }} /> Record Paper GRN
               </button>
 
               <button
                 onClick={handleOpenBulkWizard}
-                className="btn btn-sm"
                 title="Auto-match and bulk allocate unallocated POs to projects with review"
                 style={{
-                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                  color: '#fff',
-                  border: 'none',
+                  background: '#0f172a',
+                  color: '#ffffff',
+                  border: '1px solid #0f172a',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
                   fontSize: '12px',
-                  height: '32px',
-                  fontWeight: 700,
-                  boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)',
-                  padding: '0 12px',
-                  borderRadius: '8px'
+                  height: '34px',
+                  fontWeight: 600,
+                  padding: '0 14px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
                 }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#1e293b'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = '#0f172a'; }}
               >
                 <Sparkles size={14} /> Smart Bulk Allocate POs
               </button>
@@ -1795,21 +1826,26 @@ export default function PurchasingPage() {
           <button
             onClick={handleTriggerMasterSync}
             disabled={isSyncingPalladium}
-            className="btn btn-sm"
             title="Unified Sync from Palladium ERP and Master Google Sheet"
             style={{ 
-              border: '1px solid #10b981', 
-              color: '#10b981', 
-              background: 'rgba(16, 185, 129, 0.08)', 
+              border: '1px solid #e2e8f0', 
+              color: '#0f172a', 
+              background: '#f8fafc', 
               display: 'inline-flex', 
               alignItems: 'center', 
               gap: '6px', 
               fontSize: '12px', 
-              height: '32px',
-              fontWeight: 600
+              height: '34px',
+              fontWeight: 600,
+              padding: '0 14px',
+              borderRadius: '8px',
+              cursor: isSyncingPalladium ? 'wait' : 'pointer',
+              transition: 'all 0.15s ease'
             }}
+            onMouseEnter={(e) => { if (!isSyncingPalladium) { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#ffffff'; } }}
+            onMouseLeave={(e) => { if (!isSyncingPalladium) { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.background = '#f8fafc'; } }}
           >
-            <RefreshCw size={13} className={isSyncingPalladium ? 'animate-spin' : ''} />
+            <RefreshCw size={13} className={isSyncingPalladium ? 'animate-spin' : ''} style={{ color: '#059669' }} />
             {isSyncingPalladium ? 'Syncing...' : 'Sync Palladium'}
           </button>
         </div>
@@ -1819,89 +1855,89 @@ export default function PurchasingPage() {
       {!selectedDocument && (
         <div style={{ 
           display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', 
-          gap: '12px', 
-          marginBottom: '16px' 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', 
+          gap: '14px', 
+          marginBottom: '20px' 
         }}>
-          {/* CARD 1: NEEDS ALLOCATION (AMBER ALERT) */}
+          {/* CARD 1: NEEDS ALLOCATION */}
           <div 
             onClick={() => setActiveFilterTab('NEEDS_ALLOCATION')}
-            className="card" 
             style={{ 
-              padding: '14px 18px', 
-              borderRadius: '12px',
-              border: activeFilterTab === 'NEEDS_ALLOCATION' ? '1.5px solid #f59e0b' : '1px solid rgba(245, 158, 11, 0.25)',
-              background: activeFilterTab === 'NEEDS_ALLOCATION' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.04)',
+              padding: '16px 20px', 
+              borderRadius: '10px',
+              border: activeFilterTab === 'NEEDS_ALLOCATION' ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
+              background: '#ffffff',
               cursor: 'pointer',
-              transition: 'all 0.2s ease'
+              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+              transition: 'all 0.15s ease'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                🚨 Needs Allocation
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', color: '#b45309', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Needs Allocation
               </span>
-              <span style={{ background: '#f59e0b', color: '#000', fontSize: '9px', fontWeight: 800, padding: '1px 6px', borderRadius: '10px' }}>
-                ACTION
+              <span style={{ background: '#fef3c7', color: '#92400e', fontSize: '9.5px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Action
               </span>
             </div>
-            <div style={{ fontSize: '26px', fontWeight: 800, color: '#f59e0b', marginTop: '4px', lineHeight: 1.1 }}>
-              {procurementSummary.unallocated_count.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500 }}>docs</span>
+            <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', marginTop: '6px', lineHeight: 1.1, fontFamily: 'monospace' }}>
+              {procurementSummary.unallocated_count.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, fontFamily: 'inherit', color: '#64748b' }}>docs</span>
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Documents with unallocated items ({procurementSummary.total_unallocated_units.toLocaleString()} units)
+            <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
+              {procurementSummary.total_unallocated_units.toLocaleString()} unallocated items
             </div>
           </div>
 
           {/* CARD 2: PARTIALLY ALLOCATED */}
           <div 
             onClick={() => setActiveFilterTab('PARTIAL')}
-            className="card" 
             style={{ 
-              padding: '14px 18px', 
-              borderRadius: '12px',
-              border: activeFilterTab === 'PARTIAL' ? '1.5px solid #3b82f6' : '1px solid rgba(59, 130, 246, 0.25)',
-              background: activeFilterTab === 'PARTIAL' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(59, 130, 246, 0.04)',
+              padding: '16px 20px', 
+              borderRadius: '10px',
+              border: activeFilterTab === 'PARTIAL' ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
+              background: '#ffffff',
               cursor: 'pointer',
-              transition: 'all 0.2s ease'
+              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+              transition: 'all 0.15s ease'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: '11px', color: '#3b82f6', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                ⏳ Partially Allocated
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Partially Allocated
               </span>
-              <Clock size={14} color="#3b82f6" />
+              <Clock size={13} color="#0284c7" />
             </div>
-            <div style={{ fontSize: '26px', fontWeight: 800, color: '#3b82f6', marginTop: '4px', lineHeight: 1.1 }}>
-              {procurementSummary.partially_allocated_count.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500 }}>docs</span>
+            <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', marginTop: '6px', lineHeight: 1.1, fontFamily: 'monospace' }}>
+              {procurementSummary.partially_allocated_count.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, fontFamily: 'inherit', color: '#64748b' }}>docs</span>
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Documents with split or in-progress items
+            <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
+              Split or in-progress items
             </div>
           </div>
 
           {/* CARD 3: FULLY ALLOCATED */}
           <div 
             onClick={() => setActiveFilterTab('FULLY_ALLOCATED')}
-            className="card" 
             style={{ 
-              padding: '14px 18px', 
-              borderRadius: '12px',
-              border: activeFilterTab === 'FULLY_ALLOCATED' ? '1.5px solid #10b981' : '1px solid rgba(16, 185, 129, 0.25)',
-              background: activeFilterTab === 'FULLY_ALLOCATED' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.04)',
+              padding: '16px 20px', 
+              borderRadius: '10px',
+              border: activeFilterTab === 'FULLY_ALLOCATED' ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
+              background: '#ffffff',
               cursor: 'pointer',
-              transition: 'all 0.2s ease'
+              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+              transition: 'all 0.15s ease'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                ✅ Fully Allocated
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', color: '#059669', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Fully Allocated
               </span>
-              <CheckCircle2 size={14} color="#10b981" />
+              <CheckCircle2 size={13} color="#059669" />
             </div>
-            <div style={{ fontSize: '26px', fontWeight: 800, color: '#10b981', marginTop: '4px', lineHeight: 1.1 }}>
-              {procurementSummary.fully_allocated_count.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500 }}>docs</span>
+            <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', marginTop: '6px', lineHeight: 1.1, fontFamily: 'monospace' }}>
+              {procurementSummary.fully_allocated_count.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, fontFamily: 'inherit', color: '#64748b' }}>docs</span>
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+            <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
               100% matched to project orders
             </div>
           </div>
@@ -1909,32 +1945,31 @@ export default function PurchasingPage() {
           {/* CARD 4: TOTAL VOLUME */}
           <div 
             onClick={() => setActiveFilterTab('ALL')}
-            className="card" 
             style={{ 
-              padding: '14px 18px', 
-              borderRadius: '12px',
-              border: activeFilterTab === 'ALL' ? '1.5px solid var(--text-tertiary)' : '1px solid var(--border)',
-              background: 'var(--bg-secondary)',
+              padding: '16px 20px', 
+              borderRadius: '10px',
+              border: activeFilterTab === 'ALL' ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
+              background: '#ffffff',
               cursor: 'pointer',
-              transition: 'all 0.2s ease'
+              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+              transition: 'all 0.15s ease'
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                📦 Total ERP Documents
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Total ERP Documents
               </span>
-              <Box size={14} color="var(--text-tertiary)" />
+              <Box size={13} color="#64748b" />
             </div>
-            <div style={{ fontSize: '26px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px', lineHeight: 1.1 }}>
-              {procurementSummary.total_documents.toLocaleString()}
+            <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', marginTop: '6px', lineHeight: 1.1, fontFamily: 'monospace' }}>
+              {procurementSummary.total_documents.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, fontFamily: 'inherit', color: '#64748b' }}>docs</span>
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-              Containing {procurementSummary.total_lines.toLocaleString()} total line items
+            <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
+              {procurementSummary.total_lines.toLocaleString()} total line items
             </div>
           </div>
         </div>
       )}
-
       {/* ============================================================ */}
       {/* VIEW A: INDIVIDUAL DOCUMENT WORKSPACE (Opened Document View) */}
       {/* ============================================================ */}
@@ -1942,105 +1977,110 @@ export default function PurchasingPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1 }}>
           
           {/* Document Header Card */}
-          <div className="card" style={{ padding: '16px 20px', borderRadius: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ padding: '18px 22px', borderRadius: '10px', background: '#ffffff', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px' }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                   <span style={{ 
                     padding: '3px 8px', 
-                    borderRadius: '6px', 
-                    fontSize: '11px', 
+                    borderRadius: '4px', 
+                    fontSize: '10.5px', 
                     fontWeight: 700,
-                    background: selectedDocument.doc_type === 'PO' ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-                    color: selectedDocument.doc_type === 'PO' ? '#3b82f6' : '#10b981',
-                    border: `1px solid ${selectedDocument.doc_type === 'PO' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    background: selectedDocument.doc_type === 'PO' ? '#f1f5f9' : '#ecfdf5',
+                    color: selectedDocument.doc_type === 'PO' ? '#475569' : '#059669',
+                    border: `1px solid ${selectedDocument.doc_type === 'PO' ? '#e2e8f0' : '#d1fae5'}`
                   }}>
                     {selectedDocument.doc_type === 'PO' ? 'Purchase Order' : 'Goods Received Note'}
                   </span>
-                  <span style={{ fontSize: '18px', fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
+                  <span style={{ fontSize: '18px', fontWeight: 700, fontFamily: 'monospace', color: '#0f172a', letterSpacing: '-0.02em' }}>
                     {selectedDocument.document_no}
                   </span>
                 </div>
                 
-                <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
-                  <div>Supplier: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.vendor_name}</strong></div>
-                  <div>Date: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.transaction_date ? new Date(selectedDocument.transaction_date).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}</strong></div>
+                <div style={{ display: 'flex', gap: '20px', fontSize: '12px', color: '#64748b', flexWrap: 'wrap' }}>
+                  <div>Supplier: <strong style={{ color: '#0f172a' }}>{selectedDocument.vendor_name}</strong></div>
+                  <div>Date: <strong style={{ color: '#0f172a' }}>{selectedDocument.transaction_date ? new Date(selectedDocument.transaction_date).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}</strong></div>
                   {selectedDocument.reference && (
-                    <div>Project Ref: <strong style={{ color: 'var(--text-primary)', background: 'rgba(59, 130, 246, 0.08)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>{selectedDocument.reference}</strong></div>
+                    <div>Project Ref: <strong style={{ color: '#0f172a', background: '#f8fafc', padding: '2px 6px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>{selectedDocument.reference}</strong></div>
                   )}
                   {selectedDocument.customer_name && (
-                    <div>Client: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.customer_name}</strong></div>
+                    <div>Client: <strong style={{ color: '#0f172a' }}>{selectedDocument.customer_name}</strong></div>
                   )}
-                  <div>Total Value: <strong style={{ color: 'var(--text-primary)' }}>R {selectedDocument.total_value?.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</strong></div>
+                  <div>Total Value: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {selectedDocument.total_value?.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</strong></div>
                 </div>
               </div>
 
               {/* Document Allocation Progress & Batch Action */}
               <div style={{ textAlign: 'right', minWidth: '240px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '4px' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Allocation Progress:</span>
-                  <strong style={{ color: selectedDocument.allocation_status === 'FULLY_ALLOCATED' ? '#10b981' : (selectedDocument.allocation_status === 'PARTIAL' ? '#3b82f6' : '#f59e0b') }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', marginBottom: '6px' }}>
+                  <span style={{ color: '#64748b' }}>Allocation Progress:</span>
+                  <strong style={{ color: selectedDocument.allocation_status === 'FULLY_ALLOCATED' ? '#059669' : (selectedDocument.allocation_status === 'PARTIAL' ? '#0284c7' : '#b45309'), fontFamily: 'monospace' }}>
                     {selectedDocument.allocated_lines_count} / {selectedDocument.total_lines} items allocated
                   </strong>
                 </div>
-                <div style={{ width: '100%', height: '8px', background: 'var(--border)', borderRadius: '4px', overflow: 'hidden' }}>
+                <div style={{ width: '100%', height: '6px', background: '#f1f5f9', borderRadius: '3px', overflow: 'hidden' }}>
                   <div style={{ 
                     height: '100%', 
                     width: `${selectedDocument.total_lines > 0 ? (selectedDocument.allocated_lines_count / selectedDocument.total_lines) * 100 : 0}%`,
-                    background: selectedDocument.allocation_status === 'FULLY_ALLOCATED' ? '#10b981' : '#3b82f6',
-                    borderRadius: '4px',
+                    background: selectedDocument.allocation_status === 'FULLY_ALLOCATED' ? '#059669' : '#0f172a',
+                    borderRadius: '3px',
                     transition: 'width 0.3s ease'
                   }} />
                 </div>
-                <div style={{ marginTop: '8px', display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                <div style={{ marginTop: '10px', display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                   {(selectedDocument.is_internal || selectedDocument.is_archived) ? (
                     <button
                       onClick={() => handleUnmarkSpecial(selectedDocument)}
-                      className="btn btn-xs btn-ghost"
                       style={{
-                        color: 'var(--text-secondary)',
-                        border: '1px solid var(--border)',
-                        padding: '3px 9px',
-                        fontSize: '10.5px',
+                        background: '#ffffff',
+                        color: '#64748b',
+                        border: '1px solid #e2e8f0',
+                        padding: '4px 10px',
+                        fontSize: '11px',
                         fontWeight: 600,
-                        borderRadius: '6px'
+                        borderRadius: '6px',
+                        cursor: 'pointer'
                       }}
                       title="Restore back to unallocated list"
                     >
-                      🔄 Restore to Active Queue
+                      Restore to Active Queue
                     </button>
                   ) : (
                     <>
                       <button
                         onClick={() => handleMarkInternal(selectedDocument)}
-                        className="btn btn-xs btn-ghost"
                         style={{
-                          color: '#8b5cf6',
-                          border: '1px solid rgba(139, 92, 246, 0.3)',
-                          padding: '3px 9px',
-                          fontSize: '10.5px',
+                          background: '#ffffff',
+                          color: '#7c3aed',
+                          border: '1px solid #ede9fe',
+                          padding: '4px 10px',
+                          fontSize: '11px',
                           fontWeight: 600,
-                          borderRadius: '6px'
+                          borderRadius: '6px',
+                          cursor: 'pointer'
                         }}
                         title="Mark as Internal Office / Company Purchase"
                       >
-                        🏢 Mark as Internal
+                        Mark Internal
                       </button>
 
                       <button
                         onClick={() => handleArchiveDocument(selectedDocument)}
-                        className="btn btn-xs btn-ghost"
                         style={{
-                          color: 'var(--text-secondary)',
-                          border: '1px solid var(--border)',
-                          padding: '3px 9px',
-                          fontSize: '10.5px',
+                          background: '#ffffff',
+                          color: '#64748b',
+                          border: '1px solid #e2e8f0',
+                          padding: '4px 10px',
+                          fontSize: '11px',
                           fontWeight: 600,
-                          borderRadius: '6px'
+                          borderRadius: '6px',
+                          cursor: 'pointer'
                         }}
                         title="Archive (Order no longer on portal)"
                       >
-                        📦 Archive Document
+                        Archive Document
                       </button>
                     </>
                   )}
@@ -2048,18 +2088,18 @@ export default function PurchasingPage() {
                   {selectedDocument.allocated_lines_count > 0 && (
                     <button
                       onClick={() => handleUnallocateEntireDocument(selectedDocument.document_no)}
-                      className="btn btn-xs"
                       style={{
-                        background: 'rgba(239, 68, 68, 0.1)',
-                        color: '#ef4444',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        padding: '3px 9px',
-                        fontSize: '10.5px',
+                        background: '#ffffff',
+                        color: '#dc2626',
+                        border: '1px solid #fecaca',
+                        padding: '4px 10px',
+                        fontSize: '11px',
                         fontWeight: 600,
                         borderRadius: '6px',
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '4px'
+                        gap: '5px',
+                        cursor: 'pointer'
                       }}
                       title="Release all allocations in this document back to unallocated pool"
                     >
@@ -2079,23 +2119,23 @@ export default function PurchasingPage() {
 
             return (
               <div style={{ 
-                background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', 
-                border: '1.5px solid #3b82f6', 
-                borderRadius: '10px', 
+                background: '#0f172a', 
+                border: '1px solid #1e293b', 
+                borderRadius: '8px', 
                 padding: '12px 18px', 
                 display: 'flex', 
                 justifyContent: 'space-between', 
                 alignItems: 'center', 
-                boxShadow: '0 4px 12px rgba(59, 130, 246, 0.25)',
-                color: '#fff',
+                boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.3)',
+                color: '#ffffff',
                 flexWrap: 'wrap',
                 gap: '10px'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ background: '#3b82f6', color: '#fff', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', fontSize: '12px' }}>
+                  <span style={{ background: '#1e293b', color: '#f8fafc', fontWeight: 700, padding: '3px 8px', borderRadius: '4px', fontSize: '11.5px', fontFamily: 'monospace' }}>
                     {selectedLineIds.size} items selected
                   </span>
-                  <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
+                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>
                     {unallocCount > 0 && allocCount > 0 
                       ? `${unallocCount} unallocated, ${allocCount} allocated items`
                       : (unallocCount > 0 ? `${unallocCount} unallocated item(s) ready to assign` : `${allocCount} allocated item(s) ready to release`)}
@@ -2105,8 +2145,9 @@ export default function PurchasingPage() {
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <button
                     onClick={() => setSelectedLineIds(new Set())}
-                    className="btn btn-xs btn-ghost"
-                    style={{ color: '#94a3b8', fontSize: '11.5px' }}
+                    style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '11.5px', cursor: 'pointer', padding: '4px 8px' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#ffffff'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
                   >
                     Clear Selection
                   </button>
@@ -2114,44 +2155,43 @@ export default function PurchasingPage() {
                   {allocCount > 0 && (
                     <button
                       onClick={handleBulkUnallocateSelected}
-                      className="btn btn-sm"
                       style={{
-                        background: 'rgba(239, 68, 68, 0.2)',
-                        color: '#fca5a5',
-                        border: '1px solid rgba(239, 68, 68, 0.5)',
-                        fontWeight: 700,
-                        fontSize: '12px',
-                        padding: '6px 14px',
-                        borderRadius: '8px',
+                        background: '#ffffff',
+                        color: '#dc2626',
+                        border: '1px solid #fecaca',
+                        fontWeight: 600,
+                        fontSize: '11.5px',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
                         display: 'inline-flex',
                         alignItems: 'center',
-                        gap: '6px'
+                        gap: '6px',
+                        cursor: 'pointer'
                       }}
                       title="Unallocate all active allocations for the selected items"
                     >
-                      <Trash2 size={13} /> Bulk Unallocate Selected ({allocCount})
+                      <Trash2 size={12} /> Bulk Unallocate ({allocCount})
                     </button>
                   )}
 
                   {unallocCount > 0 && (
                     <button
                       onClick={handleOpenBatchModal}
-                      className="btn btn-sm"
                       style={{
-                        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                        color: '#fff',
-                        border: 'none',
-                        fontWeight: 700,
-                        fontSize: '12px',
+                        background: '#ffffff',
+                        color: '#0f172a',
+                        border: '1px solid #ffffff',
+                        fontWeight: 600,
+                        fontSize: '11.5px',
                         padding: '6px 14px',
-                        borderRadius: '8px',
+                        borderRadius: '6px',
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '6px',
-                        boxShadow: '0 2px 6px rgba(37, 99, 235, 0.4)'
+                        cursor: 'pointer'
                       }}
                     >
-                      <Sparkles size={14} /> Allocate Selected ({unallocCount})
+                      <Sparkles size={13} style={{ color: '#0f172a' }} /> Allocate Selected ({unallocCount})
                     </button>
                   )}
                 </div>
@@ -2160,33 +2200,32 @@ export default function PurchasingPage() {
           })()}
 
           {/* Document Line Items Table */}
-          <div className="card" style={{ padding: 0, overflow: 'hidden', borderRadius: '10px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontWeight: 700, fontSize: '12.5px', color: 'var(--text-primary)' }}>
+          <div style={{ border: '1px solid #e2e8f0', overflow: 'hidden', borderRadius: '10px', flex: 1, display: 'flex', flexDirection: 'column', background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ padding: '12px 20px', borderBottom: '1px solid #f1f5f9', background: '#ffffff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 700, fontSize: '12.5px', color: '#0f172a' }}>
                   Line Items in {selectedDocument.document_no} ({selectedDocument.lines?.length || 0} items)
                 </span>
                 {unallocatedLinesInDoc.length > 0 && (
                   <button
                     onClick={handleSelectAllUnallocated}
-                    className="btn btn-xs btn-ghost"
-                    style={{ border: '1px solid var(--border)', fontSize: '10.5px', padding: '2px 8px' }}
+                    style={{ border: '1px solid #fef3c7', background: '#ffffff', color: '#b45309', fontSize: '10.5px', fontWeight: 600, padding: '3px 8px', borderRadius: '4px', cursor: 'pointer' }}
                   >
                     {selectedLineIds.size === unallocatedLinesInDoc.length ? 'Deselect All' : `Select All Unallocated (${unallocatedLinesInDoc.length})`}
                   </button>
                 )}
               </div>
 
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+              <span style={{ fontSize: '11px', color: '#64748b' }}>
                 Tip: Select multiple items to allocate them together, or allocate individually
               </span>
             </div>
 
             <div style={{ overflowX: 'auto', flex: 1 }}>
               <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
-                    <th style={{ width: '40px', textAlign: 'center' }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 5 }}>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    <th style={{ width: '40px', textAlign: 'center', padding: '11px 4px' }}>
                       <input 
                         type="checkbox" 
                         checked={(selectedDocument.lines || []).length > 0 && selectedLineIds.size === (selectedDocument.lines || []).length}
@@ -2194,43 +2233,43 @@ export default function PurchasingPage() {
                         title="Select/Deselect All Items"
                       />
                     </th>
-                    <th style={{ width: '30px' }}></th>
-                    <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('item_code')}>
+                    <th style={{ width: '30px', padding: '11px 4px' }}></th>
+                    <th style={{ padding: '11px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('item_code')}>
                       <div style={{ display: 'inline-flex', alignItems: 'center' }}>
                         Item Code / Description{renderLineSortIcon('item_code')}
                       </div>
                     </th>
-                    <th style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('unit_cost')}>
+                    <th style={{ padding: '11px 12px', textAlign: 'right', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('unit_cost')}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
                         Unit Cost{renderLineSortIcon('unit_cost')}
                       </div>
                     </th>
-                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('ordered_qty')}>
+                    <th style={{ padding: '11px 12px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('ordered_qty')}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                         Ordered Qty{renderLineSortIcon('ordered_qty')}
                       </div>
                     </th>
-                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('eta')}>
+                    <th style={{ padding: '11px 12px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('eta')}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                         ETA{renderLineSortIcon('eta')}
                       </div>
                     </th>
-                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('allocated_qty')}>
+                    <th style={{ padding: '11px 12px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('allocated_qty')}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                         Allocated{renderLineSortIcon('allocated_qty')}
                       </div>
                     </th>
-                    <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('unallocated_qty')}>
+                    <th style={{ padding: '11px 12px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('unallocated_qty')}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                         Unallocated{renderLineSortIcon('unallocated_qty')}
                       </div>
                     </th>
-                    <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('status')}>
+                    <th style={{ padding: '11px 14px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleLineSort('status')}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                         Status{renderLineSortIcon('status')}
                       </div>
                     </th>
-                    <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600 }}>Action</th>
+                    <th style={{ padding: '11px 16px', textAlign: 'right', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2505,26 +2544,25 @@ export default function PurchasingPage() {
                   {sortedDocumentLines.length > 0 && (
                     <tfoot>
                       <tr style={{
-                        background: 'var(--bg-secondary)',
-                        borderTop: '1px solid var(--border)',
-                        fontWeight: 800,
+                        background: '#f8fafc',
+                        borderTop: '1px solid #e2e8f0',
                         position: 'sticky',
                         bottom: 0,
                         zIndex: 4
                       }}>
-                        <td colSpan={3} style={{ padding: '10px 14px', color: 'var(--text-primary)', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        <td colSpan={3} style={{ padding: '11px 16px', color: '#0f172a', fontWeight: 700, fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                           Document Total ({sortedDocumentLines.length} {sortedDocumentLines.length === 1 ? 'line' : 'lines'})
                         </td>
-                        <td style={{ padding: '10px 10px', textAlign: 'right', color: 'var(--text-primary)', fontFamily: 'monospace' }}>
+                        <td style={{ padding: '11px 12px', textAlign: 'right', color: '#0f172a', fontWeight: 700, fontSize: '12.5px', fontFamily: 'monospace' }}>
                           R {sortedDocumentLines.reduce((s, l) => s + (Number(l.total_value) || (Number(l.unit_cost || 0) * Number(l.total_qty || 0))), 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td style={{ padding: '10px 10px', textAlign: 'center', color: 'var(--text-primary)' }}>
+                        <td style={{ padding: '11px 12px', textAlign: 'center', color: '#0f172a', fontWeight: 700, fontFamily: 'monospace' }}>
                           {sortedDocumentLines.reduce((s, l) => s + Number(l.total_qty || 0), 0)}
                         </td>
-                        <td style={{ padding: '10px 10px', textAlign: 'center', color: '#10b981' }}>
+                        <td style={{ padding: '11px 12px', textAlign: 'center', color: '#059669', fontWeight: 700, fontFamily: 'monospace' }}>
                           {sortedDocumentLines.reduce((s, l) => s + Number(l.allocated_qty || 0), 0)}
                         </td>
-                        <td style={{ padding: '10px 10px', textAlign: 'center', color: sortedDocumentLines.reduce((s, l) => s + Number(l.unallocated_qty || 0), 0) > 0 ? '#f59e0b' : '#10b981' }}>
+                        <td style={{ padding: '11px 12px', textAlign: 'center', color: sortedDocumentLines.reduce((s, l) => s + Number(l.unallocated_qty || 0), 0) > 0 ? '#b45309' : '#059669', fontWeight: 700, fontFamily: 'monospace' }}>
                           {sortedDocumentLines.reduce((s, l) => s + Number(l.unallocated_qty || 0), 0)}
                         </td>
                         <td colSpan={2}></td>
@@ -2539,97 +2577,162 @@ export default function PurchasingPage() {
           /* ============================================================ */
           /* VIEW B: PRIMARY DOCUMENT LIST (One row per PO / GRN Document)*/
           /* ============================================================ */
-          <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+          <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden', background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
             {/* TIER 1: FILTER TABS & SEARCH BAR */}
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)' }}>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9', background: '#ffffff' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                 
                 {/* Tab Filters */}
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                   <button
                     onClick={() => setActiveFilterTab('NEEDS_ALLOCATION')}
-                    className={`btn btn-xs ${activeFilterTab === 'NEEDS_ALLOCATION' ? 'btn-primary' : 'btn-ghost'}`}
                     style={{
-                      fontSize: '11.5px',
-                      fontWeight: 600,
-                      background: activeFilterTab === 'NEEDS_ALLOCATION' ? '#f59e0b' : 'transparent',
-                      color: activeFilterTab === 'NEEDS_ALLOCATION' ? '#000' : 'var(--text-primary)',
-                      border: '1px solid rgba(245, 158, 11, 0.4)'
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      letterSpacing: '0.04em',
+                      textTransform: 'uppercase',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      background: activeFilterTab === 'NEEDS_ALLOCATION' ? '#0f172a' : '#ffffff',
+                      color: activeFilterTab === 'NEEDS_ALLOCATION' ? '#ffffff' : '#b45309',
+                      border: activeFilterTab === 'NEEDS_ALLOCATION' ? '1px solid #0f172a' : '1px solid #fef3c7',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
                     }}
                   >
-                    🚨 Needs Allocation ({procurementSummary.unallocated_count})
+                    Needs Allocation ({procurementSummary.unallocated_count})
                   </button>
                   <button
                     onClick={() => setActiveFilterTab('PARTIAL')}
-                    className={`btn btn-xs ${activeFilterTab === 'PARTIAL' ? 'btn-primary' : 'btn-ghost'}`}
-                    style={{ fontSize: '11.5px', fontWeight: 600 }}
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      letterSpacing: '0.04em',
+                      textTransform: 'uppercase',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      background: activeFilterTab === 'PARTIAL' ? '#0f172a' : '#ffffff',
+                      color: activeFilterTab === 'PARTIAL' ? '#ffffff' : '#0284c7',
+                      border: activeFilterTab === 'PARTIAL' ? '1px solid #0f172a' : '1px solid #e0f2fe',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
                   >
-                    ⏳ Partially Allocated ({procurementSummary.partially_allocated_count})
+                    Partially Allocated ({procurementSummary.partially_allocated_count})
                   </button>
                   <button
                     onClick={() => setActiveFilterTab('FULLY_ALLOCATED')}
-                    className={`btn btn-xs ${activeFilterTab === 'FULLY_ALLOCATED' ? 'btn-primary' : 'btn-ghost'}`}
-                    style={{ fontSize: '11.5px', fontWeight: 600 }}
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      letterSpacing: '0.04em',
+                      textTransform: 'uppercase',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      background: activeFilterTab === 'FULLY_ALLOCATED' ? '#0f172a' : '#ffffff',
+                      color: activeFilterTab === 'FULLY_ALLOCATED' ? '#ffffff' : '#059669',
+                      border: activeFilterTab === 'FULLY_ALLOCATED' ? '1px solid #0f172a' : '1px solid #d1fae5',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
                   >
-                    ✅ Fully Allocated ({procurementSummary.fully_allocated_count})
+                    Fully Allocated ({procurementSummary.fully_allocated_count})
                   </button>
                   <button
                     onClick={() => setActiveFilterTab('ISSUES')}
-                    className={`btn btn-xs ${activeFilterTab === 'ISSUES' ? 'btn-error' : 'btn-ghost'}`}
                     style={{
-                      fontSize: '11.5px',
-                      fontWeight: 600,
-                      background: activeFilterTab === 'ISSUES' ? '#ef4444' : 'transparent',
-                      color: activeFilterTab === 'ISSUES' ? '#fff' : '#ef4444',
-                      border: '1px solid rgba(239, 68, 68, 0.4)'
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      letterSpacing: '0.04em',
+                      textTransform: 'uppercase',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      background: activeFilterTab === 'ISSUES' ? '#0f172a' : '#ffffff',
+                      color: activeFilterTab === 'ISSUES' ? '#ffffff' : '#dc2626',
+                      border: activeFilterTab === 'ISSUES' ? '1px solid #0f172a' : '1px solid #fee2e2',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
                     }}
                   >
-                    ⚠️ Issues / Not Found ({procurementSummary.issues_count || 0})
+                    Issues / Not Found ({procurementSummary.issues_count || 0})
                   </button>
                   <button
                     onClick={() => setActiveFilterTab('INTERNAL')}
-                    className={`btn btn-xs ${activeFilterTab === 'INTERNAL' ? 'btn-primary' : 'btn-ghost'}`}
                     style={{
-                      fontSize: '11.5px',
+                      fontSize: '11px',
                       fontWeight: 600,
-                      background: activeFilterTab === 'INTERNAL' ? '#8b5cf6' : 'transparent',
-                      color: activeFilterTab === 'INTERNAL' ? '#fff' : '#8b5cf6',
-                      border: '1px solid rgba(139, 92, 246, 0.4)'
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      background: activeFilterTab === 'INTERNAL' ? '#0f172a' : '#ffffff',
+                      color: activeFilterTab === 'INTERNAL' ? '#ffffff' : '#7c3aed',
+                      border: activeFilterTab === 'INTERNAL' ? '1px solid #0f172a' : '1px solid #ede9fe',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
                     }}
                   >
-                    🏢 Internal / Office ({procurementSummary.internal_count || 0})
+                    Internal / Office ({procurementSummary.internal_count || 0})
                   </button>
                   <button
                     onClick={() => setActiveFilterTab('ARCHIVED')}
-                    className={`btn btn-xs ${activeFilterTab === 'ARCHIVED' ? 'btn-primary' : 'btn-ghost'}`}
                     style={{
-                      fontSize: '11.5px',
+                      fontSize: '11px',
                       fontWeight: 600,
-                      background: activeFilterTab === 'ARCHIVED' ? '#6b7280' : 'transparent',
-                      color: activeFilterTab === 'ARCHIVED' ? '#fff' : 'var(--text-secondary)',
-                      border: '1px solid rgba(107, 114, 128, 0.4)'
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      background: activeFilterTab === 'ARCHIVED' ? '#0f172a' : '#ffffff',
+                      color: activeFilterTab === 'ARCHIVED' ? '#ffffff' : '#64748b',
+                      border: activeFilterTab === 'ARCHIVED' ? '1px solid #0f172a' : '1px solid #e2e8f0',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
                     }}
                   >
-                    📦 Archived / Old Orders ({procurementSummary.archived_count || 0})
+                    Archived ({procurementSummary.archived_count || 0})
                   </button>
                   <button
                     onClick={() => setActiveFilterTab('PO')}
-                    className={`btn btn-xs ${activeFilterTab === 'PO' ? 'btn-primary' : 'btn-ghost'}`}
-                    style={{ fontSize: '11.5px', fontWeight: 600 }}
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      background: activeFilterTab === 'PO' ? '#0f172a' : '#ffffff',
+                      color: activeFilterTab === 'PO' ? '#ffffff' : '#64748b',
+                      border: activeFilterTab === 'PO' ? '1px solid #0f172a' : '1px solid #e2e8f0',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
                   >
-                    📄 Purchase Orders (POs)
+                    Purchase Orders (POs)
                   </button>
                   <button
                     onClick={() => setActiveFilterTab('GRN')}
-                    className={`btn btn-xs ${activeFilterTab === 'GRN' ? 'btn-primary' : 'btn-ghost'}`}
-                    style={{ fontSize: '11.5px', fontWeight: 600 }}
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      background: activeFilterTab === 'GRN' ? '#0f172a' : '#ffffff',
+                      color: activeFilterTab === 'GRN' ? '#ffffff' : '#64748b',
+                      border: activeFilterTab === 'GRN' ? '1px solid #0f172a' : '1px solid #e2e8f0',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
                   >
-                    📥 Goods Received (GRNs)
+                    Goods Received (GRNs)
                   </button>
                   <button
                     onClick={() => setActiveFilterTab('ALL')}
-                    className={`btn btn-xs ${activeFilterTab === 'ALL' ? 'btn-primary' : 'btn-ghost'}`}
-                    style={{ fontSize: '11.5px', fontWeight: 600 }}
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      background: activeFilterTab === 'ALL' ? '#0f172a' : '#ffffff',
+                      color: activeFilterTab === 'ALL' ? '#ffffff' : '#64748b',
+                      border: activeFilterTab === 'ALL' ? '1px solid #0f172a' : '1px solid #e2e8f0',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
                   >
                     All Documents
                   </button>
@@ -2638,19 +2741,28 @@ export default function PurchasingPage() {
                 {/* Search & Supplier Filter */}
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <div style={{ position: 'relative', width: '240px' }}>
-                    <Search size={13} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-tertiary)' }} />
+                    <Search size={13} style={{ position: 'absolute', left: '10px', top: '10px', color: '#94a3b8' }} />
                     <input
                       type="search"
                       placeholder="Search Doc #, Supplier, Ref, SKU..."
-                      className="form-control"
-                      style={{ paddingLeft: '28px', height: '30px', fontSize: '11.5px' }}
+                      style={{ 
+                        paddingLeft: '30px', 
+                        height: '34px', 
+                        fontSize: '12px',
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        color: '#0f172a',
+                        width: '100%',
+                        boxSizing: 'border-box'
+                      }}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
                     {searchQuery && (
                       <button
                         onClick={() => setSearchQuery('')}
-                        style={{ position: 'absolute', right: '6px', top: '6px', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer' }}
+                        style={{ position: 'absolute', right: '8px', top: '8px', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}
                       >
                         ✕
                       </button>
@@ -2673,48 +2785,48 @@ export default function PurchasingPage() {
             <div style={{ overflowX: 'auto', maxHeight: '68vh', position: 'relative' }}>
               <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
-                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
-                      <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('document_no')}>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                      <th style={{ padding: '11px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('document_no')}>
                         <div style={{ display: 'inline-flex', alignItems: 'center' }}>
                           Document #{renderDocSortIcon('document_no')}
                         </div>
                       </th>
-                      <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('doc_type')}>
+                      <th style={{ padding: '11px 8px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('doc_type')}>
                         <div style={{ display: 'inline-flex', alignItems: 'center' }}>
                           Type{renderDocSortIcon('doc_type')}
                         </div>
                       </th>
-                      <th style={{ padding: '10px 10px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('date')}>
+                      <th style={{ padding: '11px 12px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('date')}>
                         <div style={{ display: 'inline-flex', alignItems: 'center' }}>
                           Date{renderDocSortIcon('date')}
                         </div>
                       </th>
-                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('supplier')}>
+                      <th style={{ padding: '11px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('supplier')}>
                         <div style={{ display: 'inline-flex', alignItems: 'center' }}>
                           Supplier{renderDocSortIcon('supplier')}
                         </div>
                       </th>
-                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('reference')}>
+                      <th style={{ padding: '11px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('reference')}>
                         <div style={{ display: 'inline-flex', alignItems: 'center' }}>
                           Project Reference{renderDocSortIcon('reference')}
                         </div>
                       </th>
-                      <th style={{ padding: '10px 10px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('items_qty')}>
+                      <th style={{ padding: '11px 12px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('items_qty')}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                           Items / Qty{renderDocSortIcon('items_qty')}
                         </div>
                       </th>
-                      <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('total_value')}>
+                      <th style={{ padding: '11px 14px', textAlign: 'right', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('total_value')}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
                           Total Value{renderDocSortIcon('total_value')}
                         </div>
                       </th>
-                      <th style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('status')}>
+                      <th style={{ padding: '11px 14px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('status')}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                           Allocation Status{renderDocSortIcon('status')}
                         </div>
                       </th>
-                      <th style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600 }}>Action</th>
+                      <th style={{ padding: '11px 16px', textAlign: 'right', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2916,22 +3028,24 @@ export default function PurchasingPage() {
                                     e.stopPropagation();
                                     setSelectedDocument(doc);
                                   }}
-                                  className="btn btn-xs"
                                   style={{
-                                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                                    color: '#fff',
-                                    border: 'none',
-                                    fontWeight: 700,
-                                    fontSize: '11px',
-                                    padding: '4px 10px',
+                                    background: '#0f172a',
+                                    border: '1px solid #0f172a',
+                                    color: '#ffffff',
+                                    fontWeight: 600,
+                                    fontSize: '11.5px',
+                                    padding: '5px 12px',
                                     borderRadius: '6px',
                                     display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '4px',
-                                    boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)'
+                                    gap: '5px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
                                   }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = '#1e293b'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = '#0f172a'; }}
                                 >
-                                  <Sparkles size={11} /> Open
+                                  Open Workspace <ArrowRight size={12} />
                                 </button>
 
                                 {/* If document is marked as Internal or Archived, allow restoring it */}
@@ -3064,23 +3178,22 @@ export default function PurchasingPage() {
                   {!isLoadingProcurement && sortedProcurementDocs.length > 0 && (
                     <tfoot>
                       <tr style={{
-                        background: 'var(--bg-secondary)',
-                        borderTop: '2px solid var(--border-strong, var(--border))',
-                        fontWeight: 800,
+                        background: '#f8fafc',
+                        borderTop: '1px solid #e2e8f0',
                         position: 'sticky',
                         bottom: 0,
                         zIndex: 4
                       }}>
-                        <td colSpan={5} style={{ padding: '10px 14px', color: 'var(--text-primary)', fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        <td colSpan={5} style={{ padding: '11px 16px', color: '#0f172a', fontWeight: 700, fontSize: '11.5px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                           Page Total ({sortedProcurementDocs.length} {sortedProcurementDocs.length === 1 ? 'document' : 'documents'})
                         </td>
-                        <td style={{ padding: '10px 10px', textAlign: 'center', color: 'var(--text-primary)' }}>
+                        <td style={{ padding: '11px 12px', textAlign: 'center', color: '#0f172a', fontWeight: 700, fontFamily: 'monospace' }}>
                           <div>{sortedProcurementDocs.reduce((s, d) => s + Number(d.total_lines || 0), 0)} items</div>
-                          <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                          <div style={{ fontSize: '10.5px', color: '#64748b', fontWeight: 500, fontFamily: 'inherit' }}>
                             {sortedProcurementDocs.reduce((s, d) => s + Number(d.total_qty || 0), 0)} units
                           </div>
                         </td>
-                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#10b981', fontFamily: 'monospace' }}>
+                        <td style={{ padding: '11px 14px', textAlign: 'right', color: '#0f172a', fontWeight: 700, fontSize: '12.5px', fontFamily: 'monospace' }}>
                           R {sortedProcurementDocs.reduce((s, d) => s + Number(d.total_value || 0), 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td colSpan={2}></td>
