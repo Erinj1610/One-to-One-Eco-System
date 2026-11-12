@@ -427,26 +427,30 @@ export default function LogisticsPage() {
       <th
         onClick={() => handleSort(field)}
         style={{
-          padding: '10px 14px',
+          padding: '11px 16px',
           textAlign: align,
           cursor: 'pointer',
           userSelect: 'none',
           whiteSpace: 'nowrap',
-          color: isActive ? 'var(--text-info)' : 'var(--text-secondary)',
-          fontWeight: isActive ? 700 : 600,
-          background: isActive ? 'rgba(59, 130, 246, 0.05)' : 'transparent',
+          color: isActive ? '#0f172a' : '#64748b',
+          fontWeight: 700,
+          fontSize: '11px',
+          letterSpacing: '0.05em',
+          textTransform: 'uppercase',
+          background: isActive ? '#f1f5f9' : 'transparent',
           transition: 'all 0.15s ease',
+          borderBottom: '1px solid #e2e8f0',
           ...customStyle,
         }}
         title={`Sort by ${label}`}
       >
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}>
           <span>{label}</span>
           {isActive ? (
             sortOrder === 'asc' ? (
-              <ArrowUp size={12} style={{ color: 'var(--text-info)' }} />
+              <ArrowUp size={12} style={{ color: '#0f172a' }} />
             ) : (
-              <ArrowDown size={12} style={{ color: 'var(--text-info)' }} />
+              <ArrowDown size={12} style={{ color: '#0f172a' }} />
             )
           ) : (
             <ArrowUpDown size={11} style={{ opacity: 0.35 }} />
@@ -957,206 +961,327 @@ export default function LogisticsPage() {
       {/* TOP HEADER STATUS ROW */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 800, letterSpacing: '-0.5px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Truck size={24} style={{ color: 'var(--text-info)' }} />
-            {getModuleName('logistics', 'Logistics')} & Warehousing Workspace
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+            <span style={{
+              background: '#f1f5f9',
+              color: '#475569',
+              fontSize: '10px',
+              fontWeight: 700,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              padding: '3px 8px',
+              borderRadius: '4px',
+              border: '1px solid #e2e8f0'
+            }}>
+              {getModuleName('logistics', 'Logistics')} Suite
+            </span>
+            <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>Warehousing, Argox Labels & Dispatches</span>
+          </div>
+          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '10px', letterSpacing: '-0.02em' }}>
+            <Truck size={22} style={{ color: '#0f172a' }} />
+            Logistics & Warehousing Workspace
           </h1>
-          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: 'var(--text-secondary)' }}>
-            Manage Packing Lists (PL), Argox O4-250 Thermal Labels, Official Delivery Notes (DN), Dispatch Transport & Signed PODs
-          </p>
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           <button
-            className="btn btn-ghost btn-sm"
-            style={{ border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 600 }}
+            style={{
+              background: '#ffffff',
+              border: '1px solid #cbd5e1',
+              color: '#334155',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12px',
+              height: '34px',
+              fontWeight: 600,
+              padding: '0 14px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+              transition: 'all 0.15s ease'
+            }}
             onClick={() => setShowLabelTemplateModal(true)}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#94a3b8'; e.currentTarget.style.background = '#f8fafc'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#ffffff'; }}
           >
-            <Tag size={15} style={{ color: 'var(--text-info)' }} /> Label Templates & Designer
+            <Tag size={14} style={{ color: '#0284c7' }} /> Label Templates & Designer
           </button>
           <button
-            className="btn btn-ghost btn-sm"
-            style={{ border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 600 }}
+            style={{
+              background: '#ffffff',
+              border: '1px solid #cbd5e1',
+              color: '#334155',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12px',
+              height: '34px',
+              fontWeight: 600,
+              padding: '0 14px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+              transition: 'all 0.15s ease'
+            }}
             onClick={() => handleOpenPlModal()}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#94a3b8'; e.currentTarget.style.background = '#f8fafc'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#ffffff'; }}
           >
-            <Plus size={15} /> New Packing List
+            <Plus size={14} /> New Packing List
           </button>
           <button
-            className="btn btn-primary btn-sm"
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 600 }}
+            style={{
+              background: '#0f172a',
+              border: 'none',
+              color: '#ffffff',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12px',
+              height: '34px',
+              fontWeight: 600,
+              padding: '0 16px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              boxShadow: '0 1px 2px rgba(15, 23, 42, 0.2)',
+              transition: 'all 0.15s ease'
+            }}
             onClick={() => handleOpenDnModal()}
+            onMouseEnter={(e) => { e.currentTarget.style.background = '#1e293b'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = '#0f172a'; }}
           >
-            <Plus size={15} /> New Delivery Note
+            <Plus size={14} /> New Delivery Note
           </button>
         </div>
       </div>
 
       {/* EXECUTIVE KPI SUMMARY CARDS */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '14px', marginBottom: '20px' }}>
-        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
           <div>
-            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', display: 'block', marginBottom: '4px' }}>
               Packing Lists (PL)
             </span>
-            <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
-              {kpiStats.totalPlCount}
+            <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace', lineHeight: 1.1 }}>
+              {kpiStats.totalPlCount} <span style={{ fontSize: '12px', fontWeight: 500, fontFamily: 'inherit', color: '#64748b' }}>docs</span>
             </div>
-            <span style={{ fontSize: '11px', color: 'var(--text-warning)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+            <span style={{ fontSize: '11px', color: '#b45309', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
               <Clock size={11} /> {kpiStats.pendingPlCount} ready for dispatch
             </span>
           </div>
-          <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-info)' }}>
-            <ClipboardList size={20} />
+          <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0284c7' }}>
+            <ClipboardList size={18} />
           </div>
         </div>
 
-        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
           <div>
-            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', display: 'block', marginBottom: '4px' }}>
               Delivery Notes (DN)
             </span>
-            <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
-              {kpiStats.totalDnCount}
+            <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace', lineHeight: 1.1 }}>
+              {kpiStats.totalDnCount} <span style={{ fontSize: '12px', fontWeight: 500, fontFamily: 'inherit', color: '#64748b' }}>docs</span>
             </div>
-            <span style={{ fontSize: '11px', color: 'var(--text-success)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+            <span style={{ fontSize: '11px', color: '#059669', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
               <CheckCircle2 size={11} /> Active Dispatches
             </span>
           </div>
-          <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(34, 197, 94, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-success)' }}>
-            <Truck size={20} />
+          <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#059669' }}>
+            <Truck size={18} />
           </div>
         </div>
 
-        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
           <div>
-            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', display: 'block', marginBottom: '4px' }}>
               Total Units Dispatched
             </span>
-            <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
-              {kpiStats.totalDispatchedUnits.toLocaleString()}
+            <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace', lineHeight: 1.1 }}>
+              {kpiStats.totalDispatchedUnits.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, fontFamily: 'inherit', color: '#64748b' }}>units</span>
             </div>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
+            <span style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', display: 'block' }}>
               Synced to Sales Tracker & Orders
             </span>
           </div>
-          <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(168, 85, 247, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a855f7' }}>
-            <Package size={20} />
+          <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7c3aed' }}>
+            <Package size={18} />
           </div>
         </div>
 
-        <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
           <div>
-            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b', display: 'block', marginBottom: '4px' }}>
               Active Projects
             </span>
-            <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
-              {kpiStats.activeProjectsCount}
+            <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace', lineHeight: 1.1 }}>
+              {kpiStats.activeProjectsCount} <span style={{ fontSize: '12px', fontWeight: 500, fontFamily: 'inherit', color: '#64748b' }}>projects</span>
             </div>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', display: 'block' }}>
-              With logistics documents
+            <span style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', display: 'block' }}>
+              With active logistics documents
             </span>
           </div>
-          <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: 'rgba(234, 179, 8, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#eab308' }}>
-            <Layers size={20} />
+          <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#d97706' }}>
+            <Layers size={18} />
           </div>
         </div>
       </div>
-
-      {/* INTEGRATED LOGISTICS CARD */}
+{/* INTEGRATED LOGISTICS CARD */}
       <div className="card" style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', background: 'var(--bg-primary)', marginBottom: '20px' }}>
         
         {/* TIER 1: FILTER TABS & CONTROL BAR */}
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-          <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
-            <button
-              type="button"
-              onClick={() => setActiveFilterTab('ALL')}
-              className={`btn btn-sm ${activeFilterTab === 'ALL' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ fontSize: '12px', fontWeight: 600, borderRadius: '6px' }}
-            >
-              All Documents ({allDocs.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveFilterTab('PL')}
-              className={`btn btn-sm ${activeFilterTab === 'PL' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ fontSize: '12px', fontWeight: 600, borderRadius: '6px' }}
-            >
-              📦 Packing Lists ({kpiStats.totalPlCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveFilterTab('DN')}
-              className={`btn btn-sm ${activeFilterTab === 'DN' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ fontSize: '12px', fontWeight: 600, borderRadius: '6px' }}
-            >
-              🚚 Delivery Notes ({kpiStats.totalDnCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveFilterTab('PENDING')}
-              className={`btn btn-sm ${activeFilterTab === 'PENDING' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ fontSize: '12px', fontWeight: 600, borderRadius: '6px', color: activeFilterTab === 'PENDING' ? '#fff' : 'var(--text-warning)' }}
-            >
-              ⏳ Ready for Dispatch ({kpiStats.pendingPlCount})
-            </button>
-          </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '10px', alignItems: 'center' }}>
-          <div style={{ position: 'relative' }}>
-            <Search size={14} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-tertiary)' }} />
-            <input
-              type="text"
-              placeholder="Search by Document # (e.g. PL-2026-0001, DN-2026-0001), Project, Order, Client, or SKU..."
-              className="form-control"
-              style={{ paddingLeft: '32px', height: '32px', fontSize: '12.5px', background: 'var(--bg-primary)', width: '100%' }}
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', background: '#ffffff', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '2px' }}>
               <button
-                onClick={() => setSearchQuery('')}
-                style={{ position: 'absolute', right: '8px', top: '7px', background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer' }}
+                type="button"
+                onClick={() => setActiveFilterTab('ALL')}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '20px',
+                  fontSize: '12px',
+                  fontWeight: activeFilterTab === 'ALL' ? 700 : 500,
+                  background: activeFilterTab === 'ALL' ? '#0f172a' : '#ffffff',
+                  color: activeFilterTab === 'ALL' ? '#ffffff' : '#64748b',
+                  border: activeFilterTab === 'ALL' ? '1px solid #0f172a' : '1px solid #e2e8f0',
+                  cursor: 'pointer',
+                  boxShadow: activeFilterTab === 'ALL' ? '0 1px 2px rgba(15,23,42,0.15)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
               >
-                <X size={14} />
+                All Documents ({allDocs.length})
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => setActiveFilterTab('PL')}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '20px',
+                  fontSize: '12px',
+                  fontWeight: activeFilterTab === 'PL' ? 700 : 500,
+                  background: activeFilterTab === 'PL' ? '#0f172a' : '#ffffff',
+                  color: activeFilterTab === 'PL' ? '#ffffff' : '#64748b',
+                  border: activeFilterTab === 'PL' ? '1px solid #0f172a' : '1px solid #e2e8f0',
+                  cursor: 'pointer',
+                  boxShadow: activeFilterTab === 'PL' ? '0 1px 2px rgba(15,23,42,0.15)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                Packing Lists ({kpiStats.totalPlCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveFilterTab('DN')}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '20px',
+                  fontSize: '12px',
+                  fontWeight: activeFilterTab === 'DN' ? 700 : 500,
+                  background: activeFilterTab === 'DN' ? '#0f172a' : '#ffffff',
+                  color: activeFilterTab === 'DN' ? '#ffffff' : '#64748b',
+                  border: activeFilterTab === 'DN' ? '1px solid #0f172a' : '1px solid #e2e8f0',
+                  cursor: 'pointer',
+                  boxShadow: activeFilterTab === 'DN' ? '0 1px 2px rgba(15,23,42,0.15)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                Delivery Notes ({kpiStats.totalDnCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveFilterTab('PENDING')}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '20px',
+                  fontSize: '12px',
+                  fontWeight: activeFilterTab === 'PENDING' ? 700 : 500,
+                  background: activeFilterTab === 'PENDING' ? '#0f172a' : '#ffffff',
+                  color: activeFilterTab === 'PENDING' ? '#ffffff' : '#b45309',
+                  border: activeFilterTab === 'PENDING' ? '1px solid #0f172a' : '1px solid #fde68a',
+                  cursor: 'pointer',
+                  boxShadow: activeFilterTab === 'PENDING' ? '0 1px 2px rgba(15,23,42,0.15)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                Ready for Dispatch ({kpiStats.pendingPlCount})
+              </button>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Group:</span>
-            <select
-              className="form-control"
-              style={{ height: '32px', padding: '2px 8px', fontSize: '12px', background: 'var(--bg-primary)' }}
-              value={groupingMode}
-              onChange={e => setGroupingMode(e.target.value)}
-            >
-              <option value="none">Flat Document List</option>
-              <option value="project">Group Per Project</option>
-            </select>
-          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '12px', alignItems: 'center' }}>
+            <div style={{ position: 'relative' }}>
+              <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+              <input
+                type="text"
+                placeholder="Search by Document # (e.g. PL-2026-0001, DN-2026-0001), Project, Order, Client, or SKU..."
+                style={{
+                  paddingLeft: '34px',
+                  paddingRight: '30px',
+                  height: '34px',
+                  fontSize: '12px',
+                  background: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  color: '#0f172a',
+                  width: '100%',
+                  outline: 'none',
+                  transition: 'border-color 0.15s ease'
+                }}
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0 }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>PM:</span>
-            <SearchableFilterDropdown
-              value={filterPm}
-              onChange={setFilterPm}
-              options={uniquePms.filter(p => p !== 'All')}
-              allLabel="All PMs"
-              width="140px"
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 600 }}>Group:</span>
+              <select
+                style={{
+                  height: '34px',
+                  padding: '0 10px',
+                  fontSize: '12px',
+                  background: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  color: '#0f172a',
+                  fontWeight: 500,
+                  cursor: 'pointer'
+                }}
+                value={groupingMode}
+                onChange={e => setGroupingMode(e.target.value)}
+              >
+                <option value="none">Flat Document List</option>
+                <option value="project">Group Per Project</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 600 }}>PM:</span>
+              <SearchableFilterDropdown
+                value={filterPm}
+                onChange={setFilterPm}
+                options={uniquePms.filter(p => p !== 'All')}
+                allLabel="All PMs"
+                width="140px"
+              />
+            </div>
           </div>
-        </div>
         </div>
 
         {/* TIER 2: MAIN DOCUMENT LEDGER FULL-BLEED TABLE */}
-        <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-          <span style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <FileText size={14} style={{ color: 'var(--text-info)' }} />
+        <div style={{ padding: '10px 20px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <FileText size={14} style={{ color: '#0284c7' }} />
             Logistics Documents Ledger ({sortedDocs.length})
           </span>
-          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+          <span style={{ fontSize: '11px', color: '#64748b' }}>
             Click any column header to sort. Click a document to inspect or print.
           </span>
         </div>
@@ -1171,7 +1296,7 @@ export default function LogisticsPage() {
           <div style={{ overflowX: 'auto', maxHeight: '68vh', position: 'relative' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left', margin: 0 }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
-                <tr style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
+                <tr style={{ background: '#f8fafc', color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>
                   {renderSortHeader('Document ID', 'id', 'left', { width: '190px' })}
                   {renderSortHeader('Type', 'type', 'left', { width: '130px' })}
                   {renderSortHeader('Project & Order', 'project', 'left', { minWidth: '190px' })}
@@ -1476,44 +1601,46 @@ export default function LogisticsPage() {
             onClick={e => e.stopPropagation()}
           >
             {/* Top Workspace Action Bar */}
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ padding: '14px 24px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={{
                   fontSize: '11px',
                   fontWeight: 700,
                   padding: '3px 8px',
                   borderRadius: '4px',
                   textTransform: 'uppercase',
-                  background: activeDoc.type === 'packing_list' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(34, 197, 94, 0.15)',
-                  color: activeDoc.type === 'packing_list' ? 'var(--text-info)' : 'var(--text-success)',
+                  letterSpacing: '0.04em',
+                  background: activeDoc.type === 'packing_list' ? '#e0f2fe' : '#dcfce7',
+                  color: activeDoc.type === 'packing_list' ? '#0369a1' : '#15803d',
+                  border: '1px solid #e2e8f0'
                 }}>
                   {activeDoc.type === 'packing_list' ? 'Packing List' : 'Delivery Note'}
                 </span>
-                <h3 style={{ margin: 0, fontSize: '16px', color: 'var(--text-primary)', fontWeight: 800, fontFamily: 'monospace' }}>
+                <h3 style={{ margin: 0, fontSize: '15px', color: '#0f172a', fontWeight: 700, fontFamily: 'monospace' }}>
                   {activeDoc.id}
                 </h3>
-{activeDoc.status === 'Cancelled' ? (
-                  <span style={{ fontSize: '11px', background: 'rgba(239, 68, 68, 0.2)', color: 'var(--text-danger)', padding: '2px 8px', borderRadius: '4px', fontWeight: 800 }}>
+                {activeDoc.status === 'Cancelled' ? (
+                  <span style={{ fontSize: '11px', background: '#fee2e2', color: '#b91c1c', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
                     VOIDED / CANCELLED
                   </span>
                 ) : activeDoc.type === 'packing_list' ? (
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                     <span style={{
                       fontSize: '11px',
-                      fontWeight: 800,
+                      fontWeight: 600,
                       padding: '2px 8px',
                       borderRadius: '4px',
                       background: activeDoc.status === 'Boxed' || activeDoc.status === 'Boxed & Packed'
-                        ? 'rgba(16, 185, 129, 0.15)'
+                        ? '#dcfce7'
                         : activeDoc.status === 'Labels Printed' || activeDoc.status === 'Labeled'
-                        ? 'rgba(59, 130, 246, 0.15)'
-                        : 'rgba(245, 158, 11, 0.15)',
+                        ? '#e0f2fe'
+                        : '#fef3c7',
                       color: activeDoc.status === 'Boxed' || activeDoc.status === 'Boxed & Packed'
-                        ? '#10b981'
+                        ? '#15803d'
                         : activeDoc.status === 'Labels Printed' || activeDoc.status === 'Labeled'
-                        ? 'var(--text-info)'
-                        : '#f59e0b',
-                      border: '1px solid currentColor'
+                        ? '#0369a1'
+                        : '#b45309',
+                      border: '1px solid #e2e8f0'
                     }}>
                       {activeDoc.status === 'Boxed' || activeDoc.status === 'Boxed & Packed'
                         ? 'STAGE 3: BOXED'
@@ -1523,7 +1650,7 @@ export default function LogisticsPage() {
                     </span>
                     {!activeDoc.deliveryNoteId && (
                       <select
-                        style={{ height: '26px', fontSize: '11px', fontWeight: 700, borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', padding: '2px 6px' }}
+                        style={{ height: '28px', fontSize: '11.5px', fontWeight: 600, borderRadius: '6px', border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a', padding: '0 8px', cursor: 'pointer' }}
                         value={activeDoc.status || 'Pick Sheet Ready'}
                         onChange={e => handleUpdatePlStage(activeDoc, e.target.value)}
                       >
@@ -1538,25 +1665,25 @@ export default function LogisticsPage() {
 
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <button
-                  className="btn btn-ghost btn-sm"
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, border: '1px solid var(--border)', color: 'var(--text-info)' }}
+                  type="button"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, border: '1px solid #cbd5e1', color: '#0284c7', background: '#ffffff', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer' }}
                   onClick={() => handleOpenLabelPrinter(activeDoc)}
                 >
-                  <Tag size={14} /> Print Thermal Labels (Argox)
+                  <Tag size={13} /> Print Thermal Labels (Argox)
                 </button>
                 {activeDoc.type === 'delivery_note' && activeDoc.status !== 'Cancelled' && (
                   <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, border: '1px solid var(--border)', color: activeDoc.pod_received ? '#10b981' : 'var(--text-warning)' }}
+                    type="button"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, border: '1px solid #cbd5e1', color: activeDoc.pod_received ? '#059669' : '#d97706', background: '#ffffff', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer' }}
                     onClick={() => handleOpenPodModal(activeDoc)}
                   >
-                    <Upload size={14} /> {activeDoc.pod_received ? 'View / Replace Signed POD' : 'Upload Signed POD'}
+                    <Upload size={13} /> {activeDoc.pod_received ? 'View / Replace Signed POD' : 'Upload Signed POD'}
                   </button>
                 )}
                 {activeDoc.type === 'packing_list' && activeDoc.status !== 'Cancelled' && (
                   <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    type="button"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, border: '1px solid #cbd5e1', color: '#334155', background: '#ffffff', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer' }}
                     onClick={() => {
                       const docToEdit = activeDoc;
                       setSelectedDocId(null);
@@ -1564,13 +1691,13 @@ export default function LogisticsPage() {
                       handleOpenPlModal('', docToEdit);
                     }}
                   >
-                    <Edit3 size={14} /> Edit Packing List
+                    <Edit3 size={13} /> Edit Packing List
                   </button>
                 )}
                 {activeDoc.type !== 'packing_list' && activeDoc.status !== 'Cancelled' && (
                   <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    type="button"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, border: '1px solid #cbd5e1', color: '#334155', background: '#ffffff', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer' }}
                     onClick={() => {
                       const docToEdit = activeDoc;
                       setSelectedDocId(null);
@@ -1578,34 +1705,34 @@ export default function LogisticsPage() {
                       handleOpenDnModal('', docToEdit);
                     }}
                   >
-                    <Edit3 size={14} /> Edit Delivery Note
+                    <Edit3 size={13} /> Edit Delivery Note
                   </button>
                 )}
                 <button
-                  className="btn btn-primary btn-sm"
-                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600 }}
+                  type="button"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, background: '#0f172a', color: '#ffffff', border: 'none', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer' }}
                   onClick={() => window.print()}
                 >
-                  <Printer size={14} /> Print / Save PDF
+                  <Printer size={13} /> Print / Save PDF
                 </button>
                 {activeDoc.status !== 'Cancelled' && (
                   <button
-                    className="btn btn-ghost btn-sm"
-                    style={{ color: 'var(--text-danger)', border: '1px solid var(--border)', fontSize: '12px' }}
+                    type="button"
+                    style={{ color: '#dc2626', border: '1px solid #fecaca', background: '#ffffff', fontSize: '12px', fontWeight: 600, padding: '6px 12px', borderRadius: '8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                     onClick={() => openDeleteModal(activeDoc)}
                   >
                     {activeDoc.type === 'packing_list' ? <><Trash2 size={13} /> Delete</> : <><Ban size={13} /> Void / Cancel DN</>}
                   </button>
                 )}
                 <button
-                  className="btn btn-ghost btn-sm"
-                  style={{ border: '1px solid var(--border)', fontSize: '12px' }}
+                  type="button"
+                  style={{ border: '1px solid #e2e8f0', background: '#ffffff', color: '#64748b', borderRadius: '6px', padding: '5px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   onClick={() => {
                     setSelectedDocId(null);
                     setSelectedProjectKey(null);
                   }}
                 >
-                  <X size={14} />
+                  <X size={15} />
                 </button>
               </div>
             </div>

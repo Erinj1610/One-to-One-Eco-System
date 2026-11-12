@@ -1113,9 +1113,9 @@ export default function PackingListWorkbenchModal({
         {/* ─── WORKBENCH HEADER WITH 4-STEP PIPELINE STEPPER ──────────────────── */}
         <div
           style={{
-            padding: '12px 20px',
-            borderBottom: '1px solid var(--border)',
-            background: 'var(--bg-primary)',
+            padding: '14px 24px',
+            borderBottom: '1px solid #e2e8f0',
+            background: '#f8fafc',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -1129,121 +1129,124 @@ export default function PackingListWorkbenchModal({
                 width: '36px',
                 height: '36px',
                 borderRadius: '8px',
-                background: 'rgba(59, 130, 246, 0.1)',
+                background: '#f1f5f9',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: 'var(--text-info)',
-                border: '1px solid rgba(59, 130, 246, 0.25)',
+                color: '#0284c7',
+                border: '1px solid #e2e8f0',
               }}
             >
-              <Package size={20} />
+              <Package size={18} />
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                <span style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>
                   {initialDoc ? `PACKING LIST — ${initialDoc.id}` : 'NEW PACKING LIST'}
                 </span>
                 <span
                   style={{
                     fontSize: '11px',
-                    fontWeight: 700,
+                    fontWeight: 600,
                     padding: '2px 8px',
                     borderRadius: '4px',
                     background:
                       currentStep === 4
-                        ? 'rgba(16, 185, 129, 0.15)'
+                        ? '#ecfdf5'
                         : currentStep === 3
-                        ? 'rgba(168, 85, 247, 0.15)'
+                        ? '#f5f3ff'
                         : currentStep === 2
-                        ? 'rgba(59, 130, 246, 0.15)'
-                        : 'rgba(245, 158, 11, 0.15)',
+                        ? '#f0fdf4'
+                        : '#fef3c7',
                     color:
                       currentStep === 4
-                        ? '#10b981'
+                        ? '#059669'
                         : currentStep === 3
-                        ? '#a855f7'
+                        ? '#7c3aed'
                         : currentStep === 2
-                        ? 'var(--text-info)'
-                        : '#f59e0b',
-                    border: '1px solid currentColor',
+                        ? '#0284c7'
+                        : '#b45309',
+                    border: '1px solid #e2e8f0',
                   }}
                 >
-                  Step {currentStep}: {currentStep === 1 ? 'Product Summary (Consolidated)' : currentStep === 2 ? 'Pick Sheet' : currentStep === 3 ? 'Labels' : 'Boxing'} [v2.0 LIVE]
+                  Step {currentStep}: {currentStep === 1 ? 'Product Summary' : currentStep === 2 ? 'Pick Sheet' : currentStep === 3 ? 'Fitting Labels' : 'Boxing & Cartons'}
                 </span>
               </div>
-              <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                Project: <strong style={{ color: 'var(--text-primary)' }}>{activeProjectObj?.name || 'Project'}</strong> &bull; Order: <strong style={{ color: 'var(--text-primary)' }}>{activeOrderObj?.quote_name || activeOrderObj?.id || '—'}</strong>
+              <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+                Project: <strong style={{ color: '#0f172a', fontWeight: 600 }}>{activeProjectObj?.name || 'Project'}</strong> &bull; Order: <strong style={{ color: '#0f172a', fontWeight: 600 }}>{activeOrderObj?.quote_name || activeOrderObj?.id || '—'}</strong>
               </div>
             </div>
           </div>
 
           {/* Center: 4-Step Stepper Buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--bg-secondary)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#ffffff', padding: '4px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
             <button
               type="button"
-              className="btn btn-ghost btn-xs"
               style={{
                 borderRadius: '6px',
                 padding: '6px 12px',
                 fontSize: '12px',
-                fontWeight: currentStep === 1 ? 800 : 600,
-                background: currentStep === 1 ? 'var(--bg-primary)' : 'transparent',
-                color: currentStep === 1 ? 'var(--text-info)' : 'var(--text-secondary)',
-                border: currentStep === 1 ? '1px solid var(--border)' : '1px solid transparent',
-                boxShadow: currentStep === 1 ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                fontWeight: currentStep === 1 ? 700 : 500,
+                background: currentStep === 1 ? '#0f172a' : 'transparent',
+                color: currentStep === 1 ? '#ffffff' : '#64748b',
+                border: 'none',
+                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
+                boxShadow: currentStep === 1 ? '0 1px 2px rgba(15,23,42,0.15)' : 'none',
+                transition: 'all 0.15s ease'
               }}
               onClick={() => setCurrentStep(1)}
             >
-              <Layers size={14} /> 1. Product Summary
+              <Layers size={13} /> 1. Product Summary
             </button>
 
-            <ChevronRight size={13} style={{ color: 'var(--text-tertiary)', opacity: 0.6 }} />
+            <ChevronRight size={12} style={{ color: '#cbd5e1' }} />
 
             <button
               type="button"
-              className="btn btn-ghost btn-xs"
               style={{
                 borderRadius: '6px',
                 padding: '6px 12px',
                 fontSize: '12px',
-                fontWeight: currentStep === 2 ? 800 : 600,
-                background: currentStep === 2 ? 'var(--bg-primary)' : 'transparent',
-                color: currentStep === 2 ? 'var(--text-info)' : 'var(--text-secondary)',
-                border: currentStep === 2 ? '1px solid var(--border)' : '1px solid transparent',
-                boxShadow: currentStep === 2 ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                fontWeight: currentStep === 2 ? 700 : 500,
+                background: currentStep === 2 ? '#0f172a' : 'transparent',
+                color: currentStep === 2 ? '#ffffff' : '#64748b',
+                border: 'none',
+                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
+                boxShadow: currentStep === 2 ? '0 1px 2px rgba(15,23,42,0.15)' : 'none',
+                transition: 'all 0.15s ease'
               }}
               onClick={() => {
                 if (plRows.length === 0) generatePickSheetRows();
                 setCurrentStep(2);
               }}
             >
-              <ClipboardList size={14} /> 2. Pick Sheet
+              <ClipboardList size={13} /> 2. Pick Sheet
             </button>
 
-            <ChevronRight size={13} style={{ color: 'var(--text-tertiary)', opacity: 0.6 }} />
+            <ChevronRight size={12} style={{ color: '#cbd5e1' }} />
 
             <button
               type="button"
-              className="btn btn-ghost btn-xs"
               style={{
                 borderRadius: '6px',
                 padding: '6px 12px',
                 fontSize: '12px',
-                fontWeight: currentStep === 3 ? 800 : 600,
-                background: currentStep === 3 ? 'var(--bg-primary)' : 'transparent',
-                color: currentStep === 3 ? 'var(--text-info)' : 'var(--text-secondary)',
-                border: currentStep === 3 ? '1px solid var(--border)' : '1px solid transparent',
-                boxShadow: currentStep === 3 ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                fontWeight: currentStep === 3 ? 700 : 500,
+                background: currentStep === 3 ? '#0f172a' : 'transparent',
+                color: currentStep === 3 ? '#ffffff' : '#64748b',
+                border: 'none',
+                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
+                boxShadow: currentStep === 3 ? '0 1px 2px rgba(15,23,42,0.15)' : 'none',
+                transition: 'all 0.15s ease'
               }}
               onClick={() => {
                 if (!savedDoc?.id && plRows.length === 0) {
@@ -1253,33 +1256,34 @@ export default function PackingListWorkbenchModal({
                 setCurrentStep(3);
               }}
             >
-              <Tag size={14} /> 3. Fitting Labels
+              <Tag size={13} /> 3. Fitting Labels
             </button>
 
-            <ChevronRight size={13} style={{ color: 'var(--text-tertiary)', opacity: 0.6 }} />
+            <ChevronRight size={12} style={{ color: '#cbd5e1' }} />
 
             <button
               type="button"
-              className="btn btn-ghost btn-xs"
               style={{
                 borderRadius: '6px',
                 padding: '6px 12px',
                 fontSize: '12px',
-                fontWeight: currentStep === 4 ? 800 : 600,
-                background: currentStep === 4 ? 'var(--bg-primary)' : 'transparent',
-                color: currentStep === 4 ? '#10b981' : 'var(--text-secondary)',
-                border: currentStep === 4 ? '1px solid var(--border)' : '1px solid transparent',
-                boxShadow: currentStep === 4 ? '0 2px 4px rgba(0,0,0,0.1)' : 'none',
+                fontWeight: currentStep === 4 ? 700 : 500,
+                background: currentStep === 4 ? '#0f172a' : 'transparent',
+                color: currentStep === 4 ? '#ffffff' : '#64748b',
+                border: 'none',
+                cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
+                boxShadow: currentStep === 4 ? '0 1px 2px rgba(15,23,42,0.15)' : 'none',
+                transition: 'all 0.15s ease'
               }}
               onClick={() => {
                 if (plRows.length === 0) generatePickSheetRows();
                 setCurrentStep(4);
               }}
             >
-              <Box size={14} /> 4. Boxing & Cartons
+              <Box size={13} /> 4. Boxing & Cartons
             </button>
           </div>
 
@@ -1287,11 +1291,20 @@ export default function PackingListWorkbenchModal({
           <div>
             <button
               type="button"
-              className="btn btn-ghost btn-sm"
               onClick={onClose}
-              style={{ color: 'var(--text-secondary)' }}
+              style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                padding: '5px',
+                color: '#64748b',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
             >
-              <X size={18} />
+              <X size={15} />
             </button>
           </div>
         </div>
