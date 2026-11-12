@@ -234,7 +234,7 @@ class Order(Base):
     # New columns for relational sync
     po_number = Column(String, unique=True, nullable=True)
     supplier_name = Column(String, nullable=True)
-    items_count = Column(Integer, default=0)
+    items_count = Column(Float, default=0.0)
     value = Column(Float, default=0.0)
     paid = Column(Float, default=0.0)
     outstanding = Column(Float, default=0.0)
@@ -307,7 +307,7 @@ class OrderItem(Base):
     
     id = Column(String, primary_key=True, index=True)
     order_id = Column(String, nullable=True)
-    qty = Column(Integer, default=0)
+    qty = Column(Float, default=0.0)
     type = Column(String, nullable=True)
     one_one_code = Column(String, nullable=True)
     code = Column(String, nullable=True)

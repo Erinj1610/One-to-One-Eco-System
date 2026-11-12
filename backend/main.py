@@ -137,10 +137,19 @@ def init_db():
                         quick_conn.execute(text("ALTER TABLE orders ADD COLUMN vat_percentage FLOAT DEFAULT 15.0;"))
                         quick_conn.commit()
                 if 'order_items' in insp.get_table_names():
-                    oi_cols = [c['name'] for c in insp.get_columns('order_items')]
-                    if 'stock_available' not in oi_cols:
+                    oi_cols_dict = {c['name']: c for c in insp.get_columns('order_items')}
+                    if 'stock_available' not in oi_cols_dict:
                         quick_conn.execute(text("ALTER TABLE order_items ADD COLUMN stock_available FLOAT DEFAULT 0.0;"))
                         quick_conn.commit()
+                    if 'qty' in oi_cols_dict:
+                        col_type = str(oi_cols_dict['qty']['type']).lower()
+                        if 'int' in col_type:
+                            try:
+                                quick_conn.execute(text("ALTER TABLE order_items ALTER COLUMN qty TYPE FLOAT;"))
+                                quick_conn.commit()
+                                print("Database migration: altered order_items.qty from INTEGER to FLOAT.")
+                            except Exception as alter_err:
+                                print(f"Notice altering order_items.qty: {alter_err}")
                 if 'products' in insp.get_table_names():
                     p_cols = [c['name'] for c in insp.get_columns('products')]
                     if 'palladium_status' not in p_cols:

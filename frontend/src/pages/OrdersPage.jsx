@@ -62,8 +62,7 @@ import {
   Check,
   Loader2,
   RefreshCw,
-  BookOpen
-} from 'lucide-react';
+  BookOpen, X } from 'lucide-react';
 
 const PHI_ADVISORIES = {
   orders: {
@@ -558,6 +557,7 @@ export default function OrdersPage() {
   const [swapTargetItem, setSwapTargetItem] = useState(null);
   const [scopeFilter, setScopeFilter] = useState('ALL');
   const [revisionStatusFilter, setRevisionStatusFilter] = useState('ACTIVE');
+  const [boqSearchQuery, setBoqSearchQuery] = useState('');
 
   // Currently open order in spreadsheet workspace
   const currentOrderObj = useMemo(() => {
@@ -2027,13 +2027,13 @@ export default function OrdersPage() {
           }
         }
 
-        // Parse numbers safely for real-time recalculations
+        // Parse numbers safely for real-time recalculations (supporting 2-decimal precision for linear LED/runs)
         if (field === 'qty') {
           if (item.is_credit || item.isCredit) {
-            const numVal = parseInt(val) || 0;
+            const numVal = parseFloat(val) || 0;
             updated.qty = numVal > 0 ? -numVal : numVal;
           } else {
-            updated.qty = Math.max(0, parseInt(val) || 0);
+            updated.qty = Math.max(0, parseFloat(val) || 0);
           }
         }
         if (field === 'unitCost') updated.unitCost = Math.max(0, parseFloat(val) || 0);
@@ -2740,7 +2740,7 @@ export default function OrdersPage() {
     // 2. Direct Cloud SQL items batch upsert (single high-performance request)
     const itemsPayload = orderedItemsWithIndex.map(item => ({
       id: String(item.id),
-      qty: Math.round(Number(item.qty) || 0),
+      qty: Math.round((Number(item.qty) || 0) * 100) / 100,
       type: item.type || null,
       one_one_code: item.oneOneCode || item.one_one_code || null,
       code: item.code || null,
@@ -5061,7 +5061,49 @@ export default function OrdersPage() {
                           </button>
                         </div>
 
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          {/* QUICK IN-TABLE SEARCH BAR */}
+                          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                            <Search size={13} style={{ position: 'absolute', left: '10px', color: '#64748b', pointerEvents: 'none' }} />
+                            <input
+                              type="text"
+                              placeholder="Filter by tag, room, SKU, description..."
+                              value={boqSearchQuery}
+                              onChange={e => setBoqSearchQuery(e.target.value)}
+                              style={{
+                                padding: '5px 26px 5px 28px',
+                                fontSize: '11.5px',
+                                borderRadius: '6px',
+                                border: '1px solid var(--border)',
+                                background: 'var(--bg-primary)',
+                                color: 'var(--text-primary)',
+                                width: '240px',
+                                height: '28px'
+                              }}
+                            />
+                            {boqSearchQuery && (
+                              <button
+                                type="button"
+                                onClick={() => setBoqSearchQuery('')}
+                                style={{
+                                  position: 'absolute',
+                                  right: '6px',
+                                  background: 'none',
+                                  border: 'none',
+                                  color: '#94a3b8',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}
+                                title="Clear filter"
+                              >
+                                <X size={12} />
+                              </button>
+                            )}
+                          </div>
+
                           <button
                             type="button"
                             className="btn btn-sm btn-ghost"
@@ -5188,6 +5230,20 @@ export default function OrdersPage() {
                                 if (scopeFilter !== 'ALL') {
                                   const ref = item.sub_order_ref || item.subOrderRef;
                                   return ref === scopeFilter || (ref && ref.endsWith(scopeFilter));
+                                }
+                                if (boqSearchQuery && boqSearchQuery.trim()) {
+                                  const q = boqSearchQuery.toLowerCase().trim();
+                                  const tag = (item.oneOneCode || item.one_one_code || item.tag || '').toLowerCase();
+                                  const room = (item.area || '').toLowerCase();
+                                  const floor = (item.floor || '').toLowerCase();
+                                  const code = (item.code || '').toLowerCase();
+                                  const desc = (item.description || '').toLowerCase();
+                                  const brand = (item.brand || '').toLowerCase();
+                                  const supplier = (item.supplier || '').toLowerCase();
+                                  const type = (item.type || '').toLowerCase();
+                                  if (!tag.includes(q) && !room.includes(q) && !floor.includes(q) && !code.includes(q) && !desc.includes(q) && !brand.includes(q) && !supplier.includes(q) && !type.includes(q)) {
+                                    return false;
+                                  }
                                 }
                                 return true;
                               }).map((item, index) => {
@@ -5316,6 +5372,7 @@ export default function OrdersPage() {
                                     <td>
                                       <input 
                                         type="number"
+                                        step="any"
                                         className="boq-cell-input"
                                         style={{ textAlign: 'center' }}
                                         value={item.qty}

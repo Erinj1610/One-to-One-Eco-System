@@ -250,7 +250,7 @@ def sync_order_invoicing(po_number: str, db: Session = Depends(get_db)):
 
 class OrderItemSchema(BaseModel):
     id: str
-    qty: int
+    qty: float = 0.0
     type: Optional[str] = None
     one_one_code: Optional[str] = None
     code: Optional[str] = None
@@ -701,7 +701,7 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
         # Check legacy PO placeholder in static purchase_history
         legacy_po_entry = next((h for h in pur_hist if str(h.get("ref") or h.get("id") or "").strip() == "[LEGACY]"), None)
         if legacy_po_entry:
-            req_q = int(item.qty or 0)
+            req_q = float(item.qty or 0)
             needed_legacy_po = max(0, req_q - calc_po_qty)
             if needed_legacy_po > 0:
                 legacy_floated_po = dict(legacy_po_entry)
@@ -764,7 +764,7 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
         # Check legacy GRN placeholder in static receiving_history
         legacy_rec_entry = next((h for h in rec_hist if str(h.get("ref") or h.get("id") or "").strip() == "[LEGACY]"), None)
         if legacy_rec_entry:
-            req_q = int(item.qty or 0)
+            req_q = float(item.qty or 0)
             needed_legacy_rec = max(0, req_q - calc_rec_qty)
             if needed_legacy_rec > 0:
                 legacy_floated_rec = dict(legacy_rec_entry)
@@ -841,7 +841,7 @@ def get_order_items(po_number: str, db: Session = Depends(get_db)):
 
         if legacy_inv_entry:
             # Dynamically balance legacy placeholder so live allocations + legacy = needed balance
-            req_q = int(item.qty or 0)
+            req_q = float(item.qty or 0)
             needed_legacy_qty = max(0, req_q - calc_inv_qty)
             if needed_legacy_qty > 0:
                 unit_ret = float(item.unit_retail or 0.0)
@@ -1399,7 +1399,7 @@ def apply_order_legacy_baseline(
         updated_count = 0
 
         for it in items:
-            req_qty = int(it.qty or 0)
+            req_qty = float(it.qty or 0)
             if req_qty <= 0:
                 continue
 
@@ -2065,7 +2065,7 @@ def get_variation_document_data(po_number: str, db: Session = Depends(get_db)):
             "room": it.area or "—",
             "code": it.code or it.one_one_code or "—",
             "description": it.description or "—",
-            "qty_delta": -int(it.qty or 0),
+            "qty_delta": -float(it.qty or 0),
             "unit_retail": float(it.unit_retail or 0.0),
             "line_delta": -round(line_val, 2),
             "reason": it.swap_reason or "Site change / client request",
@@ -2081,7 +2081,7 @@ def get_variation_document_data(po_number: str, db: Session = Depends(get_db)):
             "room": it.area or "—",
             "code": it.code or it.one_one_code or "—",
             "description": it.description or "—",
-            "qty_delta": int(it.qty or 0),
+            "qty_delta": float(it.qty or 0),
             "unit_retail": float(it.unit_retail or 0.0),
             "line_delta": round(line_val, 2),
             "reason": it.swap_reason or "Approved replacement",
@@ -2111,7 +2111,7 @@ def get_variation_document_data(po_number: str, db: Session = Depends(get_db)):
             "room": sw.area or "General Scope",
             "original_code": sw.code or sw.one_one_code or "—",
             "original_desc": sw.description or "—",
-            "original_qty": int(sw.qty or 0),
+            "original_qty": float(sw.qty or 0),
             "original_unit_retail": float(sw.unit_retail or 0.0),
             "original_total": round(orig_val, 2),
             "replacement_code": (matching_add.code or matching_add.one_one_code) if matching_add else "—",
