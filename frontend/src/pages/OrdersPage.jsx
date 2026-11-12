@@ -885,6 +885,7 @@ export default function OrdersPage() {
   });
   const [selectedDocType, setSelectedDocType] = useState('quote'); // 'quote' | 'boq_doc' | 'invoice' | 'schedule' | 'statement'
   const [checkedDocTypes, setCheckedDocTypes] = useState(['quote']);
+  const [docViewMode, setDocViewMode] = useState('sheet'); // 'sheet' | 'pdf'
   const [showRegForm, setShowRegForm] = useState(true);
   
   // Product Catalogue Tab & Filter States
@@ -1418,12 +1419,12 @@ export default function OrdersPage() {
   }, [workspaceSubTab, selectedDocType, selectedOrderId, activeOrderItems.length]);
 
   useEffect(() => {
-    if (workspaceSubTab === 'doc_gen' && selectedDocType) {
+    if (workspaceSubTab === 'doc_gen' && docViewMode === 'pdf' && selectedDocType) {
       triggerLivePreviewCompile(selectedDocType, previewPage);
-    } else {
+    } else if (workspaceSubTab !== 'doc_gen') {
       setLivePreviewUrl(null);
     }
-  }, [workspaceSubTab, selectedDocType, selectedOrderId, activeOrderItems.length, previewPage]);
+  }, [workspaceSubTab, docViewMode, selectedDocType, selectedOrderId, activeOrderItems.length, previewPage]);
 
   const handleExportDocxTemplate = async () => {
     let docType = '';
@@ -6167,258 +6168,532 @@ export default function OrdersPage() {
               </div>
             )}
 
-            {workspaceSubTab === 'doc_gen' && (
-              
-              /* SUB-TAB 2: HIGH-FIDELITY DOCUMENT GENERATOR */
-              <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '20px' }}>
-                
-                {/* DOCUMENT SIDEBAR UTILITIES */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {workspaceSubTab === 'doc_gen' && (() => {
+              const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
+              const totalRetailGross = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
+              const totalCreditedRetail = (erpCreditedItems || []).reduce((s, item) => s + Math.abs(Number(item.totalRetail || 0)), 0);
+              const totalRetail = Math.max(0, totalRetailGross - totalCreditedRetail);
+              const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+              const effectiveVatPercent = orderVatPercent !== null && orderVatPercent !== undefined ? Number(orderVatPercent) : 15;
+              const vatAmount = discountedRetail * (effectiveVatPercent / 100);
+              const finalTotalInclVat = discountedRetail + vatAmount;
+              const balanceOutstanding = Math.max(0, finalTotalInclVat - Number(orderPaidAmount));
+
+              const groupedItems = {};
+              activeOrderItems.forEach(item => {
+                const areaName = item.area || 'General Spaces';
+                if (!groupedItems[areaName]) groupedItems[areaName] = [];
+                groupedItems[areaName].push(item);
+              });
+
+              const docCategories = [
+                {
+                  category: 'Commercial & Invoicing',
+                  badge: 'Client Facing',
+                  docs: [
+                    { id: 'quote', name: 'Quotation (Summarized)', icon: <FileText size={14} /> },
+                    { id: 'deposit_invoice', name: 'Deposit Invoice (70%)', icon: <DollarSign size={14} /> },
+                    { id: 'balance_invoice', name: 'Balance Invoice', icon: <DollarSign size={14} /> },
+                    { id: 'tax_invoice', name: 'Tax Invoice (Full)', icon: <DollarSign size={14} /> },
+                    { id: 'statement', name: 'Progress Statement', icon: <TrendingUp size={14} /> }
+                  ]
+                },
+                {
+                  category: 'Site Execution & Specs',
+                  badge: 'Contractor Safe',
+                  docs: [
+                    { id: 'schedule', name: 'Lighting Schedule', icon: <ClipboardList size={14} /> },
+                    { id: 'boq_doc', name: 'Detailed BOQ Breakdown', icon: <Layers size={14} /> },
+                    { id: 'technical_pack', name: 'Technical Pack Studio', icon: <BookOpen size={14} /> }
+                  ]
+                },
+                {
+                  category: 'Revisions & Variations',
+                  badge: 'Audit Trail',
+                  docs: [
+                    { id: 'revision_audit', name: 'Revision & Variation Audit', icon: <History size={14} /> }
+                  ]
+                }
+              ];
+
+              const allDocIds = ['quote', 'deposit_invoice', 'balance_invoice', 'tax_invoice', 'statement', 'schedule', 'boq_doc', 'technical_pack', 'revision_audit'];
+
+              const getDocTitle = (id) => {
+                for (const cat of docCategories) {
+                  const found = cat.docs.find(d => d.id === id);
+                  if (found) return found.name;
+                }
+                return (id || '').toUpperCase();
+              };
+
+              return (
+                <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
                   
-                  {/* DOCUMENT SELECTION WITH CHECKBOXES */}
-                  <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>Select Documents</span>
-                      <span style={{ fontSize: '11px', color: 'var(--text-info)', fontWeight: 600 }}>{checkedDocTypes.length} Selected</span>
+                  {/* 1. TOP PUBLISHING STUDIO COMMAND BAR */}
+                  <div className="card no-print" style={{
+                    background: 'var(--bg-primary)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '10px',
+                    padding: '14px 20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '14px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+                  }}>
+                    {/* Left: Active doc title & order metadata */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '8px',
+                        background: 'rgba(23, 100, 230, 0.12)',
+                        color: '#1764e6',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <FileText size={20} />
+                      </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                            {getDocTitle(selectedDocType)}
+                          </h3>
+                          <span style={{
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            padding: '2px 8px',
+                            borderRadius: '12px',
+                            background: 'var(--bg-secondary)',
+                            color: 'var(--text-secondary)',
+                            border: '1px solid var(--border)'
+                          }}>
+                            {selectedOrderId}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          {clientCompany || 'Client'} • {activeOrderItems.length} active fittings • R {Math.round(finalTotalInclVat).toLocaleString()} Incl VAT
+                        </span>
+                      </div>
                     </div>
 
-                    {(() => {
-                      let docsList = [];
-                      if (liveCustomDocs && Object.keys(liveCustomDocs).length > 0) {
-                        docsList = Object.values(liveCustomDocs).map(cd => ({
-                          id: cd.id.toLowerCase() === 'quotation' ? 'quote' : cd.id.toLowerCase() === 'boq' ? 'boq_doc' : cd.id.toLowerCase(),
-                          name: cd.name || cd.id,
-                          icon: <FileText size={14} />
-                        }));
-                      } else {
-                        docsList = [
-                          { id: 'quote', name: 'Quotation (Summarized)', icon: <FileText size={14} /> },
-                          { id: 'revision_audit', name: 'Revision & Variation Audit', icon: <History size={14} /> },
-                          { id: 'technical_pack', name: 'Technical Pack & Spec Book', icon: <BookOpen size={14} /> },
-                          { id: 'boq_doc', name: 'BOQ (Detailed Breakdown)', icon: <Layers size={14} /> },
-                          { id: 'schedule', name: 'Lighting Schedule', icon: <ClipboardList size={14} /> },
-                          { id: 'deposit_invoice', name: 'Deposit Invoice', icon: <DollarSign size={14} /> },
-                          { id: 'balance_invoice', name: 'Balance Invoice', icon: <DollarSign size={14} /> },
-                          { id: 'tax_invoice', name: 'Tax Invoice (Full)', icon: <DollarSign size={14} /> },
-                          { id: 'statement', name: 'Progress Statement', icon: <TrendingUp size={14} /> }
-                        ];
-                      }
-
-                      return docsList.map(doc => {
-                        const isSelected = selectedDocType === doc.id;
-                        const isChecked = checkedDocTypes.includes(doc.id);
-                        return (
-                          <div
-                            key={doc.id}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '8px',
-                              width: '100%',
-                              padding: '6px 10px',
-                              borderRadius: '6px',
-                              background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-                              border: '1px solid',
-                              borderColor: isSelected ? 'var(--border-info)' : 'transparent'
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                if (e.target.checked) {
-                                  setCheckedDocTypes(prev => [...prev, doc.id]);
-                                } else {
-                                  setCheckedDocTypes(prev => prev.filter(id => id !== doc.id));
-                                }
-                              }}
-                              style={{ cursor: 'pointer', width: '15px', height: '15px', accentColor: 'var(--color-primary)' }}
-                            />
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-ghost"
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                justifyContent: 'flex-start',
-                                flex: 1,
-                                padding: '4px 6px',
-                                textAlign: 'left',
-                                border: 'none',
-                                background: 'transparent'
-                              }}
-                              onClick={() => setSelectedDocType(doc.id)}
-                            >
-                              {doc.icon}
-                              <span style={{ fontSize: '12.5px', fontWeight: isSelected ? 600 : 500 }}>{doc.name}</span>
-                            </button>
-                          </div>
-                        );
-                      });
-                    })()}
-                  </div>
-
-                  {/* PRINT / EXPORT ACTIONS (Pure Excel Template System) */}
-                  <button 
-                    className="btn btn-success"
-                    style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', background: 'linear-gradient(135deg, #1f9a55 0%, #156b3b 100%)', border: 'none', color: '#fff', width: '100%', fontWeight: 600 }}
-                    onClick={handleExportXlsxTemplate}
-                    disabled={exportingXlsx || checkedDocTypes.length === 0}
-                  >
-                    <FileSpreadsheet size={15} /> {exportingXlsx ? 'Compiling PDF Batch...' : `Download ${checkedDocTypes.length > 1 ? `Selected (${checkedDocTypes.length}) PDFs 📄` : 'PDF 📄'}`}
-                  </button>
-                </div>
-
-                {/* THE HIGH-FIDELITY LIVE DOCUMENT CANVAS PREVIEW */}
-                {selectedDocType === 'revision_audit' ? (
-                  <ClientVariationDocument
-                    poNumber={selectedOrderId}
-                    order={currentOrderObj}
-                    onBackToWorkspace={() => setWorkspaceSubTab('boq')}
-                  />
-                ) : selectedDocType === 'technical_pack' ? (
-                  <div style={{
-                    background: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
-                    padding: '36px 24px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border)',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
-                    maxWidth: '800px',
-                    margin: '0 auto',
-                    textAlign: 'center'
-                  }}>
-                    <div style={{ fontSize: '36px', marginBottom: '10px' }}>📘</div>
-                    <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>
-                      One to One Architectural Technical Pack Studio
-                    </h3>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '13px', maxWidth: '540px', margin: '0 auto 20px auto', lineHeight: 1.5 }}>
-                      Compile high-resolution, standardized PDF Technical Packs containing complete photometric specs, wiring diagrams, cutouts, and installation guidelines for <strong>{selectedOrderId}</strong> ({activeOrderItems.length} active fittings).
-                    </p>
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+                    {/* Middle: Canvas View vs Compiled PDF View toggle */}
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      background: 'var(--bg-secondary)',
+                      padding: '3px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border)'
+                    }}>
                       <button
-                        className="btn btn-primary"
-                        onClick={() => setIsTechPackModalOpen(true)}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 22px', fontSize: '13px', fontWeight: 700 }}
+                        type="button"
+                        className="btn btn-xs"
+                        style={{
+                          background: docViewMode === 'sheet' ? 'var(--bg-primary)' : 'transparent',
+                          color: docViewMode === 'sheet' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                          fontWeight: docViewMode === 'sheet' ? 700 : 500,
+                          border: docViewMode === 'sheet' ? '1px solid var(--border)' : 'none',
+                          borderRadius: '6px',
+                          padding: '6px 14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          cursor: 'pointer',
+                          boxShadow: docViewMode === 'sheet' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                        }}
+                        onClick={() => setDocViewMode('sheet')}
                       >
-                        <BookOpen size={16} /> Launch Technical Pack Studio
+                        <FileText size={13} /> Presentation Sheet
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-xs"
+                        style={{
+                          background: docViewMode === 'pdf' ? 'var(--bg-primary)' : 'transparent',
+                          color: docViewMode === 'pdf' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                          fontWeight: docViewMode === 'pdf' ? 700 : 500,
+                          border: docViewMode === 'pdf' ? '1px solid var(--border)' : 'none',
+                          borderRadius: '6px',
+                          padding: '6px 14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          cursor: 'pointer',
+                          boxShadow: docViewMode === 'pdf' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                        }}
+                        onClick={() => {
+                          setDocViewMode('pdf');
+                          if (!livePreviewUrl) {
+                            triggerLivePreviewCompile(selectedDocType, previewPage);
+                          }
+                        }}
+                      >
+                        <Printer size={13} /> PDF Template File
+                      </button>
+                    </div>
+
+                    {/* Right: Actions */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
+                        onClick={() => window.print()}
+                        title="Print Presentation Canvas"
+                      >
+                        <Printer size={14} /> Print Preview
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
+                        onClick={handleDownloadExcelFile}
+                        disabled={exportingXlsx}
+                        title="Download Master Excel Spreadsheet (.xlsx)"
+                      >
+                        <FileSpreadsheet size={14} color="#107c41" /> Export Excel (.xlsx)
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-success"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          fontSize: '12.5px',
+                          fontWeight: 700,
+                          background: 'linear-gradient(135deg, #1f9a55 0%, #156b3b 100%)',
+                          color: '#ffffff',
+                          border: 'none',
+                          boxShadow: '0 2px 6px rgba(21, 107, 59, 0.25)'
+                        }}
+                        onClick={handleExportXlsxTemplate}
+                        disabled={exportingXlsx || checkedDocTypes.length === 0}
+                      >
+                        <Download size={14} />
+                        {exportingXlsx
+                          ? 'Compiling PDF Batch...'
+                          : checkedDocTypes.length > 1
+                          ? `Download Batch (${checkedDocTypes.length}) PDFs 📄`
+                          : 'Download Official PDF 📄'}
                       </button>
                     </div>
                   </div>
-                ) : (() => {
-                  const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
-                  const totalRetailGross = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
-                  const totalCreditedRetail = (erpCreditedItems || []).reduce((s, item) => s + Math.abs(Number(item.totalRetail || 0)), 0);
-                  const totalRetail = Math.max(0, totalRetailGross - totalCreditedRetail);
-                  const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
-                  const effectiveVatPercent = orderVatPercent !== null && orderVatPercent !== undefined ? Number(orderVatPercent) : 15;
-                  const vatAmount = discountedRetail * (effectiveVatPercent / 100);
-                  const finalTotalInclVat = discountedRetail + vatAmount;
-                  const balanceOutstanding = Math.max(0, finalTotalInclVat - Number(orderPaidAmount));
 
-                  // Group items by Area for clear section layouts
-                  const groupedItems = {};
-                  activeOrderItems.forEach(item => {
-                    const areaName = item.area || 'General Spaces';
-                    if (!groupedItems[areaName]) groupedItems[areaName] = [];
-                    groupedItems[areaName].push(item);
-                  });
-
-                  return (
-                    <div id="print-document-canvas-container" style={{ display: 'flex', flexDirection: 'column', width: '100%', alignItems: 'center', overflowX: 'auto', padding: '4px' }}>
-                      {loadingLivePreview ? (
-                        <div style={{
-                          width: '100%',
-                          maxWidth: '840px',
-                          height: '600px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          background: 'transparent',
-                          border: '1px dashed var(--border)',
-                          borderRadius: '8px',
-                          color: 'var(--text-secondary)'
+                  {/* 2. HORIZONTAL CATEGORIZED DOCUMENT SHELF */}
+                  <div className="card no-print" style={{
+                    background: 'var(--bg-primary)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '10px',
+                    padding: '14px 18px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.6px', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                          Document Catalog & Multi-Document Publisher
+                        </span>
+                        <span style={{
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          padding: '2px 8px',
+                          borderRadius: '10px',
+                          background: checkedDocTypes.length > 0 ? 'rgba(16, 185, 129, 0.12)' : 'var(--bg-secondary)',
+                          color: checkedDocTypes.length > 0 ? '#10b981' : 'var(--text-secondary)'
                         }}>
-                          <div style={{
-                            width: '40px',
-                            height: '40px',
-                            border: '3px solid rgba(255,255,255,0.1)',
-                            borderTopColor: 'var(--primary, #1764e6)',
-                            borderRadius: '50%',
-                            animation: 'spin 1s linear infinite',
-                            marginBottom: '16px'
-                          }}></div>
-                          <span style={{ fontSize: '14px', fontWeight: 600 }}>Compiling Document Preview...</span>
-                          <span style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>Generating from Master Excel template</span>
-                        </div>
-                      ) : (
-                        <>
-                              {showIframe && (
-                                <div className="no-print" style={{ width: '100%', maxWidth: '840px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                                  <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '15px',
-                                    background: 'var(--bg-secondary, #1a1e29)',
-                                    border: '1px solid var(--border)',
-                                    borderRadius: '20px',
-                                    padding: '6px 16px',
-                                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-                                  }}>
-                                    <button
-                                      type="button"
-                                      className="btn btn-ghost btn-xs"
-                                      disabled={previewPage <= 1}
-                                      onClick={() => setPreviewPage(p => Math.max(1, p - 1))}
-                                      style={{ fontSize: '14px', padding: '0 8px', minWidth: '32px', color: 'var(--text-primary)' }}
-                                    >
-                                      ◀
-                                    </button>
-                                    <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', minWidth: '90px', textAlign: 'center' }}>
-                                      Page {previewPage}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      className="btn btn-ghost btn-xs"
-                                      onClick={() => setPreviewPage(p => p + 1)}
-                                      style={{ fontSize: '14px', padding: '0 8px', minWidth: '32px', color: 'var(--text-primary)' }}
-                                    >
-                                      ▶
-                                    </button>
-                                  </div>
-                                  <iframe
-                                    src={`${livePreviewUrl}#page=${previewPage}&toolbar=0&navpanes=0`}
-                                    style={{
-                                      width: '100%',
-                                      height: '1000px',
-                                      border: 'none',
-                                      borderRadius: '8px',
-                                      boxShadow: '0 10px 30px rgba(0,0,0,0.15)',
-                                      background: 'white'
-                                    }}
-                                    title="Live Document Preview"
-                                  />
-                                </div>
-                              )}
-                              <div 
-                                id="print-document-canvas" 
-                                className={showIframe ? "print-only-canvas" : ""}
-                                style={{ 
-                            width: '100%', 
-                            maxWidth: '840px', 
-                            background: 'white', 
-                            color: '#1e293b', 
-                            padding: '40px 50px', 
-                            borderRadius: '8px', 
-                            boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-                            fontFamily: 'system-ui, -apple-system, sans-serif'
+                          {checkedDocTypes.length} Selected for Batch Export
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-xs"
+                        style={{ fontSize: '11px', color: 'var(--text-info)', padding: '2px 8px' }}
+                        onClick={() => {
+                          if (checkedDocTypes.length === allDocIds.length) {
+                            setCheckedDocTypes(['quote']);
+                          } else {
+                            setCheckedDocTypes(allDocIds);
+                          }
+                        }}
+                      >
+                        {checkedDocTypes.length === allDocIds.length ? 'Reset Batch to Quotation' : 'Select All 9 Documents'}
+                      </button>
+                    </div>
+
+                    {/* Three Category Blocks */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))',
+                      gap: '14px'
+                    }}>
+                      {docCategories.map((cat) => (
+                        <div
+                          key={cat.category}
+                          style={{
+                            background: 'var(--bg-secondary)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '8px',
+                            padding: '10px 12px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px'
                           }}
                         >
-                        {/* Dynamic Document Header Letterhead */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '4px', borderBottom: '1px solid var(--border)' }}>
+                            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                              {cat.category}
+                            </span>
+                            <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)', background: 'var(--bg-primary)', padding: '1px 6px', borderRadius: '4px' }}>
+                              {cat.badge}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                            {cat.docs.map(doc => {
+                              const isSelected = selectedDocType === doc.id;
+                              const isChecked = checkedDocTypes.includes(doc.id);
+                              return (
+                                <div
+                                  key={doc.id}
+                                  onClick={() => setSelectedDocType(doc.id)}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '6px 10px',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    background: isSelected ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-primary)',
+                                    border: '1px solid',
+                                    borderColor: isSelected ? 'var(--border-info, #3b82f6)' : 'var(--border)',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflow: 'hidden' }}>
+                                    <span style={{ color: isSelected ? 'var(--color-primary, #3b82f6)' : 'var(--text-secondary)' }}>
+                                      {doc.icon}
+                                    </span>
+                                    <span style={{ fontSize: '12px', fontWeight: isSelected ? 700 : 500, color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                                      {doc.name}
+                                    </span>
+                                  </div>
+
+                                  {/* Batch Export Checkbox Button */}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (isChecked) {
+                                        setCheckedDocTypes(prev => prev.filter(id => id !== doc.id));
+                                      } else {
+                                        setCheckedDocTypes(prev => [...prev, doc.id]);
+                                      }
+                                    }}
+                                    style={{
+                                      background: 'transparent',
+                                      border: 'none',
+                                      padding: '2px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      cursor: 'pointer',
+                                      color: isChecked ? '#10b981' : 'var(--text-secondary)',
+                                      opacity: isChecked ? 1 : 0.6
+                                    }}
+                                    title={isChecked ? "Included in Batch PDF export" : "Click to include in Batch PDF export"}
+                                  >
+                                    {isChecked ? <CheckSquare size={15} /> : <Square size={15} />}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 3. DOCUMENT PRESENTATION ARTBOARD / VIEWER */}
+                  {selectedDocType === 'revision_audit' ? (
+                    <ClientVariationDocument
+                      poNumber={selectedOrderId}
+                      order={currentOrderObj}
+                      onBackToWorkspace={() => setWorkspaceSubTab('boq')}
+                    />
+                  ) : selectedDocType === 'technical_pack' ? (
+                    <div style={{
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)',
+                      padding: '48px 32px',
+                      borderRadius: '10px',
+                      border: '1px solid var(--border)',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+                      maxWidth: '880px',
+                      margin: '0 auto',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '42px', marginBottom: '12px' }}>📘</div>
+                      <h3 style={{ margin: '0 0 8px 0', fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        One to One Architectural Technical Pack Studio
+                      </h3>
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', maxWidth: '580px', margin: '0 auto 24px auto', lineHeight: 1.6 }}>
+                        Compile high-resolution, standardized PDF Technical Packs containing complete photometric specs, wiring diagrams, cutouts, and installation guidelines for <strong>{selectedOrderId}</strong> ({activeOrderItems.length} active fittings).
+                      </p>
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => setIsTechPackModalOpen(true)}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 26px', fontSize: '13.5px', fontWeight: 700 }}
+                        >
+                          <BookOpen size={16} /> Launch Technical Pack Studio
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div id="print-document-canvas-container" style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      width: '100%',
+                      alignItems: 'center',
+                      overflowX: 'auto',
+                      padding: '24px 12px 48px 12px',
+                      background: 'var(--bg-secondary)',
+                      borderRadius: '10px',
+                      border: '1px solid var(--border)'
+                    }}>
+                      {/* IF IN PDF MODE: SHOW PDF IFRAME */}
+                      {docViewMode === 'pdf' && (
+                        loadingLivePreview ? (
+                          <div style={{
+                            width: '100%',
+                            maxWidth: '880px',
+                            height: '600px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: 'var(--bg-primary)',
+                            border: '1px dashed var(--border)',
+                            borderRadius: '8px',
+                            color: 'var(--text-secondary)',
+                            marginBottom: '20px'
+                          }}>
+                            <div style={{
+                              width: '40px',
+                              height: '40px',
+                              border: '3px solid rgba(255,255,255,0.1)',
+                              borderTopColor: 'var(--primary, #1764e6)',
+                              borderRadius: '50%',
+                              animation: 'spin 1s linear infinite',
+                              marginBottom: '16px'
+                            }}></div>
+                            <span style={{ fontSize: '14px', fontWeight: 600 }}>Compiling Document Preview...</span>
+                            <span style={{ fontSize: '11px', opacity: 0.7, marginTop: '4px' }}>Generating from Master Excel template</span>
+                          </div>
+                        ) : livePreviewUrl ? (
+                          <div className="no-print" style={{ width: '100%', maxWidth: '880px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                            <div style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '15px',
+                              background: 'var(--bg-primary)',
+                              border: '1px solid var(--border)',
+                              borderRadius: '20px',
+                              padding: '6px 16px',
+                              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                            }}>
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs"
+                                disabled={previewPage <= 1}
+                                onClick={() => setPreviewPage(p => Math.max(1, p - 1))}
+                                style={{ fontSize: '14px', padding: '0 8px', minWidth: '32px', color: 'var(--text-primary)' }}
+                              >
+                                ◀
+                              </button>
+                              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', minWidth: '90px', textAlign: 'center' }}>
+                                Page {previewPage}
+                              </span>
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs"
+                                onClick={() => setPreviewPage(p => p + 1)}
+                                style={{ fontSize: '14px', padding: '0 8px', minWidth: '32px', color: 'var(--text-primary)' }}
+                              >
+                                ▶
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs"
+                                onClick={() => triggerLivePreviewCompile(selectedDocType, previewPage)}
+                                style={{ fontSize: '12px', padding: '0 8px', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-info)' }}
+                                title="Refresh Preview"
+                              >
+                                <RefreshCw size={12} /> Refresh
+                              </button>
+                            </div>
+                            <iframe
+                              src={`${livePreviewUrl}#page=${previewPage}&toolbar=0&navpanes=0`}
+                              style={{
+                                width: '100%',
+                                height: '1000px',
+                                border: 'none',
+                                borderRadius: '8px',
+                                boxShadow: '0 10px 30px rgba(0,0,0,0.15)',
+                                background: 'white'
+                              }}
+                              title="Live Document Preview"
+                            />
+                          </div>
+                        ) : (
+                          <div style={{
+                            width: '100%',
+                            maxWidth: '880px',
+                            padding: '40px',
+                            background: 'var(--bg-primary)',
+                            border: '1px dashed var(--border)',
+                            borderRadius: '8px',
+                            textAlign: 'center',
+                            marginBottom: '20px'
+                          }}>
+                            <Printer size={32} style={{ color: 'var(--text-secondary)', marginBottom: '12px' }} />
+                            <h4 style={{ margin: '0 0 6px 0', fontSize: '15px', fontWeight: 700 }}>Compile Official PDF File</h4>
+                            <p style={{ margin: '0 0 16px 0', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                              Click below to render the official binary PDF template from Cloud Run.
+                            </p>
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm"
+                              onClick={() => triggerLivePreviewCompile(selectedDocType, previewPage)}
+                            >
+                              Compile PDF Preview
+                            </button>
+                          </div>
+                        )
+                      )}
+
+                      {/* THE PRISTINE PRESENTATION ARTBOARD SHEET */}
+                      <div 
+                        id="print-document-canvas" 
+                        className={docViewMode === 'pdf' ? "print-only-canvas" : ""}
+                        style={{ 
+                          width: '100%', 
+                          maxWidth: '880px', 
+                          background: '#ffffff', 
+                          color: '#1e293b', 
+                          padding: '48px 54px', 
+                          borderRadius: '8px', 
+                          boxShadow: '0 14px 44px rgba(0,0,0,0.14), 0 3px 8px rgba(0,0,0,0.06)',
+                          fontFamily: 'system-ui, -apple-system, sans-serif'
+                        }}
+                      >
+{/* Dynamic Document Header Letterhead */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2.5px solid #0f172a', paddingBottom: '20px', marginBottom: '24px' }}>
                           <div>
                             <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: '#0f172a', letterSpacing: '0.5px' }}>
@@ -6997,16 +7272,12 @@ export default function OrdersPage() {
                           <span style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', color: '#64748b', display: 'block', marginBottom: '4px' }}>Notes & Contractual Terms</span>
                           {customTerms}
                         </div>
-
-                            </div>
-                          </>
-                        )}
+                      </div>
                     </div>
-                  );
-                })()}
-              </div>
-            )}
-
+                  )}
+                </div>
+              );
+            })()}
             {/* SUB-TAB: GOOGLE DRIVE & FILES SCOPED TO THIS ORDER */}
             {workspaceSubTab === 'files' && (
               <div className="animation-fade-in" style={{ padding: '4px 0', minHeight: '620px' }}>
