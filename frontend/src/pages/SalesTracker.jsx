@@ -4775,56 +4775,17 @@ export default function SalesTracker() {
                   </div>
                   
                   {/* OPTION 3: SUB-ORDER HIERARCHY FILTER TOGGLE */}
-                  <div style={{ display: 'inline-flex', background: 'var(--bg-secondary)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border)', height: '34px', alignItems: 'center' }}>
-                    <button
-                      type="button"
-                      onClick={() => setSubOrderFilter('All')}
-                      style={{
-                        padding: '4px 10px',
-                        fontSize: '11.5px',
-                        fontWeight: 600,
-                        border: 'none',
-                        borderRadius: '4px',
-                        background: subOrderFilter === 'All' ? 'var(--text-info)' : 'transparent',
-                        color: subOrderFilter === 'All' ? '#fff' : 'var(--text-secondary)',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      All Orders
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSubOrderFilter('Master')}
-                      style={{
-                        padding: '4px 10px',
-                        fontSize: '11.5px',
-                        fontWeight: 600,
-                        border: 'none',
-                        borderRadius: '4px',
-                        background: subOrderFilter === 'Master' ? 'var(--text-info)' : 'transparent',
-                        color: subOrderFilter === 'Master' ? '#fff' : 'var(--text-secondary)',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Master Only
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSubOrderFilter('Sub')}
-                      style={{
-                        padding: '4px 10px',
-                        fontSize: '11.5px',
-                        fontWeight: 600,
-                        border: 'none',
-                        borderRadius: '4px',
-                        background: subOrderFilter === 'Sub' ? '#8b5cf6' : 'transparent',
-                        color: subOrderFilter === 'Sub' ? '#fff' : 'var(--text-secondary)',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Sub-Orders Only
-                    </button>
-                  </div>
+                  <SearchableFilterDropdown 
+                    value={subOrderFilter}
+                    onChange={setSubOrderFilter}
+                    options={[
+                      { value: 'All', label: 'All Orders' },
+                      { value: 'Master', label: 'Master Only' },
+                      { value: 'Sub', label: 'Sub-Orders Only' }
+                    ]}
+                    allLabel="All Orders"
+                    width="145px"
+                  />
 
                   <SearchableFilterDropdown 
                     value={filterStatus}
