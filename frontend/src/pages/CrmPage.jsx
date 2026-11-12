@@ -823,199 +823,264 @@ export default function CrmPage() {
           ))}
         </div>
 
-        {/* Title & Filter Bar Header */}
-        <div className="card" style={{ marginBottom: '16px', background: 'var(--bg-primary)' }}>
-          <div className="card-body" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div className="av-md" style={{ background: 'rgba(24, 95, 165, 0.1)', color: 'var(--text-info)' }}>
-                <Users size={18} />
-              </div>
+          {/* Title & Filter Bar Header */}
+          <div style={{ background: 'transparent', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Global {getModuleName('crm', 'CRM')} Dashboard</h2>
-                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Client directory, retention analytics, and behavioral triggers.</div>
-              </div>
-            </div>
-
-            {/* Date presets & Toggle buttons */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              
-              {/* Date Filters */}
-              <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '6px', padding: '2px', border: '0.5px solid var(--border)' }}>
-                {['All Time', 'Last Week', 'Last 30 Days', 'Financial Year'].map(preset => (
-                  <button 
-                    key={preset} 
-                    className={`btn btn-sm ${datePreset === preset ? 'btn-primary' : 'btn-ghost'}`} 
-                    style={{ border: 'none', background: datePreset === preset ? 'var(--text-info)' : 'none', color: datePreset === preset ? 'white' : 'var(--text-secondary)' }}
-                    onClick={() => setDatePreset(preset)}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                  <span style={{ 
+                    display: 'inline-flex', 
+                    alignItems: 'center', 
+                    padding: '2px 8px', 
+                    borderRadius: '6px', 
+                    fontSize: '11px', 
+                    fontWeight: 600, 
+                    letterSpacing: '0.04em', 
+                    textTransform: 'uppercase', 
+                    background: '#f1f5f9', 
+                    color: '#475569', 
+                    border: '1px solid #e2e8f0' 
+                  }}>
+                    Client Relations
+                  </span>
+                  <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 400 }}>
+                    Client directory, retention analytics, and relationship management
+                  </span>
+                </div>
+                <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span>{getModuleName('crm', 'CRM')}</span>
+                  <span 
+                    style={{ 
+                      fontSize: '11.5px', 
+                      background: '#f1f5f9', 
+                      color: '#475569', 
+                      padding: '2px 10px', 
+                      borderRadius: '20px', 
+                      border: '1px solid #e2e8f0',
+                      fontWeight: 600
+                    }}
                   >
-                    {preset}
-                  </button>
-                ))}
+                    {funnels.totalCount} Clients
+                  </span>
+                </h1>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', borderLeft: '1px solid var(--border)', paddingLeft: '8px' }}>
-                <Calendar size={13} color="var(--text-tertiary)" />
-                <input 
-                  type="date" 
-                  className="form-control" 
-                  style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }} 
-                  value={customStart} 
-                  onChange={e => { setCustomStart(e.target.value); setDatePreset('Custom'); }}
-                />
-                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>to</span>
-                <input 
-                  type="date" 
-                  className="form-control" 
-                  style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }} 
-                  value={customEnd} 
-                  onChange={e => { setCustomEnd(e.target.value); setDatePreset('Custom'); }}
-                />
+              {/* Date Filters & Custom Range */}
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '10px', 
+                flexWrap: 'wrap',
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '10px',
+                padding: '6px 10px',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+              }}>
+                <div style={{ display: 'flex', background: '#f8fafc', borderRadius: '6px', padding: '2px', border: '1px solid #e2e8f0', gap: '3px' }}>
+                  {['All Time', 'Last Week', 'Last 30 Days', 'Financial Year'].map(preset => {
+                    const isActive = datePreset === preset;
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        style={{ 
+                          border: 'none', 
+                          background: isActive ? '#0f172a' : 'transparent', 
+                          color: isActive ? '#ffffff' : '#64748b', 
+                          fontSize: '11.5px', 
+                          padding: '4px 10px',
+                          borderRadius: '4px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                        onClick={() => setDatePreset(preset)}
+                      >
+                        {preset}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input
+                    type="date"
+                    className="form-control"
+                    style={{ width: '125px', height: '28px', padding: '2px 8px', fontSize: '11px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}
+                    value={customStart}
+                    onChange={e => { setCustomStart(e.target.value); setDatePreset('Custom'); }}
+                  />
+                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>to</span>
+                  <input
+                    type="date"
+                    className="form-control"
+                    style={{ width: '125px', height: '28px', padding: '2px 8px', fontSize: '11px', borderRadius: '6px', border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}
+                    value={customEnd}
+                    onChange={e => { setCustomEnd(e.target.value); setDatePreset('Custom'); }}
+                  />
+                </div>
               </div>
             </div>
           </div>
-        </div>
+          {/* Clickable Intelligent KPI Funnel Cards (Modern Architectural Grid) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '20px' }}>
+            {/* Total Clients */}
+            <div
+              className="clickable"
+              onClick={() => setActiveKpiFilter(activeKpiFilter === 'total' ? null : 'total')}
+              style={{
+                background: '#ffffff',
+                padding: '16px 18px',
+                borderRadius: '12px',
+                border: activeKpiFilter === 'total' ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
+                boxShadow: activeKpiFilter === 'total' ? '0 2px 6px rgba(15,23,42,0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Total Directory
+                </span>
+                <span style={{ fontSize: '10px', fontWeight: 600, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: '4px' }}>
+                  All
+                </span>
+              </div>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+                {funnels.totalCount} <span style={{ fontSize: '12px', fontWeight: 400, color: '#64748b' }}>clients</span>
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
+                <span>Act: <strong style={{ color: '#0f172a' }}>{funnels.activeClients.length}</strong></span>
+                <span>Inact: <strong style={{ color: '#64748b' }}>{funnels.inactiveClients.length}</strong></span>
+                <span>Lost: <strong style={{ color: '#dc2626' }}>{funnels.lostClients.length}</strong></span>
+              </div>
+            </div>
 
-        {/* Clickable Intelligent KPI Funnel Cards (FLUID PROPORTIONAL) */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 180px), 1fr))', gap: '12px', marginBottom: '20px' }}>
-          
-          <div 
-            className={`clickable hover-scale ${activeKpiFilter === 'total' ? 'active-filter' : ''}`} 
-            onClick={() => setActiveKpiFilter(activeKpiFilter === 'total' ? null : 'total')} 
-            style={{ 
-              background: 'var(--bg-primary)', 
-              padding: '16px', 
-              borderRadius: '12px', 
-              border: activeKpiFilter === 'total' ? '2px solid var(--text-info)' : '1px solid var(--border)',
-              cursor: 'pointer'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Clients</span>
-              <Users size={16} color="var(--text-info)" />
+            {/* Active in Pipeline */}
+            <div
+              className="clickable"
+              onClick={() => setActiveKpiFilter(activeKpiFilter === 'active' ? null : 'active')}
+              style={{
+                background: '#ffffff',
+                padding: '16px 18px',
+                borderRadius: '12px',
+                border: activeKpiFilter === 'active' ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
+                boxShadow: activeKpiFilter === 'active' ? '0 2px 6px rgba(15,23,42,0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Active Clients
+                </span>
+                <span style={{ fontSize: '10px', fontWeight: 600, background: '#dcfce7', color: '#15803d', padding: '1px 6px', borderRadius: '4px' }}>
+                  Pipeline
+                </span>
+              </div>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+                {funnels.activeClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: '#64748b' }}>accounts</span>
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
+                <span>LTV: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {(funnels.activeClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
+                <span>YTD: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {(funnels.activeClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
+              </div>
             </div>
-            <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
-              {funnels.totalCount} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Clients</span>
+
+            {/* VIP Tier */}
+            <div
+              className="clickable"
+              onClick={() => setActiveKpiFilter(activeKpiFilter === 'vip' ? null : 'vip')}
+              style={{
+                background: '#ffffff',
+                padding: '16px 18px',
+                borderRadius: '12px',
+                border: activeKpiFilter === 'vip' ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
+                boxShadow: activeKpiFilter === 'vip' ? '0 2px 6px rgba(15,23,42,0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  VIP Key Accounts
+                </span>
+                <span style={{ fontSize: '10px', fontWeight: 600, background: '#fef3c7', color: '#b45309', padding: '1px 6px', borderRadius: '4px' }}>
+                  &gt;3 Proj
+                </span>
+              </div>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+                {funnels.vipClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: '#64748b' }}>partners</span>
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
+                <span>LTV: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {(funnels.vipClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
+                <span>YTD: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {(funnels.vipClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
+              </div>
             </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
-              <span>Active: <strong>{funnels.activeClients.length}</strong></span>
-              <span>Inactive: <strong>{funnels.inactiveClients.length}</strong></span>
-              <span>Lost: <strong>{funnels.lostClients.length}</strong></span>
+
+            {/* Inactive Clients */}
+            <div
+              className="clickable"
+              onClick={() => setActiveKpiFilter(activeKpiFilter === 'inactive' ? null : 'inactive')}
+              style={{
+                background: '#ffffff',
+                padding: '16px 18px',
+                borderRadius: '12px',
+                border: activeKpiFilter === 'inactive' ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
+                boxShadow: activeKpiFilter === 'inactive' ? '0 2px 6px rgba(15,23,42,0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Inactive Accounts
+                </span>
+                <span style={{ fontSize: '10px', fontWeight: 600, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: '4px' }}>
+                  Dormant
+                </span>
+              </div>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+                {funnels.inactiveClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: '#64748b' }}>accounts</span>
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
+                <span>LTV: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {(funnels.inactiveClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
+                <span>YTD: <strong style={{ color: '#64748b', fontFamily: 'monospace' }}>R 0</strong></span>
+              </div>
             </div>
-            <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '0.5px solid var(--border)', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Users size={11} /> All-Time directory
+
+            {/* Lost Clients */}
+            <div
+              className="clickable"
+              onClick={() => setActiveKpiFilter(activeKpiFilter === 'lost' ? null : 'lost')}
+              style={{
+                background: '#ffffff',
+                padding: '16px 18px',
+                borderRadius: '12px',
+                border: activeKpiFilter === 'lost' ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
+                boxShadow: activeKpiFilter === 'lost' ? '0 2px 6px rgba(15,23,42,0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Lost Quoted Sales
+                </span>
+                <span style={{ fontSize: '10px', fontWeight: 600, background: '#fee2e2', color: '#b91c1c', padding: '1px 6px', borderRadius: '4px' }}>
+                  Lost
+                </span>
+              </div>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: '#dc2626', fontFamily: 'monospace' }}>
+                {funnels.lostClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: '#64748b' }}>lost</span>
+              </div>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
+                <span>Lost Val: <strong style={{ color: '#dc2626', fontFamily: 'monospace' }}>R {(funnels.lostClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
+                <span>Rate: <strong style={{ color: '#64748b' }}>{((funnels.lostClients.length / (funnels.totalCount || 1)) * 100).toFixed(0)}%</strong></span>
+              </div>
             </div>
           </div>
-
-          <div 
-            className={`clickable hover-scale ${activeKpiFilter === 'active' ? 'active-filter' : ''}`} 
-            onClick={() => setActiveKpiFilter(activeKpiFilter === 'active' ? null : 'active')} 
-            style={{ 
-              background: 'var(--bg-primary)', 
-              padding: '16px', 
-              borderRadius: '12px', 
-              border: activeKpiFilter === 'active' ? '2px solid #22c55e' : '1px solid var(--border)',
-              cursor: 'pointer'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Clients</span>
-              <Activity size={16} color="#22c55e" />
-            </div>
-            <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#22c55e' }}>
-              {funnels.activeClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Engaged</span>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
-              <span>All Time: <strong>R {(funnels.activeClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
-              <span>Year to Date: <strong>R {(funnels.activeClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
-            </div>
-            <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '0.5px solid var(--border)', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Activity size={11} /> Active in pipeline
-            </div>
-          </div>
-
-          <div 
-            className={`clickable hover-scale ${activeKpiFilter === 'vip' ? 'active-filter' : ''}`} 
-            onClick={() => setActiveKpiFilter(activeKpiFilter === 'vip' ? null : 'vip')} 
-            style={{ 
-              background: 'var(--bg-primary)', 
-              padding: '16px', 
-              borderRadius: '12px', 
-              border: activeKpiFilter === 'vip' ? '2px solid #eab308' : '1px solid var(--border)',
-              cursor: 'pointer'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: '#eab308', textTransform: 'uppercase', letterSpacing: '0.5px' }}>VIP Clients</span>
-              <Star size={16} color="#eab308" />
-            </div>
-            <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#eab308' }}>
-              {funnels.vipClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Core</span>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
-              <span>All Time: <strong>R {(funnels.vipClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
-              <span>Year to Date: <strong>R {(funnels.vipClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
-            </div>
-            <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '0.5px solid var(--border)', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Star size={11} /> &gt;3 projects, Active
-            </div>
-          </div>
-
-          <div 
-            className={`clickable hover-scale ${activeKpiFilter === 'inactive' ? 'active-filter' : ''}`} 
-            onClick={() => setActiveKpiFilter(activeKpiFilter === 'inactive' ? null : 'inactive')} 
-            style={{ 
-              background: 'var(--bg-primary)', 
-              padding: '16px', 
-              borderRadius: '12px', 
-              border: activeKpiFilter === 'inactive' ? '2px solid #64748b' : '1px solid var(--border)',
-              cursor: 'pointer'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Inactive Clients</span>
-              <User size={16} color="#64748b" />
-            </div>
-            <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#64748b' }}>
-              {funnels.inactiveClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Dormant</span>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
-              <span>All Time: <strong>R {(funnels.inactiveClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
-              <span>Year to Date: <strong>R {(funnels.inactiveClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
-            </div>
-            <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '0.5px solid var(--border)', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <User size={11} /> No active project currently
-            </div>
-          </div>
-
-          <div 
-            className={`clickable hover-scale ${activeKpiFilter === 'lost' ? 'active-filter' : ''}`} 
-            onClick={() => setActiveKpiFilter(activeKpiFilter === 'lost' ? null : 'lost')} 
-            style={{ 
-              background: 'var(--bg-primary)', 
-              padding: '16px', 
-              borderRadius: '12px', 
-              border: activeKpiFilter === 'lost' ? '2px solid #ef4444' : '1px solid var(--border)',
-              cursor: 'pointer'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Lost Clients</span>
-              <TrendingDown size={16} color="#ef4444" />
-            </div>
-            <div className="stat-value" style={{ fontSize: '20px', fontWeight: 700, color: '#ef4444' }}>
-              {funnels.lostClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Churned</span>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', flexDirection: 'column' }}>
-              <span>All Time Lost: <strong>R {(funnels.lostClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
-              <span>Year to Date: <strong>R {(funnels.lostClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
-            </div>
-            <div style={{ marginTop: '10px', paddingTop: '6px', borderTop: '0.5px solid var(--border)', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <TrendingDown size={11} /> Quoted but lost sales
-            </div>
-          </div>
-        </div>
-
         <div className="crm-grid" style={{ marginTop: '20px' }}>
           {/* Main List */}
           <div>
@@ -1054,18 +1119,17 @@ export default function CrmPage() {
               {/* TIER 2: FULL-BLEED LEDGER TABLE */}
               <div style={{ overflowX: 'auto', maxHeight: '68vh', position: 'relative' }}>
                 <table className="table" style={{ margin: 0, width: '100%', fontSize: '12.5px', borderCollapse: 'collapse' }}>
-                  <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
-                    <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
-                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Client Name</th>
-                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap', textAlign: 'center' }}>Projects (Lifetime)</th>
-                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Lifetime Revenue</th>
-                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Status</th>
-                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Current Project</th>
-                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Last Completed Project</th>
-                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>Last Completed Date</th>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f8fafc' }}>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Client Name</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap', textAlign: 'center' }}>Projects (Lifetime)</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Lifetime Revenue</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Status</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Current Project</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Last Completed Project</th>
+                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Last Completed Date</th>
                     </tr>
-                  </thead>
-                <tbody>
+                  </thead>                <tbody>
                   {directoryDisplayList.map(c => (
                     <tr key={c.id} className="clickable hover-row" onClick={() => setSelectedClient(c)}>
                       <td>

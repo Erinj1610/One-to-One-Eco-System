@@ -108,37 +108,40 @@ export default function MyWorkspace() {
     <div className="animation-fade-in" style={{ width: '100%', maxWidth: '1400px', margin: '0 auto', padding: '16px 20px' }}>
       
       {/* TOP HERO HEADER */}
-      <div 
-        style={{ 
-          background: 'var(--bg-primary, #ffffff)', 
-          border: '1px solid var(--border-strong, #cbd5e1)', 
-          borderRadius: '12px', 
-          padding: '20px 24px', 
-          marginBottom: '20px',
-          boxShadow: '0 1px 4px rgba(0, 0, 0, 0.05)'
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+      <div style={{ background: 'transparent', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-              <span className="badge b-info" style={{ textTransform: 'uppercase', fontSize: '10px', fontWeight: 700, letterSpacing: '0.6px' }}>
-                Operational Task Queue
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+              <span style={{ 
+                display: 'inline-flex', 
+                alignItems: 'center', 
+                padding: '2px 8px', 
+                borderRadius: '6px', 
+                fontSize: '11px', 
+                fontWeight: 600, 
+                letterSpacing: '0.04em', 
+                textTransform: 'uppercase', 
+                background: '#f1f5f9', 
+                color: '#475569', 
+                border: '1px solid #e2e8f0' 
+              }}>
+                Operational Queue
               </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary, #64748b)' }}>
-                First-In, First-Out (FIFO) Task Prioritization
+              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 400 }}>
+                First-In, First-Out (FIFO) Departmental Workflow & Task Handover Desk
               </span>
             </div>
-            <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 800, color: 'var(--text-primary, #0f172a)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span>📥 My Workspace</span>
+            <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span>My Workspace</span>
               <span 
                 style={{ 
-                  fontSize: '12px', 
-                  background: 'var(--bg-info, #e0f2fe)', 
-                  color: 'var(--text-info, #0369a1)', 
+                  fontSize: '11.5px', 
+                  background: '#f1f5f9', 
+                  color: '#475569', 
                   padding: '2px 10px', 
-                  borderRadius: '12px', 
-                  border: '1px solid var(--border-info, rgba(3, 105, 161, 0.2))',
-                  fontWeight: 700
+                  borderRadius: '20px', 
+                  border: '1px solid #e2e8f0',
+                  fontWeight: 600
                 }}
               >
                 {totalWaiting} Pending
@@ -148,10 +151,22 @@ export default function MyWorkspace() {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button 
-              className="btn btn-secondary btn-sm"
+              className="btn btn-sm"
               onClick={fetchQueue}
               disabled={loading}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
+              style={{ 
+                display: 'inline-flex', 
+                alignItems: 'center', 
+                gap: '6px', 
+                fontWeight: 600,
+                fontSize: '12px',
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                color: '#0f172a',
+                borderRadius: '8px',
+                padding: '6px 14px',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+              }}
             >
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
               <span>Refresh Queue</span>
@@ -160,79 +175,96 @@ export default function MyWorkspace() {
         </div>
 
         {/* QUICK STATS CARDS */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginTop: '18px' }}>
-          <div style={{ background: 'var(--bg-secondary, #f8fafc)', padding: '14px 18px', borderRadius: '8px', border: '1px solid var(--border, #e2e8f0)' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary, #64748b)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginTop: '20px' }}>
+          <div style={{ background: '#ffffff', padding: '16px 18px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
               Total Tasks on Desk
             </div>
-            <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary, #0f172a)' }}>
+            <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
               {totalWaiting}
             </div>
           </div>
 
-          <div style={{ background: 'var(--bg-secondary, #f8fafc)', padding: '14px 18px', borderRadius: '8px', border: '1px solid var(--border, #e2e8f0)' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary, #64748b)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
-              High Priority / Urgent
+          <div style={{ background: '#ffffff', padding: '16px 18px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
+              Urgent / Snags
             </div>
-            <div style={{ fontSize: '24px', fontWeight: 800, color: urgentCount > 0 ? 'var(--text-danger, #ef4444)' : 'var(--text-success, #16a34a)' }}>
-              {urgentCount > 0 ? `🔥 ${urgentCount}` : '0'}
+            <div style={{ fontSize: '24px', fontWeight: 700, color: urgentCount > 0 ? '#dc2626' : '#0f172a', fontFamily: 'monospace' }}>
+              {urgentCount}
             </div>
           </div>
 
-          <div style={{ background: 'var(--bg-secondary, #f8fafc)', padding: '14px 18px', borderRadius: '8px', border: '1px solid var(--border, #e2e8f0)' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-secondary, #64748b)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
+          <div style={{ background: '#ffffff', padding: '16px 18px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
               Oldest Pending Task
             </div>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: oldestTicket ? '#d97706' : 'var(--text-secondary, #64748b)', marginTop: '6px' }}>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: oldestTicket ? '#0f172a' : '#64748b', marginTop: '6px' }}>
               {oldestTicket ? `${oldestTicket.project_name} (${oldestTicket.age_str})` : 'Queue Clear 🎉'}
             </div>
           </div>
         </div>
       </div>
-
       {/* FILTER & SEARCH STRIP */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
         {/* SCOPE TOGGLE: MY TASKS VS ALL COMPANY */}
-        <div style={{ display: 'inline-flex', background: 'var(--bg-secondary)', padding: '3px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'inline-flex', background: '#f8fafc', padding: '3px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
           <button
             type="button"
-            className={`btn btn-xs ${viewScope === 'all' ? 'btn-primary' : 'btn-ghost'}`}
-            style={{ fontSize: '11.5px', fontWeight: 700, padding: '4px 12px', borderRadius: '6px' }}
+            className="btn btn-sm"
+            style={{ 
+              fontSize: '12px', 
+              fontWeight: 600, 
+              padding: '6px 14px', 
+              borderRadius: '6px',
+              border: 'none',
+              background: viewScope === 'all' ? '#0f172a' : 'transparent',
+              color: viewScope === 'all' ? '#ffffff' : '#64748b',
+              transition: 'all 0.15s ease'
+            }}
             onClick={() => setViewScope('all')}
           >
             All Company Projects ({totalWaiting})
           </button>
           <button
             type="button"
-            className={`btn btn-xs ${viewScope === 'my' ? 'btn-primary' : 'btn-ghost'}`}
-            style={{ fontSize: '11.5px', fontWeight: 700, padding: '4px 12px', borderRadius: '6px' }}
+            className="btn btn-sm"
+            style={{ 
+              fontSize: '12px', 
+              fontWeight: 600, 
+              padding: '6px 14px', 
+              borderRadius: '6px',
+              border: 'none',
+              background: viewScope === 'my' ? '#0f172a' : 'transparent',
+              color: viewScope === 'my' ? '#ffffff' : '#64748b',
+              transition: 'all 0.15s ease'
+            }}
             onClick={() => setViewScope('my')}
           >
             Assigned to Me
           </button>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '400px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '420px' }}>
           <div style={{ position: 'relative', width: '100%' }}>
-            <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+            <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
             <input 
               type="text" 
-              className="input input-sm" 
+              className="form-control" 
               placeholder="Search by project, client, or action required..." 
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              style={{ paddingLeft: '32px', width: '100%', fontSize: '12px' }}
+              style={{ paddingLeft: '34px', width: '100%', fontSize: '12.5px', height: '34px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff' }}
             />
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: 600 }}>Stage:</span>
+          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Stage:</span>
           <select 
-            className="input input-sm" 
+            className="form-control" 
             value={filterRole} 
             onChange={e => setFilterRole(e.target.value)}
-            style={{ fontSize: '12px', fontWeight: 600 }}
+            style={{ fontSize: '12px', fontWeight: 500, height: '34px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}
           >
             <option value="All">All Stages</option>
             <option value="Design & Specification">Design & Specification</option>
@@ -244,7 +276,6 @@ export default function MyWorkspace() {
           </select>
         </div>
       </div>
-
       {/* FIFO TASK QUEUES: SPLIT INTO CRITICAL BLOCKERS VS ROUTINE TASKS */}
       {(() => {
         const blockerItems = filteredQueue.filter(t => t.priority === 'Urgent' || (t.action_note && t.action_note.includes('[⚠️ BLOCKED:')));
@@ -376,29 +407,29 @@ export default function MyWorkspace() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             {/* 1. CRITICAL BLOCKERS & SNAGS QUEUE */}
             {blockerItems.length > 0 && (
-              <div className="card" style={{ border: '2px solid #ef4444', overflow: 'hidden' }}>
-                <div style={{ padding: '12px 16px', background: 'rgba(239, 68, 68, 0.1)', borderBottom: '1px solid rgba(239, 68, 68, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ background: '#ffffff', border: '1px solid #fecaca', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+                <div style={{ padding: '12px 18px', background: '#fef2f2', borderBottom: '1px solid #fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <AlertTriangle size={18} style={{ color: '#ef4444' }} />
-                    <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 800, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Critical Action Required: Blocked Projects & Site Snags ({blockerItems.length})
+                    <AlertTriangle size={16} style={{ color: '#dc2626' }} />
+                    <h3 style={{ margin: 0, fontSize: '12px', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Blocked Projects & Site Snags ({blockerItems.length})
                     </h3>
                   </div>
-                  <span style={{ fontSize: '11px', color: '#b91c1c', fontWeight: 600 }}>
-                    These projects are halted until the issues below are resolved and cleared.
+                  <span style={{ fontSize: '11.5px', color: '#b91c1c', fontWeight: 500 }}>
+                    Projects halted until issues below are cleared.
                   </span>
                 </div>
                 <div style={{ overflowX: 'auto' }}>
-                  <table className="table" style={{ margin: 0, fontSize: '12px' }}>
-                    <thead>
-                      <tr style={{ background: 'var(--bg-secondary)', borderBottom: '2px solid var(--border-strong)' }}>
-                        <th style={{ width: '100px', textAlign: 'center' }}>Age</th>
-                        <th style={{ width: '180px' }}>Project</th>
-                        <th style={{ width: '140px' }}>Client</th>
-                        <th style={{ width: '170px' }}>Stage & Desk</th>
-                        <th>Blocker / Issue Details</th>
-                        <th style={{ width: '100px', textAlign: 'center' }}>Status</th>
-                        <th style={{ width: '130px', textAlign: 'center' }}>Action</th>
+                  <table className="table" style={{ margin: 0, fontSize: '12px', width: '100%', borderCollapse: 'collapse' }}>
+                    <thead style={{ background: '#f8fafc' }}>
+                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                        <th style={{ width: '100px', textAlign: 'center', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Age</th>
+                        <th style={{ width: '180px', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Project</th>
+                        <th style={{ width: '140px', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Client</th>
+                        <th style={{ width: '170px', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Stage & Desk</th>
+                        <th style={{ padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Blocker Details</th>
+                        <th style={{ width: '100px', textAlign: 'center', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Status</th>
+                        <th style={{ width: '130px', textAlign: 'center', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -410,29 +441,29 @@ export default function MyWorkspace() {
             )}
 
             {/* 2. ROUTINE OPERATIONAL TASKS QUEUE */}
-            <div className="card" style={{ border: '1.5px solid var(--border)', overflow: 'hidden' }}>
-              <div style={{ padding: '12px 16px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ padding: '12px 18px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Layers size={16} style={{ color: 'var(--text-info)' }} />
-                  <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  <Layers size={15} style={{ color: '#64748b' }} />
+                  <h3 style={{ margin: 0, fontSize: '12px', fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                     Standard Workflow Queue (FIFO Tasks) ({routineItems.length})
                   </h3>
                 </div>
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                  Normal forward-moving project stages awaiting departmental action.
+                <span style={{ fontSize: '11.5px', color: '#64748b' }}>
+                  Forward-moving project stages awaiting departmental action.
                 </span>
               </div>
               <div style={{ overflowX: 'auto' }}>
-                <table className="table" style={{ margin: 0, fontSize: '12px' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--bg-secondary)', borderBottom: '2px solid var(--border-strong)' }}>
-                      <th style={{ width: '100px', textAlign: 'center' }}>FIFO Age</th>
-                      <th style={{ width: '180px' }}>Project</th>
-                      <th style={{ width: '140px' }}>Client</th>
-                      <th style={{ width: '170px' }}>Stage & Desk</th>
-                      <th>Action Required</th>
-                      <th style={{ width: '90px', textAlign: 'center' }}>Priority</th>
-                      <th style={{ width: '130px', textAlign: 'center' }}>Direct Action</th>
+                <table className="table" style={{ margin: 0, fontSize: '12px', width: '100%', borderCollapse: 'collapse' }}>
+                  <thead style={{ background: '#f8fafc' }}>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                      <th style={{ width: '100px', textAlign: 'center', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>FIFO Age</th>
+                      <th style={{ width: '180px', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Project</th>
+                      <th style={{ width: '140px', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Client</th>
+                      <th style={{ width: '170px', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Stage & Desk</th>
+                      <th style={{ padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Action Required</th>
+                      <th style={{ width: '90px', textAlign: 'center', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Priority</th>
+                      <th style={{ width: '130px', textAlign: 'center', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Direct Action</th>
                     </tr>
                   </thead>
                   <tbody>

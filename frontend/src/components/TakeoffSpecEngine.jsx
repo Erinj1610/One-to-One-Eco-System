@@ -4005,15 +4005,26 @@ export default function TakeoffSpecEngine({
                                   <CheckCircle size={12} /> {spec?.product?.sku || spec?.ledConfig?.profileSku || spec?.trackConfig?.railSku || 'Mapped'}
                                 </span>
                                 {(spec?.product || spec?.ledConfig?.profileProduct || spec?.trackConfig?.railProduct) && (
-                                  <button
-                                    type="button"
-                                    className="btn btn-ghost btn-xs"
-                                    onClick={() => handleInspectItem(spec.product || spec.ledConfig?.profileProduct || spec.trackConfig?.railProduct)}
-                                    title="View full specification sheet"
-                                    style={{ padding: '2px 4px', color: 'var(--text-info)' }}
-                                  >
-                                    <Eye size={12} />
-                                  </button>
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost btn-xs"
+                                      onClick={() => handleInspectItem(spec.product || spec.ledConfig?.profileProduct || spec.trackConfig?.railProduct)}
+                                      title="View full specification sheet"
+                                      style={{ padding: '2px 4px', color: 'var(--text-info)' }}
+                                    >
+                                      <Eye size={12} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn-ghost btn-xs"
+                                      onClick={() => handleInitiateRowSwap(row)}
+                                      title="Swap / Replace fitting for this row or tag"
+                                      style={{ padding: '2px 4px', color: '#f59e0b' }}
+                                    >
+                                      <RotateCcw size={12} />
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             ) : (
@@ -4042,6 +4053,15 @@ export default function TakeoffSpecEngine({
                           {/* 9. ACTIONS */}
                           <td style={{ padding: '4px 6px', textAlign: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-xs"
+                                onClick={() => handleInitiateRowSwap(row)}
+                                title="Swap / Replace fitting for this row (or across all rooms)"
+                                style={{ padding: '2px 4px', color: '#f59e0b' }}
+                              >
+                                <RotateCcw size={12} />
+                              </button>
                               <button
                                 type="button"
                                 className="btn btn-ghost btn-xs"
@@ -4393,6 +4413,15 @@ export default function TakeoffSpecEngine({
                                     </td>
                                     <td style={{ padding: '4px 6px', textAlign: 'center' }}>
                                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}>
+                                        <button
+                                          type="button"
+                                          className="btn btn-ghost btn-xs"
+                                          onClick={() => handleInitiateRowSwap(row)}
+                                          title="Swap / Replace fitting"
+                                          style={{ padding: '2px', color: '#f59e0b' }}
+                                        >
+                                          <RotateCcw size={11} />
+                                        </button>
                                         <button
                                           type="button"
                                           className="btn btn-ghost btn-xs"

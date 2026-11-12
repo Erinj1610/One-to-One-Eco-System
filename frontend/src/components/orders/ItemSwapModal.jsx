@@ -50,17 +50,60 @@ export default function ItemSwapModal({
     }
   }, [item, isOpen]);
 
-  // Catalog search filtering
+  const [apiSearchResults, setApiSearchResults] = useState([]);
+  const [isSearchingApi, setIsSearchingApi] = useState(false);
+
+  // Live API Search directly against Cloud SQL Master Products Database
+  useEffect(() => {
+    if (!searchQuery || searchQuery.trim().length < 2) {
+      setApiSearchResults([]);
+      setIsSearchingApi(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingApi(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/products?q=${encodeURIComponent(searchQuery.trim())}&limit=15`);
+        if (res.ok) {
+          const data = await res.json();
+          const items = Array.isArray(data) ? data : (data.items || data.products || []);
+          setApiSearchResults(items);
+        }
+      } catch (err) {
+        console.error('Failed to search live products:', err);
+      } finally {
+        setIsSearchingApi(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Catalog search filtering combining local cache and live Cloud SQL results
   const matchingCatalog = useMemo(() => {
     if (!searchQuery || searchQuery.trim().length < 2) return [];
     const q = searchQuery.toLowerCase().trim();
-    return (catalogProducts || []).filter(p => 
+
+    const localMatches = (catalogProducts || []).filter(p => 
       (p.sku && p.sku.toLowerCase().includes(q)) ||
       (p.one_to_one_code && p.one_to_one_code.toLowerCase().includes(q)) ||
       (p.title && p.title.toLowerCase().includes(q)) ||
+      (p.name && p.name.toLowerCase().includes(q)) ||
       (p.description && p.description.toLowerCase().includes(q))
-    ).slice(0, 8);
-  }, [searchQuery, catalogProducts]);
+    );
+
+    const seen = new Set();
+    const combined = [];
+    for (const p of [...apiSearchResults, ...localMatches]) {
+      const key = (p.sku || p.one_to_one_code || p.id || '').toLowerCase();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        combined.push(p);
+      }
+    }
+    return combined.slice(0, 12);
+  }, [searchQuery, catalogProducts, apiSearchResults]);
 
   if (!isOpen || !item) return null;
 
@@ -74,15 +117,23 @@ export default function ItemSwapModal({
   const deltaVal = currentRepLineVal - origLineVal;
 
   const handleSelectProduct = (p) => {
-    setRepCode(p.sku || p.one_to_one_code || '');
-    setRepOneOne(p.one_to_one_code || '');
-    setRepDesc(p.title || p.description || '');
-    setRepRetail(p.retail_price || p.price || '');
-    setRepCost(p.cost_price || '');
-    setRepBrand(p.brand || item.brand || '');
-    setRepSupplier(p.supplier || item.supplier || '');
+    const code = p.sku || p.one_to_one_code || '';
+    const desc = p.name || p.title || p.description || p.client_description || '';
+    const retail = p.retail_price !== undefined && p.retail_price !== null ? p.retail_price : (p.price || p.recommended_retail_price || '');
+    const cost = p.cost_price !== undefined && p.cost_price !== null ? p.cost_price : (p.internal_cost || p.supplier_cost || '');
+    const brand = p.brand || (item && item.brand) || '';
+    const supplier = p.supplier_name || (p.supplier && p.supplier.name) || (item && item.supplier) || '';
+
+    setRepCode(code);
+    setRepOneOne(p.one_to_one_code || code);
+    setRepDesc(desc);
+    setRepRetail(retail !== '' ? Math.round(Number(retail) * 100) / 100 : '');
+    setRepCost(cost !== '' ? Math.round(Number(cost) * 100) / 100 : '');
+    setRepBrand(brand);
+    setRepSupplier(supplier);
     setShowCatalogSuggestions(false);
-    setSearchQuery(p.sku || p.title || '');
+    setSearchQuery(code ? `${code} - ${desc.slice(0, 40)}` : desc);
+    setErrorMsg('');
   };
 
   const handleSubmit = async (e) => {
@@ -315,8 +366,8 @@ export default function ItemSwapModal({
                 <input 
                   type="text"
                   className="form-control"
-                  style={{ paddingLeft: '32px', fontSize: '12.5px', height: '34px' }}
-                  placeholder="Search catalogue by code, SKU, or description..."
+                  style={{ paddingLeft: '32px', paddingRight: isSearchingApi ? '32px' : '10px', fontSize: '12.5px', height: '34px' }}
+                  placeholder="Type code, SKU or description to search master product database..."
                   value={searchQuery}
                   onChange={e => {
                     setSearchQuery(e.target.value);
@@ -324,49 +375,70 @@ export default function ItemSwapModal({
                   }}
                   onFocus={() => setShowCatalogSuggestions(true)}
                 />
+                {isSearchingApi && (
+                  <Loader2 size={14} className="animate-spin" style={{ position: 'absolute', right: '10px', top: '10px', color: 'var(--text-info)' }} />
+                )}
               </div>
 
               {/* DROPDOWN SUGGESTIONS */}
-              {showCatalogSuggestions && matchingCatalog.length > 0 && (
+              {showCatalogSuggestions && searchQuery.trim().length >= 2 && (
                 <div style={{
                   position: 'absolute',
                   top: '100%',
                   left: 0,
                   right: 0,
-                  background: 'var(--bg-primary)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '6px',
-                  boxShadow: '0 8px 16px rgba(0,0,0,0.1)',
-                  zIndex: 10,
-                  maxHeight: '220px',
+                  background: 'var(--bg-primary, #ffffff)',
+                  border: '1.5px solid var(--border)',
+                  borderRadius: '8px',
+                  boxShadow: '0 12px 28px rgba(0,0,0,0.18)',
+                  zIndex: 9999,
+                  maxHeight: '260px',
                   overflowY: 'auto',
                   marginTop: '4px'
                 }}>
-                  {matchingCatalog.map(p => (
-                    <div 
-                      key={p.id || p.sku}
-                      onClick={() => handleSelectProduct(p)}
-                      style={{
-                        padding: '8px 12px',
-                        borderBottom: '1px solid var(--border)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        fontSize: '12px'
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <div>
-                        <strong style={{ fontFamily: 'monospace', color: 'var(--text-info)' }}>{p.sku || p.one_to_one_code}</strong> &bull; {p.title || p.description}
-                        <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)' }}>{p.brand || 'One to One'} &bull; {p.category || 'General'}</div>
+                  {matchingCatalog.length > 0 ? (
+                    matchingCatalog.map(p => (
+                      <div 
+                        key={p.id || p.sku || Math.random()}
+                        onClick={() => handleSelectProduct(p)}
+                        style={{
+                          padding: '10px 14px',
+                          borderBottom: '1px solid var(--border)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          fontSize: '12px'
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <div style={{ flex: 1, paddingRight: '12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <strong style={{ fontFamily: 'monospace', color: '#0284c7', fontSize: '12.5px' }}>
+                              {p.sku || p.one_to_one_code}
+                            </strong>
+                            <span style={{ fontSize: '10px', background: 'var(--bg-secondary)', padding: '1px 6px', borderRadius: '4px', color: 'var(--text-secondary)' }}>
+                              {p.brand || p.supplier_name || 'One to One'}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px', lineHeight: 1.3 }}>
+                            {p.name || p.title || p.description || p.client_description || 'Product'}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <span style={{ fontWeight: 700, color: '#10b981', fontSize: '12.5px' }}>
+                            R {Number(p.retail_price !== undefined ? p.retail_price : p.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                          <span style={{ display: 'block', fontSize: '10px', color: 'var(--text-tertiary)' }}>Retail Ex VAT</span>
+                        </div>
                       </div>
-                      <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                        R {Number(p.retail_price || p.price || 0).toLocaleString()}
-                      </span>
+                    ))
+                  ) : (
+                    <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                      {isSearchingApi ? 'Searching master catalogue...' : `No matching products found for "${searchQuery}". You can enter custom specs below.`}
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
             </div>
@@ -452,17 +524,57 @@ export default function ItemSwapModal({
             {/* MANDATORY PROMPT FOR REASON */}
             <div>
               <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                <span>📝 Mandatory Reason for Site Variation / Swap <span style={{ color: 'var(--text-danger)' }}>*</span></span>
+                <span>📝 Reason for Site Variation / Swap <span style={{ color: 'var(--text-danger)' }}>*</span></span>
                 <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', fontWeight: 400 }}>Appears on official Client Revision Document</span>
               </label>
+
+              {/* QUICK REASON CHIPS */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                {[
+                  'Client requested on-site snag walk variation',
+                  'Discontinued or unavailable from supplier',
+                  'Architect revised fitting specification',
+                  'Cost-engineered alternative approved by PM',
+                  'CCT / Kelvin output change (e.g. 2700K Warm White)'
+                ].map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    className="btn btn-xs"
+                    style={{
+                      fontSize: '10.5px',
+                      padding: '3px 8px',
+                      borderRadius: '12px',
+                      background: reason === chip ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-secondary)',
+                      border: '1px solid',
+                      borderColor: reason === chip ? '#f59e0b' : 'var(--border)',
+                      color: reason === chip ? '#d97706' : 'var(--text-secondary)',
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => {
+                      setReason(chip);
+                      setErrorMsg('');
+                    }}
+                  >
+                    + {chip}
+                  </button>
+                ))}
+              </div>
+
               <textarea 
                 className="form-control"
-                rows={3}
-                style={{ fontSize: '12.5px', border: '1.5px solid var(--border-strong)', background: 'var(--bg-primary)' }}
-                placeholder="e.g. Client requested 2700K warm white fixture during on-site snag walk with architect. Replaced 3000K unit."
+                rows={2}
+                style={{
+                  fontSize: '12px',
+                  border: !reason.trim() && errorMsg ? '2px solid var(--text-danger)' : '1px solid var(--border)',
+                  background: 'var(--bg-primary)'
+                }}
+                placeholder="Click a quick reason above or type specific details here..."
                 value={reason}
-                onChange={e => setReason(e.target.value)}
-                required
+                onChange={e => {
+                  setReason(e.target.value);
+                  if (errorMsg) setErrorMsg('');
+                }}
               />
             </div>
 
@@ -519,8 +631,8 @@ export default function ItemSwapModal({
               <button 
                 type="submit" 
                 className="btn btn-warning"
-                disabled={loading || !repCode.trim() || !reason.trim()}
-                style={{ fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                disabled={loading}
+                style={{ fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '6px', cursor: loading ? 'wait' : 'pointer' }}
               >
                 {loading ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
                 {loading ? 'Processing Swap...' : 'Confirm Variation & Swap'}

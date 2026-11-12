@@ -886,6 +886,7 @@ export default function OrdersPage() {
   const [selectedDocType, setSelectedDocType] = useState('quote'); // 'quote' | 'boq_doc' | 'invoice' | 'schedule' | 'statement'
   const [checkedDocTypes, setCheckedDocTypes] = useState(['quote']);
   const [docViewMode, setDocViewMode] = useState('sheet'); // 'sheet' | 'pdf'
+  const [operationsSubSection, setOperationsSubSection] = useState('all'); // 'all' | 'payments' | 'purchasing' | 'invoices' | 'logistics' | 'credits'
   const [showRegForm, setShowRegForm] = useState(true);
   
   // Product Catalogue Tab & Filter States
@@ -4245,39 +4246,11 @@ export default function OrdersPage() {
                 <Folder size={13} /> 📁 Drive & Files
               </button>
               <button 
-                className={`btn btn-sm ${workspaceSubTab === 'payments' ? 'btn-primary' : 'btn-ghost'}`}
+                className={`btn btn-sm ${workspaceSubTab === 'operations' ? 'btn-primary' : 'btn-ghost'}`}
                 style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
-                onClick={() => setWorkspaceSubTab('payments')}
+                onClick={() => setWorkspaceSubTab('operations')}
               >
-                <DollarSign size={13} /> 💳 Payments
-              </button>
-              <button 
-                className={`btn btn-sm ${workspaceSubTab === 'purchasing' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
-                onClick={() => setWorkspaceSubTab('purchasing')}
-              >
-                <ClipboardList size={13} /> 📋 Purchasing
-              </button>
-              <button 
-                className={`btn btn-sm ${workspaceSubTab === 'invoices' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
-                onClick={() => setWorkspaceSubTab('invoices')}
-              >
-                <FileText size={13} /> 💵 Invoicing
-              </button>
-              <button 
-                className={`btn btn-sm ${workspaceSubTab === 'logistics' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
-                onClick={() => setWorkspaceSubTab('logistics')}
-              >
-                <Truck size={13} /> 📦 Logistics
-              </button>
-              <button 
-                className={`btn btn-sm ${workspaceSubTab === 'credits' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
-                onClick={() => setWorkspaceSubTab('credits')}
-              >
-                <DollarSign size={13} style={{ color: '#ef4444' }} /> 🔴 Credits & Returns
+                <Truck size={13} /> 🚀 Operations & Fulfillment Hub
               </button>
               <button 
                 className={`btn btn-sm ${workspaceSubTab === 'audits' ? 'btn-primary' : 'btn-ghost'}`}
@@ -7290,8 +7263,218 @@ export default function OrdersPage() {
               </div>
             )}
 
-            {workspaceSubTab === 'payments' && (
-              /* SUB-TAB 3: DEDICATED PALLADIUM PAYMENTS LOG WORKSPACE */
+            {workspaceSubTab === 'operations' && (() => {
+              const totalCost = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitCost || item.unit_cost) || 0)), 0);
+              const totalRetailGross = activeOrderItems.reduce((s, item) => s + ((Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0)), 0);
+              const totalCreditedRetail = (erpCreditedItems || []).reduce((s, item) => s + Math.abs(Number(item.totalRetail || 0)), 0);
+              const totalRetail = Math.max(0, totalRetailGross - totalCreditedRetail);
+              const discountedRetail = Math.max(0, totalRetail * (1 - (Number(orderDiscount) || 0) / 100));
+              const effectiveVatPercent = orderVatPercent !== null && orderVatPercent !== undefined ? Number(orderVatPercent) : 15;
+              const vatAmount = discountedRetail * (effectiveVatPercent / 100);
+              const finalTotalInclVat = discountedRetail + vatAmount;
+              const balanceOutstanding = Math.max(0, finalTotalInclVat - Number(orderPaidAmount));
+              const defaultDepositRate = (finalTotalInclVat < 10000 && finalTotalInclVat > 0) ? 100 : 70;
+              const effectiveDepositPercent = orderDepositPercent !== null && orderDepositPercent !== undefined 
+                ? Number(orderDepositPercent) 
+                : defaultDepositRate;
+              const depositRequired = finalTotalInclVat * (effectiveDepositPercent / 100);
+              const depositCleared = orderPaidAmount >= depositRequired;
+
+              const totalErpCredited = (orderCreditNotes || []).reduce((sum, cn) => sum + Math.abs(Number(cn.totalValue || cn.value || cn.amount || 0)), 0);
+              const grossOrderValue = activeOrderItems.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * (1 - (orderDiscount || 0) / 100);
+              const netOrderValue = Math.max(0, grossOrderValue - totalErpCredited);
+
+              const isDocVoided = (doc) => {
+                const s = String(doc?.status || '').toLowerCase();
+                return s === 'cancelled' || s === 'voided' || Boolean(doc?.voided_at);
+              };
+
+              const allPls = activeOrderObject?.packingLists || [];
+              const allDns = activeOrderObject?.deliveryNotes || [];
+              const voidedCount = allPls.filter(isDocVoided).length + allDns.filter(isDocVoided).length;
+              const displayedPackingLists = allPls.filter(pl => showVoidedLogisticsDocs || !isDocVoided(pl));
+              const displayedDeliveryNotes = allDns.filter(dn => showVoidedLogisticsDocs || !isDocVoided(dn));
+              const totalVisible = displayedPackingLists.length + displayedDeliveryNotes.length;
+
+              const poList = activeOrderObject?.purchaseOrders || [];
+              const grnList = activeOrderObject?.goodsReceivedNotes || [];
+              const invoiceList = activeOrderObject?.invoices || [];
+
+              return (
+                <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '18px', width: '100%' }}>
+                  {/* 1. TOP EXECUTIVE OPERATIONS RIBBON (4 KPI CARDS) */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
+                    
+                    {/* KPI 1: CASH FLOW & PAYMENTS */}
+                    <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.4px' }}>
+                          Cash Flow & Balance
+                        </span>
+                        <DollarSign size={16} color="var(--text-info)" />
+                      </div>
+                      <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        R {Math.round(orderPaidAmount).toLocaleString()}
+                        <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-secondary)', marginLeft: '6px' }}>Paid</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '11.5px', color: 'var(--text-secondary)', paddingTop: '6px', borderTop: '1px dashed var(--border)' }}>
+                        <span>Total: <strong>R {Math.round(finalTotalInclVat).toLocaleString()}</strong></span>
+                        <span style={{ color: balanceOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-success)', fontWeight: 600 }}>
+                          Bal: R {Math.round(balanceOutstanding).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* KPI 2: 70% DEPOSIT PROCUREMENT GATE */}
+                    <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.4px' }}>
+                          {effectiveDepositPercent}% Deposit Gate
+                        </span>
+                        <CheckCircle size={16} color={depositCleared ? '#10b981' : '#f59e0b'} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          padding: '3px 10px',
+                          borderRadius: '12px',
+                          background: depositCleared ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
+                          color: depositCleared ? '#10b981' : '#d97706',
+                          border: '1px solid',
+                          borderColor: depositCleared ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'
+                        }}>
+                          {depositCleared ? 'CLEARED FOR PROCUREMENT ✓' : 'DEPOSIT PENDING'}
+                        </span>
+                      </div>
+                      <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--text-secondary)', paddingTop: '6px', borderTop: '1px dashed var(--border)' }}>
+                        {depositCleared
+                          ? `Cleared full ${effectiveDepositPercent}% required (R ${Math.round(depositRequired).toLocaleString()})`
+                          : `Requires R ${Math.round(Math.max(0, depositRequired - orderPaidAmount)).toLocaleString()} more before releasing POs`}
+                      </div>
+                    </div>
+
+                    {/* KPI 3: SUPPLIER PURCHASING */}
+                    <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.4px' }}>
+                          Supplier Procurement
+                        </span>
+                        <ClipboardList size={16} color="var(--text-info)" />
+                      </div>
+                      <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        {poList.length} <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)' }}>Purchase Orders</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '11.5px', color: 'var(--text-secondary)', paddingTop: '6px', borderTop: '1px dashed var(--border)' }}>
+                        <span>GRNs: <strong>{grnList.length} Received</strong></span>
+                        <span>Items: <strong>{activeOrderItems.length} Fittings</strong></span>
+                      </div>
+                    </div>
+
+                    {/* KPI 4: LOGISTICS & CREDITS */}
+                    <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', padding: '16px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.4px' }}>
+                          Site Fulfillment & Returns
+                        </span>
+                        <Truck size={16} color="var(--text-info)" />
+                      </div>
+                      <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                        {displayedDeliveryNotes.length} <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)' }}>Delivery Notes</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '11.5px', color: 'var(--text-secondary)', paddingTop: '6px', borderTop: '1px dashed var(--border)' }}>
+                        <span>Invoices: <strong>{invoiceList.length}</strong></span>
+                        <span style={{ color: orderCreditNotes.length > 0 ? 'var(--text-danger)' : 'var(--text-secondary)' }}>
+                          Credits: <strong>{orderCreditNotes.length}</strong>
+                        </span>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* 2. OPERATIONS FILTER / DRILL-DOWN SUB-PILL BAR */}
+                  <div style={{
+                    background: 'var(--bg-primary)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '10px',
+                    padding: '10px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '8px'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      {[
+                        { id: 'all', label: '⚡ All Operations Overview', count: null },
+                        { id: 'payments', label: '💳 Payments & Receipts', count: orderPayments.length },
+                        { id: 'purchasing', label: '📋 Supplier POs & GRNs', count: poList.length + grnList.length },
+                        { id: 'invoices', label: '💵 Client Invoices', count: invoiceList.length },
+                        { id: 'logistics', label: '📦 Logistics & Waybills', count: displayedDeliveryNotes.length },
+                        { id: 'credits', label: '🔴 ERP Credit Notes', count: orderCreditNotes.length }
+                      ].map(tab => {
+                        const isActive = operationsSubSection === tab.id;
+                        return (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            className="btn btn-xs"
+                            style={{
+                              background: isActive ? 'var(--bg-secondary)' : 'transparent',
+                              color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                              fontWeight: isActive ? 700 : 500,
+                              border: isActive ? '1px solid var(--border)' : '1px solid transparent',
+                              borderRadius: '6px',
+                              padding: '5px 12px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              cursor: 'pointer'
+                            }}
+                            onClick={() => setOperationsSubSection(tab.id)}
+                          >
+                            <span>{tab.label}</span>
+                            {tab.count !== null && (
+                              <span style={{
+                                fontSize: '10px',
+                                padding: '1px 5px',
+                                borderRadius: '8px',
+                                background: isActive ? 'var(--color-primary, #3b82f6)' : 'var(--border)',
+                                color: isActive ? '#fff' : 'var(--text-secondary)'
+                              }}>
+                                {tab.count}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                      Order {selectedOrderId} &bull; Operational Health Cockpit
+                    </span>
+                  </div>
+
+                  {/* 3. OPERATIONS CONTENT SECTIONS */}
+                  {/* PAYMENTS SECTION */}
+                  {(operationsSubSection === 'all' || operationsSubSection === 'payments') && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {operationsSubSection === 'all' && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.4px' }}>
+                            💳 Section 1: Customer Payments & Receipts ({orderPayments.length})
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs"
+                            style={{ fontSize: '11px', color: 'var(--text-info)' }}
+                            onClick={() => setOperationsSubSection('payments')}
+                          >
+                            Focus Section ↗
+                          </button>
+                        </div>
+                      )}
+                      /* SUB-TAB 3: DEDICATED PALLADIUM PAYMENTS LOG WORKSPACE */
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '20px' }}>
                 
                 {/* Left Side: Authentic Palladium Allocations Ledger */}
@@ -7462,10 +7645,28 @@ export default function OrdersPage() {
                   })()}
                 </div>
               </div>
-            )}
+                    </div>
+                  )}
 
-            {workspaceSubTab === 'purchasing' && (
-              /* SUB-TAB 5: PURCHASING & RECEIVING REFERENCE VIEW */
+                  {/* PURCHASING SECTION */}
+                  {(operationsSubSection === 'all' || operationsSubSection === 'purchasing') && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {operationsSubSection === 'all' && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.4px' }}>
+                            📋 Section 2: Supplier Procurement & Goods Received ({poList.length + grnList.length})
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs"
+                            style={{ fontSize: '11px', color: 'var(--text-info)' }}
+                            onClick={() => setOperationsSubSection('purchasing')}
+                          >
+                            Focus Section ↗
+                          </button>
+                        </div>
+                      )}
+                      /* SUB-TAB 5: PURCHASING & RECEIVING REFERENCE VIEW */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '20px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -7542,10 +7743,28 @@ export default function OrdersPage() {
                   </div>
                 </div>
               </div>
-            )}
+                    </div>
+                  )}
 
-            {workspaceSubTab === 'invoices' && (
-              /* SUB-TAB 6: INVOICING REFERENCE VIEW */
+                  {/* INVOICES SECTION */}
+                  {(operationsSubSection === 'all' || operationsSubSection === 'invoices') && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {operationsSubSection === 'all' && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.4px' }}>
+                            💵 Section 3: Client Invoicing ({invoiceList.length})
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs"
+                            style={{ fontSize: '11px', color: 'var(--text-info)' }}
+                            onClick={() => setOperationsSubSection('invoices')}
+                          >
+                            Focus Section ↗
+                          </button>
+                        </div>
+                      )}
+                      /* SUB-TAB 6: INVOICING REFERENCE VIEW */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '20px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -7605,24 +7824,28 @@ export default function OrdersPage() {
                   </div>
                 </div>
               </div>
-            )}
+                    </div>
+                  )}
 
-            {workspaceSubTab === 'logistics' && (() => {
-              /* SUB-TAB 4: DELIVERY LOGISTICS & PACKING LISTS REFERENCE VIEW */
-              const isDocVoided = (doc) => {
-                const s = String(doc?.status || '').toLowerCase();
-                return s === 'cancelled' || s === 'voided' || Boolean(doc?.voided_at);
-              };
-
-              const allPls = activeOrderObject?.packingLists || [];
-              const allDns = activeOrderObject?.deliveryNotes || [];
-              const voidedCount = allPls.filter(isDocVoided).length + allDns.filter(isDocVoided).length;
-              const displayedPackingLists = allPls.filter(pl => showVoidedLogisticsDocs || !isDocVoided(pl));
-              const displayedDeliveryNotes = allDns.filter(dn => showVoidedLogisticsDocs || !isDocVoided(dn));
-              const totalVisible = displayedPackingLists.length + displayedDeliveryNotes.length;
-
-              return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  {/* LOGISTICS SECTION */}
+                  {(operationsSubSection === 'all' || operationsSubSection === 'logistics') && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {operationsSubSection === 'all' && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.4px' }}>
+                            📦 Section 4: Site Logistics & Waybills ({displayedDeliveryNotes.length})
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs"
+                            style={{ fontSize: '11px', color: 'var(--text-info)' }}
+                            onClick={() => setOperationsSubSection('logistics')}
+                          >
+                            Focus Section ↗
+                          </button>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                   <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: '8px', padding: '20px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
                       <div>
@@ -7765,27 +7988,28 @@ export default function OrdersPage() {
                     </div>
                   </div>
                 </div>
-              );
-            })()}
+                    </div>
+                  )}
 
-            {workspaceSubTab === 'audits' && (
-              <AuditHistoryTab
-                poNumber={selectedOrderId}
-                order={currentOrderObj}
-                onOpenVariationDocument={() => {
-                  setSelectedDocType('revision_audit');
-                  setWorkspaceSubTab('doc_gen');
-                }}
-              />
-            )}
-
-            {workspaceSubTab === 'credits' && (() => {
-              const totalErpCredited = orderCreditNotes.reduce((sum, cn) => sum + Math.abs(Number(cn.totalValue || cn.value || cn.amount || 0)), 0);
-              const grossOrderValue = activeOrderItems.reduce((sum, item) => sum + (Number(item.qty) || 0) * (Number(item.unitRetail || item.unit_retail) || 0), 0) * (1 - (orderDiscount || 0) / 100);
-              const netOrderValue = Math.max(0, grossOrderValue - totalErpCredited);
-
-              return (
-              /* SUB-TAB: CREDITS & RETURNS */
+                  {/* CREDITS SECTION */}
+                  {((operationsSubSection === 'all' && orderCreditNotes.length > 0) || operationsSubSection === 'credits') && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {operationsSubSection === 'all' && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-danger)', letterSpacing: '0.4px' }}>
+                            🔴 Section 5: ERP Credit Notes & Returned Items ({orderCreditNotes.length})
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-xs"
+                            style={{ fontSize: '11px', color: 'var(--text-danger)' }}
+                            onClick={() => setOperationsSubSection('credits')}
+                          >
+                            Focus Section ↗
+                          </button>
+                        </div>
+                      )}
+                      /* SUB-TAB: CREDITS & RETURNS */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 {/* VITAL METRICS CARD GRID FOR CREDITS */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
@@ -7986,8 +8210,24 @@ export default function OrdersPage() {
                   </div>
                 )}
               </div>
+                    </div>
+                  )}
+                </div>
               );
             })()}
+
+            {workspaceSubTab === 'audits' && (
+              <AuditHistoryTab
+                poNumber={selectedOrderId}
+                order={currentOrderObj}
+                onOpenVariationDocument={() => {
+                  setSelectedDocType('revision_audit');
+                  setWorkspaceSubTab('doc_gen');
+                }}
+              />
+            )}
+
+            
 
           </div>
         </div>
