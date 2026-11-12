@@ -116,8 +116,67 @@ export default function TakeoffSpecEngine({
   // Summary & Cross-Tabulation Matrix Sub-Tab ('fixtures' | 'leds' | 'tracks' | 'all')
   const [summarySubTab, setSummarySubTab] = useState('fixtures');
   const [matrixSearch, setMatrixSearch] = useState('');
-  const [matrixFloorFilter, setMatrixFloorFilter] = useState('All');
+    const [matrixFloorFilter, setMatrixFloorFilter] = useState('All');
   const [hideEmptyRooms, setHideEmptyRooms] = useState(false);
+
+  // Multi-row Selection for Bulk Batch Actions
+  const [selectedRowIds, setSelectedRowIds] = useState(new Set());
+
+  // Interactive Matrix Editing State
+  const [editingMatrixCell, setEditingMatrixCell] = useState(null);
+
+  // Local Draft Recovery State
+  const draftKey = `oto_takeoff_draft_${orderId || 'default'}`;
+  const [recoveredDraft, setRecoveredDraft] = useState(null);
+
+  // Check localStorage on mount for unsaved drafts
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(draftKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && Array.isArray(parsed.countUpRows) && parsed.countUpRows.length > 0) {
+          // If draft is newer than 1 minute ago and has content
+          if (Date.now() - (parsed.timestamp || 0) < 7 * 24 * 3600 * 1000) {
+            setRecoveredDraft(parsed);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Draft restore check error:", e);
+    }
+  }, [draftKey]);
+
+  // Save to localStorage when unsaved changes exist
+  useEffect(() => {
+    if (!hasUnsavedChanges || countUpRows.length === 0) return;
+    try {
+      localStorage.setItem(draftKey, JSON.stringify({
+        countUpRows,
+        specifications,
+        timestamp: Date.now()
+      }));
+    } catch (e) {
+      // quota or private mode
+    }
+  }, [countUpRows, specifications, hasUnsavedChanges, draftKey]);
+
+  const handleApplyDraft = () => {
+    if (!recoveredDraft) return;
+    setCountUpRows(recoveredDraft.countUpRows || []);
+    if (recoveredDraft.specifications) {
+      setSpecifications(recoveredDraft.specifications);
+    }
+    setHasUnsavedChanges(true);
+    setRecoveredDraft(null);
+  };
+
+  const handleDiscardDraft = () => {
+    try {
+      localStorage.removeItem(draftKey);
+    } catch (e) {}
+    setRecoveredDraft(null);
+  };
 
   // Count-Up View Mode & Quick Filter States
   const [countUpViewMode, setCountUpViewMode] = useState('flat'); // 'flat' | 'room_grouped'
@@ -497,6 +556,32 @@ export default function TakeoffSpecEngine({
     const totalRows = countUpRows.length;
     const rawTotalQty = countUpRows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
     const totalQty = Math.round(rawTotalQty * 100) / 100;
+
+    let totalFittingUnits = 0;
+    let totalLinearMeters = 0;
+    let totalFirstFixCount = 0;
+    const uniqueRoomKeys = new Set();
+
+    countUpRows.forEach(r => {
+      const q = Number(r.qty) || 0;
+      const isLinear = r.unit === 'm' || r.itemType === 'linear_led' || specifications[(r.tag || '').toUpperCase()]?.itemType === 'linear_led';
+      if (isLinear) {
+        totalLinearMeters += q;
+      } else {
+        totalFittingUnits += q;
+      }
+      if (r.firstFix === 'Yes') {
+        totalFirstFixCount += (isLinear ? 1 : q);
+      }
+      if (r.floor || r.area) {
+        uniqueRoomKeys.add(`${(r.floor || '').trim()}__${(r.area || '').trim()}`);
+      }
+    });
+
+    totalFittingUnits = Math.round(totalFittingUnits);
+    totalLinearMeters = Math.round(totalLinearMeters * 100) / 100;
+    totalFirstFixCount = Math.round(totalFirstFixCount);
+
     const configuredTags = uniqueTags.filter(ut => {
       const spec = specifications[ut.tag];
       if (!spec) return false;
@@ -596,6 +681,10 @@ export default function TakeoffSpecEngine({
     return {
       totalRows,
       totalQty,
+      totalFittingUnits,
+      totalLinearMeters,
+      totalFirstFixCount,
+      uniqueRoomsCount: uniqueRoomKeys.size,
       uniqueTagsCount: uniqueTags.length,
       configuredTags,
       pendingTags: uniqueTags.length - configuredTags,
@@ -604,6 +693,144 @@ export default function TakeoffSpecEngine({
       estimatedMargin
     };
   }, [countUpRows, uniqueTags, specifications]);
+
+  // -------------------------------------------------------------
+  // Bulk Multi-Row Operations & Helpers
+  // -------------------------------------------------------------
+  const toggleSelectRow = (id) => {
+    setSelectedRowIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllFiltered = (rowsToToggle) => {
+    const allIds = rowsToToggle.map(r => r.id);
+    const areAllSelected = allIds.length > 0 && allIds.every(id => selectedRowIds.has(id));
+    setSelectedRowIds(prev => {
+      const next = new Set(prev);
+      if (areAllSelected) {
+        allIds.forEach(id => next.delete(id));
+      } else {
+        allIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const handleBatchUpdate = (field, value) => {
+    if (selectedRowIds.size === 0) return;
+    setCountUpRows(prev => prev.map(r => {
+      if (!selectedRowIds.has(r.id)) return r;
+      return { ...r, [field]: value };
+    }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedRowIds.size === 0) return;
+    const count = selectedRowIds.size;
+    if (await window.otoConfirm(`Are you sure you want to delete ${count} selected takeoff row${count > 1 ? 's' : ''}?`)) {
+      setCountUpRows(prev => prev.filter(r => !selectedRowIds.has(r.id)));
+      setSelectedRowIds(new Set());
+      setHasUnsavedChanges(true);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // Quick Add Room Helper (By Room Mode)
+  // -------------------------------------------------------------
+  const handleCreateNewRoom = (roomName) => {
+    if (!roomName || !roomName.trim()) return;
+    const targetFloor = floorFilter !== 'All' ? floorFilter : (countUpRows[countUpRows.length - 1]?.floor || 'Ground');
+    handleAddRow({
+      floor: targetFloor,
+      area: roomName.trim(),
+      tag: 'DL1',
+      qty: 1
+    });
+  };
+
+  // -------------------------------------------------------------
+  // Tag Specification Copy / Clone Helper (Tab 2)
+  // -------------------------------------------------------------
+  const handleCopySpecification = (sourceTag, targetTag) => {
+    if (!sourceTag || !targetTag || sourceTag === targetTag) return;
+    const srcSpec = specifications[sourceTag];
+    if (!srcSpec) return;
+
+    setSpecifications(prev => ({
+      ...prev,
+      [targetTag]: {
+        ...JSON.parse(JSON.stringify(srcSpec)),
+        tag: targetTag
+      }
+    }));
+
+    // Also synchronize itemType and unit on count-up rows for targetTag
+    const srcItemType = srcSpec.itemType || 'fixture';
+    const srcUnit = srcItemType === 'fixture' ? 'pcs' : 'm';
+    setCountUpRows(prev => prev.map(r => {
+      if ((r.tag || '').trim().toUpperCase() === targetTag) {
+        return { ...r, itemType: srcItemType, unit: srcUnit };
+      }
+      return r;
+    }));
+
+    setHasUnsavedChanges(true);
+  };
+
+  // -------------------------------------------------------------
+  // Bidirectional Matrix Cell Change Helper (Tab 3)
+  // -------------------------------------------------------------
+  const handleMatrixCellChange = (floor, area, tag, rawVal) => {
+    const val = parseFloat(rawVal);
+    const normalizedTag = (tag || '').trim().toUpperCase();
+
+    setCountUpRows(prev => {
+      const idx = prev.findIndex(r =>
+        (r.floor || '').trim().toUpperCase() === (floor || '').trim().toUpperCase() &&
+        (r.area || '').trim().toUpperCase() === (area || '').trim().toUpperCase() &&
+        (r.tag || '').trim().toUpperCase() === normalizedTag
+      );
+
+      if (isNaN(val) || val <= 0) {
+        // If 0 or empty and row exists, remove it
+        if (idx !== -1) {
+          const next = [...prev];
+          next.splice(idx, 1);
+          return next;
+        }
+        return prev;
+      }
+
+      if (idx !== -1) {
+        // Update existing row quantity
+        const next = [...prev];
+        next[idx] = { ...next[idx], qty: val };
+        return next;
+      }
+
+      // Create new row
+      const specType = specifications[normalizedTag]?.itemType || 'fixture';
+      const newRow = {
+        id: 'tu-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+        tag: normalizedTag,
+        itemType: specType,
+        unit: specType === 'fixture' ? 'pcs' : 'm',
+        firstFix: 'No',
+        floor: floor || 'Ground',
+        area: area || 'General',
+        qty: val,
+        notes: ''
+      };
+      return [...prev, newRow];
+    });
+
+    setHasUnsavedChanges(true);
+  };
 
   // -------------------------------------------------------------
   // Count-Up Row Operations
@@ -1543,6 +1770,7 @@ export default function TakeoffSpecEngine({
   // Data Persistence (Cloud SQL & Parent Order)
   // -------------------------------------------------------------
   const handleSaveTakeoff = async () => {
+    try { localStorage.removeItem(draftKey); } catch (e) {}
     setIsSaving(true);
     const takeoffPayload = {
       countUpRows,
@@ -2951,11 +3179,35 @@ export default function TakeoffSpecEngine({
         {/* METRICS & QUICK ACTIONS */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '5px 10px', textAlign: 'center', minWidth: '75px' }}>
-              <div style={{ fontSize: '9px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Total Fixtures</div>
-              <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-info)' }}>{typeof stats.totalQty === 'number' ? Number(stats.totalQty.toFixed(2)) : stats.totalQty}</div>
+            <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '5px 10px', textAlign: 'center', minWidth: '75px' }} title="Point fittings and fixtures counted">
+              <div style={{ fontSize: '9px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Fittings</div>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-info)' }}>
+                {stats.totalFittingUnits || 0} <span style={{ fontSize: '10px', fontWeight: 500, color: 'var(--text-secondary)' }}>pcs</span>
+              </div>
             </div>
-            <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px 12px', textAlign: 'center', minWidth: '90px' }}>
+
+            <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '5px 10px', textAlign: 'center', minWidth: '80px' }} title="Total continuous Linear LED extrusion runs">
+              <div style={{ fontSize: '9px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Linear LED</div>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: '#7c3aed' }}>
+                {stats.totalLinearMeters || 0} <span style={{ fontSize: '10px', fontWeight: 500, color: 'var(--text-secondary)' }}>m</span>
+              </div>
+            </div>
+
+            <div style={{
+              background: (stats.totalFirstFixCount || 0) > 0 ? 'rgba(217, 119, 6, 0.08)' : 'var(--bg-primary)',
+              border: (stats.totalFirstFixCount || 0) > 0 ? '1px solid rgba(217, 119, 6, 0.35)' : '1px solid var(--border)',
+              borderRadius: '6px',
+              padding: '5px 10px',
+              textAlign: 'center',
+              minWidth: '75px'
+            }} title="Items marked First Fix for rough-in site delivery">
+              <div style={{ fontSize: '9px', color: (stats.totalFirstFixCount || 0) > 0 ? '#d97706' : 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>First Fix</div>
+              <div style={{ fontSize: '15px', fontWeight: 800, color: (stats.totalFirstFixCount || 0) > 0 ? '#d97706' : 'var(--text-secondary)' }}>
+                {stats.totalFirstFixCount || 0}
+              </div>
+            </div>
+
+            <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '6px', padding: '5px 12px', textAlign: 'center', minWidth: '90px' }}>
               <div style={{ fontSize: '9.5px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700 }}>Plan Tags</div>
               <div style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>
                 {stats.configuredTags} / {stats.uniqueTagsCount}
@@ -2994,6 +3246,36 @@ export default function TakeoffSpecEngine({
           </button>
         </div>
       </div>
+
+      {/* RECOVERED LOCAL DRAFT ALERT BANNER */}
+      {recoveredDraft && (
+        <div style={{
+          background: 'rgba(245, 158, 11, 0.1)',
+          border: '1px solid rgba(245, 158, 11, 0.4)',
+          borderRadius: '8px',
+          padding: '10px 14px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
+          fontSize: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#d97706' }}>
+            <Info size={16} />
+            <span>
+              <strong>Unsaved Local Draft Found:</strong> We recovered an unsaved takeoff session with <strong>{recoveredDraft.countUpRows?.length || 0} rows</strong> from this device.
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button type="button" className="btn btn-primary btn-xs" onClick={handleApplyDraft} style={{ fontWeight: 600 }}>
+              Restore Draft
+            </button>
+            <button type="button" className="btn btn-ghost btn-xs" onClick={handleDiscardDraft} style={{ color: 'var(--text-secondary)' }}>
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ------------------------------------------------------------- */}
       {/* INNER NAVIGATION TABS */}
@@ -3243,6 +3525,106 @@ export default function TakeoffSpecEngine({
             </button>
           </div>
 
+          {/* BULK ACTIONS BAR (Visible when rows are selected) */}
+          {selectedRowIds.size > 0 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '8px 12px',
+              background: 'rgba(59, 130, 246, 0.08)',
+              border: '1px solid rgba(59, 130, 246, 0.25)',
+              borderRadius: '8px',
+              gap: '10px',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span className="badge b-primary" style={{ fontWeight: 700, fontSize: '11px', padding: '3px 8px' }}>
+                  {selectedRowIds.size} row{selectedRowIds.size > 1 ? 's' : ''} selected
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-xs"
+                  onClick={() => setSelectedRowIds(new Set())}
+                  style={{ fontSize: '11px', color: 'var(--text-secondary)' }}
+                >
+                  Deselect All
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {/* Batch Change Floor */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Floor:</span>
+                  <select
+                    className="select select-xs"
+                    onChange={e => {
+                      if (!e.target.value) return;
+                      handleBatchUpdate('floor', e.target.value);
+                      e.target.value = '';
+                    }}
+                    style={{ fontSize: '11px', height: '26px' }}
+                  >
+                    <option value="">Move to Floor...</option>
+                    {dynamicFloorSuggestions.map(fl => <option key={fl} value={fl}>{fl}</option>)}
+                  </select>
+                </div>
+
+                {/* Batch Change Room */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Room:</span>
+                  <input
+                    type="text"
+                    placeholder="Move to Room..."
+                    list="common-rooms-list"
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && e.target.value.trim()) {
+                        handleBatchUpdate('area', e.target.value.trim());
+                        e.target.value = '';
+                      }
+                    }}
+                    style={{
+                      fontSize: '11px',
+                      padding: '3px 8px',
+                      borderRadius: '4px',
+                      border: '1px solid var(--border)',
+                      background: 'var(--bg-primary)',
+                      color: 'var(--text-primary)',
+                      width: '130px'
+                    }}
+                  />
+                </div>
+
+                {/* Batch Set First Fix */}
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-xs"
+                  onClick={() => handleBatchUpdate('firstFix', 'Yes')}
+                  style={{ color: '#d97706', borderColor: 'rgba(217, 119, 6, 0.35)', background: 'rgba(217, 119, 6, 0.08)', fontWeight: 600 }}
+                >
+                  Set First Fix: Yes
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-xs"
+                  onClick={() => handleBatchUpdate('firstFix', 'No')}
+                >
+                  Set First Fix: No
+                </button>
+
+                {/* Batch Delete */}
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-xs"
+                  onClick={handleBatchDelete}
+                  style={{ color: 'var(--text-danger)', borderColor: 'rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.06)' }}
+                >
+                  <Trash2 size={12} /> Delete ({selectedRowIds.size})
+                </button>
+              </div>
+            </div>
+          )}
+
           <datalist id="plan-tags-list">
             {dynamicTagSuggestions.map(t => <option key={t} value={t} />)}
           </datalist>
@@ -3267,7 +3649,15 @@ export default function TakeoffSpecEngine({
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left', tableLayout: 'auto' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1.5px solid var(--border)', color: 'var(--text-secondary)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                    <th style={{ padding: '8px 10px', width: '36px', textAlign: 'center' }}>#</th>
+                    <th style={{ padding: '8px 10px', width: '48px', textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={filteredCountUpRows.length > 0 && filteredCountUpRows.every(r => selectedRowIds.has(r.id))}
+                        onChange={() => toggleSelectAllFiltered(filteredCountUpRows)}
+                        title="Select All / Deselect All Filtered Rows"
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </th>
                     <th style={{ padding: '8px 10px', width: '130px' }}>Floor Level</th>
                     <th style={{ padding: '8px 10px', width: '190px' }}>Room / Area</th>
                     <th style={{ padding: '8px 10px', width: '110px' }}>Plan Tag</th>
@@ -3303,9 +3693,17 @@ export default function TakeoffSpecEngine({
                           onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
                           onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                         >
-                          {/* 1. INDEX */}
-                          <td style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '11px' }}>
-                            {index + 1}
+                          {/* 1. CHECKBOX & INDEX */}
+                          <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+                              <input
+                                type="checkbox"
+                                checked={selectedRowIds.has(row.id)}
+                                onChange={() => toggleSelectRow(row.id)}
+                                style={{ cursor: 'pointer' }}
+                              />
+                              <span style={{ color: 'var(--text-tertiary)', fontSize: '10.5px' }}>{index + 1}</span>
+                            </div>
                           </td>
 
                           {/* 2. FLOOR INPUT */}
@@ -3601,6 +3999,55 @@ export default function TakeoffSpecEngine({
             /* VIEW 2: GROUPED BY ROOM & FLOOR HIERARCHICAL VIEW             */
             /* ------------------------------------------------------------- */
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* BY ROOM TOOLBAR: QUICK ADD ROOM PRESETS */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 12px',
+                background: 'var(--bg-secondary)',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                gap: '8px',
+                flexWrap: 'wrap'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                    Quick Add Room:
+                  </span>
+                  {['Kitchen', 'Living', 'Master Bedroom', 'Master Ensuite', 'Dining', 'Entrance', 'Covered Patio', 'Garage', 'Scullery', 'Passage'].map(preset => (
+                    <button
+                      key={preset}
+                      type="button"
+                      className="btn btn-ghost btn-xs"
+                      onClick={() => handleCreateNewRoom(preset)}
+                      style={{
+                        fontSize: '11px',
+                        background: 'var(--bg-primary)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '4px',
+                        padding: '2px 8px'
+                      }}
+                    >
+                      + {preset}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-xs"
+                  onClick={async () => {
+                    const customName = await window.otoPrompt("Enter Room / Area Name (e.g. Roof Terrace, Wine Cellar):", "");
+                    if (customName && customName.trim()) {
+                      handleCreateNewRoom(customName.trim());
+                    }
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}
+                >
+                  <Plus size={12} /> Custom Room...
+                </button>
+              </div>
+
               {groupedRoomsData.length === 0 ? (
                 <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--bg-primary)', borderRadius: '8px', border: '1px solid var(--border)' }}>
                   No rooms match active filters. Click <strong>+ Add Row</strong> to begin takeoff.
@@ -3656,6 +4103,15 @@ export default function TakeoffSpecEngine({
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={e => e.stopPropagation()}>
                           <button
                             type="button"
+                            className="btn btn-ghost btn-xs"
+                            onClick={() => toggleSelectAllFiltered(roomGroup.rows)}
+                            style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}
+                            title="Select / deselect all items in this room"
+                          >
+                            {roomGroup.rows.every(r => selectedRowIds.has(r.id)) ? 'Deselect Room' : 'Select Room'}
+                          </button>
+                          <button
+                            type="button"
                             className="btn btn-secondary btn-xs"
                             onClick={() => handleAddRow({ floor: roomGroup.floor, area: roomGroup.area })}
                             style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600 }}
@@ -3695,8 +4151,16 @@ export default function TakeoffSpecEngine({
                                     onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
                                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                                   >
-                                    <td style={{ padding: '5px 8px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '11px' }}>
-                                      {rIdx + 1}
+                                    <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedRowIds.has(row.id)}
+                                          onChange={() => toggleSelectRow(row.id)}
+                                          style={{ cursor: 'pointer' }}
+                                        />
+                                        <span style={{ color: 'var(--text-tertiary)', fontSize: '10px' }}>{rIdx + 1}</span>
+                                      </div>
                                     </td>
                                     <td style={{ padding: '4px 8px' }}>
                                       <input
@@ -4060,6 +4524,35 @@ export default function TakeoffSpecEngine({
                                 <option value="fixture">💡 Point Fixture</option>
                                 <option value="linear_led">〰️ Linear LED</option>
                                 <option value="track_system">🛤️ Track System</option>
+                              </select>
+
+                              {/* Quick Copy Spec from another configured tag */}
+                              <select
+                                className="select select-xs"
+                                onChange={e => {
+                                  const src = e.target.value;
+                                  if (!src) return;
+                                  handleCopySpecification(src, tag);
+                                  e.target.value = '';
+                                }}
+                                style={{
+                                  fontSize: '11px',
+                                  height: '24px',
+                                  padding: '2px 6px',
+                                  background: 'var(--bg-primary)',
+                                  color: 'var(--text-secondary)',
+                                  border: '1px solid var(--border)'
+                                }}
+                                title="Copy product SKU, pricing, and specs from an already mapped tag"
+                              >
+                                <option value="">📋 Copy Spec from...</option>
+                                {uniqueTags
+                                  .filter(t => t.tag !== tag && specifications[t.tag]?.product)
+                                  .map(t => (
+                                    <option key={t.tag} value={t.tag}>
+                                      From {t.tag} ({specifications[t.tag]?.product?.sku || 'Mapped'})
+                                    </option>
+                                  ))}
                               </select>
 
                               {product && (
@@ -6572,17 +7065,50 @@ export default function TakeoffSpecEngine({
                           const isLed = (specifications[ut.tag]?.itemType || ut.itemType) === 'linear_led';
                           const displayVal = q > 0 ? (isFixture ? Math.round(q) : `${Math.round(q * 100) / 100}m`) : null;
                           return (
-                            <td key={ut.tag} style={{ padding: '8px 10px', textAlign: 'center' }}>
-                              {displayVal ? (
-                                <span style={{ 
-                                  fontWeight: 700, 
-                                  color: isFixture ? 'var(--text-primary)' : isLed ? '#7c3aed' : '#d97706' 
-                                }}>
-                                  {displayVal}
-                                </span>
-                              ) : (
-                                <span style={{ color: 'var(--border)' }}>—</span>
-                              )}
+                            <td key={ut.tag} style={{ padding: '4px 6px', textAlign: 'center' }}>
+                              <input
+                                type="text"
+                                defaultValue={q > 0 ? q : ''}
+                                key={`${row.floor}__${row.area}__${ut.tag}__${q}`}
+                                placeholder="—"
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') {
+                                    e.target.blur();
+                                  }
+                                }}
+                                onBlur={e => handleMatrixCellChange(row.floor, row.area, ut.tag, e.target.value)}
+                                title={`Click to edit ${row.area} (${row.floor}) - Tag ${ut.tag}`}
+                                style={{
+                                  width: '56px',
+                                  textAlign: 'center',
+                                  fontSize: '12px',
+                                  fontWeight: q > 0 ? 700 : 400,
+                                  color: q > 0 ? (isFixture ? 'var(--text-primary)' : isLed ? '#7c3aed' : '#d97706') : 'var(--text-tertiary)',
+                                  background: q > 0
+                                    ? (isFixture ? 'rgba(59, 130, 246, 0.08)' : isLed ? 'rgba(124, 58, 237, 0.08)' : 'rgba(217, 119, 6, 0.08)')
+                                    : 'transparent',
+                                  border: '1px solid transparent',
+                                  borderRadius: '4px',
+                                  padding: '3px 4px',
+                                  outline: 'none',
+                                  transition: 'all 0.15s ease'
+                                }}
+                                onFocus={e => {
+                                  e.target.style.border = '1px solid var(--text-info)';
+                                  e.target.style.background = 'var(--bg-primary)';
+                                  e.target.select();
+                                }}
+                                onMouseOver={e => {
+                                  if (document.activeElement !== e.target) {
+                                    e.target.style.border = '1px solid var(--border)';
+                                  }
+                                }}
+                                onMouseOut={e => {
+                                  if (document.activeElement !== e.target) {
+                                    e.target.style.border = '1px solid transparent';
+                                  }
+                                }}
+                              />
                             </td>
                           );
                         })}
