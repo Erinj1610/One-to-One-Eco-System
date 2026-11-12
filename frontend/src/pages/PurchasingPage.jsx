@@ -3284,21 +3284,49 @@ export default function PurchasingPage() {
               display: 'flex', 
               justifyContent: 'space-between', 
               alignItems: 'center', 
-              padding: '16px 20px', 
-              borderBottom: '1px solid var(--border)', 
-              background: 'var(--bg-secondary)'
+              padding: '16px 24px', 
+              borderBottom: '1px solid #e2e8f0', 
+              background: '#f8fafc'
             }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Sparkles size={16} color="#3b82f6" />
-                  Batch Allocate {selectedLineIds.size} Items from {selectedDocument.document_no}
-                </h3>
-                <p style={{ margin: '3px 0 0 0', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                  Supplier: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.vendor_name}</strong> • Document: <strong style={{ color: 'var(--text-primary)' }}>{selectedDocument.document_no}</strong>
-                </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  background: '#f1f5f9',
+                  border: '1px solid #e2e8f0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#2563eb'
+                }}>
+                  <Sparkles size={16} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>
+                    Batch Allocate {selectedLineIds.size} Items from {selectedDocument.document_no}
+                  </h3>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#64748b' }}>
+                    Supplier: <strong style={{ color: '#0f172a', fontWeight: 600 }}>{selectedDocument.vendor_name}</strong> • Document: <strong style={{ color: '#0f172a', fontWeight: 600 }}>{selectedDocument.document_no}</strong>
+                  </p>
+                </div>
               </div>
-              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setBatchModalOpen(false)}>
-                <X size={16} />
+              <button
+                type="button"
+                onClick={() => setBatchModalOpen(false)}
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  padding: '5px',
+                  color: '#64748b',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <X size={15} />
               </button>
             </div>
 
@@ -3705,16 +3733,26 @@ export default function PurchasingPage() {
               <div style={{ 
                 display: 'flex', 
                 justifyContent: 'flex-end', 
+                alignItems: 'center',
                 gap: '10px', 
-                padding: '14px 20px', 
-                borderTop: '1px solid var(--border)', 
-                background: 'var(--bg-secondary)', 
+                padding: '14px 24px', 
+                borderTop: '1px solid #e2e8f0', 
+                background: '#f8fafc', 
                 flexShrink: 0 
               }}>
                 <button 
                   type="button" 
-                  className="btn btn-sm btn-ghost" 
                   onClick={() => setBatchModalOpen(false)}
+                  style={{
+                    padding: '7px 14px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: '#475569',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    cursor: 'pointer'
+                  }}
                 >
                   Cancel
                 </button>
@@ -3736,15 +3774,20 @@ export default function PurchasingPage() {
                   return (
                     <button 
                       type="submit" 
-                      className="btn btn-sm btn-primary" 
                       disabled={isSavingBatchAlloc || !batchProjectId || isBlocked}
                       style={{ 
+                        padding: '7px 18px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        color: '#ffffff',
+                        background: isBlocked ? '#94a3b8' : '#2563eb',
+                        border: 'none',
+                        borderRadius: '8px',
+                        cursor: (isSavingBatchAlloc || !batchProjectId || isBlocked) ? 'not-allowed' : 'pointer',
                         display: 'inline-flex', 
                         alignItems: 'center', 
                         gap: '6px', 
-                        fontWeight: 700,
-                        background: isBlocked ? '#9ca3af' : undefined,
-                        cursor: isBlocked ? 'not-allowed' : undefined
+                        boxShadow: isBlocked ? 'none' : '0 1px 2px rgba(37, 99, 235, 0.2)'
                       }}
                     >
                       {isSavingBatchAlloc ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
@@ -3795,21 +3838,49 @@ export default function PurchasingPage() {
               display: 'flex', 
               justifyContent: 'space-between', 
               alignItems: 'center', 
-              padding: '16px 20px', 
-              borderBottom: '1px solid var(--border)', 
-              background: 'var(--bg-secondary)'
+              padding: '16px 24px', 
+              borderBottom: '1px solid #e2e8f0', 
+              background: '#f8fafc'
             }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Sparkles size={16} color="#3b82f6" />
-                  Allocate {allocTargetItem.doc_type} Line to Project Order
-                </h3>
-                <p style={{ margin: '3px 0 0 0', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                  Document: <strong style={{ color: 'var(--text-primary)' }}>{allocTargetItem.document_no}</strong> • Vendor: <strong style={{ color: 'var(--text-primary)' }}>{allocTargetItem.vendor_name}</strong>
-                </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  background: '#f1f5f9',
+                  border: '1px solid #e2e8f0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#0284c7'
+                }}>
+                  <Sparkles size={16} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>
+                    Allocate {allocTargetItem.doc_type} Line to Project Order
+                  </h3>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#64748b' }}>
+                    Document: <strong style={{ color: '#0f172a', fontWeight: 600 }}>{allocTargetItem.document_no}</strong> • Vendor: <strong style={{ color: '#0f172a', fontWeight: 600 }}>{allocTargetItem.vendor_name}</strong>
+                  </p>
+                </div>
               </div>
-              <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={() => setAllocModalOpen(false)}>
-                <X size={16} />
+              <button
+                type="button"
+                onClick={() => setAllocModalOpen(false)}
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  padding: '5px',
+                  color: '#64748b',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <X size={15} />
               </button>
             </div>
 
@@ -3911,8 +3982,9 @@ export default function PurchasingPage() {
                             style={{
                               padding: '10px 14px',
                               borderRadius: '8px',
-                              border: isSelected ? '1.5px solid #3b82f6' : '1px solid var(--border)',
-                              background: isSelected ? 'rgba(59, 130, 246, 0.08)' : 'var(--bg-secondary)',
+                              border: isSelected ? '1.5px solid #2563eb' : '1px solid #e2e8f0',
+                              background: isSelected ? '#eff6ff' : '#ffffff',
+                              boxShadow: isSelected ? '0 1px 3px rgba(37,99,235,0.1)' : '0 1px 2px rgba(0,0,0,0.02)',
                               cursor: 'pointer',
                               display: 'flex',
                               justifyContent: 'space-between',
@@ -4202,10 +4274,10 @@ export default function PurchasingPage() {
                 display: 'flex', 
                 justifyContent: 'space-between', 
                 alignItems: 'center',
-                gap: '10px', 
-                padding: '14px 20px', 
-                borderTop: '1px solid var(--border)', 
-                background: 'var(--bg-secondary)', 
+                gap: '12px', 
+                padding: '14px 24px', 
+                borderTop: '1px solid #e2e8f0', 
+                background: '#f8fafc', 
                 flexShrink: 0 
               }}>
                 <button
@@ -4215,42 +4287,57 @@ export default function PurchasingPage() {
                     setAllocModalOpen(false);
                     handleOpenIssueModal(item);
                   }}
-                  className="btn btn-sm btn-ghost"
                   style={{
-                    color: '#f59e0b',
-                    border: '1px solid rgba(245, 158, 11, 0.4)',
+                    color: '#d97706',
+                    background: '#ffffff',
+                    border: '1px solid #fde68a',
+                    borderRadius: '8px',
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '5px',
-                    fontSize: '11.5px'
+                    gap: '6px',
+                    fontSize: '11.5px',
+                    fontWeight: 600,
+                    padding: '7px 12px',
+                    cursor: 'pointer'
                   }}
                 >
                   <AlertTriangle size={13} />
                   Flag as Issue / Not Found
                 </button>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '8px' }}>
                   <button 
                     type="button" 
-                    className="btn btn-sm btn-ghost" 
                     onClick={() => setAllocModalOpen(false)}
+                    style={{
+                      padding: '7px 14px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: '#475569',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      cursor: 'pointer'
+                    }}
                   >
                     Cancel
                   </button>
                   <button 
                     type="submit" 
-                    className="btn btn-sm btn-primary" 
                     disabled={isSavingAlloc}
                     style={{
-                      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-                      color: '#fff',
+                      padding: '7px 18px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: '#ffffff',
+                      background: '#2563eb',
                       border: 'none',
-                      fontWeight: 700,
-                      padding: '8px 18px',
                       borderRadius: '8px',
+                      cursor: isSavingAlloc ? 'not-allowed' : 'pointer',
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '6px'
+                      gap: '6px',
+                      boxShadow: '0 1px 2px rgba(37, 99, 235, 0.2)'
                     }}
                   >
                     {isSavingAlloc ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
@@ -4614,37 +4701,50 @@ export default function PurchasingPage() {
               justifyContent: 'space-between',
               alignItems: 'center',
               padding: '16px 24px',
-              borderBottom: '1px solid var(--border)',
-              background: 'var(--bg-secondary)'
+              borderBottom: '1px solid #e2e8f0',
+              background: '#f8fafc'
             }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '9px' }}>
-                  <span style={{ 
-                    background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', 
-                    color: '#fff', 
-                    padding: '4px 10px', 
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '5px'
-                  }}>
-                    <Sparkles size={14} /> Smart Wizard
-                  </span>
-                  Bulk Purchase Order Auto-Allocation
-                </h3>
-                <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  Pre-matches POs to projects using Palladium references and sets default ETAs. Review, cross-check, or edit any project assignment and delivery ETA before committing.
-                </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  background: '#f1f5f9',
+                  border: '1px solid #e2e8f0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#4f46e5'
+                }}>
+                  <Sparkles size={16} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>
+                    Bulk Purchase Order Auto-Allocation
+                  </h3>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#64748b' }}>
+                    Pre-matches POs to projects using Palladium references and sets default ETAs. Review, cross-check, or edit any project assignment and delivery ETA before committing.
+                  </p>
+                </div>
               </div>
 
               <button 
-                className="btn btn-ghost" 
-                style={{ padding: '6px' }} 
+                type="button"
                 onClick={() => !isSubmittingWizard && setIsBulkWizardOpen(false)}
                 disabled={isSubmittingWizard}
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  padding: '5px',
+                  color: '#64748b',
+                  cursor: isSubmittingWizard ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
               >
-                <X size={18} />
+                <X size={15} />
               </button>
             </div>
 
@@ -5164,8 +5264,8 @@ export default function PurchasingPage() {
             {/* Modal Footer */}
             <div style={{
               padding: '14px 24px',
-              borderTop: '1px solid var(--border)',
-              background: 'var(--bg-secondary)',
+              borderTop: '1px solid #e2e8f0',
+              background: '#f8fafc',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
@@ -5174,56 +5274,67 @@ export default function PurchasingPage() {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={{ 
-                  background: 'var(--text-primary)', 
-                  color: 'var(--bg-primary)', 
-                  fontWeight: 800, 
-                  padding: '4px 10px', 
-                  borderRadius: '12px', 
-                  fontSize: '12px' 
+                  background: '#0f172a', 
+                  color: '#ffffff', 
+                  fontWeight: 600, 
+                  padding: '3px 10px', 
+                  borderRadius: '6px', 
+                  fontSize: '11.5px',
+                  letterSpacing: '0.02em'
                 }}>
                   {wizardSelectedDocNos.size} POs selected
                 </span>
-                <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  {isSubmittingWizard ? wizardSubmitProgress : 'Cross-check detected projects and ETAs above, then approve to allocate.'}
+                <span style={{ fontSize: '11.5px', color: '#64748b' }}>
+                  {isSubmittingWizard ? wizardSubmitProgress : 'Cross-check detected projects and ETAs before confirming'}
                 </span>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <button
+                  type="button"
                   onClick={() => setIsBulkWizardOpen(false)}
                   disabled={isSubmittingWizard}
-                  className="btn btn-sm btn-ghost"
+                  style={{
+                    padding: '7px 14px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: '#475569',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    cursor: isSubmittingWizard ? 'not-allowed' : 'pointer'
+                  }}
                 >
                   Cancel
                 </button>
 
                 <button
+                  type="button"
                   onClick={handleExecuteBulkWizard}
                   disabled={isSubmittingWizard || wizardSelectedDocNos.size === 0}
-                  className="btn btn-sm"
                   style={{
-                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                    color: '#fff',
-                    border: 'none',
-                    fontWeight: 700,
-                    fontSize: '12.5px',
                     padding: '7px 18px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: '#ffffff',
+                    background: '#059669',
+                    border: 'none',
                     borderRadius: '8px',
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '6px',
-                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.4)',
+                    boxShadow: '0 1px 2px rgba(5, 150, 105, 0.2)',
                     cursor: (isSubmittingWizard || wizardSelectedDocNos.size === 0) ? 'not-allowed' : 'pointer',
                     opacity: (isSubmittingWizard || wizardSelectedDocNos.size === 0) ? 0.6 : 1
                   }}
                 >
                   {isSubmittingWizard ? (
                     <>
-                      <RefreshCw size={14} className="animate-spin" /> Allocating...
+                      <RefreshCw size={13} className="animate-spin" /> Allocating...
                     </>
                   ) : (
                     <>
-                      <CheckCircle2 size={15} /> Approve & Bulk Allocate ({wizardSelectedDocNos.size} POs)
+                      <CheckCircle2 size={14} /> Approve & Bulk Allocate ({wizardSelectedDocNos.size} POs)
                     </>
                   )}
                 </button>
@@ -5268,27 +5379,39 @@ export default function PurchasingPage() {
           }}>
             {/* Modal Header */}
             <div style={{
-              padding: '16px 22px',
-              borderBottom: '1px solid var(--border)',
+              padding: '16px 24px',
+              borderBottom: '1px solid #e2e8f0',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              background: manualProcDocType === 'PO' ? '#eff6ff' : '#ecfdf5'
+              background: '#f8fafc'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '22px' }}>{manualProcDocType === 'PO' ? '📋' : '📦'}</span>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '8px',
+                  background: '#f1f5f9',
+                  border: '1px solid #e2e8f0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '15px'
+                }}>
+                  {manualProcDocType === 'PO' ? '📋' : '📦'}
+                </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: 'var(--text-primary)' }}>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>
                     Record Paper / Legacy {manualProcDocType === 'PO' ? 'Purchase Orders (PO)' : 'Goods Received Notes (GRN)'}
                   </h3>
-                  <p style={{ margin: 0, fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#64748b' }}>
                     Batch record historical {manualProcDocType} documents directly against order line items to update procurement and receiving progress
                   </p>
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 {/* Switch between PO and GRN mode directly in modal */}
-                <div style={{ display: 'flex', background: 'var(--bg-secondary)', padding: '2px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', background: '#f1f5f9', padding: '2px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                   <button
                     type="button"
                     onClick={() => {
@@ -5300,12 +5423,12 @@ export default function PurchasingPage() {
                     style={{
                       padding: '4px 10px',
                       fontSize: '11px',
-                      fontWeight: 700,
+                      fontWeight: 600,
                       borderRadius: '6px',
                       border: 'none',
                       cursor: 'pointer',
-                      background: manualProcDocType === 'PO' ? '#3b82f6' : 'transparent',
-                      color: manualProcDocType === 'PO' ? '#fff' : 'var(--text-secondary)'
+                      background: manualProcDocType === 'PO' ? '#2563eb' : 'transparent',
+                      color: manualProcDocType === 'PO' ? '#fff' : '#64748b'
                     }}
                   >
                     PO Mode
@@ -5321,12 +5444,12 @@ export default function PurchasingPage() {
                     style={{
                       padding: '4px 10px',
                       fontSize: '11px',
-                      fontWeight: 700,
+                      fontWeight: 600,
                       borderRadius: '6px',
                       border: 'none',
                       cursor: 'pointer',
-                      background: manualProcDocType === 'GRN' ? '#10b981' : 'transparent',
-                      color: manualProcDocType === 'GRN' ? '#fff' : 'var(--text-secondary)'
+                      background: manualProcDocType === 'GRN' ? '#059669' : 'transparent',
+                      color: manualProcDocType === 'GRN' ? '#fff' : '#64748b'
                     }}
                   >
                     GRN Mode
@@ -5336,10 +5459,19 @@ export default function PurchasingPage() {
                 <button
                   type="button"
                   onClick={() => setManualProcurementModalOpen(false)}
-                  className="btn btn-sm btn-ghost"
-                  style={{ padding: '4px', borderRadius: '50%' }}
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    padding: '5px',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
                 >
-                  <X size={18} />
+                  <X size={15} />
                 </button>
               </div>
             </div>
