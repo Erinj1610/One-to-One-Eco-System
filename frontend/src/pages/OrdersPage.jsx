@@ -2928,6 +2928,8 @@ export default function OrdersPage() {
             tag: incoming.tag || existing.tag,
             source: 'takeoff',
             isTakeoffItem: true,
+            firstFix: incoming.firstFix || incoming.first_fix || existing.firstFix || existing.first_fix || 'No',
+            first_fix: incoming.firstFix || incoming.first_fix || existing.firstFix || existing.first_fix || 'No',
             // Retain operational tracking links
             po_ref: existing.po_ref || existing.poRef,
             po_qty_ordered: existing.po_qty_ordered,
@@ -2964,6 +2966,15 @@ export default function OrdersPage() {
 
     setActiveOrderItems(updatedList);
     setWorkspaceSubTab('boq');
+
+    // Auto-persist compiled BOQ lines directly to Cloud SQL backend
+    setTimeout(() => {
+      try {
+        handleSaveOrderSpreadsheet(false, true);
+      } catch (err) {
+        console.warn("Auto-save BOQ after takeoff error:", err);
+      }
+    }, 200);
 
     // Display non-blocking luxury status banner
     const toastMsg = mode === 'replace'
