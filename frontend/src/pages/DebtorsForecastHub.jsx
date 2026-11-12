@@ -171,7 +171,8 @@ export default function DebtorsForecastHub() {
         name: d,
         totalOrderValue: 0,
         invoicedToDate: 0,
-        unInvoicedBalance: 0,
+        toBeInvoiced: 0,
+        outstandingBalance: 0,
         monthBuckets: Array(12).fill(0),
         projects: {}
       };
@@ -218,7 +219,8 @@ export default function DebtorsForecastHub() {
             name: division,
             totalOrderValue: 0,
             invoicedToDate: 0,
-            unInvoicedBalance: 0,
+            toBeInvoiced: 0,
+            outstandingBalance: 0,
             monthBuckets: Array(12).fill(0),
             projects: {}
           };
@@ -232,7 +234,8 @@ export default function DebtorsForecastHub() {
             client: proj.client || order.clientName || 'Direct Client',
             totalOrderValue: 0,
             invoicedToDate: 0,
-            unInvoicedBalance: 0,
+            toBeInvoiced: 0,
+            outstandingBalance: 0,
             monthBuckets: Array(12).fill(0),
             orders: []
           };
@@ -242,7 +245,15 @@ export default function DebtorsForecastHub() {
         const orderVal = Number(order.value || order.totalRetail || order.orderValue || 0);
         const orderInvoiced = Number(order.invoiced || order.totalInvoiced || 0);
         const orderDeposit = Number(order.paid || order.depositValue || 0);
-        const unInvoicedBalance = Math.max(0, orderVal - orderInvoiced);
+        
+        // Exact User Definitions:
+        // 1. To Be Invoiced: Remaining value to be billed (Invoiced + To Be Invoiced = Order Value)
+        const toBeInvoicedVal = Math.max(0, orderVal - orderInvoiced);
+        
+        // 2. Balance: Outstanding cash balance that must still be paid by the client
+        const outstandingBal = order.outstanding !== undefined && order.outstanding !== null
+          ? Number(order.outstanding)
+          : Math.max(0, orderVal - orderDeposit);
 
         // Track final stock ETA across all items on this order
         let latestEtaDate = null;
@@ -304,10 +315,10 @@ export default function DebtorsForecastHub() {
             if (pOrder) {
               latestEtaDate = pOrder.dateObj;
               latestEtaStr = order.eta || order.expected_delivery_date;
-              if (unInvoicedBalance > 0) {
+              if (toBeInvoicedVal > 0) {
                 const colIdx = fyMonths.findIndex(fm => fm.key === pOrder.key);
                 if (colIdx !== -1) {
-                  orderMonthBuckets[colIdx] += unInvoicedBalance;
+                  orderMonthBuckets[colIdx] += toBeInvoicedVal;
                 }
               }
             }
@@ -341,13 +352,13 @@ export default function DebtorsForecastHub() {
             }
           }
 
-          // Place the entire outstanding balance into the month of final stock arrival
-          if (latestEtaDate && unInvoicedBalance > 0) {
+          // Place the order's outstanding cash balance into the month of final stock arrival
+          if (latestEtaDate && outstandingBal > 0) {
             const parsedFinal = parseDateString(latestEtaStr);
             if (parsedFinal) {
               const colIdx = fyMonths.findIndex(fm => fm.key === parsedFinal.key);
               if (colIdx !== -1) {
-                orderMonthBuckets[colIdx] += unInvoicedBalance;
+                orderMonthBuckets[colIdx] += outstandingBal;
               }
             }
           }
@@ -416,8 +427,8 @@ export default function DebtorsForecastHub() {
         let balanceStatus = 'AWAITING_STOCK';
         let daysToStock = null;
 
-        if (unInvoicedBalance <= 0) {
-          balanceStatus = 'FULLY_INVOICED';
+        if (outstandingBal <= 0) {
+          balanceStatus = 'FULLY_SETTLED';
         } else if (latestEtaDate) {
           const diffMs = latestEtaDate.getTime() - today.getTime();
           daysToStock = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
@@ -436,7 +447,8 @@ export default function DebtorsForecastHub() {
           orderNumber: order.orderNumber || order.id,
           orderValue: orderVal,
           invoicedToDate: orderInvoiced,
-          unInvoicedBalance: unInvoicedBalance,
+          toBeInvoiced: toBeInvoicedVal,
+          outstandingBalance: outstandingBal,
           depositReceived: orderDeposit,
           latestEta: latestEtaStr || 'Awaiting ETA',
           daysToStock,
@@ -448,14 +460,16 @@ export default function DebtorsForecastHub() {
         const pNode = divMap[division].projects[projKey];
         pNode.totalOrderValue += orderVal;
         pNode.invoicedToDate += orderInvoiced;
-        pNode.unInvoicedBalance += unInvoicedBalance;
+        pNode.toBeInvoiced += toBeInvoicedVal;
+        pNode.outstandingBalance += outstandingBal;
         orderMonthBuckets.forEach((v, idx) => pNode.monthBuckets[idx] += v);
         pNode.orders.push(orderNode);
 
         // Accumulate into division
         divMap[division].totalOrderValue += orderVal;
         divMap[division].invoicedToDate += orderInvoiced;
-        divMap[division].unInvoicedBalance += unInvoicedBalance;
+        divMap[division].toBeInvoiced += toBeInvoicedVal;
+        divMap[division].outstandingBalance += outstandingBal;
         orderMonthBuckets.forEach((v, idx) => divMap[division].monthBuckets[idx] += v);
       });
     });
@@ -467,7 +481,8 @@ export default function DebtorsForecastHub() {
   const summaryKPIs = useMemo(() => {
     let grandOrderVal = 0;
     let grandInvoiced = 0;
-    let grandUnInvoiced = 0;
+    let grandToBeInvoiced = 0;
+    let grandOutstandingBal = 0;
     let readyCount = 0;
     let readyValue = 0;
     let fyTotalProjected = 0;
@@ -475,14 +490,15 @@ export default function DebtorsForecastHub() {
     pivotTreeData.forEach(d => {
       grandOrderVal += d.totalOrderValue;
       grandInvoiced += d.invoicedToDate;
-      grandUnInvoiced += d.unInvoicedBalance;
+      grandToBeInvoiced += d.toBeInvoiced;
+      grandOutstandingBal += d.outstandingBalance;
       fyTotalProjected += d.monthBuckets.reduce((a, b) => a + b, 0);
 
       Object.values(d.projects).forEach(p => {
         p.orders.forEach(o => {
           if (o.balanceStatus === 'READY_FOR_BALANCE') {
             readyCount++;
-            readyValue += o.unInvoicedBalance;
+            readyValue += o.outstandingBalance;
           }
         });
       });
@@ -491,7 +507,8 @@ export default function DebtorsForecastHub() {
     return {
       grandOrderVal,
       grandInvoiced,
-      grandUnInvoiced,
+      grandToBeInvoiced,
+      grandOutstandingBal,
       readyCount,
       readyValue,
       fyTotalProjected
@@ -539,9 +556,10 @@ export default function DebtorsForecastHub() {
         'Hierarchy Level': 'DIVISION',
         'Name': d.name,
         'Client': '',
-        'Total Order Value': d.totalOrderValue,
-        'Invoiced to Date': d.invoicedToDate,
-        'Un-invoiced Balance': d.unInvoicedBalance
+        'Order Value': d.totalOrderValue,
+        'Invoiced': d.invoicedToDate,
+        'To Be Invoiced': d.toBeInvoiced,
+        'Balance (Outstanding)': d.outstandingBalance
       };
       fyMonths.forEach((fm, idx) => {
         divRow[fm.label] = d.monthBuckets[idx];
@@ -554,9 +572,10 @@ export default function DebtorsForecastHub() {
           'Hierarchy Level': '  PROJECT',
           'Name': p.name,
           'Client': p.client,
-          'Total Order Value': p.totalOrderValue,
-          'Invoiced to Date': p.invoicedToDate,
-          'Un-invoiced Balance': p.unInvoicedBalance
+          'Order Value': p.totalOrderValue,
+          'Invoiced': p.invoicedToDate,
+          'To Be Invoiced': p.toBeInvoiced,
+          'Balance (Outstanding)': p.outstandingBalance
         };
         fyMonths.forEach((fm, idx) => {
           projRow[fm.label] = p.monthBuckets[idx];
@@ -569,9 +588,10 @@ export default function DebtorsForecastHub() {
             'Hierarchy Level': '    ORDER',
             'Name': o.orderName,
             'Client': p.client,
-            'Total Order Value': o.orderValue,
-            'Invoiced to Date': o.invoicedToDate,
-            'Un-invoiced Balance': o.unInvoicedBalance
+            'Order Value': o.orderValue,
+            'Invoiced': o.invoicedToDate,
+            'To Be Invoiced': o.toBeInvoiced,
+            'Balance (Outstanding)': o.outstandingBalance
           };
           fyMonths.forEach((fm, idx) => {
             ordRow[fm.label] = o.monthBuckets[idx];
@@ -591,7 +611,7 @@ export default function DebtorsForecastHub() {
   };
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1800px', margin: '0 auto', color: 'var(--text-primary)' }}>
+    <div style={{ padding: '24px', maxWidth: '1850px', margin: '0 auto', color: 'var(--text-primary)' }}>
       
       {/* TOP HEADER & NAVIGATION */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '14px' }}>
@@ -736,17 +756,17 @@ export default function DebtorsForecastHub() {
       </div>
 
       {/* KPI METRIC CARDS */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '24px' }}>
         <div style={{ background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '12px', padding: '16px 20px' }}>
-          <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 700 }}>Total Ongoing Portfolio</span>
+          <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 700 }}>Total Order Value</span>
           <div style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px' }}>
             {formatZar(summaryKPIs.grandOrderVal)}
           </div>
-          <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600 }}>Active orders awaiting completion</span>
+          <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600 }}>Active production orders</span>
         </div>
 
         <div style={{ background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '12px', padding: '16px 20px' }}>
-          <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 700 }}>Total Invoiced to Date</span>
+          <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 700 }}>Invoiced to Date</span>
           <div style={{ fontSize: '22px', fontWeight: 800, color: '#3b82f6', marginTop: '4px' }}>
             {formatZar(summaryKPIs.grandInvoiced)}
           </div>
@@ -756,13 +776,19 @@ export default function DebtorsForecastHub() {
         </div>
 
         <div style={{ background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '12px', padding: '16px 20px' }}>
-          <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 700 }}>
-            {activeReportMode === 'INVOICED_DONE' ? 'FY Invoiced Total' : 'FY Projected Invoicing'}
-          </span>
-          <div style={{ fontSize: '22px', fontWeight: 800, color: activeReportMode === 'INVOICED_DONE' ? '#3b82f6' : '#f59e0b', marginTop: '4px' }}>
-            {formatZar(summaryKPIs.fyTotalProjected)}
+          <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 700 }}>To Be Invoiced</span>
+          <div style={{ fontSize: '22px', fontWeight: 800, color: '#f59e0b', marginTop: '4px' }}>
+            {formatZar(summaryKPIs.grandToBeInvoiced)}
           </div>
-          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>12-month FY total across all columns</span>
+          <span style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 600 }}>Invoiced + To Be Invoiced = Order Value</span>
+        </div>
+
+        <div style={{ background: 'var(--bg-secondary)', border: '1.5px solid var(--border)', borderRadius: '12px', padding: '16px 20px' }}>
+          <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', fontWeight: 700 }}>Balance (Outstanding)</span>
+          <div style={{ fontSize: '22px', fontWeight: 800, color: '#ec4899', marginTop: '4px' }}>
+            {formatZar(summaryKPIs.grandOutstandingBal)}
+          </div>
+          <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Outstanding client payment balance</span>
         </div>
 
         <div style={{ background: 'rgba(16, 185, 129, 0.05)', border: '1.5px solid rgba(16, 185, 129, 0.3)', borderRadius: '12px', padding: '16px 20px' }}>
@@ -822,7 +848,7 @@ export default function DebtorsForecastHub() {
             <option value="READY">🟢 Ready for Balance Invoice (&le; 7 Days)</option>
             <option value="IN_TRANSIT">🟡 In Transit / Awaiting Stock</option>
             <option value="NO_ETA">⚪ Awaiting ETA</option>
-            <option value="FULLY_INVOICED">✅ Fully Invoiced</option>
+            <option value="FULLY_SETTLED">✅ Fully Settled</option>
           </select>
         </div>
       </div>
@@ -833,20 +859,21 @@ export default function DebtorsForecastHub() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
             <thead>
               <tr style={{ background: 'var(--bg-primary)', borderBottom: '1.5px solid var(--border)', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '11px', textTransform: 'uppercase' }}>
-                <th style={{ padding: '12px 16px', minWidth: '320px' }}>Division / Project / Order Hierarchy</th>
-                <th style={{ padding: '12px 12px', textAlign: 'right', minWidth: '110px' }}>Order Value</th>
-                <th style={{ padding: '12px 12px', textAlign: 'right', minWidth: '110px' }}>Invoiced</th>
-                <th style={{ padding: '12px 12px', textAlign: 'right', minWidth: '120px' }}>Balance</th>
+                <th style={{ padding: '12px 16px', minWidth: '300px' }}>Division / Project / Order Hierarchy</th>
+                <th style={{ padding: '12px 11px', textAlign: 'right', minWidth: '105px' }}>Order Value</th>
+                <th style={{ padding: '12px 11px', textAlign: 'right', minWidth: '105px' }}>Invoiced</th>
+                <th style={{ padding: '12px 11px', textAlign: 'right', minWidth: '110px', color: '#f59e0b' }}>To Be Invoiced</th>
+                <th style={{ padding: '12px 11px', textAlign: 'right', minWidth: '115px', color: '#ec4899' }}>Balance</th>
                 
                 {/* 12 FY MONTH HEADERS */}
                 {fyMonths.map(fm => (
-                  <th key={fm.key} style={{ padding: '12px 10px', textAlign: 'right', minWidth: '95px' }}>
+                  <th key={fm.key} style={{ padding: '12px 9px', textAlign: 'right', minWidth: '92px' }}>
                     {fm.label}
                   </th>
                 ))}
 
-                <th style={{ padding: '12px 12px', textAlign: 'right', minWidth: '115px', color: 'var(--text-primary)' }}>FY Total</th>
-                <th style={{ padding: '12px 12px', textAlign: 'center', minWidth: '110px' }}>Final ETA</th>
+                <th style={{ padding: '12px 11px', textAlign: 'right', minWidth: '110px', color: 'var(--text-primary)' }}>FY Total</th>
+                <th style={{ padding: '12px 11px', textAlign: 'center', minWidth: '110px' }}>Final ETA</th>
                 <th style={{ padding: '12px 16px', textAlign: 'center', minWidth: '170px' }}>Readiness Alert</th>
               </tr>
             </thead>
@@ -894,23 +921,24 @@ export default function DebtorsForecastHub() {
                           ({projectList.length} ongoing projects)
                         </span>
                       </td>
-                      <td style={{ padding: '12px 12px', textAlign: 'right' }}>{formatZar(divisionNode.totalOrderValue)}</td>
-                      <td style={{ padding: '12px 12px', textAlign: 'right', color: '#3b82f6' }}>{formatZar(divisionNode.invoicedToDate)}</td>
-                      <td style={{ padding: '12px 12px', textAlign: 'right', color: '#f59e0b' }}>{formatZar(divisionNode.unInvoicedBalance)}</td>
+                      <td style={{ padding: '12px 11px', textAlign: 'right' }}>{formatZar(divisionNode.totalOrderValue)}</td>
+                      <td style={{ padding: '12px 11px', textAlign: 'right', color: '#3b82f6' }}>{formatZar(divisionNode.invoicedToDate)}</td>
+                      <td style={{ padding: '12px 11px', textAlign: 'right', color: '#f59e0b' }}>{formatZar(divisionNode.toBeInvoiced)}</td>
+                      <td style={{ padding: '12px 11px', textAlign: 'right', color: '#ec4899' }}>{formatZar(divisionNode.outstandingBalance)}</td>
                       
                       {/* 12 FY MONTH VALUES */}
                       {divisionNode.monthBuckets.map((v, mIdx) => (
-                        <td key={mIdx} style={{ padding: '12px 10px', textAlign: 'right', color: v > 0 ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
+                        <td key={mIdx} style={{ padding: '12px 9px', textAlign: 'right', color: v > 0 ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
                           {v > 0 ? formatZar(v) : '—'}
                         </td>
                       ))}
 
-                      <td style={{ padding: '12px 12px', textAlign: 'right', fontWeight: 800, color: '#10b981' }}>
+                      <td style={{ padding: '12px 11px', textAlign: 'right', fontWeight: 800, color: '#10b981' }}>
                         {formatZar(divFyTotal)}
                       </td>
-                      <td style={{ padding: '12px 12px', textAlign: 'center', color: 'var(--text-tertiary)' }}>—</td>
+                      <td style={{ padding: '12px 11px', textAlign: 'center', color: 'var(--text-tertiary)' }}>—</td>
                       <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                        {divisionNode.unInvoicedBalance > 0 ? (
+                        {divisionNode.toBeInvoiced > 0 ? (
                           <span style={{ fontSize: '11px', color: '#10b981', fontWeight: 600 }}>Active Ongoing Pipeline</span>
                         ) : (
                           <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>—</span>
@@ -927,7 +955,7 @@ export default function DebtorsForecastHub() {
                         if (balanceReadinessFilter === 'READY' && o.balanceStatus !== 'READY_FOR_BALANCE') return false;
                         if (balanceReadinessFilter === 'IN_TRANSIT' && o.balanceStatus !== 'IN_TRANSIT') return false;
                         if (balanceReadinessFilter === 'NO_ETA' && o.balanceStatus !== 'NO_ETA') return false;
-                        if (balanceReadinessFilter === 'FULLY_INVOICED' && o.balanceStatus !== 'FULLY_INVOICED') return false;
+                        if (balanceReadinessFilter === 'FULLY_SETTLED' && o.balanceStatus !== 'FULLY_SETTLED') return false;
 
                         if (searchQuery.trim()) {
                           const q = searchQuery.toLowerCase();
@@ -967,21 +995,22 @@ export default function DebtorsForecastHub() {
                                 {projNode.client}
                               </span>
                             </td>
-                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>{formatZar(projNode.totalOrderValue)}</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'right', color: '#3b82f6', fontWeight: 600 }}>{formatZar(projNode.invoicedToDate)}</td>
-                            <td style={{ padding: '10px 12px', textAlign: 'right', color: '#f59e0b', fontWeight: 600 }}>{formatZar(projNode.unInvoicedBalance)}</td>
+                            <td style={{ padding: '10px 11px', textAlign: 'right', fontWeight: 600 }}>{formatZar(projNode.totalOrderValue)}</td>
+                            <td style={{ padding: '10px 11px', textAlign: 'right', color: '#3b82f6', fontWeight: 600 }}>{formatZar(projNode.invoicedToDate)}</td>
+                            <td style={{ padding: '10px 11px', textAlign: 'right', color: '#f59e0b', fontWeight: 600 }}>{formatZar(projNode.toBeInvoiced)}</td>
+                            <td style={{ padding: '10px 11px', textAlign: 'right', color: '#ec4899', fontWeight: 600 }}>{formatZar(projNode.outstandingBalance)}</td>
                             
                             {/* 12 FY MONTHS FOR PROJECT */}
                             {projNode.monthBuckets.map((v, mIdx) => (
-                              <td key={mIdx} style={{ padding: '10px 10px', textAlign: 'right', color: v > 0 ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
+                              <td key={mIdx} style={{ padding: '10px 9px', textAlign: 'right', color: v > 0 ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
                                 {v > 0 ? formatZar(v) : '—'}
                               </td>
                             ))}
 
-                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: '#10b981' }}>
+                            <td style={{ padding: '10px 11px', textAlign: 'right', fontWeight: 700, color: '#10b981' }}>
                               {formatZar(projFyTotal)}
                             </td>
-                            <td style={{ padding: '10px 12px', textAlign: 'center', color: 'var(--text-tertiary)' }}>—</td>
+                            <td style={{ padding: '10px 11px', textAlign: 'center', color: 'var(--text-tertiary)' }}>—</td>
                             <td style={{ padding: '10px 16px', textAlign: 'center' }}>
                               <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                                 {matchingOrders.length} order{matchingOrders.length === 1 ? '' : 's'}
@@ -1007,22 +1036,23 @@ export default function DebtorsForecastHub() {
                                     <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{orderNode.orderName}</span>
                                   </div>
                                 </td>
-                                <td style={{ padding: '9px 12px', textAlign: 'right', color: 'var(--text-secondary)' }}>{formatZar(orderNode.orderValue)}</td>
-                                <td style={{ padding: '9px 12px', textAlign: 'right', color: '#3b82f6' }}>{formatZar(orderNode.invoicedToDate)}</td>
-                                <td style={{ padding: '9px 12px', textAlign: 'right', color: '#f59e0b', fontWeight: 600 }}>{formatZar(orderNode.unInvoicedBalance)}</td>
+                                <td style={{ padding: '9px 11px', textAlign: 'right', color: 'var(--text-secondary)' }}>{formatZar(orderNode.orderValue)}</td>
+                                <td style={{ padding: '9px 11px', textAlign: 'right', color: '#3b82f6' }}>{formatZar(orderNode.invoicedToDate)}</td>
+                                <td style={{ padding: '9px 11px', textAlign: 'right', color: '#f59e0b', fontWeight: 600 }}>{formatZar(orderNode.toBeInvoiced)}</td>
+                                <td style={{ padding: '9px 11px', textAlign: 'right', color: '#ec4899', fontWeight: 600 }}>{formatZar(orderNode.outstandingBalance)}</td>
                                 
                                 {/* 12 FY MONTHS FOR ORDER */}
                                 {orderNode.monthBuckets.map((v, mIdx) => (
-                                  <td key={mIdx} style={{ padding: '9px 10px', textAlign: 'right', color: v > 0 ? 'var(--text-primary)' : 'var(--text-tertiary)', fontWeight: v > 0 ? 600 : 400 }}>
+                                  <td key={mIdx} style={{ padding: '9px 9px', textAlign: 'right', color: v > 0 ? 'var(--text-primary)' : 'var(--text-tertiary)', fontWeight: v > 0 ? 600 : 400 }}>
                                     {v > 0 ? formatZar(v) : '—'}
                                   </td>
                                 ))}
 
-                                <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: '#10b981' }}>
+                                <td style={{ padding: '9px 11px', textAlign: 'right', fontWeight: 700, color: '#10b981' }}>
                                   {formatZar(orderFyTotal)}
                                 </td>
 
-                                <td style={{ padding: '9px 12px', textAlign: 'center' }}>
+                                <td style={{ padding: '9px 11px', textAlign: 'center' }}>
                                   <span style={{ 
                                     fontFamily: 'monospace', 
                                     fontSize: '11px', 
@@ -1082,7 +1112,7 @@ export default function DebtorsForecastHub() {
                                       Awaiting ETA
                                     </span>
                                   )}
-                                  {orderNode.balanceStatus === 'FULLY_INVOICED' && (
+                                  {orderNode.balanceStatus === 'FULLY_SETTLED' && (
                                     <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>
                                       Fully Settled
                                     </span>
@@ -1101,23 +1131,24 @@ export default function DebtorsForecastHub() {
               {/* GRAND TOTAL ROW */}
               <tr style={{ background: 'rgba(0, 0, 0, 0.04)', borderTop: '2px solid var(--border)', fontWeight: 800, fontSize: '12.5px' }}>
                 <td style={{ padding: '14px 16px' }}>GRAND TOTAL</td>
-                <td style={{ padding: '14px 12px', textAlign: 'right' }}>{formatZar(summaryKPIs.grandOrderVal)}</td>
-                <td style={{ padding: '14px 12px', textAlign: 'right', color: '#3b82f6' }}>{formatZar(summaryKPIs.grandInvoiced)}</td>
-                <td style={{ padding: '14px 12px', textAlign: 'right', color: '#f59e0b' }}>{formatZar(summaryKPIs.grandUnInvoiced)}</td>
+                <td style={{ padding: '14px 11px', textAlign: 'right' }}>{formatZar(summaryKPIs.grandOrderVal)}</td>
+                <td style={{ padding: '14px 11px', textAlign: 'right', color: '#3b82f6' }}>{formatZar(summaryKPIs.grandInvoiced)}</td>
+                <td style={{ padding: '14px 11px', textAlign: 'right', color: '#f59e0b' }}>{formatZar(summaryKPIs.grandToBeInvoiced)}</td>
+                <td style={{ padding: '14px 11px', textAlign: 'right', color: '#ec4899' }}>{formatZar(summaryKPIs.grandOutstandingBal)}</td>
                 
                 {fyMonths.map((fm, mIdx) => {
                   const mSum = pivotTreeData.reduce((s, d) => s + (d.monthBuckets[mIdx] || 0), 0);
                   return (
-                    <td key={fm.key} style={{ padding: '14px 10px', textAlign: 'right', fontWeight: 700 }}>
+                    <td key={fm.key} style={{ padding: '14px 9px', textAlign: 'right', fontWeight: 700 }}>
                       {mSum > 0 ? formatZar(mSum) : '—'}
                     </td>
                   );
                 })}
 
-                <td style={{ padding: '14px 12px', textAlign: 'right', color: '#10b981', fontWeight: 800 }}>
+                <td style={{ padding: '14px 11px', textAlign: 'right', color: '#10b981', fontWeight: 800 }}>
                   {formatZar(summaryKPIs.fyTotalProjected)}
                 </td>
-                <td style={{ padding: '14px 12px', textAlign: 'center', color: 'var(--text-tertiary)' }}>—</td>
+                <td style={{ padding: '14px 11px', textAlign: 'center', color: 'var(--text-tertiary)' }}>—</td>
                 <td style={{ padding: '14px 16px', textAlign: 'center', color: '#10b981' }}>
                   {summaryKPIs.readyCount} Ready to Bill
                 </td>
