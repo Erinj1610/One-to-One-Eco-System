@@ -1640,14 +1640,22 @@ export default function OrdersPage() {
     if (location.state?.projectKey) {
       setProjectFilterKey(location.state.projectKey);
     }
-    if (location.state?.openOrderId && handledOpenOrderRef.current !== location.state.openOrderId) {
+    const requestedOrderId = location.state?.openOrderId || location.state?.selectedOrderId;
+    if (requestedOrderId && handledOpenOrderRef.current !== requestedOrderId) {
       // Find the specific quotation
-      const targetOrder = allOrders.find(o => o.id === location.state.openOrderId);
+      const targetOrder = allOrders.find(o => o.id === requestedOrderId);
       if (targetOrder) {
-        handledOpenOrderRef.current = location.state.openOrderId;
+        handledOpenOrderRef.current = requestedOrderId;
         handleOpenWorkspace(targetOrder);
         if (location.state?.initialSubTab) {
           setWorkspaceSubTab(location.state.initialSubTab);
+        }
+      } else if (allOrders.length > 0) {
+        // Fallback: order object might still be resolving; set selectedOrderId directly
+        handledOpenOrderRef.current = requestedOrderId;
+        setSelectedOrderId(requestedOrderId);
+        if (location.state?.selectedProjectKey) {
+          setSelectedProjectKey(location.state.selectedProjectKey);
         }
       }
     }

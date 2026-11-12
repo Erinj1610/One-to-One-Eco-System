@@ -73,33 +73,34 @@ export default function CommandPalette() {
   const dynamicItems = [];
 
   // Add projects
-  Object.values(projects || {}).forEach(proj => {
-    if (proj?.name) {
+  Object.entries(projects || {}).forEach(([pKey, proj]) => {
+    if (proj && typeof proj === 'object' && proj.name) {
+      const targetKey = proj.key || pKey || proj.id;
       dynamicItems.push({
-        id: `proj-${proj.key || proj.id}`,
+        id: `proj-${targetKey}`,
         type: 'project',
         title: proj.name,
         subtitle: `Project • ${proj.client || 'Client Direct'} • ${proj.stage || 'Active'}`,
         icon: Folder,
-        path: `/projects/${proj.key || proj.id}`
+        path: `/projects/${targetKey}`
+      });
+
+      // Add orders inside projects
+      const ordersList = Array.isArray(proj?.orders) ? proj.orders : Object.values(proj?.orders || {});
+      ordersList.forEach(order => {
+        if (order?.id) {
+          dynamicItems.push({
+            id: `order-${order.id}`,
+            type: 'order',
+            title: `${order.id} — ${order.quote_name || order.quoteName || 'Order'}`,
+            subtitle: `Order • ${proj.name} • ${order.status || 'Active'}`,
+            icon: FileText,
+            path: '/orders',
+            state: { openOrderId: order.id, selectedOrderId: order.id, selectedProjectKey: targetKey }
+          });
+        }
       });
     }
-
-    // Add orders inside projects
-    const ordersList = Array.isArray(proj?.orders) ? proj.orders : Object.values(proj?.orders || {});
-    ordersList.forEach(order => {
-      if (order?.id) {
-        dynamicItems.push({
-          id: `order-${order.id}`,
-          type: 'order',
-          title: `${order.id} — ${order.quote_name || order.quoteName || 'Order'}`,
-          subtitle: `Order • ${proj.name} • ${order.status || 'Active'}`,
-          icon: FileText,
-          path: '/orders',
-          state: { selectedOrderId: order.id, selectedProjectKey: proj.key }
-        });
-      }
-    });
   });
 
   // Add top contacts/clients
