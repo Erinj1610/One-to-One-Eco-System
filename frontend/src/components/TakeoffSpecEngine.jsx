@@ -957,26 +957,99 @@ export default function TakeoffSpecEngine({
     const lines = pasteRawText.trim().split(/\r?\n/);
     const parsedRows = [];
     
+    // Header detection & index mapping
+    let colMap = null; // { floor, area, tag, type, firstFix, qty, notes }
+
     lines.forEach((line, idx) => {
       if (!line.trim()) return;
       let parts = line.split('\t');
       if (parts.length < 2) parts = line.split(',');
       if (parts.length < 2) parts = line.split(';');
 
+      parts = parts.map(p => p.trim());
+
       // Auto-detect header row
       const lineLower = line.toLowerCase();
-      if (idx === 0 && (lineLower.includes('tag') || lineLower.includes('floor') || lineLower.includes('qty'))) {
-        return;
+      if (idx === 0 && (lineLower.includes('floor') || lineLower.includes('room') || lineLower.includes('area') || lineLower.includes('tag') || lineLower.includes('qty'))) {
+        colMap = {};
+        parts.forEach((col, cIdx) => {
+          const c = col.toLowerCase();
+          if (c.includes('floor')) colMap.floor = cIdx;
+          else if (c.includes('room') || c.includes('area')) colMap.area = cIdx;
+          else if (c.includes('tag') || c.includes('code')) colMap.tag = cIdx;
+          else if (c.includes('type')) colMap.type = cIdx;
+          else if (c.includes('fix') || c === 'ff') colMap.firstFix = cIdx;
+          else if (c.includes('qty') || c.includes('length') || c.includes('count')) colMap.qty = cIdx;
+          else if (c.includes('note') || c.includes('mount') || c.includes('desc')) colMap.notes = cIdx;
+        });
+        return; // skip header row
       }
 
-      const tag = (parts[0] || '').trim().toUpperCase();
-      const floor = (parts[1] || 'Ground').trim();
-      const area = (parts[2] || 'Area ' + (idx + 1)).trim();
-      const qty = parseFloat(parts[3] || '1') || 1;
-      const notes = (parts[4] || '').trim();
-      const rawType = (parts[5] || '').trim().toLowerCase();
+      let floor = 'Ground';
+      let area = 'General';
+      let tag = '';
+      let rawType = '';
+      let rawFirstFix = 'No';
+      let rawQty = '1';
+      let notes = '';
 
-      // Determine itemType: explicit column 6, or inferred from tag, notes, or unit
+      if (colMap && colMap.tag !== undefined) {
+        // Mapped via explicit header row
+        if (colMap.floor !== undefined) floor = parts[colMap.floor] || floor;
+        if (colMap.area !== undefined) area = parts[colMap.area] || area;
+        tag = (parts[colMap.tag] || '').toUpperCase();
+        if (colMap.type !== undefined) rawType = (parts[colMap.type] || '').toLowerCase();
+        if (colMap.firstFix !== undefined) rawFirstFix = parts[colMap.firstFix] || 'No';
+        if (colMap.qty !== undefined) rawQty = parts[colMap.qty] || '1';
+        if (colMap.notes !== undefined) notes = parts[colMap.notes] || '';
+      } else {
+        // Fallback: Check if parts[0] looks like a Floor or a Tag
+        // Natural layout: Floor (0), Room (1), Tag (2), Type (3), FirstFix (4), Qty (5), Notes (6)
+        // Legacy layout: Tag (0), Floor (1), Room (2), Qty (3), Notes (4), Type (5)
+        const p0Upper = (parts[0] || '').toUpperCase();
+        const p2Upper = (parts[2] || '').toUpperCase();
+        const isNaturalLayout = parts.length >= 3 && (
+          ['GROUND', 'BASEMENT', 'FIRST', 'SECOND', 'LEVEL', 'ROOF', 'EXTERIOR'].some(f => p0Upper.includes(f)) ||
+          p2Upper.match(/^[A-Z]{1,4}[0-9]{0,3}$/)
+        );
+
+        if (isNaturalLayout) {
+          floor = parts[0] || 'Ground';
+          area = parts[1] || 'General';
+          tag = (parts[2] || '').toUpperCase();
+          rawType = (parts[3] || '').toLowerCase();
+          rawFirstFix = parts[4] || 'No';
+          rawQty = parts[5] || '1';
+          notes = parts.slice(6).join(' ').trim();
+        } else {
+          // Legacy Tag-first
+          tag = (parts[0] || '').toUpperCase();
+          floor = parts[1] || 'Ground';
+          area = parts[2] || 'Area ' + (idx + 1);
+          rawQty = parts[3] || '1';
+          notes = parts[4] || '';
+          rawType = (parts[5] || '').toLowerCase();
+        }
+      }
+
+      // Parse multi-run math or float
+      let parsedQty = 1;
+      let extraNotes = '';
+      if (typeof rawQty === 'string' && rawQty.includes('+')) {
+        const cuts = rawQty.split('+').map(p => parseFloat(p.trim())).filter(n => !isNaN(n) && n > 0);
+        if (cuts.length > 1) {
+          parsedQty = Math.round(cuts.reduce((a, b) => a + b, 0) * 100) / 100;
+          extraNotes = `${cuts.length} runs (${cuts.map(c => `${c.toFixed(2)}m`).join(' + ')})`;
+        }
+      } else {
+        parsedQty = Math.max(0.01, parseFloat(rawQty) || 1);
+      }
+
+      // Parse First Fix
+      const ffLower = (rawFirstFix || '').toLowerCase();
+      const firstFix = (ffLower === 'yes' || ffLower === 'y' || ffLower === 'ff' || ffLower.includes('first')) ? 'Yes' : 'No';
+
+      // Inferred or explicit itemType
       let itemType = 'fixture';
       if (rawType.includes('led') || rawType.includes('linear') || rawType.includes('strip')) {
         itemType = 'linear_led';
@@ -985,15 +1058,16 @@ export default function TakeoffSpecEngine({
       } else if (rawType.includes('fit') || rawType.includes('downlight') || rawType.includes('spot')) {
         itemType = 'fixture';
       } else {
-        // Inferred from tag or notes
         const u = tag.toUpperCase();
         const n = notes.toLowerCase();
-        if (u.startsWith('LC') || u.startsWith('LJ') || u.startsWith('L-') || u.startsWith('LED') || u.startsWith('LF') || u.startsWith('LIN') || n.includes('strip') || n.includes('extrusion') || n.includes('profile') || n.includes('linear') || n.includes('cove')) {
+        if (u.startsWith('LC') || u.startsWith('LJ') || u.startsWith('L-') || u.startsWith('LED') || u.startsWith('LF') || u.startsWith('LIN') || n.includes('strip') || n.includes('extrusion') || n.includes('linear') || extraNotes) {
           itemType = 'linear_led';
         } else if (u.startsWith('TRK') || u.startsWith('TRACK') || n.includes('track')) {
           itemType = 'track_system';
         }
       }
+
+      const finalNotes = notes ? (extraNotes ? `${notes} | ${extraNotes}` : notes) : extraNotes;
 
       if (tag) {
         parsedRows.push({
@@ -1001,10 +1075,11 @@ export default function TakeoffSpecEngine({
           tag,
           itemType,
           unit: itemType === 'fixture' ? 'pcs' : 'm',
+          firstFix,
           floor,
           area,
-          qty: Math.max(0.01, qty),
-          notes
+          qty: parsedQty,
+          notes: finalNotes
         });
       }
     });
@@ -1013,13 +1088,13 @@ export default function TakeoffSpecEngine({
       setCountUpRows(prev => [...prev, ...parsedRows]);
       alert(`Successfully imported ${parsedRows.length} count-up lines from clipboard!`);
     } else {
-      alert("Could not parse rows. Please ensure columns are: Tag, Floor, Area, Quantity, Notes, (optional Type).");
+      alert("Could not parse rows. Please ensure columns include Floor, Room, Tag, and Quantity.");
     }
     setPasteRawText('');
     setShowPasteModal(false);
   };
 
-  // CAD Import Handler (Append or Replace)
+    // CAD Import Handler (Append or Replace)
   const handleCadImport = (items, mode) => {
     if (!items || !items.length) return;
     const newRows = items.map((item, idx) => ({
@@ -2739,11 +2814,11 @@ export default function TakeoffSpecEngine({
 
         return {
           'Line #': idx + 1,
+          'Floor Level': row.floor || 'Ground Floor',
+          'Room / Area': row.area || 'General',
           'Plan Tag / Code': tag,
           'Type': typeLabel,
           'First Fix': row.firstFix === 'Yes' ? 'Yes (FF)' : 'No',
-          'Floor Level': row.floor || 'Ground Floor',
-          'Room / Area': row.area || 'General',
           'Qty / Length': qtyNum,
           'Unit': unit,
           'Mounting & Notes': row.notes || '',
@@ -2756,11 +2831,11 @@ export default function TakeoffSpecEngine({
       const wsSchedule = XLSX.utils.json_to_sheet(scheduleData);
       wsSchedule['!cols'] = [
         { wch: 8 },  // Line #
+        { wch: 16 }, // Floor Level
+        { wch: 24 }, // Room / Area
         { wch: 16 }, // Plan Tag
         { wch: 14 }, // Type
         { wch: 12 }, // First Fix
-        { wch: 16 }, // Floor Level
-        { wch: 24 }, // Room / Area
         { wch: 12 }, // Qty / Length
         { wch: 8 },  // Unit
         { wch: 32 }, // Mounting & Notes
@@ -2979,11 +3054,11 @@ export default function TakeoffSpecEngine({
       return `
         <tr style="background:${bg};border-bottom:1px solid #e2e8f0;">
           <td style="padding:6px 8px;text-align:center;color:#64748b;font-size:8pt;">${idx + 1}</td>
+          <td style="padding:6px 8px;font-size:8.5pt;">${r.floor || '-'}</td>
+          <td style="padding:6px 8px;font-size:8.5pt;font-weight:600;color:#0f172a;">${r.area || '-'}</td>
           <td style="padding:6px 8px;font-family:monospace;font-weight:700;color:#1d4ed8;font-size:9pt;">${tag}</td>
           <td style="padding:6px 8px;font-size:8.5pt;">${typeBadge}</td>
           <td style="padding:6px 8px;text-align:center;font-size:8pt;">${ffBadge}</td>
-          <td style="padding:6px 8px;font-size:8.5pt;">${r.floor || '-'}</td>
-          <td style="padding:6px 8px;font-size:8.5pt;font-weight:600;color:#0f172a;">${r.area || '-'}</td>
           <td style="padding:6px 8px;text-align:center;font-weight:700;font-size:9pt;">${qtyStr}</td>
           <td style="padding:6px 8px;font-size:8pt;color:#334155;">${notes}</td>
           <td style="padding:6px 8px;font-size:8pt;color:#475569;">${mapping}</td>
@@ -3045,11 +3120,11 @@ export default function TakeoffSpecEngine({
           <thead>
             <tr>
               <th style="width:4%;text-align:center;">#</th>
+              <th style="width:13%;">Floor</th>
+              <th style="width:18%;">Room / Area</th>
               <th style="width:9%;">Tag</th>
               <th style="width:11%;">Type</th>
               <th style="width:8%;text-align:center;">First Fix</th>
-              <th style="width:13%;">Floor</th>
-              <th style="width:18%;">Room / Area</th>
               <th style="width:10%;text-align:center;">Qty / Length</th>
               <th style="width:16%;">Mounting & Notes</th>
               <th style="width:11%;">Catalog Mapping</th>
