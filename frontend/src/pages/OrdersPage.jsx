@@ -3211,26 +3211,35 @@ export default function OrdersPage() {
           <MobileOrdersViewer orders={allOrders} onRefresh={refreshProjects} />
         ) : (
         <div style={{ width: '100%' }}>
-          <div className="card" style={{ marginBottom: '16px', background: 'var(--bg-primary)' }}>
-            <div className="card-body" style={{ padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div className="av-md" style={{ background: 'rgba(24, 95, 165, 0.1)', color: 'var(--text-info)' }}>
-                  <ClipboardList size={18} />
+          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px 20px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', background: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                    ORDERS SUITE
+                  </span>
+                  <span style={{ fontSize: '11.5px', color: '#64748b' }}>Central Quotations & Area-by-Area BOQ Builder</span>
                 </div>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Orders Module</h2>
-                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Central Quotations & Area-by-Area BOQ Builder</div>
-                </div>
+                <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em' }}>
+                  Orders & Quotations Hub
+                </h1>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 {/* Date Filters */}
-                <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: '6px', padding: '2px', border: '0.5px solid var(--border)' }}>
+                <div style={{ display: 'flex', background: '#f8fafc', borderRadius: '8px', padding: '3px', border: '1px solid #e2e8f0' }}>
                   {['All Time', 'Last Week', 'Last 30 Days', 'Financial Year'].map(preset => (
                     <button 
                       key={preset} 
-                      className={`btn btn-sm ${datePreset === preset ? 'btn-primary' : 'btn-ghost'}`} 
-                      style={{ border: 'none', background: datePreset === preset ? 'var(--text-info)' : 'none', color: datePreset === preset ? 'white' : 'var(--text-secondary)' }}
+                      className="btn btn-sm"
+                      style={{ 
+                        border: 'none', 
+                        background: datePreset === preset ? '#0f172a' : 'transparent', 
+                        color: datePreset === preset ? '#ffffff' : '#64748b',
+                        fontWeight: datePreset === preset ? 600 : 500,
+                        fontSize: '11.5px',
+                        borderRadius: '6px',
+                        padding: '4px 10px'
+                      }}
                       onClick={() => applyPreset(preset)}
                     >
                       {preset}
@@ -3239,23 +3248,23 @@ export default function OrdersPage() {
                 </div>
 
                 {/* Custom Date Inputs */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', borderLeft: '1px solid var(--border)', paddingLeft: '8px' }}>
-                  <Calendar size={13} color="var(--text-tertiary)" />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '1px solid #e2e8f0', paddingLeft: '10px' }}>
+                  <Calendar size={13} color="#94a3b8" />
                   <input 
                     type="date" 
                     className="form-control" 
-                    style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }}
+                    style={{ width: '125px', padding: '4px 8px', fontSize: '11px', border: '1px solid #e2e8f0', borderRadius: '6px' }}
                     value={startDate}
                     onChange={e => {
                       setStartDate(e.target.value);
                       setDatePreset('Custom');
                     }}
                   />
-                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>to</span>
+                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>to</span>
                   <input 
                     type="date" 
                     className="form-control" 
-                    style={{ width: '125px', padding: '3px 8px', fontSize: '11px' }}
+                    style={{ width: '125px', padding: '4px 8px', fontSize: '11px', border: '1px solid #e2e8f0', borderRadius: '6px' }}
                     value={endDate}
                     onChange={e => {
                       setEndDate(e.target.value);
@@ -3269,7 +3278,7 @@ export default function OrdersPage() {
                     <button 
                       className="btn btn-ghost" 
                       onClick={() => setProjectFilterKey('All')}
-                      style={{ fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid var(--border)', height: '28px' }}
+                      style={{ fontSize: '11.5px', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid #e2e8f0', height: '32px', borderRadius: '8px', color: '#64748b' }}
                     >
                       Clear Project Filter ×
                     </button>
@@ -3278,102 +3287,109 @@ export default function OrdersPage() {
                   <button 
                     className="btn btn-primary" 
                     onClick={() => setShowCreatePoModal(true)}
-                    style={{ display: 'flex', alignItems: 'center', gap: '8px', height: '28px', fontSize: '12px' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', height: '32px', fontSize: '12px', background: '#0f172a', borderColor: '#0f172a', color: '#ffffff', borderRadius: '8px', fontWeight: 600 }}
                   >
-                    <Plus size={16} /> Create Quotation BOQ
+                    <Plus size={15} /> Create Quotation BOQ
                   </button>
                 </div>
               </div>
-            </div>
           </div>
 
-          {/* 4-COLUMN HIGH-FIDELITY KPI METRICS GRID (FLUID PROPORTIONAL) */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: '12px', marginBottom: '20px' }}>
+          {/* 4-COLUMN HIGH-FIDELITY KPI METRICS GRID (ARCHITECTURAL STUDIO STYLING) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: '14px', marginBottom: '20px' }}>
             {/* Card 1 */}
             <div 
-              className="stat-card hover-scale"
               style={{ 
-                background: 'var(--bg-primary)', 
-                padding: '16px', 
+                background: '#ffffff', 
+                padding: '16px 18px', 
                 borderRadius: '12px', 
-                border: '1px solid var(--border)'
+                border: '1px solid #e2e8f0',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>TOTAL ACTIVE QUOTATIONS</span>
-                <ClipboardList size={16} color="var(--text-info)" />
+                <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>TOTAL ACTIVE QUOTATIONS</span>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ClipboardList size={14} color="#0f172a" />
+                </div>
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {masterOrdersCount} <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--text-tertiary)' }}>Active Qty</span>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+                {masterOrdersCount} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>BOQs</span>
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px' }}>
-                Total quotations in system.
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                Total active quotations in system
               </div>
             </div>
 
             {/* Card 2 */}
             <div 
-              className="stat-card hover-scale"
               style={{ 
-                background: 'var(--bg-primary)', 
-                padding: '16px', 
+                background: '#ffffff', 
+                padding: '16px 18px', 
                 borderRadius: '12px', 
-                border: '1px solid var(--border)'
+                border: '1px solid #e2e8f0',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>AGGREGATE COST BASIS</span>
-                <DollarSign size={16} color="var(--text-warning)" />
+                <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>AGGREGATE COST BASIS</span>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <DollarSign size={14} color="#d97706" />
+                </div>
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
                 R {Math.round(totalCostCompany).toLocaleString()}
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px' }}>
-                Aggregate supplier cost.
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                Supplier cost basis across portfolio
               </div>
             </div>
 
             {/* Card 3 */}
             <div 
-              className="stat-card hover-scale"
               style={{ 
-                background: 'var(--bg-primary)', 
-                padding: '16px', 
+                background: '#ffffff', 
+                padding: '16px 18px', 
                 borderRadius: '12px', 
-                border: '1px solid var(--border)'
+                border: '1px solid #e2e8f0',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>TOTAL QUOTATION VALUE</span>
-                <TrendingUp size={16} color="var(--text-success)" />
+                <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>TOTAL QUOTATION VALUE</span>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <TrendingUp size={14} color="#16a34a" />
+                </div>
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
                 R {Math.round(totalValueCompany).toLocaleString()}
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px' }}>
-                Aggregate retail value.
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                Aggregate retail quotation value
               </div>
             </div>
 
             {/* Card 4 */}
             <div 
-              className="stat-card hover-scale"
               style={{ 
-                background: 'var(--bg-primary)', 
-                padding: '16px', 
+                background: '#ffffff', 
+                padding: '16px 18px', 
                 borderRadius: '12px', 
-                border: '1px solid var(--border)'
+                border: '1px solid #e2e8f0',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>BLENDED RETAIL MARGIN</span>
-                <Layers size={16} color="var(--text-info)" />
+                <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>BLENDED RETAIL MARGIN</span>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Layers size={14} color="#0f172a" />
+                </div>
               </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: blendedMarginCompany < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: blendedMarginCompany < 39 ? '#dc2626' : '#16a34a', fontFamily: 'monospace' }}>
                 {blendedMarginCompany}%
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '6px' }}>
-                Average margin across filtered.
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                Average margin across filtered quotes
               </div>
             </div>
           </div>
@@ -3508,7 +3524,7 @@ export default function OrdersPage() {
             <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '68vh', position: 'relative' }}>
               <table className="table" style={{ margin: 0, width: '100%', fontSize: '12.5px', borderCollapse: 'collapse' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
-                  <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                     <th style={{ width: '40px', textAlign: 'center', padding: '10px 8px', verticalAlign: 'middle' }}>
                       <input 
                         type="checkbox" 
@@ -3882,31 +3898,31 @@ export default function OrdersPage() {
       ) : (
         
         /* THE STANDALONE SPECIFICATION SPREADSHEET ENGINE WORKSPACE */
-        <div className="card" style={{ border: '1.5px solid var(--border)', width: '100%', minWidth: 0 }}>
-          <div className="card-body" style={{ padding: 'clamp(14px, 1.4vw, 24px)' }}>
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', width: '100%', minWidth: 0, boxShadow: '0 1px 3px rgba(0,0,0,0.02)', overflow: 'hidden' }}>
+          <div style={{ padding: 'clamp(14px, 1.4vw, 24px)' }}>
             
             {/* WORKSPACE TOP NAV HEADER: 2-TIER FLUID PROPORTIONAL FLOW */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderBottom: '1px solid var(--border)', paddingBottom: '14px', marginBottom: '16px', width: '100%' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '16px', marginBottom: '16px', width: '100%' }}>
               
               {/* TIER 1: ORDER TITLE & NAV (LEFT) + ACTIONS (RIGHT) */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', width: '100%' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                     <button 
                       className="btn btn-ghost btn-sm" 
-                      style={{ padding: '3px 8px', height: 'auto', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-secondary)' }}
+                      style={{ padding: '4px 10px', height: 'auto', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: '#64748b', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px' }}
                       onClick={() => {
                         if (confirm('Exit Workspace? Ensure you have saved your revisions.')) setSelectedOrderId(null);
                       }}
                     >
-                      <ArrowLeft size={12} /> Back to Ledger
+                      <ArrowLeft size={13} /> Back to Ledger
                     </button>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1px', background: 'rgba(59,130,246,0.12)', color: 'var(--text-info)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                      Order & BOQ Workspace Engine
+                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', background: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: '4px', fontWeight: 700, border: '1px solid #e2e8f0' }}>
+                      ORDER & BOQ WORKSPACE
                     </span>
                   </div>
-                  <h2 style={{ margin: '2px 0 0 0', fontSize: 'clamp(17px, 1.5vw, 22px)', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span>{quoteName}</span> — <span style={{ color: 'var(--text-info)', fontFamily: 'monospace' }}>{selectedOrderId}</span>
+                  <h2 style={{ margin: '2px 0 0 0', fontSize: 'clamp(18px, 1.5vw, 22px)', color: '#0f172a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span>{quoteName}</span> — <span style={{ color: '#475569', fontFamily: 'monospace' }}>{selectedOrderId}</span>
                   </h2>
                 </div>
 
@@ -4215,49 +4231,127 @@ export default function OrdersPage() {
               }
             `}</style>
 
-            {/* DYNAMIC SEGMENTED WORKSPACE TAB CONTROL (FLUID PROPORTIONAL) */}
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '16px', gap: 'clamp(2px, 0.4vw, 6px)', overflowX: 'auto', scrollbarWidth: 'thin', width: '100%' }}>
+            {/* DYNAMIC SEGMENTED WORKSPACE TAB CONTROL (ARCHITECTURAL STUDIO PILL CONTROL) */}
+            <div style={{ display: 'flex', background: '#f8fafc', padding: '4px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '16px', gap: '4px', overflowX: 'auto', scrollbarWidth: 'thin', width: '100%' }}>
               <button 
-                className={`btn btn-sm ${workspaceSubTab === 'takeoff' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
+                className="btn btn-sm"
+                style={{ 
+                  borderRadius: '6px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px', 
+                  padding: '6px 12px', 
+                  fontSize: '12px', 
+                  whiteSpace: 'nowrap', 
+                  flexShrink: 0,
+                  border: 'none',
+                  background: workspaceSubTab === 'takeoff' ? '#0f172a' : 'transparent',
+                  color: workspaceSubTab === 'takeoff' ? '#ffffff' : '#64748b',
+                  fontWeight: workspaceSubTab === 'takeoff' ? 600 : 500
+                }}
                 onClick={() => setWorkspaceSubTab('takeoff')}
               >
                 <Sparkles size={13} /> ⚡ Takeoff & Spec
               </button>
               <button 
-                className={`btn btn-sm ${workspaceSubTab === 'boq' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
+                className="btn btn-sm"
+                style={{ 
+                  borderRadius: '6px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px', 
+                  padding: '6px 12px', 
+                  fontSize: '12px', 
+                  whiteSpace: 'nowrap', 
+                  flexShrink: 0,
+                  border: 'none',
+                  background: workspaceSubTab === 'boq' ? '#0f172a' : 'transparent',
+                  color: workspaceSubTab === 'boq' ? '#ffffff' : '#64748b',
+                  fontWeight: workspaceSubTab === 'boq' ? 600 : 500
+                }}
                 onClick={() => setWorkspaceSubTab('boq')}
               >
                 <FileSpreadsheet size={13} /> 📊 BOQ Spreadsheet
               </button>
               <button 
-                className={`btn btn-sm ${workspaceSubTab === 'doc_gen' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
+                className="btn btn-sm"
+                style={{ 
+                  borderRadius: '6px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px', 
+                  padding: '6px 12px', 
+                  fontSize: '12px', 
+                  whiteSpace: 'nowrap', 
+                  flexShrink: 0,
+                  border: 'none',
+                  background: workspaceSubTab === 'doc_gen' ? '#0f172a' : 'transparent',
+                  color: workspaceSubTab === 'doc_gen' ? '#ffffff' : '#64748b',
+                  fontWeight: workspaceSubTab === 'doc_gen' ? 600 : 500
+                }}
                 onClick={() => setWorkspaceSubTab('doc_gen')}
               >
                 <FileText size={13} /> 📄 Docs & Generator
               </button>
               <button 
-                className={`btn btn-sm ${workspaceSubTab === 'files' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
+                className="btn btn-sm"
+                style={{ 
+                  borderRadius: '6px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px', 
+                  padding: '6px 12px', 
+                  fontSize: '12px', 
+                  whiteSpace: 'nowrap', 
+                  flexShrink: 0,
+                  border: 'none',
+                  background: workspaceSubTab === 'files' ? '#0f172a' : 'transparent',
+                  color: workspaceSubTab === 'files' ? '#ffffff' : '#64748b',
+                  fontWeight: workspaceSubTab === 'files' ? 600 : 500
+                }}
                 onClick={() => setWorkspaceSubTab('files')}
               >
                 <Folder size={13} /> 📁 Drive & Files
               </button>
               <button 
-                className={`btn btn-sm ${workspaceSubTab === 'operations' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
+                className="btn btn-sm"
+                style={{ 
+                  borderRadius: '6px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px', 
+                  padding: '6px 12px', 
+                  fontSize: '12px', 
+                  whiteSpace: 'nowrap', 
+                  flexShrink: 0,
+                  border: 'none',
+                  background: workspaceSubTab === 'operations' ? '#0f172a' : 'transparent',
+                  color: workspaceSubTab === 'operations' ? '#ffffff' : '#64748b',
+                  fontWeight: workspaceSubTab === 'operations' ? 600 : 500
+                }}
                 onClick={() => setWorkspaceSubTab('operations')}
               >
                 <Truck size={13} /> 🚀 Operations & Fulfillment Hub
               </button>
               <button 
-                className={`btn btn-sm ${workspaceSubTab === 'audits' ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ borderRadius: '4px 4px 0 0', display: 'flex', alignItems: 'center', gap: 'clamp(4px, 0.4vw, 6px)', padding: 'clamp(5px, 0.6vw, 8px) clamp(8px, 0.9vw, 14px)', fontSize: 'clamp(11px, 0.8vw, 12.5px)', whiteSpace: 'nowrap', flexShrink: 0 }}
+                className="btn btn-sm"
+                style={{ 
+                  borderRadius: '6px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px', 
+                  padding: '6px 12px', 
+                  fontSize: '12px', 
+                  whiteSpace: 'nowrap', 
+                  flexShrink: 0,
+                  border: 'none',
+                  background: workspaceSubTab === 'audits' ? '#0f172a' : 'transparent',
+                  color: workspaceSubTab === 'audits' ? '#ffffff' : '#64748b',
+                  fontWeight: workspaceSubTab === 'audits' ? 600 : 500
+                }}
                 onClick={() => setWorkspaceSubTab('audits')}
               >
-                <History size={13} style={{ color: '#10b981' }} /> 📜 Revisions & Audits
+                <History size={13} /> 📜 Revisions & Audits
               </button>
             </div>
 

@@ -94,29 +94,30 @@ export default function AuditHistoryTab({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {/* TOP BANNER & ACTION BAR */}
+      {/* TOP BANNER & ACTION BAR (ARCHITECTURAL STUDIO STYLING) */}
       <div style={{
-        background: 'var(--bg-secondary)',
-        border: '1px solid var(--border)',
-        borderRadius: '8px',
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: '12px',
         padding: '16px 20px',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         flexWrap: 'wrap',
-        gap: '12px'
+        gap: '12px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
       }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span className="badge b-info" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700 }}>
-              Live Audit Trail
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <span style={{ textTransform: 'uppercase', fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', background: '#f1f5f9', color: '#475569', padding: '3px 8px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+              LIVE AUDIT TRAIL
             </span>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-              Order: <strong>{poNumber}</strong> {order?.isSubOrder ? `(Sub-Order of ${order.parentPoNumber})` : ''}
+            <span style={{ fontSize: '11.5px', color: '#64748b' }}>
+              Order: <strong style={{ fontFamily: 'monospace', color: '#0f172a' }}>{poNumber}</strong> {order?.isSubOrder ? `(Sub-Order of ${order.parentPoNumber})` : ''}
             </span>
           </div>
-          <h2 style={{ margin: '4px 0 0 0', fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <History size={18} color="var(--text-info)" /> Revision & Variation Audit Trail
+          <h2 style={{ margin: '4px 0 0 0', fontSize: '18px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <History size={18} color="#0f172a" /> Revision & Variation Audit Trail
           </h2>
         </div>
 
@@ -153,22 +154,22 @@ export default function AuditHistoryTab({
         </div>
       </div>
 
-      {/* FILTER BUTTONS */}
+      {/* FILTER BUTTONS (STUDIO PILL CONTROL) */}
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-        <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)' }}>Filter Trail:</span>
-        <div style={{ display: 'inline-flex', gap: '4px', background: 'var(--bg-secondary)', padding: '2px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+        <span style={{ fontSize: '11.5px', fontWeight: 600, color: '#64748b' }}>Filter Trail:</span>
+        <div style={{ display: 'inline-flex', gap: '3px', background: '#f8fafc', padding: '3px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
           <button
             type="button"
             onClick={() => setFilterType('ALL')}
             className="btn btn-xs"
             style={{
-              padding: '3px 10px',
-              fontSize: '11px',
-              fontWeight: 600,
-              borderRadius: '4px',
+              padding: '4px 10px',
+              fontSize: '11.5px',
+              fontWeight: filterType === 'ALL' ? 600 : 500,
+              borderRadius: '6px',
               border: 'none',
-              background: filterType === 'ALL' ? 'var(--text-info)' : 'transparent',
-              color: filterType === 'ALL' ? '#fff' : 'var(--text-secondary)'
+              background: filterType === 'ALL' ? '#0f172a' : 'transparent',
+              color: filterType === 'ALL' ? '#ffffff' : '#64748b'
             }}
           >
             All Events ({logs.length})
@@ -178,13 +179,13 @@ export default function AuditHistoryTab({
             onClick={() => setFilterType('VARIATIONS')}
             className="btn btn-xs"
             style={{
-              padding: '3px 10px',
-              fontSize: '11px',
-              fontWeight: 600,
-              borderRadius: '4px',
+              padding: '4px 10px',
+              fontSize: '11.5px',
+              fontWeight: filterType === 'VARIATIONS' ? 600 : 500,
+              borderRadius: '6px',
               border: 'none',
-              background: filterType === 'VARIATIONS' ? 'var(--text-warning)' : 'transparent',
-              color: filterType === 'VARIATIONS' ? '#fff' : 'var(--text-secondary)'
+              background: filterType === 'VARIATIONS' ? '#0f172a' : 'transparent',
+              color: filterType === 'VARIATIONS' ? '#ffffff' : '#64748b'
             }}
           >
             Item Variations & Swaps ({logs.filter(l => l.action === 'ITEM_SWAPPED' || l.action === 'ITEM_CREDITED').length})
@@ -194,13 +195,13 @@ export default function AuditHistoryTab({
             onClick={() => setFilterType('SUB_ORDERS')}
             className="btn btn-xs"
             style={{
-              padding: '3px 10px',
-              fontSize: '11px',
-              fontWeight: 600,
-              borderRadius: '4px',
+              padding: '4px 10px',
+              fontSize: '11.5px',
+              fontWeight: filterType === 'SUB_ORDERS' ? 600 : 500,
+              borderRadius: '6px',
               border: 'none',
-              background: filterType === 'SUB_ORDERS' ? '#8b5cf6' : 'transparent',
-              color: filterType === 'SUB_ORDERS' ? '#fff' : 'var(--text-secondary)'
+              background: filterType === 'SUB_ORDERS' ? '#0f172a' : 'transparent',
+              color: filterType === 'SUB_ORDERS' ? '#ffffff' : '#64748b'
             }}
           >
             Sub-Orders ({logs.filter(l => l.action === 'SUB_ORDER_CREATED').length})
@@ -210,13 +211,13 @@ export default function AuditHistoryTab({
             onClick={() => setFilterType('NOTES')}
             className="btn btn-xs"
             style={{
-              padding: '3px 10px',
-              fontSize: '11px',
-              fontWeight: 600,
-              borderRadius: '4px',
+              padding: '4px 10px',
+              fontSize: '11.5px',
+              fontWeight: filterType === 'NOTES' ? 600 : 500,
+              borderRadius: '6px',
               border: 'none',
-              background: filterType === 'NOTES' ? 'var(--text-secondary)' : 'transparent',
-              color: filterType === 'NOTES' ? '#fff' : 'var(--text-secondary)'
+              background: filterType === 'NOTES' ? '#0f172a' : 'transparent',
+              color: filterType === 'NOTES' ? '#ffffff' : '#64748b'
             }}
           >
             Notes & Approvals ({logs.filter(l => l.action === 'NOTE_ADDED').length})

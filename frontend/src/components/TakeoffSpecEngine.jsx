@@ -3209,44 +3209,46 @@ export default function TakeoffSpecEngine({
       {/* TOP HEADER CONTROLS BAR */}
       {/* ------------------------------------------------------------- */}
       <div style={{ 
-        background: 'var(--bg-secondary)', 
-        border: '1px solid var(--border)', 
-        borderRadius: '10px', 
-        padding: 'clamp(10px, 1.2vw, 16px) clamp(12px, 1.5vw, 20px)',
+        background: '#ffffff', 
+        border: '1px solid #e2e8f0', 
+        borderRadius: '12px', 
+        padding: 'clamp(12px, 1.2vw, 16px) clamp(14px, 1.5vw, 20px)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         flexWrap: 'wrap',
         gap: 'clamp(10px, 1vw, 16px)',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
         width: '100%'
       }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
             <span style={{ 
-              background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', 
-              color: '#fff', 
-              padding: '2px 8px', 
+              background: '#f1f5f9', 
+              color: '#475569', 
+              padding: '3px 8px', 
               borderRadius: '4px', 
               fontSize: '10px', 
               fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
-              letterSpacing: '0.4px'
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              border: '1px solid #e2e8f0'
             }}>
-              <Sparkles size={12} /> UPSTREAM ACCELERATOR
+              <Sparkles size={12} /> TAKEOFF ENGINE
             </span>
-            <h2 style={{ margin: 0, fontSize: 'clamp(15px, 1.3vw, 18px)', fontWeight: 700, color: 'var(--text-primary)' }}>
+            <h2 style={{ margin: 0, fontSize: 'clamp(16px, 1.3vw, 19px)', fontWeight: 700, color: '#0f172a' }}>
               Takeoff & Specification Engine
             </h2>
             {hasUnsavedChanges && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-warning)', background: 'rgba(245, 158, 11, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#d97706', background: 'rgba(245, 158, 11, 0.1)', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
                 • Unsaved Edits
               </span>
             )}
           </div>
-          <p style={{ margin: 0, fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
             Enter fixture counts by room, assign master catalog items with editable pricing, pair dynamic accessories, and compile into your BOQ spreadsheet.
           </p>
         </div>
@@ -3353,27 +3355,60 @@ export default function TakeoffSpecEngine({
       )}
 
       {/* ------------------------------------------------------------- */}
-      {/* INNER NAVIGATION TABS */}
+      {/* INNER NAVIGATION TABS (STUDIO PILL CONTROL) */}
       {/* ------------------------------------------------------------- */}
-      <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--border)', paddingBottom: '4px' }}>
+      <div style={{ display: 'flex', gap: '4px', background: '#f8fafc', padding: '4px', borderRadius: '10px', border: '1px solid #e2e8f0', width: 'fit-content' }}>
         <button
-          className={`btn btn-sm ${activeTab === 'countup' ? 'btn-primary' : 'btn-ghost'}`}
+          className="btn btn-sm"
           onClick={() => setActiveTab('countup')}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px 6px 0 0', fontWeight: 600 }}
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '6px', 
+            borderRadius: '6px', 
+            fontWeight: activeTab === 'countup' ? 600 : 500,
+            fontSize: '12px',
+            border: 'none',
+            background: activeTab === 'countup' ? '#0f172a' : 'transparent',
+            color: activeTab === 'countup' ? '#ffffff' : '#64748b',
+            padding: '6px 12px'
+          }}
         >
           <List size={14} /> 1. Room-by-Room Count-Up ({countUpRows.length})
         </button>
         <button
-          className={`btn btn-sm ${activeTab === 'spec' ? 'btn-primary' : 'btn-ghost'}`}
+          className="btn btn-sm"
           onClick={() => setActiveTab('spec')}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px 6px 0 0', fontWeight: 600 }}
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '6px', 
+            borderRadius: '6px', 
+            fontWeight: activeTab === 'spec' ? 600 : 500,
+            fontSize: '12px',
+            border: 'none',
+            background: activeTab === 'spec' ? '#0f172a' : 'transparent',
+            color: activeTab === 'spec' ? '#ffffff' : '#64748b',
+            padding: '6px 12px'
+          }}
         >
           <Sliders size={14} /> 2. Tag Specification & Accessories ({uniqueTags.length})
         </button>
         <button
-          className={`btn btn-sm ${activeTab === 'summary' ? 'btn-primary' : 'btn-ghost'}`}
+          className="btn btn-sm"
           onClick={() => setActiveTab('summary')}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', borderRadius: '6px 6px 0 0', fontWeight: 600 }}
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '6px', 
+            borderRadius: '6px', 
+            fontWeight: activeTab === 'summary' ? 600 : 500,
+            fontSize: '12px',
+            border: 'none',
+            background: activeTab === 'summary' ? '#0f172a' : 'transparent',
+            color: activeTab === 'summary' ? '#ffffff' : '#64748b',
+            padding: '6px 12px'
+          }}
         >
           <Grid size={14} /> 3. Summary & Takeoff Matrix
         </button>
