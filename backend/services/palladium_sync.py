@@ -11,7 +11,16 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from database.cloud_sql import SessionLocal, get_db
-from models.orm_models import Product, PalladiumPOLine, PalladiumGRNLine, PalladiumInvoiceLine, PalladiumPayment, OrderPaymentAllocation
+from models.orm_models import (
+    Product, 
+    PalladiumPOLine, 
+    PalladiumGRNLine, 
+    PalladiumInvoiceLine, 
+    PalladiumPayment, 
+    OrderPaymentAllocation,
+    ProcurementAllocation,
+    OrderItem
+)
 
 logger = logging.getLogger(__name__)
 
@@ -386,7 +395,40 @@ def sync_palladium_purchase_orders(db_session: Optional[Session] = None) -> Dict
         p_cursor.execute("SELECT strOrdPDocID, strReference FROM tblOrderDocP")
         ref_map = {str(r.get("strOrdPDocID") or "").strip(): str(r.get("strReference") or "").strip() for r in p_cursor.fetchall()}
 
-        # 2. Fetch PO line records from biPurchaseOrders view (0.1s)
+        # 2. Probe and fetch line optional fields (F12) for line-level ETAs
+        # Line optional fields in Palladium are dynamically configured and stored in either tblOrderDocPLineUDF or tblOrderDocPDT
+        line_eta_map = {}
+        try:
+            p_cursor.execute("""
+                SELECT COLUMN_NAME 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_NAME = 'tblOrderDocPLineUDF'
+            """)
+            udf_cols = [str(c.get("COLUMN_NAME") or "") for c in p_cursor.fetchall()]
+            if udf_cols:
+                # Find date or user columns
+                select_cols = [c for c in udf_cols if c.lower() in ['strordpdocid', 'strpartnumber', 'intsequence', 'dteeta', 'dtdate1', 'dteuser1', 'struser1', 'struser2', 'streta']]
+                if not select_cols:
+                    select_cols = udf_cols[:8]
+                cols_sql = ", ".join(f"[{c}]" for c in select_cols)
+                p_cursor.execute(f"SELECT {cols_sql} FROM tblOrderDocPLineUDF")
+                udf_rows = p_cursor.fetchall()
+                for ur in udf_rows:
+                    doc_id = str(ur.get("strOrdPDocID") or ur.get("strDocID") or "").strip()
+                    part_no = str(ur.get("strPartNumber") or ur.get("strItemCode") or "").strip()
+                    eta_val = None
+                    for k, v in ur.items():
+                        if v and any(sub in k.lower() for sub in ['eta', 'user1', 'date1', 'dte']):
+                            val_str = str(v).strip()
+                            if val_str and val_str != 'None':
+                                eta_val = val_str.split()[0]
+                                break
+                    if doc_id and part_no and eta_val:
+                        line_eta_map[(doc_id, part_no)] = eta_val
+        except Exception as udf_err:
+            logger.info(f"tblOrderDocPLineUDF lookup skipped or unavailable: {udf_err}")
+
+        # 3. Fetch PO line records from biPurchaseOrders view (0.1s)
         p_cursor.execute("""
             SELECT 
                 [Document #] AS document_no,
@@ -426,6 +468,12 @@ def sync_palladium_purchase_orders(db_session: Optional[Session] = None) -> Dict
             raw_cost = float(r.get("unit_cost") or 0.0)
             effective_cost = raw_cost if raw_cost > 0 else (round(total_val / order_qty, 2) if order_qty > 0 else 0.0)
 
+            # Fallback cascade: line optional field ETA -> header order required date
+            specific_line_eta = line_eta_map.get((doc_no, item_code))
+            hdr_req_date = r.get("order_required_date")
+            hdr_req_str = str(hdr_req_date).split("T")[0] if hdr_req_date else None
+            effective_line_eta = specific_line_eta or hdr_req_str
+
             po_obj = PalladiumPOLine(
                 document_no=doc_no,
                 vendor_name=str(r.get("vendor_name") or "").strip() or None,
@@ -440,7 +488,8 @@ def sync_palladium_purchase_orders(db_session: Optional[Session] = None) -> Dict
                 currency_code=str(r.get("currency_code") or "ZAR").strip(),
                 exchange_rate=float(r.get("exchange_rate") or 1.0),
                 transaction_date=r.get("transaction_date"),
-                order_required_date=r.get("order_required_date"),
+                order_required_date=hdr_req_date,
+                line_eta=effective_line_eta,
                 reference=ref_map.get(doc_no) or None,
                 status=str(r.get("status") or "Open").strip(),
                 customer_name=str(r.get("customer_name") or "").strip() or None,
@@ -450,6 +499,39 @@ def sync_palladium_purchase_orders(db_session: Optional[Session] = None) -> Dict
             po_objects.append(po_obj)
 
         db.bulk_save_objects(po_objects)
+        db.flush()
+
+        # 4. DOWNSTREAM CASCADE: Propagate line ETAs to active ProcurementAllocations and OrderItems
+        # When ETAs update in Palladium, allocated project OrderItems, Sales Tracker, and Debtors Hub update automatically
+        try:
+            from routes.procurement import recalc_order_item_procurement
+
+            # Create quick lookup: (doc_no, item_code) -> effective_line_eta
+            eta_lookup = {(p.document_no, p.item_code): p.line_eta for p in po_objects if p.line_eta}
+
+            active_po_allocs = db.query(ProcurementAllocation).filter(
+                ProcurementAllocation.status == "Active",
+                ProcurementAllocation.allocation_type == "PO"
+            ).all()
+
+            impacted_item_ids = set()
+            for alloc in active_po_allocs:
+                target_eta = eta_lookup.get((alloc.source_doc_no, alloc.sku))
+                if target_eta and alloc.eta != target_eta:
+                    alloc.eta = target_eta
+                    if alloc.notes and "ETA:" in alloc.notes:
+                        alloc.notes = alloc.notes.split("ETA:")[0].strip() + f" ETA: {target_eta}"
+                    if alloc.order_item_id:
+                        impacted_item_ids.add(str(alloc.order_item_id))
+
+            if impacted_item_ids:
+                items_to_recalc = db.query(OrderItem).filter(OrderItem.id.in_(list(impacted_item_ids))).all()
+                for itm in items_to_recalc:
+                    recalc_order_item_procurement(db, itm)
+                logger.info(f"Propagated Palladium line ETAs to {len(items_to_recalc)} allocated OrderItems.")
+        except Exception as cascade_err:
+            logger.warning(f"Downstream line ETA propagation notice: {cascade_err}")
+
         db.commit()
 
         duration = round(time.time() - start_time, 2)

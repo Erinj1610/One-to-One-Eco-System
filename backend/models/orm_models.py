@@ -760,6 +760,7 @@ class PalladiumPOLine(Base):
     exchange_rate = Column(Float, default=1.0)
     transaction_date = Column(DateTime, nullable=True)
     order_required_date = Column(DateTime, nullable=True)
+    line_eta = Column(String, nullable=True)                 # Optional line field from Palladium (F12)
     reference = Column(String, nullable=True)                # e.g. "Fir Road (Interior Footlights)"
     status = Column(String, default="Open")                  # Open, Closed, Partial
     customer_name = Column(String, nullable=True)

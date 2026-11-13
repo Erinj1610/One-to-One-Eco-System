@@ -509,6 +509,8 @@ def get_procurement_documents(
                 "currency_code": r.currency_code or "ZAR",
                 "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
                 "order_required_date": r.order_required_date.isoformat() if r.order_required_date else None,
+                "line_eta": (r.line_eta or "").strip() if getattr(r, 'line_eta', None) else None,
+                "eta": (r.line_eta or "").strip() if getattr(r, 'line_eta', None) else (r.order_required_date.isoformat().split("T")[0] if r.order_required_date else None),
                 "reference": r.reference or None,
                 "erp_status": r.status or "Open",
                 "customer_name": r.customer_name,
@@ -783,6 +785,10 @@ def get_document_details(
                 else:
                     l_status = "FULLY_ALLOCATED"
 
+                resolved_line_eta = (r.line_eta or "").strip() if getattr(r, 'line_eta', None) else None
+                if not resolved_line_eta and r.order_required_date:
+                    resolved_line_eta = r.order_required_date.isoformat().split("T")[0]
+
                 lines.append({
                     "id": f"PO_{r.id}",
                     "line_id": r.id,
@@ -799,7 +805,7 @@ def get_document_details(
                     "unallocated_qty": round(rem_qty, 2),
                     "allocation_status": l_status,
                     "order_required_date": r.order_required_date.isoformat().split("T")[0] if r.order_required_date else None,
-                    "eta": r.order_required_date.isoformat().split("T")[0] if r.order_required_date else None,
+                    "eta": resolved_line_eta,
                     "reference": r.reference or None,
                     "allocations": active_allocs
                 })
@@ -1476,7 +1482,9 @@ def recalc_order_item_procurement(db: Session, item: OrderItem):
         if a.doc_date:
             po_dates.append(str(a.doc_date).split("T")[0])
         eta_val = None
-        if a.notes and "ETA:" in a.notes:
+        if a.eta:
+            eta_val = str(a.eta).strip().split("T")[0]
+        elif a.notes and "ETA:" in a.notes:
             try:
                 eta_val = a.notes.split("ETA:")[1].strip().split()[0]
             except Exception:
@@ -1956,6 +1964,7 @@ def bulk_allocate_approved(
 
                 matched_item = find_best_item_match(proj_items, r.item_code)
 
+                resolved_po_line_eta = str(eta).split("T")[0] if eta else ((r.line_eta or "").strip() if getattr(r, 'line_eta', None) else (str(r.order_required_date).split("T")[0] if r.order_required_date else None))
                 alloc = ProcurementAllocation(
                     allocation_type="PO",
                     source_doc_no=doc_no,
@@ -1969,7 +1978,7 @@ def bulk_allocate_approved(
                     unit_cost=float(r.unit_cost or 0.0),
                     vendor_name=r.vendor_name,
                     doc_date=str(r.transaction_date).split("T")[0] if r.transaction_date else None,
-                    eta=str(eta).split("T")[0] if eta else (str(r.order_required_date).split("T")[0] if r.order_required_date else None),
+                    eta=resolved_po_line_eta,
                     allocated_by_name=allocated_by,
                     allocated_at=datetime.now(timezone.utc),
                     status="Active",
