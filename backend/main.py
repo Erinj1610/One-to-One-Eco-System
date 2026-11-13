@@ -172,6 +172,12 @@ def init_db():
                     if 're_invoice_intent' not in pa_cols:
                         quick_conn.execute(text("ALTER TABLE procurement_allocations ADD COLUMN re_invoice_intent VARCHAR DEFAULT 'WILL_NOT_REINVOICE';"))
                         quick_conn.commit()
+                if 'palladium_po_lines' in insp.get_table_names():
+                    po_cols = [c['name'] for c in insp.get_columns('palladium_po_lines')]
+                    if 'line_eta' not in po_cols:
+                        quick_conn.execute(text("ALTER TABLE palladium_po_lines ADD COLUMN line_eta VARCHAR;"))
+                        quick_conn.commit()
+                        print("Database migration: ensured 'line_eta' column exists on 'palladium_po_lines' table.")
         except Exception as quick_err:
             print(f"Quick migration notice: {quick_err}")
 
@@ -275,15 +281,19 @@ def init_db():
                 except Exception as td_err:
                     print(f"orders columns migration notice: {td_err}")
 
-                # Migrate palladium_po_lines table to ensure reference exists
+                # Migrate palladium_po_lines table to ensure reference and line_eta exist
                 try:
                     po_cols = [c['name'] for c in inspector.get_columns('palladium_po_lines')]
                     if 'reference' not in po_cols:
                         conn.execute(text("ALTER TABLE palladium_po_lines ADD COLUMN IF NOT EXISTS reference VARCHAR;"))
                         conn.commit()
                         print("Database migration: ensured 'reference' column exists on 'palladium_po_lines' table.")
+                    if 'line_eta' not in po_cols:
+                        conn.execute(text("ALTER TABLE palladium_po_lines ADD COLUMN IF NOT EXISTS line_eta VARCHAR;"))
+                        conn.commit()
+                        print("Database migration: ensured 'line_eta' column exists on 'palladium_po_lines' table.")
                 except Exception as po_err:
-                    print(f"reference migration notice: {po_err}")
+                    print(f"reference/line_eta migration notice: {po_err}")
                 
                 # Migrate template_configs table to ensure docx_binary exists
                 try:
