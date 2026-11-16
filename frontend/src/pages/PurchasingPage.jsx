@@ -13,6 +13,110 @@ import {
 
 const PREFIX_REGEX = /^(?:LED:|1A-|PC-|ATZ-)\s*/i;
 
+const CURRENCY_SYMBOLS = {
+  ZAR: 'R',
+  EUR: '€',
+  USD: '$',
+  GBP: '£',
+  AUD: 'A$',
+  CAD: 'C$',
+  CHF: 'CHF',
+  JPY: '¥',
+};
+
+const getCurrencyCode = (obj) => {
+  const c = (obj?.currency_code || 'ZAR').toString().trim().toUpperCase();
+  return c || 'ZAR';
+};
+
+const formatCurrencyAmount = (amount, currencyCode = 'ZAR') => {
+  const num = Number(amount || 0);
+  const code = (currencyCode || 'ZAR').toString().trim().toUpperCase() || 'ZAR';
+  const sym = CURRENCY_SYMBOLS[code] || code;
+  return `${sym} ${num.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+const getZarEquivalent = (amount, obj) => {
+  const num = Number(amount || 0);
+  const code = getCurrencyCode(obj);
+  if (code === 'ZAR') return num;
+  const rate = Number(obj?.exchange_rate || 1);
+  return rate > 0 && rate !== 1 ? num * rate : null;
+};
+
+const DualCurrencyValue = ({ amount, docOrLine, inline = false, showRate = false, showBadge = true }) => {
+  const code = getCurrencyCode(docOrLine);
+  const isForeign = code !== 'ZAR';
+  const formattedNative = formatCurrencyAmount(amount, code);
+  const zarEquiv = isForeign ? getZarEquivalent(amount, docOrLine) : null;
+  const rate = Number(docOrLine?.exchange_rate || 1);
+
+  if (!isForeign) {
+    return <span>{formattedNative}</span>;
+  }
+
+  if (inline) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+        <span>{formattedNative}</span>
+        {showBadge && (
+          <span style={{
+            fontSize: '10px',
+            background: '#eff6ff',
+            color: '#1d4ed8',
+            border: '1px solid #bfdbfe',
+            padding: '1px 5px',
+            borderRadius: '4px',
+            fontWeight: 700
+          }}>
+            {code}
+          </span>
+        )}
+        {zarEquiv !== null && (
+          <span style={{
+            fontSize: '10.5px',
+            background: '#f8fafc',
+            color: '#0284c7',
+            border: '1px solid #e0f2fe',
+            padding: '2px 6px',
+            borderRadius: '4px',
+            fontWeight: 600
+          }}>
+            &asymp; {formatCurrencyAmount(zarEquiv, 'ZAR')}{showRate ? ` (@ ${rate.toFixed(2)})` : ''}
+          </span>
+        )}
+      </span>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px' }}>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+        <span>{formattedNative}</span>
+        {showBadge && (
+          <span style={{
+            fontSize: '9px',
+            background: '#eff6ff',
+            color: '#1d4ed8',
+            border: '1px solid #bfdbfe',
+            padding: '0px 4px',
+            borderRadius: '3px',
+            fontWeight: 700,
+            lineHeight: 1.4
+          }}>
+            {code}
+          </span>
+        )}
+      </div>
+      {zarEquiv !== null && (
+        <div style={{ fontSize: '10px', color: '#0284c7', fontWeight: 600, fontFamily: 'monospace' }}>
+          &asymp; {formatCurrencyAmount(zarEquiv, 'ZAR')}{showRate ? ` (@ ${rate.toFixed(2)})` : ''}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const stripSkuPrefix = (s) => {
   if (!s) return '';
   return String(s).trim().replace(PREFIX_REGEX, '').trim();
@@ -2008,7 +2112,7 @@ export default function PurchasingPage() {
                   {selectedDocument.customer_name && (
                     <div>Client: <strong style={{ color: '#0f172a' }}>{selectedDocument.customer_name}</strong></div>
                   )}
-                  <div>Total Value: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {selectedDocument.total_value?.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</strong></div>
+                  <div>Total Value: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}><DualCurrencyValue amount={selectedDocument.total_value} docOrLine={selectedDocument} inline showRate /></strong></div>
                 </div>
               </div>
 
@@ -2320,7 +2424,7 @@ export default function PurchasingPage() {
 
                           {/* Unit Cost */}
                           <td style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 600 }}>
-                            R {line.unit_cost?.toLocaleString('en-ZA', { minimumFractionDigits: 2 }) || '0.00'}
+                            <DualCurrencyValue amount={line.unit_cost} docOrLine={line.currency_code ? line : selectedDocument} showBadge={false} />
                           </td>
 
                           {/* Ordered Qty */}
@@ -2554,7 +2658,11 @@ export default function PurchasingPage() {
                           Document Total ({sortedDocumentLines.length} {sortedDocumentLines.length === 1 ? 'line' : 'lines'})
                         </td>
                         <td style={{ padding: '11px 12px', textAlign: 'right', color: '#0f172a', fontWeight: 700, fontSize: '12.5px', fontFamily: 'monospace' }}>
-                          R {sortedDocumentLines.reduce((s, l) => s + (Number(l.total_value) || (Number(l.unit_cost || 0) * Number(l.total_qty || 0))), 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <DualCurrencyValue
+                            amount={sortedDocumentLines.reduce((s, l) => s + (Number(l.total_value) || (Number(l.unit_cost || 0) * Number(l.total_qty || 0))), 0)}
+                            docOrLine={selectedDocument}
+                            showRate
+                          />
                         </td>
                         <td style={{ padding: '11px 12px', textAlign: 'center', color: '#0f172a', fontWeight: 700, fontFamily: 'monospace' }}>
                           {sortedDocumentLines.reduce((s, l) => s + Number(l.total_qty || 0), 0)}
@@ -2925,7 +3033,7 @@ export default function PurchasingPage() {
 
                             {/* Total Value */}
                             <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: 'var(--text-primary)' }}>
-                              R {doc.total_value ? doc.total_value.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+                              <DualCurrencyValue amount={doc.total_value} docOrLine={doc} showRate />
                             </td>
 
                             {/* Allocation Status Badge */}
@@ -3194,7 +3302,7 @@ export default function PurchasingPage() {
                           </div>
                         </td>
                         <td style={{ padding: '11px 14px', textAlign: 'right', color: '#0f172a', fontWeight: 700, fontSize: '12.5px', fontFamily: 'monospace' }}>
-                          R {sortedProcurementDocs.reduce((s, d) => s + Number(d.total_value || 0), 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          R {sortedProcurementDocs.reduce((s, d) => s + (getZarEquivalent(d.total_value, d) ?? Number(d.total_value || 0)), 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td colSpan={2}></td>
                       </tr>
@@ -3660,7 +3768,7 @@ export default function PurchasingPage() {
                                 <td style={{ padding: '8px 10px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>{l.item_code}</td>
                                 <td style={{ padding: '8px 10px', color: 'var(--text-secondary)', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.item_description}</td>
                                 <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: '#f59e0b' }}>{l.unallocated_qty}</td>
-                                <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text-primary)' }}>R {l.unit_cost?.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</td>
+                                <td style={{ padding: '8px 10px', textAlign: 'right', color: 'var(--text-primary)' }}><DualCurrencyValue amount={l.unit_cost} docOrLine={l.currency_code ? l : selectedDocument} showBadge={false} /></td>
                                 {isOrderSelected && (
                                   <td style={{ padding: '6px 10px' }}>
                                     {status === 'matched' && (
@@ -4027,7 +4135,7 @@ export default function PurchasingPage() {
                     <div>
                       <div style={{ fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase' }}>Unit Cost (ERP)</div>
                       <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        R {allocTargetItem.unit_cost?.toLocaleString('en-ZA', { minimumFractionDigits: 2 }) || '0.00'}
+                        <DualCurrencyValue amount={allocTargetItem.unit_cost} docOrLine={allocTargetItem.currency_code ? allocTargetItem : selectedDocument} inline showRate />
                       </div>
                     </div>
                   </div>
@@ -5203,7 +5311,7 @@ export default function PurchasingPage() {
                                   {d.vendor_name}
                                 </div>
                                 <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)' }}>
-                                  R {d.total_value?.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}
+                                  <DualCurrencyValue amount={d.total_value} docOrLine={d} inline />
                                 </div>
                               </td>
 
@@ -5355,8 +5463,8 @@ export default function PurchasingPage() {
                                             <td style={{ padding: '4px 8px', fontFamily: 'monospace', fontWeight: 600 }}>{l.item_code}</td>
                                             <td style={{ padding: '4px 8px', color: 'var(--text-secondary)' }}>{l.item_description}</td>
                                             <td style={{ padding: '4px 8px', textAlign: 'center', fontWeight: 700, color: '#f59e0b' }}>{l.unallocated_qty}</td>
-                                            <td style={{ padding: '4px 8px', textAlign: 'right' }}>R {l.unit_cost?.toFixed(2)}</td>
-                                            <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 600 }}>R {l.total_value?.toFixed(2)}</td>
+                                            <td style={{ padding: '4px 8px', textAlign: 'right' }}><DualCurrencyValue amount={l.unit_cost} docOrLine={d} showBadge={false} /></td>
+                                            <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 600 }}><DualCurrencyValue amount={l.total_value} docOrLine={d} showBadge={false} /></td>
                                           </tr>
                                         ))}
                                       </tbody>

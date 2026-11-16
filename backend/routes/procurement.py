@@ -32,6 +32,16 @@ def normalize_sku(s: Optional[str]) -> str:
     stripped = strip_sku_prefix(s)
     return re.sub(r'[^A-Za-z0-9]', '', stripped).upper()
 
+def _extract_currency_meta(row) -> Dict[str, Any]:
+    """Extract normalized currency_code, exchange_rate, and is_foreign_currency from a Palladium row."""
+    curr = (getattr(row, "currency_code", None) or "ZAR").strip().upper() or "ZAR"
+    rate = float(getattr(row, "exchange_rate", 1.0) or 1.0)
+    return {
+        "currency_code": curr,
+        "exchange_rate": rate,
+        "is_foreign_currency": curr != "ZAR",
+    }
+
 def find_best_item_match(cand_items: List[OrderItem], target_sku: str) -> Optional[OrderItem]:
     if not target_sku or not cand_items:
         return None
@@ -362,7 +372,7 @@ def get_procurement_documents(
                     "total_qty": target_qty,
                     "unit_cost": float(r.unit_cost or 0.0) if float(r.unit_cost or 0.0) > 0 else (round(float(r.total_value_excl or 0.0) / target_qty, 2) if target_qty > 0 else 0.0),
                     "total_value": float(r.total_value_excl or 0.0),
-                    "currency_code": r.currency_code or "ZAR",
+                    **_extract_currency_meta(r),
                     "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
                     "allocated_qty": round(total_allocated, 2),
                     "unallocated_qty": round(rem_qty, 2),
@@ -405,7 +415,7 @@ def get_procurement_documents(
                     "total_qty": target_qty,
                     "unit_cost": float(r.unit_cost or 0.0) if float(r.unit_cost or 0.0) > 0 else (round(float(r.line_total_excl or 0.0) / target_qty, 2) if target_qty > 0 else 0.0),
                     "total_value": float(r.line_total_excl or 0.0),
-                    "currency_code": r.currency_code or "ZAR",
+                    **_extract_currency_meta(r),
                     "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
                     "reference": r.reference or None,
                     "allocated_qty": round(total_allocated, 2),
@@ -467,7 +477,7 @@ def get_procurement_documents(
                     "allocated_qty": 0.0,
                     "unallocated_qty": 0.0,
                     "total_value": 0.0,
-                    "currency_code": r.currency_code or "ZAR",
+                    **_extract_currency_meta(r),
                     "allocated_lines_count": 0,
                     "unallocated_lines_count": 0,
                     "partial_lines_count": 0,
@@ -506,7 +516,7 @@ def get_procurement_documents(
                 "shipped_qty": float(r.shipped_qty or 0.0),
                 "unit_cost": float(r.unit_cost or 0.0),
                 "total_value": float(r.total_value_excl or 0.0),
-                "currency_code": r.currency_code or "ZAR",
+                **_extract_currency_meta(r),
                 "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
                 "order_required_date": r.order_required_date.isoformat() if r.order_required_date else None,
                 "line_eta": (r.line_eta or "").strip() if getattr(r, 'line_eta', None) else None,
@@ -551,7 +561,7 @@ def get_procurement_documents(
                     "allocated_qty": 0.0,
                     "unallocated_qty": 0.0,
                     "total_value": 0.0,
-                    "currency_code": r.currency_code or "ZAR",
+                    **_extract_currency_meta(r),
                     "allocated_lines_count": 0,
                     "unallocated_lines_count": 0,
                     "partial_lines_count": 0,
@@ -592,7 +602,7 @@ def get_procurement_documents(
                 "shipped_qty": target_qty,
                 "unit_cost": float(r.unit_cost or 0.0),
                 "total_value": float(r.line_total_excl or 0.0),
-                "currency_code": r.currency_code or "ZAR",
+                **_extract_currency_meta(r),
                 "transaction_date": r.transaction_date.isoformat() if r.transaction_date else None,
                 "order_required_date": None,
                 "reference": r.reference or None,
@@ -761,9 +771,12 @@ def get_document_details(
         customer_name = None
         erp_status = "Open"
         total_value = 0.0
+        currency_meta = {"currency_code": "ZAR", "exchange_rate": 1.0, "is_foreign_currency": False}
 
         if clean_doc_type == "PO":
             rows = db.query(PalladiumPOLine).filter(PalladiumPOLine.document_no == clean_doc_no).all()
+            if rows:
+                currency_meta = _extract_currency_meta(rows[0])
             for r in rows:
                 vendor_name = r.vendor_name or vendor_name
                 transaction_date = r.transaction_date.isoformat() if r.transaction_date else transaction_date
@@ -801,6 +814,7 @@ def get_document_details(
                     "total_qty": target_qty,
                     "unit_cost": float(r.unit_cost or 0.0) if float(r.unit_cost or 0.0) > 0 else (round(float(r.total_value_excl or 0.0) / target_qty, 2) if target_qty > 0 else 0.0),
                     "total_value": float(r.total_value_excl or 0.0),
+                    **_extract_currency_meta(r),
                     "allocated_qty": round(line_allocated, 2),
                     "unallocated_qty": round(rem_qty, 2),
                     "allocation_status": l_status,
@@ -811,6 +825,8 @@ def get_document_details(
                 })
         else:
             rows = db.query(PalladiumGRNLine).filter(PalladiumGRNLine.document_no == clean_doc_no).all()
+            if rows:
+                currency_meta = _extract_currency_meta(rows[0])
             for r in rows:
                 vendor_name = r.vendor_name or vendor_name
                 transaction_date = r.transaction_date.isoformat() if r.transaction_date else transaction_date
@@ -842,6 +858,7 @@ def get_document_details(
                     "total_qty": target_qty,
                     "unit_cost": float(r.unit_cost or 0.0) if float(r.unit_cost or 0.0) > 0 else (round(float(r.line_total_excl or 0.0) / target_qty, 2) if target_qty > 0 else 0.0),
                     "total_value": float(r.line_total_excl or 0.0),
+                    **_extract_currency_meta(r),
                     "allocated_qty": round(line_allocated, 2),
                     "unallocated_qty": round(rem_qty, 2),
                     "allocation_status": l_status,
@@ -895,6 +912,7 @@ def get_document_details(
             "allocated_lines_count": allocated_lines,
             "unallocated_lines_count": unallocated_lines,
             "total_value": round(total_value, 2),
+            **currency_meta,
             "allocation_status": doc_status,
             "is_internal": is_internal,
             "is_archived": is_archived,
@@ -1771,6 +1789,7 @@ def get_auto_match_preview(db: Session = Depends(get_db)):
                     "total_lines": 0,
                     "unallocated_lines_count": 0,
                     "total_value": 0.0,
+                    **_extract_currency_meta(r),
                     "lines": []
                 }
 
@@ -1864,6 +1883,9 @@ def get_auto_match_preview(db: Session = Depends(get_db)):
                 "total_lines": d["total_lines"],
                 "unallocated_lines_count": d["unallocated_lines_count"],
                 "total_value": round(d["total_value"], 2),
+                "currency_code": d.get("currency_code", "ZAR"),
+                "exchange_rate": d.get("exchange_rate", 1.0),
+                "is_foreign_currency": d.get("is_foreign_currency", False),
                 "detected_project_id": detected_proj_id,
                 "detected_project_name": detected_proj_name,
                 "suggested_order_id": suggested_order_id,
