@@ -48,43 +48,33 @@ const DualCurrencyValue = ({ amount, docOrLine, inline = false, showRate = false
   const code = getCurrencyCode(docOrLine);
   const isForeign = code !== 'ZAR';
   const formattedNative = formatCurrencyAmount(amount, code);
-  const zarEquiv = isForeign ? getZarEquivalent(amount, docOrLine) : null;
+  const zarEquiv = isForeign ? getZarEquivalent(amount, docOrLine) : Number(amount || 0);
   const rate = Number(docOrLine?.exchange_rate || 1);
 
   if (!isForeign) {
     return <span>{formattedNative}</span>;
   }
 
+  // Primary display is always Local Currency (ZAR) when exchange rate is known;
+  // International currency is shown strictly as a secondary reference.
+  const primaryText = zarEquiv !== null ? formatCurrencyAmount(zarEquiv, 'ZAR') : formattedNative;
+  const refText = `${code} ${Number(amount || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${showRate && zarEquiv !== null ? ` (@ ${rate.toFixed(2)})` : ''}`;
+
   if (inline) {
     return (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-        <span>{formattedNative}</span>
-        {showBadge && (
-          <span style={{
-            fontSize: '10px',
-            background: '#eff6ff',
-            color: '#1d4ed8',
-            border: '1px solid #bfdbfe',
-            padding: '1px 5px',
-            borderRadius: '4px',
-            fontWeight: 700
-          }}>
-            {code}
-          </span>
-        )}
-        {zarEquiv !== null && (
-          <span style={{
-            fontSize: '10.5px',
-            background: '#f8fafc',
-            color: '#0284c7',
-            border: '1px solid #e0f2fe',
-            padding: '2px 6px',
-            borderRadius: '4px',
-            fontWeight: 600
-          }}>
-            &asymp; {formatCurrencyAmount(zarEquiv, 'ZAR')}{showRate ? ` (@ ${rate.toFixed(2)})` : ''}
-          </span>
-        )}
+        <span>{primaryText}</span>
+        <span style={{
+          fontSize: '10.5px',
+          background: '#f8fafc',
+          color: '#0284c7',
+          border: '1px solid #e0f2fe',
+          padding: '2px 6px',
+          borderRadius: '4px',
+          fontWeight: 600
+        }}>
+          Ref: {refText}
+        </span>
       </span>
     );
   }
@@ -92,7 +82,7 @@ const DualCurrencyValue = ({ amount, docOrLine, inline = false, showRate = false
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px' }}>
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-        <span>{formattedNative}</span>
+        <span>{primaryText}</span>
         {showBadge && (
           <span style={{
             fontSize: '9px',
@@ -110,7 +100,7 @@ const DualCurrencyValue = ({ amount, docOrLine, inline = false, showRate = false
       </div>
       {zarEquiv !== null && (
         <div style={{ fontSize: '10px', color: '#0284c7', fontWeight: 600, fontFamily: 'monospace' }}>
-          &asymp; {formatCurrencyAmount(zarEquiv, 'ZAR')}{showRate ? ` (@ ${rate.toFixed(2)})` : ''}
+          {refText}
         </div>
       )}
     </div>
@@ -649,7 +639,7 @@ export default function PurchasingPage() {
       source_line_id: allocTargetItem.line_id,
       sku: allocTargetItem.item_code,
       allocated_qty: Number(allocQty),
-      unit_cost: Number(allocTargetItem.unit_cost || 0),
+      unit_cost: Math.round((getZarEquivalent(allocTargetItem.unit_cost, allocTargetItem.currency_code ? allocTargetItem : selectedDocument) ?? Number(allocTargetItem.unit_cost || 0)) * 100) / 100,
       notes: allocNotes,
       allocated_by_name: 'Staff'
     };
@@ -859,7 +849,7 @@ export default function PurchasingPage() {
         source_line_id: l.line_id,
         sku: l.item_code,
         allocated_qty: Number(l.unallocated_qty || 1),
-        unit_cost: Number(l.unit_cost || 0),
+        unit_cost: Math.round((getZarEquivalent(l.unit_cost, l.currency_code ? l : selectedDocument) ?? Number(l.unit_cost || 0)) * 100) / 100,
         fitting_code: l.item_code,
         order_item_id: mappedItemId,
         is_service: isService
