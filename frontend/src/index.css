@@ -110,8 +110,8 @@ table tbody tr:hover,
 .tracker-table tbody tr:hover,
 tr.clickable:hover,
 tr.hover-row:hover {
-  background: rgba(224, 153, 36, 0.10) !important;
-  background-color: rgba(224, 153, 36, 0.10) !important;
+  background: #f8fafc !important;
+  background-color: #f8fafc !important;
 }
 
 table tbody tr:hover td,
@@ -119,8 +119,8 @@ table tbody tr:hover td,
 .tracker-table tbody tr:hover td,
 tr.clickable:hover td,
 tr.hover-row:hover td {
-  background: rgba(224, 153, 36, 0.10) !important;
-  background-color: rgba(224, 153, 36, 0.10) !important;
+  background: #f8fafc !important;
+  background-color: #f8fafc !important;
 }
 
 /* 3. Number & Currency Tabular Monospace Alignment */

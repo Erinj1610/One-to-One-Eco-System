@@ -933,17 +933,66 @@ export default function TakeoffSpecEngine({
     }
   };
 
-  // Keyboard navigation on row input
+  // Enhanced Keyboard Navigation (Desktop Spreadsheet Standard: Arrows, Enter, Tab)
   const handleKeyDown = (e, index, field) => {
+    const fields = ['floor', 'area', 'tag', 'qty', 'notes'];
+    const currentFieldIndex = fields.indexOf(field);
+
     if (e.key === 'Enter') {
       e.preventDefault();
-      // If on the last row and in notes or qty, automatically add next row!
-      if (index === countUpRows.length - 1 && (field === 'notes' || field === 'qty')) {
+      if (index === countUpRows.length - 1) {
         handleAddRow();
+        setTimeout(() => {
+          const nextRowInput = document.querySelector(`[data-row-index="${index + 1}"][data-field="${field}"]`);
+          if (nextRowInput) {
+            nextRowInput.focus();
+            if (nextRowInput.select) nextRowInput.select();
+          }
+        }, 50);
       } else {
-        // Focus the next row's same field or tag
         const nextInput = document.querySelector(`[data-row-index="${index + 1}"][data-field="${field}"]`);
-        if (nextInput) nextInput.focus();
+        if (nextInput) {
+          nextInput.focus();
+          if (nextInput.select) nextInput.select();
+        }
+      }
+    } else if (e.key === 'ArrowDown') {
+      if (index < countUpRows.length - 1) {
+        e.preventDefault();
+        const nextInput = document.querySelector(`[data-row-index="${index + 1}"][data-field="${field}"]`);
+        if (nextInput) {
+          nextInput.focus();
+          if (nextInput.select) nextInput.select();
+        }
+      }
+    } else if (e.key === 'ArrowUp') {
+      if (index > 0) {
+        e.preventDefault();
+        const prevInput = document.querySelector(`[data-row-index="${index - 1}"][data-field="${field}"]`);
+        if (prevInput) {
+          prevInput.focus();
+          if (prevInput.select) prevInput.select();
+        }
+      }
+    } else if (e.key === 'ArrowRight' && e.target.selectionStart === e.target.value.length) {
+      if (currentFieldIndex < fields.length - 1) {
+        e.preventDefault();
+        const nextField = fields[currentFieldIndex + 1];
+        const nextInput = document.querySelector(`[data-row-index="${index}"][data-field="${nextField}"]`);
+        if (nextInput) {
+          nextInput.focus();
+          if (nextInput.select) nextInput.select();
+        }
+      }
+    } else if (e.key === 'ArrowLeft' && e.target.selectionStart === 0) {
+      if (currentFieldIndex > 0) {
+        e.preventDefault();
+        const prevField = fields[currentFieldIndex - 1];
+        const prevInput = document.querySelector(`[data-row-index="${index}"][data-field="${prevField}"]`);
+        if (prevInput) {
+          prevInput.focus();
+          if (prevInput.select) prevInput.select();
+        }
       }
     }
   };

@@ -1,4 +1,5 @@
 import EmptyStateBanner from '../components/common/EmptyStateBanner';
+import ClientPeekCard from '../components/common/ClientPeekCard';
 import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '../context/StoreContext';
@@ -3606,23 +3607,22 @@ export default function OrdersPage() {
                               style={{ cursor: 'pointer' }}
                             />
                           </td>
-                          <td style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-info)' }} onClick={e => e.stopPropagation()}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <td style={{ fontFamily: 'monospace', fontWeight: 600 }} onClick={e => e.stopPropagation()}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap' }}>
                               {hasChildSubs && (
                                 <button
                                   type="button"
-                                  className="btn-ghost"
                                   style={{
                                     padding: 0,
-                                    height: '18px',
-                                    width: '18px',
+                                    height: '20px',
+                                    width: '20px',
                                     borderRadius: '4px',
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    color: isExpanded ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                                    background: isExpanded ? 'rgba(255, 255, 255, 0.06)' : 'transparent',
-                                    border: 'none',
+                                    color: isExpanded ? '#0f172a' : '#94a3b8',
+                                    background: isExpanded ? '#f1f5f9' : 'transparent',
+                                    border: '1px solid #e2e8f0',
                                     cursor: 'pointer',
                                     transition: 'all 0.15s ease'
                                   }}
@@ -3639,9 +3639,23 @@ export default function OrdersPage() {
                                 </button>
                               )}
                               <span 
-                                className="btn-link" 
-                                style={{ cursor: 'pointer', textDecoration: 'none', color: 'var(--text-info)' }} 
+                                style={{ 
+                                  cursor: 'pointer', 
+                                  textDecoration: 'none', 
+                                  color: '#0f172a',
+                                  fontSize: '12px',
+                                  padding: '2px 6px',
+                                  borderRadius: '5px',
+                                  background: '#f8fafc',
+                                  border: '1px solid #e2e8f0',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  maxWidth: '220px',
+                                  display: 'inline-block'
+                                }} 
                                 onClick={() => handleOpenWorkspace(o)}
+                                title={o.id}
                               >
                                 {o.id}
                               </span>
@@ -3649,39 +3663,53 @@ export default function OrdersPage() {
                                 <span 
                                   style={{ 
                                     fontSize: '9.5px', 
-                                    padding: '1px 6px', 
-                                    borderRadius: '3px', 
-                                    border: '1px solid var(--border)', 
-                                    background: 'var(--bg-secondary)', 
-                                    color: 'var(--text-secondary)', 
-                                    fontWeight: 600,
-                                    letterSpacing: '0.02em' 
+                                    padding: '2px 6px', 
+                                    borderRadius: '4px', 
+                                    border: '1px solid #e2e8f0', 
+                                    background: '#f1f5f9', 
+                                    color: '#475569', 
+                                    fontWeight: 700,
+                                    letterSpacing: '0.04em',
+                                    textTransform: 'uppercase',
+                                    whiteSpace: 'nowrap'
                                   }}
                                 >
-                                  Master · {childSubs.length} {childSubs.length === 1 ? 'Phase' : 'Phases'}
+                                  {childSubs.length}P
                                 </span>
                               )}
                             </div>
                           </td>
-                          <td style={{ fontWeight: 600 }}>{o.quote_name || 'Standard Quotation'}</td>
-                          <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectName}</td>
-                          <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: o.projectClient } }); }}>{o.projectClient || '—'}</td>
-                          <td style={{ color: 'var(--text-secondary)' }}>{o.projectPm || '—'}</td>
-                          <td style={{ fontWeight: 700, color: isLowMargin ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                            {margin}% {isLowMargin && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
+                          <td style={{ fontWeight: 600, color: '#0f172a' }}>{o.quote_name || 'Standard Quotation'}</td>
+                          <td style={{ fontWeight: 600, color: '#334155', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>
+                            <span style={{ borderBottom: '1px dotted #cbd5e1' }}>{o.projectName}</span>
                           </td>
-                          <td style={{ fontWeight: 600 }}>R {retail.toLocaleString()}</td>
-                          <td style={{ color: 'var(--text-success)' }}>R {(o.paid || 0).toLocaleString()}</td>
-                          <td style={{ fontWeight: 600, color: o.outstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
-                            R {(o.outstanding || 0).toLocaleString()}
+                          <td onClick={e => e.stopPropagation()}>
+                            <ClientPeekCard clientName={o.projectClient} />
+                          </td>
+                          <td style={{ color: '#64748b' }}>{o.projectPm || '—'}</td>
+                          <td style={{ fontWeight: 700, color: isLowMargin ? '#dc2626' : '#16a34a', fontFamily: 'monospace' }}>
+                            {margin}%
+                          </td>
+                          <td style={{ fontWeight: 600, fontFamily: 'monospace', color: '#0f172a' }}>R {Math.round(retail).toLocaleString()}</td>
+                          <td style={{ color: '#16a34a', fontFamily: 'monospace' }}>R {Math.round(o.paid || 0).toLocaleString()}</td>
+                          <td style={{ fontWeight: 600, color: o.outstanding > 0 ? '#d97706' : '#94a3b8', fontFamily: 'monospace' }}>
+                            R {Math.round(o.outstanding || 0).toLocaleString()}
                           </td>
                           <td>
-                            <span className={`badge ${statusColor[o.status] || 'b-default'}`}>{o.status || 'Draft'}</span>
+                            <span className={`status-pill ${
+                              o.status === 'Complete' ? 'complete' : o.status === 'Ongoing' ? 'ongoing' : o.status === 'Pending' ? 'pending' : 'draft'
+                            }`}>
+                              <span className="status-pill-dot" />
+                              {o.status || 'Draft'}
+                            </span>
                           </td>
                           <td>
-                            <span className={`badge ${
-                              o.paymentStatus === 'Fully Paid' ? 'b-success' : o.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
-                            }`}>{o.paymentStatus || 'Unpaid'}</span>
+                            <span className={`status-pill ${
+                              o.paymentStatus === 'Fully Paid' ? 'complete' : o.paymentStatus === 'Partially Paid' ? 'partial' : 'draft'
+                            }`}>
+                              <span className="status-pill-dot" />
+                              {o.paymentStatus || 'Unpaid'}
+                            </span>
                           </td>
                         </tr>
 
@@ -3713,49 +3741,75 @@ export default function OrdersPage() {
                                 />
                               </td>
                               <td style={{ fontFamily: 'monospace', fontWeight: 600, paddingLeft: '32px' }} onClick={e => e.stopPropagation()}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                  <span style={{ color: 'var(--text-tertiary)', fontSize: '11px', userSelect: 'none' }}>↳</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap' }}>
+                                  <span style={{ color: '#94a3b8', fontSize: '11px', userSelect: 'none' }}>↳</span>
                                   <span 
-                                    className="btn-link" 
-                                    style={{ cursor: 'pointer', color: 'var(--text-secondary)', textDecoration: 'none' }} 
+                                    style={{ 
+                                      cursor: 'pointer', 
+                                      color: '#475569', 
+                                      textDecoration: 'none',
+                                      fontSize: '11.5px',
+                                      padding: '1px 5px',
+                                      borderRadius: '4px',
+                                      background: '#f8fafc',
+                                      border: '1px solid #e2e8f0',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      maxWidth: '200px'
+                                    }} 
                                     onClick={() => handleOpenWorkspace(sub)}
+                                    title={sub.id}
                                   >
                                     {sub.id}
                                   </span>
                                   <span 
                                     style={{ 
                                       fontSize: '9.5px', 
-                                      padding: '1px 6px', 
-                                      borderRadius: '3px', 
-                                      border: '1px solid var(--border)', 
-                                      background: 'var(--bg-secondary)', 
-                                      color: 'var(--text-secondary)', 
-                                      fontWeight: 600 
+                                      padding: '1px 5px', 
+                                      borderRadius: '4px', 
+                                      border: '1px solid #e2e8f0', 
+                                      background: '#f1f5f9', 
+                                      color: '#64748b', 
+                                      fontWeight: 600,
+                                      whiteSpace: 'nowrap'
                                     }}
                                   >
                                     {sub.phase_name || sub.phaseName || `Phase ${sub.sub_order_index || 1}`}
                                   </span>
                                 </div>
                               </td>
-                              <td style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{sub.quote_name || 'Phase Scope'}</td>
-                              <td style={{ fontWeight: 500, color: 'var(--text-secondary)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${sub.projectKey || o.projectKey}`); }}>{sub.projectName || o.projectName}</td>
-                              <td style={{ color: 'var(--text-secondary)', cursor: 'pointer', textDecoration: 'none' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: sub.projectClient || o.projectClient } }); }}>{(sub.projectClient || o.projectClient) || '—'}</td>
-                              <td style={{ color: 'var(--text-tertiary)' }}>{sub.projectPm || o.projectPm || '—'}</td>
-                              <td style={{ fontWeight: 600, color: subMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                                {subMargin}% {subMargin < 39 && <AlertTriangle size={12} style={{ display: 'inline', marginLeft: '3px' }} />}
+                              <td style={{ fontWeight: 500, color: '#475569' }}>{sub.quote_name || 'Phase Scope'}</td>
+                              <td style={{ fontWeight: 500, color: '#475569', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${sub.projectKey || o.projectKey}`); }}>
+                                <span style={{ borderBottom: '1px dotted #cbd5e1' }}>{sub.projectName || o.projectName}</span>
                               </td>
-                              <td style={{ fontWeight: 600 }}>R {subRetail.toLocaleString()}</td>
-                              <td style={{ color: 'var(--text-success)' }}>R {subPaid.toLocaleString()}</td>
-                              <td style={{ fontWeight: 600, color: subOut > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)' }}>
-                                R {subOut.toLocaleString()}
+                              <td onClick={e => e.stopPropagation()}>
+                                <ClientPeekCard clientName={sub.projectClient || o.projectClient} />
+                              </td>
+                              <td style={{ color: '#94a3b8' }}>{sub.projectPm || o.projectPm || '—'}</td>
+                              <td style={{ fontWeight: 600, color: subMargin < 39 ? '#dc2626' : '#16a34a', fontFamily: 'monospace' }}>
+                                {subMargin}%
+                              </td>
+                              <td style={{ fontWeight: 600, fontFamily: 'monospace', color: '#0f172a' }}>R {Math.round(subRetail).toLocaleString()}</td>
+                              <td style={{ color: '#16a34a', fontFamily: 'monospace' }}>R {Math.round(subPaid).toLocaleString()}</td>
+                              <td style={{ fontWeight: 600, color: subOut > 0 ? '#d97706' : '#94a3b8', fontFamily: 'monospace' }}>
+                                R {Math.round(subOut).toLocaleString()}
                               </td>
                               <td>
-                                <span className={`badge ${statusColor[sub.status] || 'b-default'}`}>{sub.status || 'Draft'}</span>
+                                <span className={`status-pill ${
+                                  sub.status === 'Complete' ? 'complete' : sub.status === 'Ongoing' ? 'ongoing' : sub.status === 'Pending' ? 'pending' : 'draft'
+                                }`}>
+                                  <span className="status-pill-dot" />
+                                  {sub.status || 'Draft'}
+                                </span>
                               </td>
                               <td>
-                                <span className={`badge ${
-                                  sub.paymentStatus === 'Fully Paid' ? 'b-success' : sub.paymentStatus === 'Partially Paid' ? 'b-warning' : 'b-danger'
-                                }`}>{sub.paymentStatus || 'Unpaid'}</span>
+                                <span className={`status-pill ${
+                                  sub.paymentStatus === 'Fully Paid' ? 'complete' : sub.paymentStatus === 'Partially Paid' ? 'partial' : 'draft'
+                                }`}>
+                                  <span className="status-pill-dot" />
+                                  {sub.paymentStatus || 'Unpaid'}
+                                </span>
                               </td>
                             </tr>
                           );

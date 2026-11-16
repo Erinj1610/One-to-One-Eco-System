@@ -175,12 +175,12 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Robo
 .stat-danger { color: var(--text-danger); }
 
 /* TABLES */
-.table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.table th { text-align: left; padding: 7px 9px; border-bottom: 0.5px solid var(--border); color: var(--text-tertiary); font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; background: var(--bg-secondary); position: sticky; top: 0; z-index: 2; }
-.table td { padding: 7px 9px; border-bottom: 0.5px solid var(--border); color: var(--text-secondary); vertical-align: middle; }
-.table tr:last-child td { border-bottom: none; }
+.table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+.table th { text-align: left; padding: 11px 14px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-weight: 600; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; background: #f8fafc; position: sticky; top: 0; z-index: 10; white-space: nowrap; }
+.table td { padding: 12px 14px; border-bottom: 1px solid #f1f5f9; color: #334155; vertical-align: middle; line-height: 1.4; }
+.table tr:last-child td { border-bottom: 1px solid #e2e8f0; }
 .table tr.clickable { cursor: pointer; }
-.table tr.clickable:hover td { background: var(--bg-secondary); }
+.table tr.clickable:hover td { background: #f8fafc; }
 .link { color: var(--text-info); font-weight: 500; cursor: pointer; }
 .link:hover { text-decoration: underline; }
 
