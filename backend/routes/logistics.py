@@ -1264,6 +1264,27 @@ def create_delivery_note(payload: DeliveryNoteCreateInput, db: Session = Depends
 
     db.flush()
     recalc_order_item_logistics(db, order_obj)
+
+    try:
+        from models.orm_models import OrderAuditLog
+        audit_entry = OrderAuditLog(
+            order_id=order_obj.id,
+            order_po=order_obj.po_number,
+            action="DELIVERY_NOTE_CREATED",
+            reason=f"Generated Delivery Note {doc_no} with {len(dn_items_to_create)} items ({payload.delivery_method or 'Delivery'})",
+            performed_by=payload.dispatched_by or "Logistics",
+            metadata_json={
+                "dn_ref": doc_no,
+                "items_count": len(dn_items_to_create),
+                "delivery_method": payload.delivery_method,
+                "driver_name": payload.driver_name,
+                "notes": payload.notes
+            }
+        )
+        db.add(audit_entry)
+    except Exception as a_err:
+        logger.warning(f"Failed to record audit log for DN {doc_no}: {a_err}")
+
     db.commit()
     db.refresh(dn_rec)
 
@@ -1370,6 +1391,22 @@ def update_delivery_note_status(dn_ref: str, payload: DeliveryNoteStatusInput, d
     order_obj = db.query(Order).filter(Order.id == dn_rec.order_id).first()
     if order_obj:
         recalc_order_item_logistics(db, order_obj)
+        try:
+            from models.orm_models import OrderAuditLog
+            audit_entry = OrderAuditLog(
+                order_id=order_obj.id,
+                order_po=order_obj.po_number,
+                action="DELIVERY_NOTE_VOIDED",
+                reason=f"Voided Delivery Note {dn_rec.document_number}. Reason: {payload.reason or 'User requested cancellation'}",
+                performed_by=payload.voided_by or "Logistics",
+                metadata_json={
+                    "dn_ref": dn_rec.document_number,
+                    "void_reason": payload.reason
+                }
+            )
+            db.add(audit_entry)
+        except Exception as a_err:
+            logger.warning(f"Failed to record audit log for voided DN: {a_err}")
     db.commit()
     db.refresh(dn_rec)
 

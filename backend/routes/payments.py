@@ -692,6 +692,27 @@ def allocate_payment(data: dict = Body(...), db: Session = Depends(get_db)):
         # 5. Recalculate Order balances
         recalc_order_payments(db, order.po_number or str(order.id))
 
+        try:
+            from models.orm_models import OrderAuditLog
+            audit_entry = OrderAuditLog(
+                order_id=order.id,
+                order_po=order.po_number,
+                action="PAYMENT_RECORDED",
+                delta_value=allocated_amount,
+                reason=f"Allocated R {allocated_amount:,.2f} from Receipt {payment.receipt_no} ({payment_type})",
+                performed_by=user_name,
+                metadata_json={
+                    "receipt_no": payment.receipt_no,
+                    "payment_type": payment_type,
+                    "allocated_amount": allocated_amount,
+                    "notes": notes
+                }
+            )
+            db.add(audit_entry)
+            db.commit()
+        except Exception as a_err:
+            logger.warning(f"Failed to record audit log for payment: {a_err}")
+
         return {
             "status": "success",
             "message": f"Successfully allocated R {allocated_amount:,.2f} from {payment.receipt_no} to {order.quote_name or order.po_number}.",
@@ -719,11 +740,36 @@ def delete_payment_allocation(allocation_id: int, db: Session = Depends(get_db))
             raise HTTPException(status_code=404, detail="Allocation not found.")
 
         order_id_ref = alloc.order_id
+        unalloc_amt = float(alloc.allocated_amount or 0.0)
+        receipt_ref = alloc.receipt_no
         db.delete(alloc)
         db.commit()
 
         # Recalculate order balances
         recalc_order_payments(db, order_id_ref)
+
+        try:
+            from models.orm_models import OrderAuditLog, Order
+            order_for_audit = db.query(Order).filter(
+                or_(Order.po_number == order_id_ref, Order.id == int(order_id_ref) if str(order_id_ref).isdigit() else False)
+            ).first()
+            if order_for_audit:
+                audit_entry = OrderAuditLog(
+                    order_id=order_for_audit.id,
+                    order_po=order_for_audit.po_number,
+                    action="PAYMENT_REMOVED",
+                    delta_value=-unalloc_amt,
+                    reason=f"Unallocated R {unalloc_amt:,.2f} (Receipt {receipt_ref})",
+                    performed_by="User",
+                    metadata_json={
+                        "receipt_no": receipt_ref,
+                        "unallocated_amount": unalloc_amt
+                    }
+                )
+                db.add(audit_entry)
+                db.commit()
+        except Exception as a_err:
+            logger.warning(f"Failed to record audit log for payment removal: {a_err}")
 
         return {
             "status": "success",

@@ -507,6 +507,7 @@ def update_order(po_number: str, order_data: dict, db: Session = Depends(get_db)
     
     old_project_key = order.project_key
     old_project_id = order.project_id
+    old_status = order.status
 
     project_key = order_data.get("project_key")
     project_id = None
@@ -534,6 +535,19 @@ def update_order(po_number: str, order_data: dict, db: Session = Depends(get_db)
             print(f"Warning: Failed to move drive folder during update_order for {po_number}: {drive_err}")
 
     apply_order_fields(order, order_data, project_id=project_id, project_key=project_key)
+    if order.status and order.status != old_status:
+        try:
+            audit_entry = OrderAuditLog(
+                order_id=order.id,
+                order_po=order.po_number,
+                action="STATUS_CHANGE",
+                reason=f"Order status changed from '{old_status or 'Draft'}' to '{order.status}'",
+                performed_by=order_data.get("updated_by") or "User",
+                metadata_json={"old_status": old_status, "new_status": order.status}
+            )
+            db.add(audit_entry)
+        except Exception as a_err:
+            print(f"Warning: Failed to log status change audit: {a_err}")
     db.commit()
     db.refresh(order)
     return order
