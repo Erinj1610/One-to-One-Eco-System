@@ -123,6 +123,46 @@ export default function ProjectList() {
   }, []);
 
   // Bulk Selection States
+  // Table View Options (Density & Column Toggles)
+  const [tableDensity, setTableDensity] = useState(() => {
+    return localStorage.getItem('projects_table_density') || 'comfortable';
+  });
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('projects_visible_columns');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleToggleColumn = (colId, isVisible) => {
+    setVisibleColumns(prev => {
+      const updated = { ...prev, [colId]: isVisible };
+      localStorage.setItem('projects_visible_columns', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleChangeDensity = (newDensity) => {
+    setTableDensity(newDensity);
+    localStorage.setItem('projects_table_density', newDensity);
+  };
+
+  const PROJECT_TABLE_COLUMNS = useMemo(() => [
+    { id: 'name', label: 'Project', locked: true },
+    { id: 'client', label: 'Client' },
+    { id: 'pm', label: 'PM' },
+    { id: 'designFees', label: 'Design Fees' },
+    { id: 'orders', label: 'Orders' },
+    { id: 'margin', label: 'Margin' },
+    { id: 'value', label: 'Value' },
+    { id: 'paid', label: 'Paid' },
+    { id: 'outstanding', label: 'Outstanding' },
+    { id: 'status', label: 'Status' },
+    { id: 'stage', label: 'Stage' }
+  ], []);
+
   const [selectedKeys, setSelectedKeys] = useState(new Set());
 
   const toggleSelectKey = (key, e) => {
