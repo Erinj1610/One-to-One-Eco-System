@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from database.cloud_sql import get_db
-from models.orm_models import Order, OrderItem, Project, ProcurementAllocation, OrderAuditLog, DeliveryNote, DeliveryNoteItem
+from models.orm_models import Order, OrderItem, Project, ProcurementAllocation, OrderAuditLog, LogisticsDeliveryNote, LogisticsDeliveryNoteItem
 from pydantic import BaseModel
 from typing import Optional, List, Any, Dict
 from datetime import datetime, timezone
@@ -1894,15 +1894,15 @@ def _compute_swap_context(order: Order, item: OrderItem, db: Session) -> Dict[st
         if any(float(pi.invoice_qty or 0.0) > 0 for pi in phase_items):
             phase_has_invoice = True
 
-    # Delivery Note items (excluding Voided DNs)
-    dn_rows = db.query(DeliveryNoteItem, DeliveryNote).join(
-        DeliveryNote, DeliveryNoteItem.delivery_note_id == DeliveryNote.id
+    # Delivery Note items (excluding Voided / Cancelled DNs)
+    dn_rows = db.query(LogisticsDeliveryNoteItem, LogisticsDeliveryNote).join(
+        LogisticsDeliveryNote, LogisticsDeliveryNoteItem.delivery_note_id == LogisticsDeliveryNote.id
     ).filter(
-        DeliveryNoteItem.order_item_id == str(item.id),
-        DeliveryNote.status != "Voided"
+        LogisticsDeliveryNoteItem.order_item_id == str(item.id),
+        LogisticsDeliveryNote.status.notin_(["Voided", "Cancelled"])
     ).all()
     delivered_qty = sum(float(dni.qty_delivered or 0.0) for dni, _ in dn_rows)
-    dn_refs = sorted({dn.dn_number for _, dn in dn_rows if dn.dn_number})
+    dn_refs = sorted({dn.document_number for _, dn in dn_rows if dn.document_number})
 
     # Collect existing rooms and plan codes on this order
     all_order_items = db.query(OrderItem).filter(OrderItem.order_id == order.po_number).all()
@@ -2257,16 +2257,16 @@ def revert_order_swap(po_number: str, minus_item_id: str, payload: Dict[str, Any
             detail=f"Cannot revert swap: {active_alloc.allocation_type} {active_alloc.source_doc_no} is already allocated to this variation."
         )
 
-    active_dn = db.query(DeliveryNoteItem, DeliveryNote).join(
-        DeliveryNote, DeliveryNoteItem.delivery_note_id == DeliveryNote.id
+    active_dn = db.query(LogisticsDeliveryNoteItem, LogisticsDeliveryNote).join(
+        LogisticsDeliveryNote, LogisticsDeliveryNoteItem.delivery_note_id == LogisticsDeliveryNote.id
     ).filter(
-        DeliveryNoteItem.order_item_id.in_(check_ids),
-        DeliveryNote.status != "Voided"
+        LogisticsDeliveryNoteItem.order_item_id.in_(check_ids),
+        LogisticsDeliveryNote.status.notin_(["Voided", "Cancelled"])
     ).first()
     if active_dn:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot revert swap: Delivery Note {active_dn[1].dn_number} is already linked to this variation."
+            detail=f"Cannot revert swap: Delivery Note {active_dn[1].document_number} is already linked to this variation."
         )
 
     minus_val = float(minus_item.qty or 0.0) * float(minus_item.unit_retail or 0.0) # negative
