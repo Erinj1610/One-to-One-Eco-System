@@ -1560,6 +1560,10 @@ def recalc_order_item_procurement(db: Session, item: OrderItem):
     if grn_refs and hasattr(item, 'grn_ref'):
         item.grn_ref = "; ".join(sorted(grn_refs))
     item.received_date = max(grn_dates) if grn_dates else None
+    if getattr(item, "revision_status", "Active") == "SwappedCredit":
+        settled_dn = sum(abs(float(a.allocated_qty or 0.0)) for a in unique_grn_allocs)
+        if settled_dn >= abs(float(item.qty or 0.0)) > 0:
+            item.stock_status = "Credited (Settled)"
 
 
 def revert_order_item_for_cancelled_allocations(db: Session, item: OrderItem, cancelled_alloc_ids: set, cancelled_docs: set):

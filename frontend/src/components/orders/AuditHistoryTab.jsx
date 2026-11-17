@@ -45,6 +45,37 @@ export default function AuditHistoryTab({
   const [submittingNote, setSubmittingNote] = useState(false);
 
   const [showVariationDocModal, setShowVariationDocModal] = useState(false);
+  const [revertingId, setRevertingId] = useState(null);
+
+  const handleRevertSwap = async (minusItemId) => {
+    if (!poNumber || !minusItemId) return;
+    const confirmed = window.otoConfirm
+      ? await window.otoConfirm('Revert this swap and remove the Minus & Plus variation rows? (Only allowed if no PO, GRN, DN, or Invoice has been allocated to the replacement item.)')
+      : window.confirm('Revert this swap?');
+    if (!confirmed) return;
+
+    setRevertingId(minusItemId);
+    try {
+      const res = await fetch(`${API_BASE}/api/orders/${encodeURIComponent(poNumber)}/swaps/${encodeURIComponent(minusItemId)}/revert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Swap reverted from Audit Ledger', performed_by: 'User' })
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `Failed to revert swap (${res.status})`);
+      }
+      await fetchLogs();
+    } catch (err) {
+      if (window.otoAlert) {
+        window.otoAlert(err.message || 'Cannot revert swap');
+      } else {
+        alert(err.message || 'Cannot revert swap');
+      }
+    } finally {
+      setRevertingId(null);
+    }
+  };
 
   const fetchLogs = async () => {
     if (!poNumber) return;
@@ -606,6 +637,37 @@ export default function AuditHistoryTab({
                       <span style={{ fontSize: '11px', color: '#475569', background: '#f8fafc', padding: '2px 8px', borderRadius: '4px', border: '1px solid #e2e8f0', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                         <MapPin size={11} color="#64748b" /> {log.room}
                       </span>
+                    )}
+
+                    {isSwap && meta.is_manual_price && (
+                      <span style={{ fontSize: '10px', fontWeight: 700, color: '#b45309', background: '#fffbeb', padding: '2px 7px', borderRadius: '4px', border: '1px solid #fde68a' }}>
+                        Manual / Price Override
+                      </span>
+                    )}
+
+                    {isSwap && meta.minus_item_id && (
+                      <button
+                        type="button"
+                        onClick={() => handleRevertSwap(meta.minus_item_id)}
+                        disabled={revertingId === meta.minus_item_id}
+                        style={{
+                          fontSize: '10.5px',
+                          fontWeight: 600,
+                          color: '#dc2626',
+                          background: '#fef2f2',
+                          border: '1px solid #fecaca',
+                          padding: '2px 8px',
+                          borderRadius: '5px',
+                          cursor: revertingId === meta.minus_item_id ? 'wait' : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        title="Undo swap (blocked if PO/GRN/DN/Invoice already allocated)"
+                      >
+                        {revertingId === meta.minus_item_id ? <Loader2 size={10} className="animate-spin" /> : <RotateCcw size={10} />}
+                        Undo Swap
+                      </button>
                     )}
 
                     <span style={{ fontSize: '11.5px', fontWeight: 600, color: '#64748b' }}>

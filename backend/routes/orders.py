@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from database.cloud_sql import get_db
-from models.orm_models import Order, OrderItem, Project, ProcurementAllocation, OrderAuditLog
+from models.orm_models import Order, OrderItem, Project, ProcurementAllocation, OrderAuditLog, DeliveryNote, DeliveryNoteItem
 from pydantic import BaseModel
 from typing import Optional, List, Any, Dict
 from datetime import datetime, timezone
@@ -1850,16 +1850,175 @@ def create_sub_order(po_number: str, payload: CreateSubOrderSchema, db: Session 
 
 class ItemSwapSchema(BaseModel):
     replacement: Dict[str, Any]
-    replacement_qty: Optional[int] = None
+    swap_qty: Optional[float] = None
+    replacement_qty: Optional[float] = None
     reason: str
     performed_by: Optional[str] = "User"
+    sync_to_takeoff: Optional[bool] = False
+    is_manual_price: Optional[bool] = False
+    catalog_retail_price: Optional[float] = None
+
+
+def _compute_swap_context(order: Order, item: OrderItem, db: Session) -> Dict[str, Any]:
+    """Compute remaining swappable qty, PO/GRN/Invoice/DN exposure, rooms, and suggested plan code."""
+    orig_qty = max(0.0, float(item.qty or 0.0))
+
+    # Prior Minus (SwappedCredit) rows linked to this item
+    prior_credits = db.query(OrderItem).filter(
+        OrderItem.order_id == order.po_number,
+        OrderItem.swap_parent_id == str(item.id),
+        OrderItem.revision_status == "SwappedCredit"
+    ).all()
+    already_swapped_qty = sum(abs(float(c.qty or 0.0)) for c in prior_credits)
+    remaining_qty = max(0.0, orig_qty - already_swapped_qty)
+
+    # Procurement & Invoicing allocations on this item
+    allocs = db.query(ProcurementAllocation).filter(
+        ProcurementAllocation.order_item_id == str(item.id),
+        ProcurementAllocation.status == "Active"
+    ).all()
+    po_qty = sum(float(a.allocated_qty or 0.0) for a in allocs if a.allocation_type == "PO")
+    grn_qty = sum(float(a.allocated_qty or 0.0) for a in allocs if a.allocation_type == "GRN")
+    inv_qty = sum(float(a.allocated_qty or 0.0) for a in allocs if a.allocation_type == "INVOICE" and not str(a.source_doc_no or "").upper().startswith(("CN-", "CR-")))
+    po_refs = sorted({a.source_doc_no for a in allocs if a.allocation_type == "PO" and a.source_doc_no})
+    grn_refs = sorted({a.source_doc_no for a in allocs if a.allocation_type == "GRN" and a.source_doc_no})
+    inv_refs = sorted({a.source_doc_no for a in allocs if a.allocation_type == "INVOICE" and a.source_doc_no and not str(a.source_doc_no).upper().startswith(("CN-", "CR-"))})
+
+    # Also check if Phase / Sub-order has any invoices on the order
+    phase_has_invoice = bool(inv_refs)
+    if not phase_has_invoice and item.sub_order_ref:
+        phase_items = db.query(OrderItem).filter(
+            OrderItem.order_id == order.po_number,
+            OrderItem.sub_order_ref == item.sub_order_ref
+        ).all()
+        if any(float(pi.invoice_qty or 0.0) > 0 for pi in phase_items):
+            phase_has_invoice = True
+
+    # Delivery Note items (excluding Voided DNs)
+    dn_rows = db.query(DeliveryNoteItem, DeliveryNote).join(
+        DeliveryNote, DeliveryNoteItem.delivery_note_id == DeliveryNote.id
+    ).filter(
+        DeliveryNoteItem.order_item_id == str(item.id),
+        DeliveryNote.status != "Voided"
+    ).all()
+    delivered_qty = sum(float(dni.qty_delivered or 0.0) for dni, _ in dn_rows)
+    dn_refs = sorted({dn.dn_number for _, dn in dn_rows if dn.dn_number})
+
+    # Collect existing rooms and plan codes on this order
+    all_order_items = db.query(OrderItem).filter(OrderItem.order_id == order.po_number).all()
+    existing_rooms = sorted({(it.area or "").strip() for it in all_order_items if (it.area or "").strip()})
+    existing_types = {(it.type or "").strip().upper() for it in all_order_items if (it.type or "").strip()}
+
+    base_type = (item.type or "F1").strip()
+    suggested_type = f"{base_type}.1"
+    idx = 1
+    while suggested_type.upper() in existing_types and idx < 99:
+        idx += 1
+        suggested_type = f"{base_type}.{idx}"
+
+    return {
+        "item_id": str(item.id),
+        "original_qty": orig_qty,
+        "already_swapped_qty": already_swapped_qty,
+        "remaining_swappable_qty": remaining_qty,
+        "po_allocated_qty": po_qty,
+        "grn_received_qty": grn_qty,
+        "invoiced_qty": inv_qty,
+        "delivered_qty": delivered_qty,
+        "po_refs": po_refs,
+        "grn_refs": grn_refs,
+        "invoice_refs": inv_refs,
+        "dn_refs": dn_refs,
+        "phase_has_invoice": phase_has_invoice,
+        "existing_rooms": existing_rooms,
+        "suggested_plan_code": suggested_type,
+        "can_swap": (getattr(item, "revision_status", "Active") != "SwappedCredit") and remaining_qty > 0,
+    }
+
+
+@router.get("/{po_number}/items/{item_id}/swap-context")
+def get_item_swap_context(po_number: str, item_id: str, db: Session = Depends(get_db)):
+    order = find_order_by_identifier(po_number, db)
+    if not order:
+        raise HTTPException(status_code=404, detail=f"Order {po_number} not found")
+    item = db.query(OrderItem).filter(OrderItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Order item not found")
+    return _compute_swap_context(order, item, db)
+
+
+def _sync_takeoff_after_swap(order: Order, orig_item: OrderItem, new_item: OrderItem, swap_qty: float, rep_qty: float):
+    """Optionally update order.takeoff_data countUpRows & specifications when requested."""
+    raw = order.takeoff_data
+    if not raw:
+        return False
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else dict(raw)
+    except Exception:
+        return False
+    if not isinstance(data, dict):
+        return False
+
+    count_rows = list(data.get("countUpRows") or [])
+    specs = dict(data.get("specifications") or {})
+    orig_tag = (orig_item.type or "").strip()
+    new_tag = (new_item.type or orig_tag).strip()
+    orig_area = (orig_item.area or "").strip().lower()
+
+    # Reduce matching count-up row in the original area (or add negative/split adjustment)
+    remaining_to_deduct = swap_qty
+    updated_rows = []
+    for r in count_rows:
+        r_copy = dict(r)
+        r_tag = str(r_copy.get("tag") or "").strip()
+        r_area = str(r_copy.get("area") or "").strip().lower()
+        r_qty = float(r_copy.get("qty") or 0)
+        if remaining_to_deduct > 0 and orig_tag and r_tag.upper() == orig_tag.upper() and (not orig_area or r_area == orig_area) and r_qty > 0:
+            take = min(r_qty, remaining_to_deduct)
+            r_copy["qty"] = r_qty - take
+            remaining_to_deduct -= take
+            if r_copy["qty"] > 0:
+                updated_rows.append(r_copy)
+        else:
+            updated_rows.append(r_copy)
+
+    # Add the new Plus row into Takeoff count-up rows in the target area
+    if rep_qty > 0 and new_tag:
+        updated_rows.append({
+            "id": f"tk_swp_{uuid.uuid4().hex[:8]}",
+            "tag": new_tag,
+            "area": new_item.area or orig_item.area or "General",
+            "floor": new_item.floor or orig_item.floor or "Ground Floor",
+            "qty": rep_qty,
+            "itemType": "fixture",
+            "notes": f"Variation swap from {orig_tag or orig_item.code}"
+        })
+        if new_tag not in specs:
+            specs[new_tag] = {
+                "tag": new_tag,
+                "sku": new_item.code,
+                "one_to_one_code": new_item.one_one_code,
+                "name": new_item.description,
+                "brand": new_item.brand,
+                "supplier": new_item.supplier,
+                "retail_price": float(new_item.unit_retail or 0.0),
+                "cost_price": float(new_item.unit_cost or 0.0),
+                "itemType": "fixture"
+            }
+
+    data["countUpRows"] = updated_rows
+    data["specifications"] = specs
+    order.takeoff_data = data
+    return True
+
 
 @router.post("/{po_number}/items/{item_id}/swap")
 def swap_order_item(po_number: str, item_id: str, payload: ItemSwapSchema, db: Session = Depends(get_db)):
     """
-    On-Site Fitting Variation / Swap:
-    Preserves original item row with revision_status='Swapped' for clean Palladium ERP credit matching.
-    Inserts replacement item row with revision_status='Added' and records audit entry.
+    On-Site Fitting Variation / Swap (Explicit 3-Row Ledger):
+    1. Leaves the Original item row untouched as baseline (preserving PO/GRN/DN/Invoice links).
+    2. Inserts a Minus row (-swap_qty, revision_status='SwappedCredit') for credit & uplift tracking.
+    3. Inserts a Plus row (+rep_qty, revision_status='Added') with optional new Plan Code & Area.
     """
     if not payload.reason or not payload.reason.strip():
         raise HTTPException(status_code=400, detail="A reason is mandatory for item swaps and variation audits.")
@@ -1868,12 +2027,26 @@ def swap_order_item(po_number: str, item_id: str, payload: ItemSwapSchema, db: S
     if not item:
         raise HTTPException(status_code=404, detail="Original item not found")
 
+    if getattr(item, "revision_status", "Active") == "SwappedCredit":
+        raise HTTPException(status_code=400, detail="Cannot swap a Minus/Credit variation row.")
+
     order = find_order_by_identifier(po_number, db)
     if not order:
         raise HTTPException(status_code=404, detail=f"Order {po_number} not found")
 
+    ctx = _compute_swap_context(order, item, db)
+    swap_qty = float(payload.swap_qty if payload.swap_qty is not None else ctx["remaining_swappable_qty"])
+    if swap_qty <= 0 or swap_qty > ctx["remaining_swappable_qty"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Swap quantity ({swap_qty}) must be between 1 and remaining swappable quantity ({ctx['remaining_swappable_qty']})."
+        )
+
     repl = payload.replacement
-    rep_qty = int(payload.replacement_qty or item.qty or 1)
+    rep_qty = float(payload.replacement_qty if payload.replacement_qty is not None else swap_qty)
+    if rep_qty <= 0:
+        raise HTTPException(status_code=400, detail="Replacement quantity must be greater than 0.")
+
     rep_retail = float(repl.get("unit_retail") or repl.get("unitRetail") or 0.0)
     rep_cost = float(repl.get("unit_cost") or repl.get("unitCost") or 0.0)
     rep_code = repl.get("code") or repl.get("sku") or "SWAP-ITEM"
@@ -1881,22 +2054,66 @@ def swap_order_item(po_number: str, item_id: str, payload: ItemSwapSchema, db: S
     rep_desc = repl.get("description") or f"Replacement for {item.code or item.description}"
     rep_brand = repl.get("brand") or item.brand
     rep_supplier = repl.get("supplier") or item.supplier
-    rep_area = repl.get("area") or item.area
-    rep_floor = repl.get("floor") or item.floor
+    rep_area = (repl.get("area") or item.area or "").strip() or item.area
+    rep_floor = (repl.get("floor") or item.floor or "").strip() or item.floor
+    rep_type = (repl.get("type") or ctx["suggested_plan_code"] or item.type or "").strip()
     rep_first_fix = repl.get("first_fix") or repl.get("firstFix") or item.first_fix or "No"
 
-    # 1. Mark original item as Swapped
-    item.revision_status = "Swapped"
-    item.swap_reason = payload.reason.strip()
-    db.add(item)
+    # Determine status flags on the Minus row
+    has_delivery = ctx["delivered_qty"] > 0
+    has_purchasing_or_inv = (ctx["po_allocated_qty"] > 0 or ctx["grn_received_qty"] > 0 or ctx["invoiced_qty"] > 0 or ctx["phase_has_invoice"])
+    if has_delivery:
+        minus_stock_status = "Site Return / Uplift Required"
+        minus_delivery_status = "Uplift Required"
+    elif has_purchasing_or_inv:
+        minus_stock_status = "Awaiting Credit / Return"
+        minus_delivery_status = "Credited"
+    else:
+        minus_stock_status = "Credited"
+        minus_delivery_status = "Credited"
 
-    # 2. Insert new replacement item
-    new_item_id = f"swp_{uuid.uuid4().hex[:10]}"
-    new_item = OrderItem(
-        id=new_item_id,
+    reason_clean = payload.reason.strip()
+    base_sort = int(item.sort_order or 0)
+
+    # 1. Insert Minus row (-swap_qty)
+    minus_item_id = f"swp_crd_{uuid.uuid4().hex[:8]}"
+    minus_item = OrderItem(
+        id=minus_item_id,
+        order_id=item.order_id,
+        qty=-swap_qty,
+        type=item.type,
+        one_one_code=item.one_one_code,
+        code=item.code,
+        description=f"[CREDIT / SWAPPED OUT] {item.description or item.code}",
+        floor=item.floor,
+        area=item.area,
+        dimming=item.dimming,
+        brand=item.brand,
+        supplier=item.supplier,
+        unit_cost=float(item.unit_cost or 0.0),
+        unit_trade=float(item.unit_trade or 0.0),
+        unit_retail=float(item.unit_retail or 0.0),
+        selection=item.selection,
+        stock_status=minus_stock_status,
+        delivery_status=minus_delivery_status,
+        first_fix=item.first_fix or "No",
+        notes=f"Variation credit (-{swap_qty:g} of {ctx['original_qty']:g}) replaced by {rep_code} ({rep_type}) in {rep_area or 'same room'}. Reason: {reason_clean}",
+        sort_order=base_sort + 1,
+        sub_order_ref=item.sub_order_ref,
+        revision_status="SwappedCredit",
+        is_credit=False,
+        swap_parent_id=str(item.id),
+        swap_reason=reason_clean
+    )
+    db.add(minus_item)
+
+    # 2. Insert Plus row (+rep_qty)
+    plus_item_id = f"swp_add_{uuid.uuid4().hex[:8]}"
+    plus_item = OrderItem(
+        id=plus_item_id,
         order_id=item.order_id,
         qty=rep_qty,
-        type=item.type,
+        type=rep_type,
         one_one_code=rep_1to1,
         code=rep_code,
         description=rep_desc,
@@ -1910,51 +2127,70 @@ def swap_order_item(po_number: str, item_id: str, payload: ItemSwapSchema, db: S
         unit_retail=rep_retail,
         selection=repl.get("selection") or item.selection,
         stock_status=repl.get("stock_status") or "Pending",
+        delivery_status="Pending",
         eta=repl.get("eta") or item.eta,
         first_fix=rep_first_fix,
-        notes=f"Replacement for {item.code or item.id}. Reason: {payload.reason.strip()}",
-        sort_order=(item.sort_order or 0) + 1,
+        notes=f"Replacement for {item.code or item.id} ({item.type or ''} in {item.area or 'General'}). Reason: {reason_clean}",
+        sort_order=base_sort + 2,
         sub_order_ref=item.sub_order_ref,
         revision_status="Added",
+        is_credit=False,
         swap_parent_id=str(item.id),
-        swap_reason=payload.reason.strip()
+        swap_reason=reason_clean
     )
-    db.add(new_item)
+    db.add(plus_item)
 
-    # 3. Recalculate order totals
-    orig_val = float(item.qty or 0) * float(item.unit_retail or 0.0)
+    # 3. Optional Takeoff Sync
+    takeoff_synced = False
+    if payload.sync_to_takeoff:
+        takeoff_synced = _sync_takeoff_after_swap(order, item, plus_item, swap_qty, rep_qty)
+
+    # 4. Recalculate order totals (Net = Minus + Plus)
+    orig_credit_val = swap_qty * float(item.unit_retail or 0.0)
     new_val = rep_qty * rep_retail
-    delta_val = round(new_val - orig_val, 2)
+    delta_val = round(new_val - orig_credit_val, 2)
     order.value = round((order.value or 0.0) + delta_val, 2)
     order.outstanding = round((order.outstanding or 0.0) + delta_val, 2)
     db.add(order)
 
-    # 4. Record in OrderAuditLog
+    # 5. Record in OrderAuditLog
     audit_entry = OrderAuditLog(
         order_id=order.id,
         order_po=order.po_number,
         action="ITEM_SWAPPED",
         item_id=str(item.id),
         item_code=f"{item.code} ➔ {rep_code}",
-        item_description=f"Swapped '{item.description}' with '{rep_desc}'",
-        room=rep_area,
-        previous_qty=item.qty,
+        item_description=f"Swapped {swap_qty:g}× '{item.description}' ({item.type or '—'} @ {item.area or 'General'}) with {rep_qty:g}× '{rep_desc}' ({rep_type or '—'} @ {rep_area or 'General'})",
+        room=f"{item.area or 'General'} ➔ {rep_area or 'General'}" if (rep_area and rep_area != item.area) else (rep_area or item.area),
+        previous_qty=swap_qty,
         new_qty=rep_qty,
-        previous_value=orig_val,
+        previous_value=orig_credit_val,
         new_value=new_val,
         delta_value=delta_val,
-        reason=payload.reason.strip(),
+        reason=reason_clean,
         performed_by=payload.performed_by or "User",
         metadata_json={
             "original_item_id": str(item.id),
+            "minus_item_id": minus_item_id,
+            "plus_item_id": plus_item_id,
             "original_code": item.code,
-            "original_qty": item.qty,
-            "original_unit_retail": item.unit_retail,
-            "replacement_item_id": new_item_id,
+            "original_type": item.type,
+            "original_area": item.area,
+            "original_qty": swap_qty,
+            "original_unit_retail": float(item.unit_retail or 0.0),
+            "replacement_item_id": plus_item_id,
             "replacement_code": rep_code,
+            "replacement_type": rep_type,
+            "replacement_area": rep_area,
             "replacement_qty": rep_qty,
             "replacement_unit_retail": rep_retail,
-            "delta_value": delta_val
+            "delta_value": delta_val,
+            "is_manual_price": bool(payload.is_manual_price),
+            "catalog_retail_price": payload.catalog_retail_price,
+            "delivered_qty_at_swap": ctx["delivered_qty"],
+            "po_allocated_at_swap": ctx["po_allocated_qty"],
+            "phase_has_invoice": ctx["phase_has_invoice"],
+            "sync_to_takeoff": takeoff_synced
         }
     )
     db.add(audit_entry)
@@ -1963,10 +2199,104 @@ def swap_order_item(po_number: str, item_id: str, payload: ItemSwapSchema, db: S
     return {
         "status": "ok",
         "original_item_id": str(item.id),
-        "replacement_item_id": new_item_id,
+        "minus_item_id": minus_item_id,
+        "plus_item_id": plus_item_id,
+        "replacement_item_id": plus_item_id,
         "delta_value": delta_val,
-        "new_order_value": order.value
+        "new_order_value": order.value,
+        "takeoff_synced": takeoff_synced
     }
+
+
+@router.post("/{po_number}/swaps/{minus_item_id}/revert")
+def revert_order_swap(po_number: str, minus_item_id: str, payload: Dict[str, Any] = Body(default={}), db: Session = Depends(get_db)):
+    """
+    Reverts/Undoes a swap only if the paired Plus replacement item has no PO, GRN, DN, or Invoice allocations.
+    """
+    order = find_order_by_identifier(po_number, db)
+    if not order:
+        raise HTTPException(status_code=404, detail=f"Order {po_number} not found")
+
+    minus_item = db.query(OrderItem).filter(
+        OrderItem.id == minus_item_id,
+        OrderItem.order_id == order.po_number,
+        OrderItem.revision_status == "SwappedCredit"
+    ).first()
+    if not minus_item:
+        raise HTTPException(status_code=404, detail="Swapped credit row not found")
+
+    # Find paired Plus row via OrderAuditLog metadata or swap_parent_id + reason
+    plus_item = None
+    audit_logs = db.query(OrderAuditLog).filter(
+        OrderAuditLog.order_po == order.po_number,
+        OrderAuditLog.action == "ITEM_SWAPPED"
+    ).order_by(OrderAuditLog.created_at.desc()).all()
+    for al in audit_logs:
+        meta = al.metadata_json or {}
+        if meta.get("minus_item_id") == minus_item_id and meta.get("plus_item_id"):
+            plus_item = db.query(OrderItem).filter(OrderItem.id == meta["plus_item_id"]).first()
+            break
+
+    if not plus_item and minus_item.swap_parent_id:
+        plus_item = db.query(OrderItem).filter(
+            OrderItem.order_id == order.po_number,
+            OrderItem.swap_parent_id == minus_item.swap_parent_id,
+            OrderItem.revision_status == "Added",
+            OrderItem.swap_reason == minus_item.swap_reason
+        ).first()
+
+    # Guard: block revert if Plus row or Minus row has allocations or deliveries
+    check_ids = [minus_item.id] + ([plus_item.id] if plus_item else [])
+    active_alloc = db.query(ProcurementAllocation).filter(
+        ProcurementAllocation.order_item_id.in_(check_ids),
+        ProcurementAllocation.status == "Active"
+    ).first()
+    if active_alloc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot revert swap: {active_alloc.allocation_type} {active_alloc.source_doc_no} is already allocated to this variation."
+        )
+
+    active_dn = db.query(DeliveryNoteItem, DeliveryNote).join(
+        DeliveryNote, DeliveryNoteItem.delivery_note_id == DeliveryNote.id
+    ).filter(
+        DeliveryNoteItem.order_item_id.in_(check_ids),
+        DeliveryNote.status != "Voided"
+    ).first()
+    if active_dn:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot revert swap: Delivery Note {active_dn[1].dn_number} is already linked to this variation."
+        )
+
+    minus_val = float(minus_item.qty or 0.0) * float(minus_item.unit_retail or 0.0) # negative
+    plus_val = (float(plus_item.qty or 0.0) * float(plus_item.unit_retail or 0.0)) if plus_item else 0.0
+    net_delta = round(minus_val + plus_val, 2)
+
+    order.value = round((order.value or 0.0) - net_delta, 2)
+    order.outstanding = round((order.outstanding or 0.0) - net_delta, 2)
+    db.add(order)
+
+    revert_desc = f"Reverted swap: removed Minus ({minus_item.code}) and Plus ({plus_item.code if plus_item else 'N/A'})"
+    db.delete(minus_item)
+    if plus_item:
+        db.delete(plus_item)
+
+    db.add(OrderAuditLog(
+        order_id=order.id,
+        order_po=order.po_number,
+        action="SWAP_REVERTED",
+        item_id=str(minus_item.swap_parent_id or minus_item_id),
+        item_code=minus_item.code,
+        item_description=revert_desc,
+        room=minus_item.area,
+        delta_value=-net_delta,
+        reason=(payload.get("reason") or "Swap reverted by user").strip(),
+        performed_by=payload.get("performed_by") or "User",
+        metadata_json={"reverted_minus_id": minus_item_id, "reverted_plus_id": plus_item.id if plus_item else None}
+    ))
+    db.commit()
+    return {"status": "ok", "reverted_delta": -net_delta, "new_order_value": order.value}
 
 
 @router.get("/{po_number}/audit-logs")
@@ -2058,20 +2388,23 @@ def get_variation_document_data(po_number: str, db: Session = Depends(get_db)):
 
     all_items = db.query(OrderItem).filter(OrderItem.order_id == order.po_number).order_by(OrderItem.sort_order.asc()).all()
 
-    active_items = [it for it in all_items if getattr(it, 'revision_status', 'Active') not in ('Swapped', 'Credited')]
-    swapped_items = [it for it in all_items if getattr(it, 'revision_status', 'Active') in ('Swapped', 'Credited')]
+    active_items = [it for it in all_items if getattr(it, 'revision_status', 'Active') not in ('Swapped', 'Credited', 'SwappedCredit')]
+    legacy_swapped_items = [it for it in all_items if getattr(it, 'revision_status', 'Active') in ('Swapped', 'Credited')]
+    credit_minus_items = [it for it in all_items if getattr(it, 'revision_status', 'Active') == 'SwappedCredit']
+    swapped_items = legacy_swapped_items + credit_minus_items
     added_items = [it for it in all_items if getattr(it, 'revision_status', 'Active') == 'Added']
 
     baseline_active = [it for it in active_items if getattr(it, 'revision_status', 'Active') != 'Added']
-    original_total = sum(float(it.qty or 0) * float(it.unit_retail or 0.0) for it in baseline_active + swapped_items)
-    credits_total = sum(float(it.qty or 0) * float(it.unit_retail or 0.0) for it in swapped_items)
+    original_total = sum(float(it.qty or 0) * float(it.unit_retail or 0.0) for it in baseline_active + legacy_swapped_items)
+    credits_total = sum(abs(float(it.qty or 0)) * float(it.unit_retail or 0.0) for it in swapped_items)
     additions_total = sum(float(it.qty or 0) * float(it.unit_retail or 0.0) for it in added_items)
     net_variation = additions_total - credits_total
     revised_total = original_total - credits_total + additions_total
 
     ledger = []
     for it in swapped_items:
-        line_val = float(it.qty or 0) * float(it.unit_retail or 0.0)
+        abs_qty = abs(float(it.qty or 0))
+        line_val = abs_qty * float(it.unit_retail or 0.0)
         ledger.append({
             "id": it.id,
             "change_type": "Credit / Swapped Out",
@@ -2079,7 +2412,7 @@ def get_variation_document_data(po_number: str, db: Session = Depends(get_db)):
             "room": it.area or "—",
             "code": it.code or it.one_one_code or "—",
             "description": it.description or "—",
-            "qty_delta": -float(it.qty or 0),
+            "qty_delta": -abs_qty,
             "unit_retail": float(it.unit_retail or 0.0),
             "line_delta": -round(line_val, 2),
             "reason": it.swap_reason or "Site change / client request",
@@ -2110,11 +2443,14 @@ def get_variation_document_data(po_number: str, db: Session = Depends(get_db)):
     used_added_ids = set()
 
     for sw in swapped_items:
-        matching_add = next((ad for ad in added_items if getattr(ad, 'swap_parent_id', None) == sw.id and ad.id not in used_added_ids), None)
+        matching_add = next((ad for ad in added_items if getattr(ad, 'swap_parent_id', None) in (sw.id, getattr(sw, 'swap_parent_id', None)) and ad.swap_reason == sw.swap_reason and ad.id not in used_added_ids), None)
+        if not matching_add:
+            matching_add = next((ad for ad in added_items if getattr(ad, 'swap_parent_id', None) == sw.id and ad.id not in used_added_ids), None)
         if not matching_add:
             matching_add = next((ad for ad in added_items if ad.area == sw.area and ad.id not in used_added_ids), None)
         
-        orig_val = float(sw.qty or 0) * float(sw.unit_retail or 0.0)
+        abs_sw_qty = abs(float(sw.qty or 0))
+        orig_val = abs_sw_qty * float(sw.unit_retail or 0.0)
         rep_val = float(matching_add.qty or 0) * float(matching_add.unit_retail or 0.0) if matching_add else 0.0
         diff = rep_val - orig_val
 
@@ -2125,12 +2461,12 @@ def get_variation_document_data(po_number: str, db: Session = Depends(get_db)):
             "room": sw.area or "General Scope",
             "original_code": sw.code or sw.one_one_code or "—",
             "original_desc": sw.description or "—",
-            "original_qty": float(sw.qty or 0),
+            "original_qty": abs_sw_qty,
             "original_unit_retail": float(sw.unit_retail or 0.0),
             "original_total": round(orig_val, 2),
             "replacement_code": (matching_add.code or matching_add.one_one_code) if matching_add else "—",
             "replacement_desc": matching_add.description if matching_add else "Credit Only (No Replacement)",
-            "replacement_qty": int(matching_add.qty or 0) if matching_add else 0,
+            "replacement_qty": float(matching_add.qty or 0) if matching_add else 0,
             "replacement_unit_retail": float(matching_add.unit_retail or 0.0) if matching_add else 0.0,
             "replacement_total": round(rep_val, 2),
             "line_net_diff": round(diff, 2),

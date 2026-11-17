@@ -1,14 +1,14 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  RotateCcw, 
-  X, 
-  Search, 
-  AlertCircle, 
-  Loader2, 
-  Check, 
-  ArrowRight, 
+import {
+  RotateCcw,
+  X,
+  Search,
+  AlertCircle,
+  AlertTriangle,
+  Loader2,
   Info,
-  DollarSign
+  MapPin,
+  Tag
 } from 'lucide-react';
 import { API_BASE } from '../../api_config';
 
@@ -20,6 +20,8 @@ export default function ItemSwapModal({
   catalogProducts = [],
   onSwapCompleted
 }) {
+  const [swapQty, setSwapQty] = useState(1);
+  const [repQty, setRepQty] = useState(1);
   const [repCode, setRepCode] = useState('');
   const [repOneOne, setRepOneOne] = useState('');
   const [repDesc, setRepDesc] = useState('');
@@ -27,31 +29,72 @@ export default function ItemSwapModal({
   const [repCost, setRepCost] = useState('');
   const [repBrand, setRepBrand] = useState('');
   const [repSupplier, setRepSupplier] = useState('');
-  const [repQty, setRepQty] = useState(1);
+  const [repType, setRepType] = useState('');
+  const [repArea, setRepArea] = useState('');
+  const [repFloor, setRepFloor] = useState('');
   const [reason, setReason] = useState('');
+  const [syncToTakeoff, setSyncToTakeoff] = useState(false);
+
+  const [catalogBaseRetail, setCatalogBaseRetail] = useState(null);
+  const [selectedFromCatalog, setSelectedFromCatalog] = useState(false);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [showCatalogSuggestions, setShowCatalogSuggestions] = useState(false);
+  const [apiSearchResults, setApiSearchResults] = useState([]);
+  const [isSearchingApi, setIsSearchingApi] = useState(false);
+
+  const [swapContext, setSwapContext] = useState(null);
+  const [loadingContext, setLoadingContext] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    if (item) {
-      setRepQty(Number(item.qty) || 1);
-      setRepBrand(item.brand || '');
-      setRepSupplier(item.supplier || '');
-      setReason('');
-      setSearchQuery('');
-      setRepCode('');
-      setRepOneOne('');
-      setRepDesc('');
-      setRepRetail('');
-      setRepCost('');
-      setErrorMsg('');
-    }
-  }, [item, isOpen]);
+    if (!isOpen || !item || !poNumber) return;
 
-  const [apiSearchResults, setApiSearchResults] = useState([]);
-  const [isSearchingApi, setIsSearchingApi] = useState(false);
+    const initialQty = Math.max(1, Number(item.qty) || 1);
+    setSwapQty(initialQty);
+    setRepQty(initialQty);
+    setRepBrand(item.brand || '');
+    setRepSupplier(item.supplier || '');
+    setRepType(item.type ? `${item.type}.1` : '');
+    setRepArea(item.area || '');
+    setRepFloor(item.floor || '');
+    setReason('');
+    setSyncToTakeoff(false);
+    setSearchQuery('');
+    setRepCode('');
+    setRepOneOne('');
+    setRepDesc('');
+    setRepRetail('');
+    setRepCost('');
+    setCatalogBaseRetail(null);
+    setSelectedFromCatalog(false);
+    setErrorMsg('');
+    setSwapContext(null);
+
+    let cancelled = false;
+    setLoadingContext(true);
+    fetch(`${API_BASE}/api/orders/${encodeURIComponent(poNumber)}/items/${encodeURIComponent(item.id)}/swap-context`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(ctx => {
+        if (cancelled || !ctx) return;
+        setSwapContext(ctx);
+        const maxQty = Math.max(1, Number(ctx.remaining_swappable_qty) || initialQty);
+        setSwapQty(maxQty);
+        setRepQty(maxQty);
+        if (ctx.suggested_plan_code) {
+          setRepType(ctx.suggested_plan_code);
+        }
+      })
+      .catch(err => console.warn('Could not load swap context:', err))
+      .finally(() => {
+        if (!cancelled) setLoadingContext(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [item, isOpen, poNumber]);
 
   // Live API Search directly against Cloud SQL Master Products Database
   useEffect(() => {
@@ -80,12 +123,11 @@ export default function ItemSwapModal({
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Catalog search filtering combining local cache and live Cloud SQL results
   const matchingCatalog = useMemo(() => {
     if (!searchQuery || searchQuery.trim().length < 2) return [];
     const q = searchQuery.toLowerCase().trim();
 
-    const localMatches = (catalogProducts || []).filter(p => 
+    const localMatches = (catalogProducts || []).filter(p =>
       (p.sku && p.sku.toLowerCase().includes(q)) ||
       (p.one_to_one_code && p.one_to_one_code.toLowerCase().includes(q)) ||
       (p.title && p.title.toLowerCase().includes(q)) ||
@@ -107,14 +149,18 @@ export default function ItemSwapModal({
 
   if (!isOpen || !item) return null;
 
-  const origQty = Number(item.qty) || 1;
+  const maxSwappableQty = swapContext ? Number(swapContext.remaining_swappable_qty || 0) : (Number(item.qty) || 1);
+  const effectiveSwapQty = Math.min(Math.max(1, Number(swapQty) || 1), Math.max(1, maxSwappableQty));
   const origRetail = Number(item.unitRetail || item.unit_retail) || 0;
-  const origLineVal = origQty * origRetail;
+  const minusLineVal = effectiveSwapQty * origRetail;
 
-  const currentRepQty = Number(repQty) || 1;
+  const currentRepQty = Math.max(1, Number(repQty) || 1);
   const currentRepRetail = Number(repRetail) || 0;
-  const currentRepLineVal = currentRepQty * currentRepRetail;
-  const deltaVal = currentRepLineVal - origLineVal;
+  const plusLineVal = currentRepQty * currentRepRetail;
+  const deltaVal = plusLineVal - minusLineVal;
+
+  const isPriceOverridden = selectedFromCatalog && catalogBaseRetail !== null && Math.abs(currentRepRetail - catalogBaseRetail) > 0.01;
+  const isManualPricing = !selectedFromCatalog || isPriceOverridden;
 
   const handleSelectProduct = (p) => {
     const code = p.sku || p.one_to_one_code || '';
@@ -123,14 +169,17 @@ export default function ItemSwapModal({
     const cost = p.cost_price !== undefined && p.cost_price !== null ? p.cost_price : (p.internal_cost || p.supplier_cost || '');
     const brand = p.brand || (item && item.brand) || '';
     const supplier = p.supplier_name || (p.supplier && p.supplier.name) || (item && item.supplier) || '';
+    const roundedRetail = retail !== '' ? Math.round(Number(retail) * 100) / 100 : '';
 
     setRepCode(code);
     setRepOneOne(p.one_to_one_code || code);
     setRepDesc(desc);
-    setRepRetail(retail !== '' ? Math.round(Number(retail) * 100) / 100 : '');
+    setRepRetail(roundedRetail);
     setRepCost(cost !== '' ? Math.round(Number(cost) * 100) / 100 : '');
     setRepBrand(brand);
     setRepSupplier(supplier);
+    setCatalogBaseRetail(roundedRetail !== '' ? Number(roundedRetail) : null);
+    setSelectedFromCatalog(true);
     setShowCatalogSuggestions(false);
     setSearchQuery(code ? `${code} - ${desc.slice(0, 40)}` : desc);
     setErrorMsg('');
@@ -140,8 +189,18 @@ export default function ItemSwapModal({
     e.preventDefault();
     setErrorMsg('');
 
+    if (swapContext && !swapContext.can_swap) {
+      setErrorMsg('No remaining swappable quantity on this row.');
+      return;
+    }
+
     if (!repCode.trim()) {
       setErrorMsg('Please specify a replacement item code or select one from the catalogue.');
+      return;
+    }
+
+    if (effectiveSwapQty <= 0 || effectiveSwapQty > maxSwappableQty) {
+      setErrorMsg(`Swap quantity must be between 1 and ${maxSwappableQty}.`);
       return;
     }
 
@@ -152,7 +211,7 @@ export default function ItemSwapModal({
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/orders/${poNumber}/items/${item.id}/swap`, {
+      const res = await fetch(`${API_BASE}/api/orders/${encodeURIComponent(poNumber)}/items/${encodeURIComponent(item.id)}/swap`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -164,13 +223,18 @@ export default function ItemSwapModal({
             unit_cost: parseFloat(repCost) || 0.0,
             brand: repBrand.trim(),
             supplier: repSupplier.trim(),
-            area: item.area,
-            floor: item.floor,
+            type: repType.trim() || item.type,
+            area: repArea.trim() || item.area,
+            floor: repFloor.trim() || item.floor,
             first_fix: item.first_fix || 'No'
           },
-          replacement_qty: parseInt(repQty, 10) || 1,
+          swap_qty: effectiveSwapQty,
+          replacement_qty: currentRepQty,
           reason: reason.trim(),
-          performed_by: 'User'
+          performed_by: 'User',
+          sync_to_takeoff: syncToTakeoff,
+          is_manual_price: isManualPricing,
+          catalog_retail_price: catalogBaseRetail
         })
       });
 
@@ -211,7 +275,7 @@ export default function ItemSwapModal({
         border: '1.5px solid var(--border)',
         borderRadius: '12px',
         width: '100%',
-        maxWidth: '720px',
+        maxWidth: '780px',
         maxHeight: '92vh',
         display: 'flex',
         flexDirection: 'column',
@@ -220,7 +284,7 @@ export default function ItemSwapModal({
       }}>
         {/* HEADER */}
         <div style={{
-          padding: '16px 20px',
+          padding: '14px 20px',
           borderBottom: '1px solid var(--border)',
           display: 'flex',
           justifyContent: 'space-between',
@@ -228,21 +292,21 @@ export default function ItemSwapModal({
           background: 'var(--bg-secondary, #f8fafc)'
         }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <span className="badge b-warning" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: 700 }}>
-                Variation Order
+                3-Row Variation Order
               </span>
               <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                Order: <strong>{poNumber}</strong> &bull; Room: <strong>{item.area || 'General'}</strong>
+                Order: <strong>{poNumber}</strong> &bull; Baseline Room: <strong>{item.area || 'General'}</strong> &bull; Plan Code: <strong>{item.type || '—'}</strong>
               </span>
             </div>
             <h2 style={{ margin: '4px 0 0 0', fontSize: '17px', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <RotateCcw size={17} color="var(--text-warning)" /> On-Site Item Swap & Variation
             </h2>
           </div>
-          <button 
-            type="button" 
-            className="btn btn-ghost btn-sm" 
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
             onClick={onClose}
             style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: '6px' }}
           >
@@ -252,7 +316,7 @@ export default function ItemSwapModal({
 
         {/* BODY */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-          <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ padding: '18px 20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {errorMsg && (
               <div style={{
                 background: 'rgba(239, 68, 68, 0.1)',
@@ -270,87 +334,128 @@ export default function ItemSwapModal({
               </div>
             )}
 
-            {/* SUB-ORDER & FINANCIAL PHASE ALLOCATION NOTICE */}
-            {(item?.sub_order_ref || item?.subOrderRef) && (
+            {/* EXPOSURE WARNINGS (DELIVERY / PO / INVOICE / SUB-ORDER) */}
+            {loadingContext && (
+              <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Loader2 size={13} className="animate-spin" /> Checking deliveries, POs, and phase allocations...
+              </div>
+            )}
+
+            {swapContext && swapContext.delivered_qty > 0 && (
               <div style={{
-                background: 'linear-gradient(90deg, rgba(139, 92, 246, 0.1) 0%, rgba(245, 158, 11, 0.1) 100%)',
-                border: '1px solid rgba(139, 92, 246, 0.35)',
+                background: 'rgba(245, 158, 11, 0.1)',
+                border: '1px solid rgba(245, 158, 11, 0.4)',
                 borderRadius: '8px',
-                padding: '10px 14px',
-                fontSize: '12px',
-                color: 'var(--text-primary)',
+                padding: '9px 12px',
+                fontSize: '11.5px',
+                color: '#92400e',
                 display: 'flex',
                 alignItems: 'flex-start',
-                gap: '10px'
+                gap: '8px'
               }}>
-                <span style={{ fontSize: '18px', lineHeight: 1 }}>⚠️</span>
+                <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: '1px', color: '#d97706' }} />
                 <div>
-                  <div style={{ fontWeight: 700, color: '#8b5cf6' }}>
-                    Allocated to Phase: {item.sub_order_ref || item.subOrderRef}
-                  </div>
-                  <div style={{ color: 'var(--text-secondary)', fontSize: '11.5px', marginTop: '2px' }}>
-                    This fitting is assigned to an active phase. Swapping this fitting will generate an audited variation and automatically update the specification in that phase. If an invoice or deposit was already processed, financial adjustments will be tracked.
-                  </div>
+                  <strong>Delivered Stock Alert:</strong> {swapContext.delivered_qty} unit(s) already delivered on{' '}
+                  <strong>{swapContext.dn_refs.join(', ') || 'Delivery Note'}</strong>.
+                  Confirming this swap will flag the Minus row (<code>-{effectiveSwapQty}</code>) as <strong>Site Return / Uplift Required</strong> for Logistics.
                 </div>
               </div>
             )}
 
-            {/* SIDE-BY-SIDE COMPARISON: ORIGINAL VS REPLACEMENT */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-              {/* ORIGINAL ITEM (TO BE SWAPPED OUT / CREDITED) */}
+            {swapContext && (swapContext.po_allocated_qty > 0 || swapContext.grn_received_qty > 0 || swapContext.phase_has_invoice) && (
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.08)',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+                borderRadius: '8px',
+                padding: '9px 12px',
+                fontSize: '11.5px',
+                color: '#1e40af',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px'
+              }}>
+                <Info size={16} style={{ flexShrink: 0, marginTop: '1px', color: '#2563eb' }} />
+                <div>
+                  <strong>Purchasing &amp; Invoicing Impact:</strong>{' '}
+                  {swapContext.po_allocated_qty > 0 && `PO allocated (${swapContext.po_refs.join(', ')}: ${swapContext.po_allocated_qty} units). `}
+                  {swapContext.grn_received_qty > 0 && `GRN received (${swapContext.grn_refs.join(', ')}: ${swapContext.grn_received_qty} units). `}
+                  {swapContext.phase_has_invoice && `Phase/Item has active Client Invoice (${swapContext.invoice_refs.join(', ') || 'Invoiced'}). `}
+                  Original PO/GRN/Invoice links stay untouched on the baseline row; the Minus row will be marked <strong>Awaiting Credit / Return</strong> so Credit Notes settle cleanly without double-subtracting.
+                </div>
+              </div>
+            )}
+
+            {(item?.sub_order_ref || item?.subOrderRef) && (
+              <div style={{
+                background: 'linear-gradient(90deg, rgba(139, 92, 246, 0.08) 0%, rgba(245, 158, 11, 0.08) 100%)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                fontSize: '11.5px',
+                color: 'var(--text-primary)'
+              }}>
+                <strong style={{ color: '#7c3aed' }}>Phase Scope: {item.sub_order_ref || item.subOrderRef}</strong> — Both the Minus and Plus rows will inherit this Phase, updating both this Sub-Order and the Master Order.
+              </div>
+            )}
+
+            {/* 3-ROW LEDGER PREVIEW: BASELINE | MINUS CREDIT | PLUS ADDITION */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              {/* MINUS CREDIT */}
               <div style={{
                 background: 'rgba(239, 68, 68, 0.04)',
                 border: '1px solid rgba(239, 68, 68, 0.25)',
                 borderRadius: '8px',
-                padding: '12px 14px'
+                padding: '10px 12px'
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-danger)' }}>
-                    🔴 Original Fitting (Credited)
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-danger)' }}>
+                    Minus Credit Row ({item.area || 'General'})
                   </span>
-                  <span className="badge b-danger" style={{ fontSize: '9.5px' }}>
-                    Swapped Out
+                  <span className="badge b-danger" style={{ fontSize: '9px' }}>
+                    {item.type || 'Original'}
                   </span>
                 </div>
-                <div style={{ fontSize: '13px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
+                <div style={{ fontSize: '12.5px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
                   {item.one_one_code || item.code}
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px', lineHeight: 1.3 }}>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px', lineHeight: 1.3 }}>
                   {item.description || 'Custom Fixture'}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed var(--border)', fontSize: '12px' }}>
-                  <span>Qty: <strong>{origQty}</strong> &times; R {origRetail.toLocaleString()}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed var(--border)', fontSize: '11.5px' }}>
+                  <span>
+                    Baseline: <strong>{Number(item.qty) || 0}</strong> &bull; Swap Out: <strong style={{ color: 'var(--text-danger)' }}>-{effectiveSwapQty}</strong> &times; R {origRetail.toLocaleString()}
+                  </span>
                   <span style={{ fontWeight: 700, color: 'var(--text-danger)' }}>
-                    -R {Math.round(origLineVal).toLocaleString()}
+                    -R {Math.round(minusLineVal).toLocaleString()}
                   </span>
                 </div>
               </div>
 
-              {/* REPLACEMENT SUMMARY */}
+              {/* PLUS ADDITION */}
               <div style={{
                 background: 'rgba(16, 185, 129, 0.04)',
                 border: '1px solid rgba(16, 185, 129, 0.25)',
                 borderRadius: '8px',
-                padding: '12px 14px'
+                padding: '10px 12px'
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-success)' }}>
-                    🟢 Replacement Addition
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-success)' }}>
+                    Plus Addition ({repArea || item.area || 'General'})
                   </span>
-                  <span className="badge b-success" style={{ fontSize: '9.5px' }}>
-                    New Fitting
+                  <span className="badge b-success" style={{ fontSize: '9px' }}>
+                    {repType || item.type || 'New'}
                   </span>
                 </div>
-                <div style={{ fontSize: '13px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
+                <div style={{ fontSize: '12.5px', fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-primary)' }}>
                   {repCode || 'Select or enter fitting below...'}
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px', lineHeight: 1.3 }}>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px', lineHeight: 1.3 }}>
                   {repDesc || 'Description will appear here'}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed var(--border)', fontSize: '12px' }}>
-                  <span>Qty: <strong>{currentRepQty}</strong> &times; R {currentRepRetail.toLocaleString()}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', paddingTop: '6px', borderTop: '1px dashed var(--border)', fontSize: '11.5px' }}>
+                  <span>Qty: <strong style={{ color: 'var(--text-success)' }}>+{currentRepQty}</strong> &times; R {currentRepRetail.toLocaleString()}</span>
                   <span style={{ fontWeight: 700, color: 'var(--text-success)' }}>
-                    +R {Math.round(currentRepLineVal).toLocaleString()}
+                    +R {Math.round(plusLineVal).toLocaleString()}
                   </span>
                 </div>
               </div>
@@ -358,12 +463,26 @@ export default function ItemSwapModal({
 
             {/* CATALOGUE SEARCH & PICKER */}
             <div style={{ position: 'relative' }}>
-              <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                Quick Search from Product Catalogue
+              <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                <span>Quick Search from Product Catalogue</span>
+                {repCode && (
+                  <span style={{
+                    fontSize: '10px',
+                    padding: '1px 6px',
+                    borderRadius: '4px',
+                    background: isManualPricing ? 'rgba(245, 158, 11, 0.14)' : 'rgba(16, 185, 129, 0.12)',
+                    color: isManualPricing ? '#b45309' : '#047857',
+                    fontWeight: 700
+                  }}>
+                    {selectedFromCatalog
+                      ? (isPriceOverridden ? 'Catalogue Item (Price Overridden)' : 'Catalogue Verified')
+                      : 'Manual / Custom Fitting'}
+                  </span>
+                )}
               </label>
               <div style={{ position: 'relative' }}>
                 <Search size={14} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-tertiary)' }} />
-                <input 
+                <input
                   type="text"
                   className="form-control"
                   style={{ paddingLeft: '32px', paddingRight: isSearchingApi ? '32px' : '10px', fontSize: '12.5px', height: '34px' }}
@@ -380,7 +499,6 @@ export default function ItemSwapModal({
                 )}
               </div>
 
-              {/* DROPDOWN SUGGESTIONS */}
               {showCatalogSuggestions && searchQuery.trim().length >= 2 && (
                 <div style={{
                   position: 'absolute',
@@ -392,17 +510,17 @@ export default function ItemSwapModal({
                   borderRadius: '8px',
                   boxShadow: '0 12px 28px rgba(0,0,0,0.18)',
                   zIndex: 9999,
-                  maxHeight: '260px',
+                  maxHeight: '240px',
                   overflowY: 'auto',
                   marginTop: '4px'
                 }}>
                   {matchingCatalog.length > 0 ? (
                     matchingCatalog.map(p => (
-                      <div 
+                      <div
                         key={p.id || p.sku || Math.random()}
                         onClick={() => handleSelectProduct(p)}
                         style={{
-                          padding: '10px 14px',
+                          padding: '9px 14px',
                           borderBottom: '1px solid var(--border)',
                           cursor: 'pointer',
                           display: 'flex',
@@ -443,28 +561,33 @@ export default function ItemSwapModal({
               )}
             </div>
 
-            {/* MANUAL REPLACEMENT FIELDS */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            {/* SWAP QUANTITIES, PLAN CODE & TARGET ROOM */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '3px' }}>
-                  Replacement Item Code <span style={{ color: 'var(--text-danger)' }}>*</span>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-danger)', marginBottom: '3px' }}>
+                  Swap Out Qty (Max {maxSwappableQty}) <span style={{ color: 'var(--text-danger)' }}>*</span>
                 </label>
-                <input 
-                  type="text"
+                <input
+                  type="number"
+                  min="1"
+                  max={Math.max(1, maxSwappableQty)}
                   className="form-control"
-                  style={{ height: '32px', fontSize: '12px', fontFamily: 'monospace', fontWeight: 600 }}
-                  placeholder="e.g. 224P618-2700K"
-                  value={repCode}
-                  onChange={e => setRepCode(e.target.value)}
+                  style={{ height: '32px', fontSize: '12px', fontWeight: 700 }}
+                  value={swapQty}
+                  onChange={e => {
+                    const v = Math.min(Math.max(1, parseInt(e.target.value, 10) || 1), Math.max(1, maxSwappableQty));
+                    setSwapQty(v);
+                    setRepQty(v);
+                  }}
                   required
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '3px' }}>
-                  Quantity
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-success)', marginBottom: '3px' }}>
+                  New Addition Qty <span style={{ color: 'var(--text-danger)' }}>*</span>
                 </label>
-                <input 
+                <input
                   type="number"
                   min="1"
                   className="form-control"
@@ -475,15 +598,86 @@ export default function ItemSwapModal({
                 />
               </div>
 
-              <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '3px' }}>
-                  Replacement Description
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '3px' }}>
+                  <Tag size={11} /> New Plan Code / Type
                 </label>
-                <input 
+                <input
+                  type="text"
+                  className="form-control"
+                  style={{ height: '32px', fontSize: '12px', fontFamily: 'monospace', fontWeight: 700 }}
+                  placeholder={swapContext?.suggested_plan_code || 'e.g. A3.1'}
+                  value={repType}
+                  onChange={e => setRepType(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '3px' }}>
+                  Replacement Item Code <span style={{ color: 'var(--text-danger)' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  className="form-control"
+                  style={{ height: '32px', fontSize: '12px', fontFamily: 'monospace', fontWeight: 600 }}
+                  placeholder="e.g. 2223/30"
+                  value={repCode}
+                  onChange={e => {
+                    setRepCode(e.target.value);
+                    setSelectedFromCatalog(false);
+                  }}
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '3px' }}>
+                  <MapPin size={11} /> Target Room / Area
+                </label>
+                <input
+                  type="text"
+                  list="swap-target-rooms-list"
+                  className="form-control"
+                  style={{ height: '32px', fontSize: '12px' }}
+                  placeholder="Select or type room..."
+                  value={repArea}
+                  onChange={e => setRepArea(e.target.value)}
+                />
+                <datalist id="swap-target-rooms-list">
+                  {(swapContext?.existing_rooms || []).map(rm => (
+                    <option key={rm} value={rm} />
+                  ))}
+                </datalist>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '3px' }}>
+                  Target Floor
+                </label>
+                <input
                   type="text"
                   className="form-control"
                   style={{ height: '32px', fontSize: '12px' }}
-                  placeholder="e.g. 01 PENDANT - 2700K Warm White with Brass Canopy"
+                  placeholder="e.g. Ground Floor"
+                  value={repFloor}
+                  onChange={e => setRepFloor(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* DESCRIPTION & PRICING */}
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '10px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '3px' }}>
+                  Replacement Description
+                </label>
+                <input
+                  type="text"
+                  className="form-control"
+                  style={{ height: '32px', fontSize: '12px' }}
+                  placeholder="e.g. Anti-Glare Downlight 10W GU10 Black"
                   value={repDesc}
                   onChange={e => setRepDesc(e.target.value)}
                 />
@@ -491,9 +685,9 @@ export default function ItemSwapModal({
 
               <div>
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '3px' }}>
-                  Unit Retail Price (Ex VAT) <span style={{ color: 'var(--text-danger)' }}>*</span>
+                  Unit Retail (Ex VAT) <span style={{ color: 'var(--text-danger)' }}>*</span>
                 </label>
-                <input 
+                <input
                   type="number"
                   step="0.01"
                   className="form-control"
@@ -509,7 +703,7 @@ export default function ItemSwapModal({
                 <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '3px' }}>
                   Unit Cost (Internal)
                 </label>
-                <input 
+                <input
                   type="number"
                   step="0.01"
                   className="form-control"
@@ -521,21 +715,20 @@ export default function ItemSwapModal({
               </div>
             </div>
 
-            {/* MANDATORY PROMPT FOR REASON */}
+            {/* MANDATORY REASON + TAKEOFF SYNC CHECKBOX */}
             <div>
               <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                <span>📝 Reason for Site Variation / Swap <span style={{ color: 'var(--text-danger)' }}>*</span></span>
-                <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', fontWeight: 400 }}>Appears on official Client Revision Document</span>
+                <span>Reason for Site Variation / Swap <span style={{ color: 'var(--text-danger)' }}>*</span></span>
+                <span style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', fontWeight: 400 }}>Appears on Client Variation &amp; Quotation</span>
               </label>
 
-              {/* QUICK REASON CHIPS */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '6px' }}>
                 {[
                   'Client requested on-site snag walk variation',
+                  'Partial quantity relocated to new area',
                   'Discontinued or unavailable from supplier',
                   'Architect revised fitting specification',
-                  'Cost-engineered alternative approved by PM',
-                  'CCT / Kelvin output change (e.g. 2700K Warm White)'
+                  'Cost-engineered alternative approved by PM'
                 ].map((chip) => (
                   <button
                     key={chip}
@@ -561,7 +754,7 @@ export default function ItemSwapModal({
                 ))}
               </div>
 
-              <textarea 
+              <textarea
                 className="form-control"
                 rows={2}
                 style={{
@@ -576,24 +769,15 @@ export default function ItemSwapModal({
                   if (errorMsg) setErrorMsg('');
                 }}
               />
-            </div>
 
-            {/* ACCOUNTING SAFEGUARD INFO NOTICE */}
-            <div style={{
-              background: 'rgba(59, 130, 246, 0.05)',
-              border: '1px solid rgba(59, 130, 246, 0.2)',
-              borderRadius: '6px',
-              padding: '10px 12px',
-              display: 'flex',
-              gap: '10px',
-              fontSize: '11px',
-              color: 'var(--text-secondary)',
-              lineHeight: 1.4
-            }}>
-              <Info size={16} color="var(--text-info)" style={{ flexShrink: 0, marginTop: '2px' }} />
-              <div>
-                <strong>Accounting & ERP Safeguard:</strong> This item will not be deleted. It will be marked as <code style={{ color: 'var(--text-danger)' }}>Swapped Out</code> in the audit ledger, ensuring that Palladium credit notes allocate cleanly without breaking historical references.
-              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', fontSize: '11.5px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={syncToTakeoff}
+                  onChange={e => setSyncToTakeoff(e.target.checked)}
+                />
+                <span>Also update <strong>Takeoff &amp; Spec Engine</strong> (deduct {effectiveSwapQty} from {item.type || 'original'} and add {currentRepQty} as {repType || 'new code'} in {repArea || item.area || 'room'})</span>
+              </label>
             </div>
           </div>
 
@@ -619,23 +803,23 @@ export default function ItemSwapModal({
             </div>
 
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button 
-                type="button" 
-                className="btn btn-ghost" 
+              <button
+                type="button"
+                className="btn btn-ghost"
                 onClick={onClose}
                 disabled={loading}
                 style={{ fontSize: '12.5px' }}
               >
                 Cancel
               </button>
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 className="btn btn-warning"
-                disabled={loading}
+                disabled={loading || (swapContext && !swapContext.can_swap)}
                 style={{ fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '6px', cursor: loading ? 'wait' : 'pointer' }}
               >
                 {loading ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
-                {loading ? 'Processing Swap...' : 'Confirm Variation & Swap'}
+                {loading ? 'Processing Swap...' : 'Confirm 3-Row Swap'}
               </button>
             </div>
           </div>

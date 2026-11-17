@@ -1116,8 +1116,12 @@ def recalc_order_item_invoicing(db: Session, item: OrderItem):
                     ProcurementAllocation.status == "Active"
                 ).all()
 
-    # Filter strictly for non-credit invoices (IN-...)
-    inv_allocs = [a for a in active_allocs if not str(a.source_doc_no).upper().startswith(("CN-", "CR-"))]
+    # On SwappedCredit (Minus) rows, Credit Notes (CN-/CR-) settle the minus row; on normal rows, only Tax Invoices (IN-) count
+    is_minus_row = getattr(item, "revision_status", "Active") == "SwappedCredit"
+    if is_minus_row:
+        inv_allocs = [a for a in active_allocs if str(a.source_doc_no).upper().startswith(("CN-", "CR-"))]
+    else:
+        inv_allocs = [a for a in active_allocs if not str(a.source_doc_no).upper().startswith(("CN-", "CR-"))]
 
     # Deduplicate allocations originating from the same document & line/item so duplicates are never summed twice
     unique_inv_allocs = []
@@ -1166,6 +1170,8 @@ def recalc_order_item_invoicing(db: Session, item: OrderItem):
     item.invoice_value = round(total_val, 2)
     item.invoice_ref = "; ".join(sorted(refs)) if refs else None
     item.invoice_date = latest_date
+    if is_minus_row and sum(abs(float(a.allocated_qty or 0.0)) for a in unique_inv_allocs) >= abs(float(item.qty or 0.0)) > 0:
+        item.stock_status = "Credited (Settled)"
 
 
 @public_router.post("/unallocate")

@@ -5353,7 +5353,7 @@ export default function OrdersPage() {
                               {activeOrderItems.filter(item => {
                                 if (item.is_credit || item.isCredit) return false;
                                 if (revisionStatusFilter === 'ACTIVE' && item.revision_status === 'Swapped') return false;
-                                if (revisionStatusFilter === 'SWAPPED' && item.revision_status !== 'Swapped') return false;
+                                if (revisionStatusFilter === 'SWAPPED' && !['Swapped', 'SwappedCredit'].includes(item.revision_status)) return false;
                                 if (scopeFilter === 'UNASSIGNED') {
                                   return !item.sub_order_ref && !item.subOrderRef;
                                 }
@@ -5386,7 +5386,9 @@ export default function OrdersPage() {
 
                                 // Google Sheet & Revision Highlighting rules
                                 let rowStyle = {};
-                                if (item.revision_status === 'Swapped') {
+                                if (item.revision_status === 'SwappedCredit') {
+                                  rowStyle = { background: 'rgba(239, 68, 68, 0.06)' };
+                                } else if (item.revision_status === 'Swapped') {
                                   rowStyle = { background: 'rgba(239, 68, 68, 0.08)', opacity: 0.75, textDecoration: 'line-through' };
                                 } else if (item.revision_status === 'Added') {
                                   rowStyle = { background: 'rgba(16, 185, 129, 0.08)' };
@@ -5529,6 +5531,11 @@ export default function OrdersPage() {
                                         {(item.sub_order_ref || item.subOrderRef) && (
                                           <span className="badge" title={`Assigned to ${item.sub_order_ref || item.subOrderRef}`} style={{ fontSize: '9px', padding: '1px 4px', background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: 700, flexShrink: 0, textDecoration: 'none' }}>
                                             {(item.sub_order_ref || item.subOrderRef).slice(-3)}
+                                          </span>
+                                        )}
+                                        {item.revision_status === 'SwappedCredit' && (
+                                          <span className="badge b-danger" title={`${item.stock_status || item.stockStatus || 'Variation Credit'}: ${item.swap_reason || ''}`} style={{ fontSize: '8.5px', padding: '1px 4px', flexShrink: 0, textDecoration: 'none' }}>
+                                            Minus
                                           </span>
                                         )}
                                         {item.revision_status === 'Swapped' && (
@@ -5886,8 +5893,9 @@ export default function OrdersPage() {
                                           type="button"
                                           className="btn btn-ghost"
                                           style={{ padding: '2px', height: 'auto', color: '#f59e0b' }}
-                                          title="On-Site Item Variation & Swap"
-                                          onClick={() => setSwapTargetItem(item)}
+                                          disabled={item.revision_status === 'SwappedCredit'}
+                                          title={item.revision_status === 'SwappedCredit' ? 'Cannot swap a Minus credit row' : 'On-Site Item Variation & Swap'}
+                                          onClick={() => item.revision_status !== 'SwappedCredit' && setSwapTargetItem(item)}
                                         >
                                           <RotateCcw size={12} />
                                         </button>
