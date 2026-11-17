@@ -299,6 +299,11 @@ class Order(Base):
     sub_order_index = Column(Integer, default=0, nullable=True)
     phase_name = Column(String, nullable=True)
 
+    # Deduplicated Proforma (PF Sent) tracking fields
+    first_pf_sent_date = Column(String, nullable=True)
+    last_pf_sent_date = Column(String, nullable=True)
+    pf_revision_count = Column(Integer, default=0, nullable=True)
+
 
 
 

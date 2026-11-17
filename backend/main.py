@@ -32,6 +32,7 @@ from routes.workflow import router as workflow_router
 from routes.technical_pack import router as technical_pack_router
 from routes.management_ai import router as management_ai_router, public_router as management_ai_public_router
 from routes.logistics import router as logistics_router, public_router as logistics_public_router
+from routes.reports import router as reports_router, public_router as reports_public_router
 import services.firebase_auth
 
 app = FastAPI(title="One to One Eco System API")
@@ -115,6 +116,8 @@ app.include_router(management_ai_public_router, prefix="/api", tags=["management
 app.include_router(management_ai_router, prefix="/api", tags=["management-ai"])
 app.include_router(logistics_public_router, prefix="/api", tags=["logistics"])
 app.include_router(logistics_router, prefix="/api", tags=["logistics"], dependencies=[Depends(verify_firebase_token)])
+app.include_router(reports_public_router, prefix="/api/reports", tags=["reports"])
+app.include_router(reports_router, prefix="/api/reports", tags=["reports"], dependencies=[Depends(verify_firebase_token)])
 
 # Mount uploads static directory
 from fastapi.staticfiles import StaticFiles
@@ -545,7 +548,10 @@ def init_db():
                             ("parent_po_number", "VARCHAR"),
                             ("is_sub_order", "BOOLEAN DEFAULT FALSE"),
                             ("sub_order_index", "INTEGER DEFAULT 0"),
-                            ("phase_name", "VARCHAR")
+                            ("phase_name", "VARCHAR"),
+                            ("first_pf_sent_date", "VARCHAR"),
+                            ("last_pf_sent_date", "VARCHAR"),
+                            ("pf_revision_count", "INTEGER DEFAULT 0")
                         ]
                         for o_col_name, o_col_type in order_new_cols:
                             if o_col_name not in order_cols:

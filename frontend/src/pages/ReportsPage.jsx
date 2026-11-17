@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { useStore } from '../context/StoreContext';
 import { API_BASE } from '../api_config';
+import WeeklyReportsWorkspace from '../components/reports/WeeklyReportsWorkspace';
 import { 
   TrendingUp, TrendingDown, DollarSign, Package, AlertCircle, 
   CheckCircle, FileText, BarChart2, Plus, ArrowUpRight, ArrowDownRight, Settings,
@@ -1484,6 +1485,7 @@ export default function ReportsPage() {
             {activeReport === 'budget_manager' && 'Manage team divisions, annual limits, and YTD baseline budgets per financial year.'}
             {activeReport === 'operational_kpis' && 'Client faults, site visit reports, and response times tracking.'}
             {activeReport === 'stock_valuation' && 'Deadstock, consignment values, and warehouse performance matrix.'}
+            {activeReport === 'weekly_reports' && 'Weekly Open POs, PF Sent, To Be Invoiced, Sales, Pipeline, and Stock reports with Excel export & scheduled team emails.'}
           </p>
         </div>
 
@@ -1503,7 +1505,8 @@ export default function ReportsPage() {
               { id: 'sales_kpi', label: 'Sales & KPI Ledger', icon: BarChart2 },
               { id: 'budget_manager', label: 'Budget & Target Manager', icon: Layers },
               { id: 'operational_kpis', label: 'Operational KPIs', icon: CheckCircle },
-              { id: 'stock_valuation', label: 'Stock Valuation', icon: Package }
+              { id: 'stock_valuation', label: 'Stock Valuation', icon: Package },
+              { id: 'weekly_reports', label: 'Weekly Reports & Emails', icon: FileSpreadsheet }
             ].map(tab => {
               const TabIcon = tab.icon;
               const isActive = activeReport === tab.id;
@@ -3089,6 +3092,10 @@ export default function ReportsPage() {
         </div>
       )}
       
+      {activeReport === 'weekly_reports' && (
+        <WeeklyReportsWorkspace />
+      )}
+
       {/* Dynamic Keyframes injection for entry animation */}
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes modalEntry {
