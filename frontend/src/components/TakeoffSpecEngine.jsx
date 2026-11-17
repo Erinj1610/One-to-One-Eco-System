@@ -58,6 +58,18 @@ const CATEGORY_OPTIONS = [
   { label: 'Accessories & Drivers', value: 'Accessory' }
 ];
 
+const dedupeRunawaySwapRows = (rows) => {
+  if (!Array.isArray(rows) || rows.length < 20) return rows;
+  const seenSwapKeys = new Set();
+  return rows.filter(r => {
+    if (!r?.isSwapMinus && !r?.isSwapPlus) return true;
+    const key = `${r.isSwapMinus ? 'M' : 'P'}|${r.tag}|${r.area}|${r.qty}|${r.notes}`;
+    if (seenSwapKeys.has(key)) return false;
+    seenSwapKeys.add(key);
+    return true;
+  });
+};
+
 export default function TakeoffSpecEngine({
   orderId,
   projectKey,
@@ -75,7 +87,7 @@ export default function TakeoffSpecEngine({
   // Count-Up Rows: [{ id, tag, floor, area, qty, notes }]
   const [countUpRows, setCountUpRows] = useState(() => {
     if (initialTakeoffData && Array.isArray(initialTakeoffData.countUpRows) && initialTakeoffData.countUpRows.length > 0) {
-      return initialTakeoffData.countUpRows;
+      return dedupeRunawaySwapRows(initialTakeoffData.countUpRows);
     }
     return [
       { id: 'tu-' + Date.now() + '-1', tag: 'DL1', floor: 'Ground', area: 'Kitchen', qty: 6, notes: 'Recessed downlight' },
@@ -136,6 +148,7 @@ export default function TakeoffSpecEngine({
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && Array.isArray(parsed.countUpRows) && parsed.countUpRows.length > 0) {
+          parsed.countUpRows = dedupeRunawaySwapRows(parsed.countUpRows);
           // If draft is newer than 1 minute ago and has content
           if (Date.now() - (parsed.timestamp || 0) < 7 * 24 * 3600 * 1000) {
             setRecoveredDraft(parsed);
@@ -1190,13 +1203,13 @@ export default function TakeoffSpecEngine({
     setCatalogModalOpen(true);
   };
 
-  const handleSelectCatalogItem = async (product, targetTag = null) => {
+  const handleSelectCatalogItem = async (product, targetTag = null, skipSwapCheck = false) => {
     const activeTag = targetTag || catalogTargetTag;
     if (!activeTag) return;
 
     if (catalogTargetMode === 'product') {
       // Log variation audit if triggered from swap flow
-      if (takeoffSwapTarget && orderId) {
+      if (!skipSwapCheck && takeoffSwapTarget && orderId) {
         try {
           const prevProduct = takeoffSwapTarget.currentProduct;
           const origCode = prevProduct?.sku || prevProduct?.one_to_one_code || takeoffSwapTarget.tag;
@@ -1222,7 +1235,7 @@ export default function TakeoffSpecEngine({
       }
 
       // If scope was ROW_ONLY, keep original row untouched and insert Minus (-) and Plus (+) rows!
-      if (takeoffSwapTarget && takeoffSwapTarget.mode === 'row' && takeoffSwapScope === 'ROW_ONLY' && takeoffSwapTarget.row) {
+      if (!skipSwapCheck && takeoffSwapTarget && takeoffSwapTarget.mode === 'row' && takeoffSwapScope === 'ROW_ONLY' && takeoffSwapTarget.row) {
         const origRow = takeoffSwapTarget.row;
         const origTag = takeoffSwapTarget.tag;
         const swapQty = Math.min(Math.max(1, Number(takeoffSwapQty) || 1), Math.max(1, Number(origRow.qty) || 1));
@@ -1265,8 +1278,8 @@ export default function TakeoffSpecEngine({
         });
         setHasUnsavedChanges(true);
         setTakeoffSwapTarget(null);
-        // Configure specification for the new Plus tag
-        return handleSelectCatalogItem(product, finalNewTag);
+        // Configure specification for the new Plus tag (skipSwapCheck=true to prevent recursion!)
+        return handleSelectCatalogItem(product, finalNewTag, true);
       }
 
       setTakeoffSwapTarget(null);
