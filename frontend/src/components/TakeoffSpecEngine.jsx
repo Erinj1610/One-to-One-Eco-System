@@ -222,8 +222,11 @@ export default function TakeoffSpecEngine({
   // Catalog Picker Modal State
   const [catalogModalOpen, setCatalogModalOpen] = useState(false);
   const [takeoffSwapTarget, setTakeoffSwapTarget] = useState(null);
-  const [takeoffSwapScope, setTakeoffSwapScope] = useState('ALL'); // 'ALL' | 'ROW_ONLY'
+  const [takeoffSwapScope, setTakeoffSwapScope] = useState('ROW_ONLY'); // 'ALL' | 'ROW_ONLY'
   const [takeoffSwapReason, setTakeoffSwapReason] = useState('');
+  const [takeoffSwapQty, setTakeoffSwapQty] = useState(1);
+  const [takeoffSwapNewTag, setTakeoffSwapNewTag] = useState('');
+  const [takeoffSwapNewArea, setTakeoffSwapNewArea] = useState('');
   const [takeoffSwapModalOpen, setTakeoffSwapModalOpen] = useState(false);
 
   const handleInitiateRowSwap = (row) => {
@@ -252,7 +255,10 @@ export default function TakeoffSpecEngine({
       currentProduct: spec?.product || null,
       matchingRowCount
     });
-    setTakeoffSwapScope('ALL');
+    setTakeoffSwapScope('ROW_ONLY');
+    setTakeoffSwapQty(Math.max(1, Number(row.qty) || 1));
+    setTakeoffSwapNewTag('');
+    setTakeoffSwapNewArea('');
     setTakeoffSwapReason('');
     setTakeoffSwapModalOpen(true);
   };
@@ -266,6 +272,9 @@ export default function TakeoffSpecEngine({
       matchingRowCount
     });
     setTakeoffSwapScope('ALL');
+    setTakeoffSwapQty(1);
+    setTakeoffSwapNewTag('');
+    setTakeoffSwapNewArea('');
     setTakeoffSwapReason('');
     setTakeoffSwapModalOpen(true);
   };
@@ -1212,18 +1221,52 @@ export default function TakeoffSpecEngine({
         }
       }
 
-      // If scope was ROW_ONLY, create sub-tag for that row
+      // If scope was ROW_ONLY, keep original row untouched and insert Minus (-) and Plus (+) rows!
       if (takeoffSwapTarget && takeoffSwapTarget.mode === 'row' && takeoffSwapScope === 'ROW_ONLY' && takeoffSwapTarget.row) {
-        let altIdx = 1;
-        let newAltTag = `${takeoffSwapTarget.tag}.${altIdx}`;
-        while (countUpRows.some(r => (r.tag || '').toUpperCase() === newAltTag)) {
-          altIdx++;
-          newAltTag = `${takeoffSwapTarget.tag}.${altIdx}`;
+        const origRow = takeoffSwapTarget.row;
+        const origTag = takeoffSwapTarget.tag;
+        const swapQty = Math.min(Math.max(1, Number(takeoffSwapQty) || 1), Math.max(1, Number(origRow.qty) || 1));
+        const customTag = (takeoffSwapNewTag || '').trim().toUpperCase();
+        let finalNewTag = customTag || origTag;
+        if (!customTag) {
+          let altIdx = 1;
+          finalNewTag = `${origTag}.${altIdx}`;
+          while (countUpRows.some(r => (r.tag || '').toUpperCase() === finalNewTag)) {
+            altIdx++;
+            finalNewTag = `${origTag}.${altIdx}`;
+          }
         }
-        handleUpdateRow(takeoffSwapTarget.row.id, 'tag', newAltTag);
+        const targetArea = (takeoffSwapNewArea || '').trim() || origRow.area;
+        const repCode = product.sku || product.one_to_one_code || product.name;
+
+        const minusRow = {
+          ...origRow,
+          id: `tu-crd-${Date.now()}`,
+          qty: -swapQty,
+          isSwapMinus: true,
+          notes: `MINUS (-${swapQty}): Swapped out for ${repCode} (${finalNewTag}). ${takeoffSwapReason || ''}`.trim()
+        };
+        const plusRow = {
+          ...origRow,
+          id: `tu-add-${Date.now() + 1}`,
+          tag: finalNewTag,
+          area: targetArea,
+          qty: swapQty,
+          isSwapPlus: true,
+          notes: `PLUS (+${swapQty}): Variation from ${origTag} (${origRow.area || 'Room'}). ${takeoffSwapReason || ''}`.trim()
+        };
+
+        setCountUpRows(prev => {
+          const idx = prev.findIndex(r => r.id === origRow.id);
+          if (idx === -1) return [...prev, minusRow, plusRow];
+          const copy = [...prev];
+          copy.splice(idx + 1, 0, minusRow, plusRow);
+          return copy;
+        });
+        setHasUnsavedChanges(true);
         setTakeoffSwapTarget(null);
-        // Continue setting specification for newAltTag
-        return handleSelectCatalogItem(product, newAltTag);
+        // Configure specification for the new Plus tag
+        return handleSelectCatalogItem(product, finalNewTag);
       }
 
       setTakeoffSwapTarget(null);
@@ -7464,14 +7507,59 @@ export default function TakeoffSpecEngine({
                       />
                       <div>
                         <strong style={{ fontSize: '12.5px', color: 'var(--text-primary)' }}>
-                          Replace for THIS ROW ONLY ({takeoffSwapTarget.row?.area || 'Selected Room'})
+                          3-Row Minus / Plus Swap for THIS ROW ({takeoffSwapTarget.row?.area || 'Selected Room'})
                         </strong>
                         <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                          Splits this row into an alternate tag (e.g. {takeoffSwapTarget.tag}.1) and leaves the other rooms unchanged.
+                          Keeps the original row, inserts a Minus (-qty) credit row and a Plus (+qty) replacement row with your exact Plan Code &amp; Target Area.
                         </div>
                       </div>
                     </label>
                   </div>
+
+                  {takeoffSwapScope === 'ROW_ONLY' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginTop: '10px', padding: '10px', background: 'var(--bg-secondary)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                      <div>
+                        <label style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-danger)', display: 'block', marginBottom: '3px' }}>
+                          Swap Qty (Max {Number(takeoffSwapTarget.row?.qty) || 1})
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max={Math.max(1, Number(takeoffSwapTarget.row?.qty) || 1)}
+                          className="form-control"
+                          style={{ height: '30px', fontSize: '12px', fontWeight: 700 }}
+                          value={takeoffSwapQty}
+                          onChange={e => setTakeoffSwapQty(Math.min(Math.max(1, parseInt(e.target.value, 10) || 1), Math.max(1, Number(takeoffSwapTarget.row?.qty) || 1)))}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '3px' }}>
+                          Exact New Plan Code
+                        </label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          style={{ height: '30px', fontSize: '12px', fontFamily: 'monospace', fontWeight: 700 }}
+                          placeholder="e.g. A4 (or blank)"
+                          value={takeoffSwapNewTag}
+                          onChange={e => setTakeoffSwapNewTag(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '10.5px', fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: '3px' }}>
+                          New Room / Area
+                        </label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          style={{ height: '30px', fontSize: '12px' }}
+                          placeholder={`Keep ${takeoffSwapTarget.row?.area || 'same'}`}
+                          value={takeoffSwapNewArea}
+                          onChange={e => setTakeoffSwapNewArea(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

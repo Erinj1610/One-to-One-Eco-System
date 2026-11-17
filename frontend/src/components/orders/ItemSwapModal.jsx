@@ -56,9 +56,9 @@ export default function ItemSwapModal({
     setRepQty(initialQty);
     setRepBrand(item.brand || '');
     setRepSupplier(item.supplier || '');
-    setRepType(item.type ? `${item.type}.1` : '');
-    setRepArea(item.area || '');
-    setRepFloor(item.floor || '');
+    setRepType('');
+    setRepArea('');
+    setRepFloor('');
     setReason('');
     setSyncToTakeoff(false);
     setSearchQuery('');
@@ -82,9 +82,6 @@ export default function ItemSwapModal({
         const maxQty = Math.max(1, Number(ctx.remaining_swappable_qty) || initialQty);
         setSwapQty(maxQty);
         setRepQty(maxQty);
-        if (ctx.suggested_plan_code) {
-          setRepType(ctx.suggested_plan_code);
-        }
       })
       .catch(err => console.warn('Could not load swap context:', err))
       .finally(() => {
@@ -107,7 +104,7 @@ export default function ItemSwapModal({
     const timer = setTimeout(async () => {
       setIsSearchingApi(true);
       try {
-        const res = await fetch(`${API_BASE}/api/products?q=${encodeURIComponent(searchQuery.trim())}&limit=15`);
+        const res = await fetch(`${API_BASE}/api/products/?q=${encodeURIComponent(searchQuery.trim())}&limit=20`);
         if (res.ok) {
           const data = await res.json();
           const items = Array.isArray(data) ? data : (data.items || data.products || []);
@@ -599,14 +596,23 @@ export default function ItemSwapModal({
               </div>
 
               <div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '3px' }}>
-                  <Tag size={11} /> New Plan Code / Type
+                <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '3px' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Tag size={11} /> New Plan Code / Type</span>
+                  {swapContext?.suggested_plan_code && !repType && (
+                    <button
+                      type="button"
+                      onClick={() => setRepType(swapContext.suggested_plan_code)}
+                      style={{ fontSize: '9.5px', color: '#0284c7', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '4px', padding: '0px 5px', cursor: 'pointer', fontWeight: 700 }}
+                    >
+                      Use {swapContext.suggested_plan_code}
+                    </button>
+                  )}
                 </label>
                 <input
                   type="text"
                   className="form-control"
                   style={{ height: '32px', fontSize: '12px', fontFamily: 'monospace', fontWeight: 700 }}
-                  placeholder={swapContext?.suggested_plan_code || 'e.g. A3.1'}
+                  placeholder={`Keep ${item.type || 'original'} — or enter exact code`}
                   value={repType}
                   onChange={e => setRepType(e.target.value)}
                 />
@@ -641,7 +647,7 @@ export default function ItemSwapModal({
                   list="swap-target-rooms-list"
                   className="form-control"
                   style={{ height: '32px', fontSize: '12px' }}
-                  placeholder="Select or type room..."
+                  placeholder={`Keep ${item.area || 'same room'} — or pick/type new`}
                   value={repArea}
                   onChange={e => setRepArea(e.target.value)}
                 />
@@ -660,7 +666,7 @@ export default function ItemSwapModal({
                   type="text"
                   className="form-control"
                   style={{ height: '32px', fontSize: '12px' }}
-                  placeholder="e.g. Ground Floor"
+                  placeholder={`Keep ${item.floor || 'same floor'} — or type new`}
                   value={repFloor}
                   onChange={e => setRepFloor(e.target.value)}
                 />

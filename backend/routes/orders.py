@@ -2056,7 +2056,7 @@ def swap_order_item(po_number: str, item_id: str, payload: ItemSwapSchema, db: S
     rep_supplier = repl.get("supplier") or item.supplier
     rep_area = (repl.get("area") or item.area or "").strip() or item.area
     rep_floor = (repl.get("floor") or item.floor or "").strip() or item.floor
-    rep_type = (repl.get("type") or ctx["suggested_plan_code"] or item.type or "").strip()
+    rep_type = (repl.get("type") or item.type or "").strip()
     rep_first_fix = repl.get("first_fix") or repl.get("firstFix") or item.first_fix or "No"
 
     # Determine status flags on the Minus row
