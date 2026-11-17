@@ -1,5 +1,6 @@
 import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
 import ClientPeekCard from '../components/common/ClientPeekCard';
+import TableViewOptions from '../components/common/TableViewOptions';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
@@ -24,6 +25,41 @@ export default function LogisticsPage() {
   const { projects, updateProject, refreshProjects, getModuleName } = useStore();
 
   // Search & ledger navigation state
+  // Table View Options (Density & Column Toggles)
+  const [tableDensity, setTableDensity] = useState(() => {
+    return localStorage.getItem('logistics_table_density') || 'comfortable';
+  });
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('logistics_visible_columns');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleToggleColumn = (colId, isVisible) => {
+    setVisibleColumns(prev => {
+      const updated = { ...prev, [colId]: isVisible };
+      localStorage.setItem('logistics_visible_columns', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleChangeDensity = (newDensity) => {
+    setTableDensity(newDensity);
+    localStorage.setItem('logistics_table_density', newDensity);
+  };
+
+  const LOGISTICS_TABLE_COLUMNS = useMemo(() => [
+    { id: 'id', label: 'Document ID', locked: true },
+    { id: 'type', label: 'Type' },
+    { id: 'project', label: 'Project & Order' },
+    { id: 'client', label: 'Client / Method' },
+    { id: 'date', label: 'Date' },
+    { id: 'units', label: 'Items & Units' },
+    { id: 'status', label: 'Status & POD' }
+  ], []);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedDocId, setSelectedDocId] = useState(null);
@@ -1282,9 +1318,19 @@ export default function LogisticsPage() {
             <FileText size={14} style={{ color: '#0284c7' }} />
             Logistics Documents Ledger ({sortedDocs.length})
           </span>
-          <span style={{ fontSize: '11px', color: '#64748b' }}>
-            Click any column header to sort. Click a document to inspect or print.
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '11px', color: '#64748b' }}>
+              Click any column header to sort. Click a document to inspect or print.
+            </span>
+            <TableViewOptions 
+              storageKey="logistics"
+              columns={LOGISTICS_TABLE_COLUMNS}
+              visibleColumns={visibleColumns}
+              onToggleColumn={handleToggleColumn}
+              density={tableDensity}
+              onChangeDensity={handleChangeDensity}
+            />
+          </div>
         </div>
 
         {sortedDocs.length === 0 ? (
@@ -1295,16 +1341,16 @@ export default function LogisticsPage() {
           </div>
         ) : (
           <div style={{ overflowX: 'auto', maxHeight: '68vh', position: 'relative' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left', margin: 0 }}>
+            <table className={`table ${tableDensity === 'compact' ? 'density-compact' : ''}`} style={{ width: '100%', borderCollapse: 'collapse', fontSize: tableDensity === 'compact' ? '11px' : '12px', textAlign: 'left', margin: 0 }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                 <tr style={{ background: '#f8fafc', color: '#64748b', borderBottom: '1px solid #e2e8f0' }}>
                   {renderSortHeader('Document ID', 'id', 'left', { width: '190px' })}
-                  {renderSortHeader('Type', 'type', 'left', { width: '130px' })}
-                  {renderSortHeader('Project & Order', 'project', 'left', { minWidth: '190px' })}
-                  {renderSortHeader('Client / Method', 'client', 'left', { minWidth: '170px' })}
-                  {renderSortHeader('Date', 'date', 'left', { width: '110px' })}
-                  {renderSortHeader('Items & Units', 'units', 'left', { width: '130px' })}
-                  {renderSortHeader('Status & POD', 'status', 'left', { minWidth: '170px' })}
+                  {visibleColumns.type !== false && renderSortHeader('Type', 'type', 'left', { width: '130px' })}
+                  {visibleColumns.project !== false && renderSortHeader('Project & Order', 'project', 'left', { minWidth: '190px' })}
+                  {visibleColumns.client !== false && renderSortHeader('Client / Method', 'client', 'left', { minWidth: '170px' })}
+                  {visibleColumns.date !== false && renderSortHeader('Date', 'date', 'left', { width: '110px' })}
+                  {visibleColumns.units !== false && renderSortHeader('Items & Units', 'units', 'left', { width: '130px' })}
+                  {visibleColumns.status !== false && renderSortHeader('Status & POD', 'status', 'left', { minWidth: '170px' })}
                   <th style={{ padding: '10px 14px', textAlign: 'right', width: '140px', whiteSpace: 'nowrap' }}>Actions</th>
                 </tr>
               </thead>

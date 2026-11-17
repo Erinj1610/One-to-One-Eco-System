@@ -13,6 +13,7 @@ import DriveFileExplorer from '../components/common/DriveFileExplorer';
 import TechnicalPackModal from '../components/orders/TechnicalPackModal';
 import SubOrderModal from '../components/orders/SubOrderModal';
 import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
+import TableViewOptions from '../components/common/TableViewOptions';
 import ItemSwapModal from '../components/orders/ItemSwapModal';
 import AuditHistoryTab from '../components/orders/AuditHistoryTab';
 import ClientVariationDocument from '../components/orders/ClientVariationDocument';
@@ -834,6 +835,45 @@ export default function OrdersPage() {
   const [activeItemNoteModal, setActiveItemNoteModal] = useState(null);
 
   // Search & Filter state for the ledger list
+  // Custom Table View Options (Density & Column Toggles)
+  const [tableDensity, setTableDensity] = useState(() => {
+    return localStorage.getItem('orders_table_density') || 'comfortable';
+  });
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('orders_visible_columns');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleToggleColumn = (colId, isVisible) => {
+    setVisibleColumns(prev => {
+      const updated = { ...prev, [colId]: isVisible };
+      localStorage.setItem('orders_visible_columns', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleChangeDensity = (newDensity) => {
+    setTableDensity(newDensity);
+    localStorage.setItem('orders_table_density', newDensity);
+  };
+
+  const ORDERS_TABLE_COLUMNS = useMemo(() => [
+    { id: 'id', label: 'Order ID', locked: true },
+    { id: 'quote_name', label: 'Order Name', locked: true },
+    { id: 'project', label: 'Linked Project' },
+    { id: 'client', label: 'Client' },
+    { id: 'pm', label: 'Project Manager' },
+    { id: 'margin', label: 'Order Margin' },
+    { id: 'value', label: 'Order Value' },
+    { id: 'paid', label: 'Amount Paid' },
+    { id: 'outstanding', label: 'Balance Outstanding' },
+    { id: 'status', label: 'Order Status' },
+    { id: 'paymentStatus', label: 'Payment Status' }
+  ], []);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
@@ -3502,6 +3542,14 @@ export default function OrdersPage() {
                 <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                   Showing <strong>{filteredOrders.length}</strong> active BOQs
                 </div>
+                <TableViewOptions 
+                  storageKey="orders"
+                  columns={ORDERS_TABLE_COLUMNS}
+                  visibleColumns={visibleColumns}
+                  onToggleColumn={handleToggleColumn}
+                  density={tableDensity}
+                  onChangeDensity={handleChangeDensity}
+                />
               </div>
             </div>
 
@@ -3558,7 +3606,7 @@ export default function OrdersPage() {
 
             {/* TIER 2: ORDERS LEDGER FULL-BLEED TABLE */}
             <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '68vh', position: 'relative' }}>
-              <table className="table" style={{ margin: 0, width: '100%', fontSize: '12.5px', borderCollapse: 'collapse' }}>
+              <table className={`table ${tableDensity === 'compact' ? 'density-compact' : ''}`} style={{ margin: 0, width: '100%', fontSize: tableDensity === 'compact' ? '11.5px' : '12.5px', borderCollapse: 'collapse' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                     <th style={{ width: '40px', textAlign: 'center', padding: '10px 8px', verticalAlign: 'middle' }}>
@@ -3575,33 +3623,51 @@ export default function OrdersPage() {
                     <th onClick={() => handleSort('quote_name')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Name {renderSortIcon('quote_name')}</div>
                     </th>
-                    <th onClick={() => handleSort('project')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Linked Project {renderSortIcon('project')}</div>
-                    </th>
-                    <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderSortIcon('client')}</div>
-                    </th>
-                    <th onClick={() => handleSort('pm')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Manager {renderSortIcon('pm')}</div>
-                    </th>
-                    <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Margin {renderSortIcon('margin')}</div>
-                    </th>
-                    <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Value {renderSortIcon('value')}</div>
-                    </th>
-                    <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Amount Paid {renderSortIcon('paid')}</div>
-                    </th>
-                    <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Balance Outstanding {renderSortIcon('outstanding')}</div>
-                    </th>
-                    <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Status {renderSortIcon('status')}</div>
-                    </th>
-                    <th onClick={() => handleSort('paymentStatus')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Payment Status {renderSortIcon('paymentStatus')}</div>
-                    </th>
+                    {visibleColumns.project !== false && (
+                      <th onClick={() => handleSort('project')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Linked Project {renderSortIcon('project')}</div>
+                      </th>
+                    )}
+                    {visibleColumns.client !== false && (
+                      <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderSortIcon('client')}</div>
+                      </th>
+                    )}
+                    {visibleColumns.pm !== false && (
+                      <th onClick={() => handleSort('pm')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project Manager {renderSortIcon('pm')}</div>
+                      </th>
+                    )}
+                    {visibleColumns.margin !== false && (
+                      <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Margin {renderSortIcon('margin')}</div>
+                      </th>
+                    )}
+                    {visibleColumns.value !== false && (
+                      <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Value {renderSortIcon('value')}</div>
+                      </th>
+                    )}
+                    {visibleColumns.paid !== false && (
+                      <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Amount Paid {renderSortIcon('paid')}</div>
+                      </th>
+                    )}
+                    {visibleColumns.outstanding !== false && (
+                      <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Balance Outstanding {renderSortIcon('outstanding')}</div>
+                      </th>
+                    )}
+                    {visibleColumns.status !== false && (
+                      <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Order Status {renderSortIcon('status')}</div>
+                      </th>
+                    )}
+                    {visibleColumns.paymentStatus !== false && (
+                      <th onClick={() => handleSort('paymentStatus')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Payment Status {renderSortIcon('paymentStatus')}</div>
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
