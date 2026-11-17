@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ClientPeekCard from '../components/common/ClientPeekCard';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
@@ -365,8 +366,8 @@ export default function MyWorkspace() {
                 </td>
 
                 {/* CLIENT */}
-                <td style={{ padding: '12px 10px', color: 'var(--text-secondary)' }}>
-                  {ticket.client_name}
+                <td style={{ padding: '12px 10px', color: 'var(--text-secondary)' }} onClick={(e) => e.stopPropagation()}>
+                  <ClientPeekCard clientName={ticket.client_name} style={{ fontSize: '12px' }} />
                 </td>
 
                 {/* STAGE & DESK */}

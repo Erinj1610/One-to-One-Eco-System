@@ -1,4 +1,5 @@
 import SearchableFilterDropdown from '../../components/common/SearchableFilterDropdown';
+import ClientPeekCard from '../../components/common/ClientPeekCard';
 import EmptyStateBanner from '../../components/common/EmptyStateBanner';
 import OneToOneLoader from '../../components/common/OneToOneLoader';
 import React, { useState, useMemo, useEffect } from 'react';
@@ -984,19 +985,8 @@ export default function ProjectList() {
                     <td>
                       <div style={{ fontWeight: 600, color: 'var(--text-info)' }}>{p.name}</div>
                     </td>
-                    <td>
-                      <div 
-                        style={{ fontWeight: 500, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (p.client && p.client !== '—') {
-                            navigate('/crm', { state: { selectedClientName: p.client } });
-                          }
-                        }}
-                        title={`View ${p.client} in CRM`}
-                      >
-                        {p.client || '—'}
-                      </div>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <ClientPeekCard clientName={p.client} style={{ fontSize: '12px', fontWeight: 500 }} />
                     </td>
                     <td>
                       <div style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{p.pm || '—'}</div>

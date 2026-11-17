@@ -397,6 +397,31 @@ function SearchableCodeSelect({ value, onChange, onSelect, onOpenCreateProduct, 
 }
 
 
+const formatCompactOrderId = (rawId, poNumber = null) => {
+  if (poNumber && String(poNumber).trim()) {
+    const poStr = String(poNumber).trim();
+    if (poStr.toUpperCase().startsWith('PO') || poStr.toUpperCase().startsWith('Q-')) {
+      return poStr;
+    }
+    return `PO #${poStr}`;
+  }
+  if (!rawId) return '—';
+  const raw = String(rawId).trim();
+  // Standard formatted codes (e.g. Q-2026-0667, Q-2026-0667-01, PO-001) stay intact
+  if (/^[A-Za-z0-9]+-[A-Za-z0-9]+(-[A-Za-z0-9]+)*$/.test(raw) && raw.length <= 18) {
+    return raw;
+  }
+  // Slugified IDs (e.g. 'wynand-wilsenacht-architects--...')
+  const cleaned = raw.replace(/[-_]+/g, ' ').trim();
+  const words = cleaned.split(/\s+/);
+  if (words.length >= 2) {
+    const shortSlug = `${words[0]}-${words[1]}`;
+    return shortSlug.length > 13 ? shortSlug.slice(0, 12) + '…' : shortSlug + '…';
+  }
+  if (raw.length > 14) return raw.slice(0, 13) + '…';
+  return raw;
+};
+
 export default function OrdersPage() {
   const { 
     isStoreLoading, projects, setProjects, updateProject, contacts, setContacts, logAttrition, moveOrder, getModuleName, projectManagers, logActivity,
@@ -3643,21 +3668,22 @@ export default function OrdersPage() {
                                   cursor: 'pointer', 
                                   textDecoration: 'none', 
                                   color: '#0f172a',
-                                  fontSize: '12px',
-                                  padding: '2px 6px',
+                                  fontSize: '11.5px',
+                                  fontWeight: 600,
+                                  padding: '2px 7px',
                                   borderRadius: '5px',
                                   background: '#f8fafc',
                                   border: '1px solid #e2e8f0',
                                   whiteSpace: 'nowrap',
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
-                                  maxWidth: '220px',
+                                  maxWidth: '125px',
                                   display: 'inline-block'
                                 }} 
                                 onClick={() => handleOpenWorkspace(o)}
                                 title={o.id}
                               >
-                                {o.id}
+                                {formatCompactOrderId(o.id, o.po_number || o.poNumber)}
                               </span>
                               {hasChildSubs && (
                                 <span 
@@ -3748,20 +3774,21 @@ export default function OrdersPage() {
                                       cursor: 'pointer', 
                                       color: '#475569', 
                                       textDecoration: 'none',
-                                      fontSize: '11.5px',
-                                      padding: '1px 5px',
+                                      fontSize: '11px',
+                                      fontWeight: 600,
+                                      padding: '1px 6px',
                                       borderRadius: '4px',
                                       background: '#f8fafc',
                                       border: '1px solid #e2e8f0',
                                       whiteSpace: 'nowrap',
                                       overflow: 'hidden',
                                       textOverflow: 'ellipsis',
-                                      maxWidth: '200px'
+                                      maxWidth: '120px'
                                     }} 
                                     onClick={() => handleOpenWorkspace(sub)}
                                     title={sub.id}
                                   >
-                                    {sub.id}
+                                    {formatCompactOrderId(sub.id, sub.po_number || sub.poNumber)}
                                   </span>
                                   <span 
                                     style={{ 

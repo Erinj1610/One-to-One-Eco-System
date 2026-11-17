@@ -1,4 +1,5 @@
 import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
+import ClientPeekCard from '../components/common/ClientPeekCard';
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -2997,14 +2998,14 @@ export default function PurchasingPage() {
                                     {doc.reference}
                                   </span>
                                   {doc.customer_name && doc.customer_name !== doc.reference && (
-                                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                                      Client: {doc.customer_name}
+                                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                      <span>Client:</span> <ClientPeekCard clientName={doc.customer_name} style={{ fontSize: '10.5px' }} />
                                     </div>
                                   )}
                                 </div>
                               ) : doc.customer_name ? (
-                                <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                  Client: {doc.customer_name}
+                                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                  <span>Client:</span> <ClientPeekCard clientName={doc.customer_name} style={{ fontSize: '11px' }} />
                                 </div>
                               ) : (
                                 <span style={{ color: 'var(--text-tertiary)' }}>—</span>

@@ -1,5 +1,6 @@
 // Bump chunk v1.0.1
 import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
+import ClientPeekCard from '../components/common/ClientPeekCard';
 import EmptyStateBanner from '../components/common/EmptyStateBanner';
 import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -268,6 +269,29 @@ const getItemDefaults = (item) => {
   }
   
   return resolved;
+};
+
+const formatCompactOrderId = (rawId, poNumber = null) => {
+  if (poNumber && String(poNumber).trim()) {
+    const poStr = String(poNumber).trim();
+    if (poStr.toUpperCase().startsWith('PO') || poStr.toUpperCase().startsWith('Q-')) {
+      return poStr;
+    }
+    return `PO #${poStr}`;
+  }
+  if (!rawId) return '—';
+  const raw = String(rawId).trim();
+  if (/^[A-Za-z0-9]+-[A-Za-z0-9]+(-[A-Za-z0-9]+)*$/.test(raw) && raw.length <= 18) {
+    return raw;
+  }
+  const cleaned = raw.replace(/[-_]+/g, ' ').trim();
+  const words = cleaned.split(/\s+/);
+  if (words.length >= 2) {
+    const shortSlug = `${words[0]}-${words[1]}`;
+    return shortSlug.length > 13 ? shortSlug.slice(0, 12) + '…' : shortSlug + '…';
+  }
+  if (raw.length > 14) return raw.slice(0, 13) + '…';
+  return raw;
 };
 
 export default function SalesTracker() {
@@ -5208,7 +5232,7 @@ export default function SalesTracker() {
                                   />
                                 </button>
                               )}
-                              <span>{o.id}</span>
+                              <span title={o.id} style={{ display: 'inline-block', maxWidth: '125px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatCompactOrderId(o.id, o.po_number || o.poNumber)}</span>
                               {hasChildSubs && (
                                 <span 
                                   style={{ 
@@ -5251,7 +5275,9 @@ export default function SalesTracker() {
                             )}
                           </td>
                           <td style={{ fontWeight: 600, color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate(`/projects/${o.projectKey}`); }}>{o.projectFullName || o.projectName}</td>
-                          <td style={{ color: 'var(--text-info)', cursor: 'pointer', textDecoration: 'underline' }} onClick={(e) => { e.stopPropagation(); navigate('/crm', { state: { selectedClientName: (o.clientContact || o.projectClient) } }); }}>{(o.clientCompany || o.projectClient) || '—'}</td>
+                          <td onClick={(e) => e.stopPropagation()}>
+                            <ClientPeekCard clientName={(o.clientCompany || o.projectClient)} style={{ fontSize: '12px' }} />
+                          </td>
                           <td style={{ fontWeight: 600 }}>{o.projectPm || '—'}</td>
                           <td style={{ 
                             fontWeight: 700, 
@@ -5343,7 +5369,9 @@ export default function SalesTracker() {
                                 {sub.quote_name || 'Phase Scope'}
                               </td>
                               <td style={{ color: 'var(--text-secondary)' }}>{sub.projectFullName || sub.projectName}</td>
-                              <td style={{ color: 'var(--text-secondary)' }}>{(sub.clientCompany || sub.projectClient) || '—'}</td>
+                              <td onClick={(e) => e.stopPropagation()}>
+                                <ClientPeekCard clientName={(sub.clientCompany || sub.projectClient)} style={{ fontSize: '11.5px' }} />
+                              </td>
                               <td style={{ color: 'var(--text-secondary)' }}>{sub.projectPm || '—'}</td>
                               <td style={{ fontWeight: 700, color: subMargin < 39 ? 'var(--text-danger)' : 'var(--text-success)' }}>
                                 {subMargin}%
@@ -5674,7 +5702,9 @@ export default function SalesTracker() {
                           }}
                         >
                           <td style={{ fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-info)' }}>
-                            {o.id}
+                            <span title={o.id} style={{ display: 'inline-block', maxWidth: '125px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {formatCompactOrderId(o.id, o.po_number || o.poNumber)}
+                            </span>
                           </td>
                           <td style={{ fontWeight: 600 }}>
                             {o.quote_name || o.orderName || o.name || '—'}
@@ -5682,7 +5712,9 @@ export default function SalesTracker() {
                           <td>
                             <span style={{ fontWeight: 600 }}>{o.projectName || '—'}</span>
                           </td>
-                          <td>{o.projectClient || '—'}</td>
+                          <td onClick={(e) => e.stopPropagation()}>
+                            <ClientPeekCard clientName={o.projectClient} style={{ fontSize: '12px' }} />
+                          </td>
                           <td>
                             <span className="badge b-secondary" style={{ fontSize: '11px', fontWeight: 600 }}>
                               {o.projectPm || 'Unassigned'}

@@ -1,4 +1,5 @@
 import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
+import ClientPeekCard from '../components/common/ClientPeekCard';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useStore } from '../context/StoreContext';
@@ -1402,18 +1403,8 @@ export default function LogisticsPage() {
                           )}
                         </div>
                       </td>
-                      <td style={{ padding: '10px 14px', maxWidth: '180px' }}>
-                        <div
-                          style={{
-                            color: 'var(--text-secondary)',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                          title={doc.projectClient || '—'}
-                        >
-                          {doc.projectClient || '—'}
-                        </div>
+                      <td style={{ padding: '10px 14px', maxWidth: '180px' }} onClick={e => e.stopPropagation()}>
+                        <ClientPeekCard clientName={doc.projectClient} style={{ fontSize: '12px' }} />
                         {!isPL && doc.dispatch_method && (
                           <div
                             style={{

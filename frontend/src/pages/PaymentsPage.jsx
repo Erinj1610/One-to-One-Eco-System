@@ -1,4 +1,5 @@
 import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
+import ClientPeekCard from '../components/common/ClientPeekCard';
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -1331,8 +1332,10 @@ export default function PaymentsPage() {
                               {p.payment_date ? new Date(p.payment_date).toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
                             </td>
 
-                            <td style={{ padding: '12px 16px' }}>
-                              <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{p.customer_name}</div>
+                            <td style={{ padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
+                              <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                                <ClientPeekCard clientName={p.customer_name} style={{ fontSize: '12.5px' }} />
+                              </div>
                               <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Code: {p.customer_code || '—'}</div>
                             </td>
 

@@ -1,4 +1,5 @@
 import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
+import ClientPeekCard from '../components/common/ClientPeekCard';
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -2562,8 +2563,8 @@ export default function InvoicesPage() {
                           </td>
 
                           {/* Client Name */}
-                          <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {doc.customer_name}
+                          <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }} onClick={e => e.stopPropagation()}>
+                            <ClientPeekCard clientName={doc.customer_name} style={{ fontSize: '12px' }} />
                           </td>
 
                           {/* Project Reference */}
