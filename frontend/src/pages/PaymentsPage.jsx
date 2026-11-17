@@ -1,5 +1,6 @@
 import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
 import ClientPeekCard from '../components/common/ClientPeekCard';
+import TableViewOptions from '../components/common/TableViewOptions';
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -55,6 +56,41 @@ export default function PaymentsPage() {
   const [isLoadingPayments, setIsLoadingPayments] = useState(false);
   const [activeFilterTab, setActiveFilterTab] = useState('NEEDS_ALLOCATION'); // 'NEEDS_ALLOCATION' | 'PARTIAL' | 'FULLY_ALLOCATED' | 'AUDIT' | 'ALL'
   const [customerFilter, setCustomerFilter] = useState('All Clients');
+  // Table View Options (Density & Column Toggles)
+  const [tableDensity, setTableDensity] = useState(() => {
+    return localStorage.getItem('payments_table_density') || 'comfortable';
+  });
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('payments_visible_columns');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleToggleColumn = (colId, isVisible) => {
+    setVisibleColumns(prev => {
+      const updated = { ...prev, [colId]: isVisible };
+      localStorage.setItem('payments_visible_columns', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleChangeDensity = (newDensity) => {
+    setTableDensity(newDensity);
+    localStorage.setItem('payments_table_density', newDensity);
+  };
+
+  const PAYMENTS_TABLE_COLUMNS = useMemo(() => [
+    { id: 'receipt_no', label: 'Document #', locked: true },
+    { id: 'type', label: 'Type' },
+    { id: 'payment_date', label: 'Date' },
+    { id: 'customer_name', label: 'Client / Customer' },
+    { id: 'payment_method', label: 'Method / Ref' },
+    { id: 'amount', label: 'Total Value' },
+    { id: 'status', label: 'Allocation Status' }
+  ], []);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSyncingPalladium, setIsSyncingPalladium] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: 'payment_date', direction: 'desc' });
@@ -1142,6 +1178,16 @@ export default function PaymentsPage() {
                   width="160px"
                 />
               )}
+              {activeFilterTab !== 'AUDIT' && (
+                <TableViewOptions 
+                  storageKey="payments"
+                  columns={PAYMENTS_TABLE_COLUMNS}
+                  visibleColumns={visibleColumns}
+                  onToggleColumn={handleToggleColumn}
+                  density={tableDensity}
+                  onChangeDensity={handleChangeDensity}
+                />
+              )}
             </div>
           </div>
             
@@ -1150,7 +1196,7 @@ export default function PaymentsPage() {
             {activeFilterTab === 'AUDIT' ? (
               /* AUDIT TRAIL TABLE */
               <div style={{ overflowX: 'auto' }}>
-                <table className="table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
+                <table className={`table ${tableDensity === 'compact' ? 'density-compact' : ''}`} style={{ width: '100%', borderCollapse: 'collapse', fontSize: tableDensity === 'compact' ? '11.5px' : '12.5px' }}>
                   <thead>
                     <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.05em', color: '#64748b', fontWeight: 700 }}>
                       <th onClick={() => handleAuditSort('receipt_no')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
@@ -1252,22 +1298,34 @@ export default function PaymentsPage() {
                       <th onClick={() => handleSort('receipt_no')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
                         DOCUMENT # {sortConfig.key === 'receipt_no' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                       </th>
-                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>TYPE</th>
-                      <th onClick={() => handleSort('payment_date')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
-                        DATE {sortConfig.key === 'payment_date' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
-                      </th>
-                      <th onClick={() => handleSort('customer_name')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
-                        CLIENT / CUSTOMER {sortConfig.key === 'customer_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
-                      </th>
-                      <th onClick={() => handleSort('payment_method')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
-                        METHOD / REF {sortConfig.key === 'payment_method' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
-                      </th>
-                      <th onClick={() => handleSort('amount')} style={{ padding: '12px 16px', textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}>
-                        TOTAL VALUE {sortConfig.key === 'amount' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
-                      </th>
-                      <th onClick={() => handleSort('status')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
-                        ALLOCATION STATUS {sortConfig.key === 'status' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
-                      </th>
+                      {visibleColumns.type !== false && (
+                        <th style={{ padding: '12px 16px', textAlign: 'left' }}>TYPE</th>
+                      )}
+                      {visibleColumns.payment_date !== false && (
+                        <th onClick={() => handleSort('payment_date')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
+                          DATE {sortConfig.key === 'payment_date' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                      )}
+                      {visibleColumns.customer_name !== false && (
+                        <th onClick={() => handleSort('customer_name')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
+                          CLIENT / CUSTOMER {sortConfig.key === 'customer_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                      )}
+                      {visibleColumns.payment_method !== false && (
+                        <th onClick={() => handleSort('payment_method')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
+                          METHOD / REF {sortConfig.key === 'payment_method' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                      )}
+                      {visibleColumns.amount !== false && (
+                        <th onClick={() => handleSort('amount')} style={{ padding: '12px 16px', textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}>
+                          TOTAL VALUE {sortConfig.key === 'amount' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                      )}
+                      {visibleColumns.status !== false && (
+                        <th onClick={() => handleSort('status')} style={{ padding: '12px 16px', textAlign: 'left', cursor: 'pointer', userSelect: 'none' }}>
+                          ALLOCATION STATUS {sortConfig.key === 'status' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                        </th>
+                      )}
                       <th style={{ padding: '12px 16px', textAlign: 'center' }}>ACTION</th>
                     </tr>
                   </thead>

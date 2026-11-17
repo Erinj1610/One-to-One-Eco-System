@@ -2,6 +2,7 @@ import EmptyStateBanner from '../components/common/EmptyStateBanner';
 import OneToOneLoader from '../components/common/OneToOneLoader';
 import React, { useState, useMemo, useEffect } from 'react';
 import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
+import TableViewOptions from '../components/common/TableViewOptions';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -126,6 +127,41 @@ export default function CrmPage() {
     }
   }, [location.state, combinedContacts]);
 
+  // Table View Options (Density & Column Toggles)
+  const [tableDensity, setTableDensity] = useState(() => {
+    return localStorage.getItem('crm_table_density') || 'comfortable';
+  });
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('crm_visible_columns');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleToggleColumn = (colId, isVisible) => {
+    setVisibleColumns(prev => {
+      const updated = { ...prev, [colId]: isVisible };
+      localStorage.setItem('crm_visible_columns', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleChangeDensity = (newDensity) => {
+    setTableDensity(newDensity);
+    localStorage.setItem('crm_table_density', newDensity);
+  };
+
+  const CRM_TABLE_COLUMNS = useMemo(() => [
+    { id: 'clientName', label: 'Client Name', locked: true },
+    { id: 'projects', label: 'Projects (Lifetime)' },
+    { id: 'revenue', label: 'Lifetime Revenue' },
+    { id: 'status', label: 'Status' },
+    { id: 'currentProject', label: 'Current Project' },
+    { id: 'lastProject', label: 'Last Completed Project' },
+    { id: 'lastDate', label: 'Last Completed Date' }
+  ], []);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
@@ -1112,22 +1148,42 @@ export default function CrmPage() {
                     <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
                     <input type="search" className="form-control" style={{ width: '220px', paddingLeft: '32px' }} placeholder="Search clients or projects..." value={search} onChange={e => setSearch(e.target.value)} />
                   </div>
+                  <TableViewOptions 
+                    storageKey="crm"
+                    columns={CRM_TABLE_COLUMNS}
+                    visibleColumns={visibleColumns}
+                    onToggleColumn={handleToggleColumn}
+                    density={tableDensity}
+                    onChangeDensity={handleChangeDensity}
+                  />
                   <button className="btn btn-primary" onClick={() => setShowModal(true)}><Plus size={14} /> New Contact</button>
                 </div>
               </div>
 
               {/* TIER 2: FULL-BLEED LEDGER TABLE */}
               <div style={{ overflowX: 'auto', maxHeight: '68vh', position: 'relative' }}>
-                <table className="table" style={{ margin: 0, width: '100%', fontSize: '12.5px', borderCollapse: 'collapse' }}>
+                <table className={`table ${tableDensity === 'compact' ? 'density-compact' : ''}`} style={{ margin: 0, width: '100%', fontSize: tableDensity === 'compact' ? '11.5px' : '12.5px', borderCollapse: 'collapse' }}>
                   <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f8fafc' }}>
                     <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                       <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Client Name</th>
-                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap', textAlign: 'center' }}>Projects (Lifetime)</th>
-                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Lifetime Revenue</th>
-                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Status</th>
-                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Current Project</th>
-                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Last Completed Project</th>
-                      <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Last Completed Date</th>
+                      {visibleColumns.projects !== false && (
+                        <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap', textAlign: 'center' }}>Projects (Lifetime)</th>
+                      )}
+                      {visibleColumns.revenue !== false && (
+                        <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Lifetime Revenue</th>
+                      )}
+                      {visibleColumns.status !== false && (
+                        <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Status</th>
+                      )}
+                      {visibleColumns.currentProject !== false && (
+                        <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Current Project</th>
+                      )}
+                      {visibleColumns.lastProject !== false && (
+                        <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Last Completed Project</th>
+                      )}
+                      {visibleColumns.lastDate !== false && (
+                        <th style={{ padding: '10px 14px', fontSize: '11px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b', whiteSpace: 'nowrap' }}>Last Completed Date</th>
+                      )}
                     </tr>
                   </thead>                <tbody>
                   {directoryDisplayList.map(c => (

@@ -1,5 +1,6 @@
 import SearchableFilterDropdown from '../../components/common/SearchableFilterDropdown';
 import ClientPeekCard from '../../components/common/ClientPeekCard';
+import TableViewOptions from '../../components/common/TableViewOptions';
 import EmptyStateBanner from '../../components/common/EmptyStateBanner';
 import OneToOneLoader from '../../components/common/OneToOneLoader';
 import React, { useState, useMemo, useEffect } from 'react';
@@ -820,8 +821,18 @@ export default function ProjectList() {
               />
             </div>
 
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-              Showing <strong>{filteredProjects.length}</strong> active projects
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Showing <strong>{filteredProjects.length}</strong> active projects
+              </div>
+              <TableViewOptions 
+                storageKey="projects"
+                columns={PROJECT_TABLE_COLUMNS}
+                visibleColumns={visibleColumns}
+                onToggleColumn={handleToggleColumn}
+                density={tableDensity}
+                onChangeDensity={handleChangeDensity}
+              />
             </div>
           </div>
 
@@ -853,20 +864,7 @@ export default function ProjectList() {
 
           {/* TIER 2: FULL-BLEED LEDGER TABLE */}
           <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '68vh', position: 'relative' }}>
-            <table className="table" style={{ margin: 0, width: '100%', borderCollapse: 'collapse' }}>
-            <colgroup>
-              <col style={{ width: '3%' }} />
-              <col style={{ width: '13%' }} />
-              <col style={{ width: '12%' }} />
-              <col style={{ width: '11%' }} />
-              <col style={{ width: '8%' }} />
-              <col style={{ width: '7%' }} />
-              <col style={{ width: '8%' }} />
-              <col style={{ width: '9%' }} />
-              <col style={{ width: '9%' }} />
-              <col style={{ width: '9%' }} />
-              <col style={{ width: '11%' }} />
-            </colgroup>
+            <table className={`table ${tableDensity === 'compact' ? 'density-compact' : ''}`} style={{ margin: 0, width: '100%', borderCollapse: 'collapse', fontSize: tableDensity === 'compact' ? '11.5px' : '12.5px' }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f8fafc' }}>
               <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                 <th style={{ width: '3%', textAlign: 'center', padding: '10px 8px', fontSize: '11px', fontWeight: 600, color: '#64748b' }}>
@@ -880,36 +878,56 @@ export default function ProjectList() {
                 <th onClick={() => handleSort('name')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Project {renderSortIcon('name')}</div>
                 </th>
-                <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderSortIcon('client')}</div>
-                </th>
-                <th onClick={() => handleSort('pm')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>PM {renderSortIcon('pm')}</div>
-                </th>
-                <th onClick={() => handleSort('designFees')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Design Fees {renderSortIcon('designFees')}</div>
-                </th>
-                <th onClick={() => handleSort('orders')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Orders {renderSortIcon('orders')}</div>
-                </th>
-                <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Margin {renderSortIcon('margin')}</div>
-                </th>
-                <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Value {renderSortIcon('value')}</div>
-                </th>
-                <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Paid {renderSortIcon('paid')}</div>
-                </th>
-                <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Outstanding {renderSortIcon('outstanding')}</div>
-                </th>
-                <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Status {renderSortIcon('status')}</div>
-                </th>
-                <th onClick={() => handleSort('stage')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Stage {renderSortIcon('stage')}</div>
-                </th>
+                {visibleColumns.client !== false && (
+                  <th onClick={() => handleSort('client')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Client {renderSortIcon('client')}</div>
+                  </th>
+                )}
+                {visibleColumns.pm !== false && (
+                  <th onClick={() => handleSort('pm')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>PM {renderSortIcon('pm')}</div>
+                  </th>
+                )}
+                {visibleColumns.designFees !== false && (
+                  <th onClick={() => handleSort('designFees')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Design Fees {renderSortIcon('designFees')}</div>
+                  </th>
+                )}
+                {visibleColumns.orders !== false && (
+                  <th onClick={() => handleSort('orders')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Orders {renderSortIcon('orders')}</div>
+                  </th>
+                )}
+                {visibleColumns.margin !== false && (
+                  <th onClick={() => handleSort('margin')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Margin {renderSortIcon('margin')}</div>
+                  </th>
+                )}
+                {visibleColumns.value !== false && (
+                  <th onClick={() => handleSort('value')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Value {renderSortIcon('value')}</div>
+                  </th>
+                )}
+                {visibleColumns.paid !== false && (
+                  <th onClick={() => handleSort('paid')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Paid {renderSortIcon('paid')}</div>
+                  </th>
+                )}
+                {visibleColumns.outstanding !== false && (
+                  <th onClick={() => handleSort('outstanding')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Outstanding {renderSortIcon('outstanding')}</div>
+                  </th>
+                )}
+                {visibleColumns.status !== false && (
+                  <th onClick={() => handleSort('status')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Status {renderSortIcon('status')}</div>
+                  </th>
+                )}
+                {visibleColumns.stage !== false && (
+                  <th onClick={() => handleSort('stage')} style={{ cursor: 'pointer', userSelect: 'none', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>Stage {renderSortIcon('stage')}</div>
+                  </th>
+                )}
               </tr>
             </thead>            <tbody>
               {sortedProjects.map(p => {
@@ -985,58 +1003,78 @@ export default function ProjectList() {
                     <td>
                       <div style={{ fontWeight: 600, color: 'var(--text-info)' }}>{p.name}</div>
                     </td>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      <ClientPeekCard clientName={p.client} style={{ fontSize: '12px', fontWeight: 500 }} />
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{p.pm || '—'}</div>
-                    </td>
-                    <td style={{ fontWeight: 500 }}>
-                      {p.designFees?.length || 0} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>fees</span>
-                    </td>
-                    <td style={{ fontWeight: 500 }}>
-                      {p.orders?.length || 0} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>POs</span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontWeight: 600, color: isUnderTarget ? 'var(--text-danger)' : 'var(--text-success)' }}>
-                          {actualMargin}%
+                    {visibleColumns.client !== false && (
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <ClientPeekCard clientName={p.client} style={{ fontSize: '12px', fontWeight: 500 }} />
+                      </td>
+                    )}
+                    {visibleColumns.pm !== false && (
+                      <td>
+                        <div style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{p.pm || '—'}</div>
+                      </td>
+                    )}
+                    {visibleColumns.designFees !== false && (
+                      <td style={{ fontWeight: 500 }}>
+                        {p.designFees?.length || 0} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>fees</span>
+                      </td>
+                    )}
+                    {visibleColumns.orders !== false && (
+                      <td style={{ fontWeight: 500 }}>
+                        {p.orders?.length || 0} <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>POs</span>
+                      </td>
+                    )}
+                    {visibleColumns.margin !== false && (
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontWeight: 600, color: isUnderTarget ? 'var(--text-danger)' : 'var(--text-success)' }}>
+                            {actualMargin}%
+                          </span>
+                          <span style={{ fontSize: '9px', color: 'var(--text-tertiary)' }}>Target: {p.targetMargin || 18}%</span>
+                        </div>
+                      </td>
+                    )}
+                    {visibleColumns.value !== false && (
+                      <td style={{ fontWeight: 600 }}>
+                        R {totalValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </td>
+                    )}
+                    {visibleColumns.paid !== false && (
+                      <td style={{ fontWeight: 600, color: 'var(--text-success)' }}>
+                        R {totalPaid.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </td>
+                    )}
+                    {visibleColumns.outstanding !== false && (
+                      <td style={{ color: totalOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
+                        R {totalOutstanding.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </td>
+                    )}
+                    {visibleColumns.status !== false && (
+                      <td>
+                        <span className={`badge ${computedStatus === 'Complete' ? 'b-success' : computedStatus === 'Ongoing' ? 'b-info' : computedStatus === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '11px' }}>
+                          {computedStatus}
                         </span>
-                        <span style={{ fontSize: '9px', color: 'var(--text-tertiary)' }}>Target: {p.targetMargin || 18}%</span>
-                      </div>
-                    </td>
-                    <td style={{ fontWeight: 600 }}>
-                      R {totalValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                    </td>
-                    <td style={{ fontWeight: 600, color: 'var(--text-success)' }}>
-                      R {totalPaid.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                    </td>
-                    <td style={{ color: totalOutstanding > 0 ? 'var(--text-warning)' : 'var(--text-tertiary)', fontWeight: 600 }}>
-                      R {totalOutstanding.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                    </td>
-                    <td>
-                      <span className={`badge ${computedStatus === 'Complete' ? 'b-success' : computedStatus === 'Ongoing' ? 'b-info' : computedStatus === 'Pending' ? 'b-warning' : 'b-default'}`} style={{ fontSize: '11px' }}>
-                        {computedStatus}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 500 }}>
-                          <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{progressPct}%</span>
+                      </td>
+                    )}
+                    {visibleColumns.stage !== false && (
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 500 }}>
+                            <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{progressPct}%</span>
+                          </div>
+                          <div style={{ width: '100%', height: '4px', background: 'var(--bg-secondary)', borderRadius: '2px', overflow: 'hidden' }}>
+                            <div 
+                              style={{ 
+                                width: `${progressPct}%`, 
+                                height: '100%', 
+                                background: computedStatus === 'Complete' ? 'var(--text-success)' : computedStatus === 'Ongoing' ? 'var(--text-info)' : computedStatus === 'Pending' ? 'var(--text-warning)' : 'var(--text-muted)',
+                                borderRadius: '2px',
+                                transition: 'width 0.4s ease'
+                              }} 
+                            />
+                          </div>
                         </div>
-                        <div style={{ width: '100%', height: '4px', background: 'var(--bg-secondary)', borderRadius: '2px', overflow: 'hidden' }}>
-                          <div 
-                            style={{ 
-                              width: `${progressPct}%`, 
-                              height: '100%', 
-                              background: computedStatus === 'Complete' ? 'var(--text-success)' : computedStatus === 'Ongoing' ? 'var(--text-info)' : computedStatus === 'Pending' ? 'var(--text-warning)' : 'var(--text-muted)',
-                              borderRadius: '2px',
-                              transition: 'width 0.4s ease'
-                            }} 
-                          />
-                        </div>
-                      </div>
-                    </td>
+                      </td>
+                    )}
                   </tr>
                 );
               })}

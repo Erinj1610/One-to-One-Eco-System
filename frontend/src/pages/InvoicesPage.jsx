@@ -1,5 +1,6 @@
 import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
 import ClientPeekCard from '../components/common/ClientPeekCard';
+import TableViewOptions from '../components/common/TableViewOptions';
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -112,6 +113,42 @@ export default function InvoicesPage() {
   const [isLoadingInvoicing, setIsLoadingInvoicing] = useState(false);
   const [activeFilterTab, setActiveFilterTab] = useState('NEEDS_ALLOCATION'); // 'NEEDS_ALLOCATION' | 'PARTIAL' | 'FULLY_ALLOCATED' | 'IN' | 'CN' | 'ALL'
   const [customerFilter, setCustomerFilter] = useState('All Clients');
+  // Table View Options (Density & Column Toggles)
+  const [tableDensity, setTableDensity] = useState(() => {
+    return localStorage.getItem('invoices_table_density') || 'comfortable';
+  });
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('invoices_visible_columns');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleToggleColumn = (colId, isVisible) => {
+    setVisibleColumns(prev => {
+      const updated = { ...prev, [colId]: isVisible };
+      localStorage.setItem('invoices_visible_columns', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleChangeDensity = (newDensity) => {
+    setTableDensity(newDensity);
+    localStorage.setItem('invoices_table_density', newDensity);
+  };
+
+  const INVOICES_TABLE_COLUMNS = useMemo(() => [
+    { id: 'document_no', label: 'Document #', locked: true },
+    { id: 'doc_type', label: 'Type' },
+    { id: 'date', label: 'Date' },
+    { id: 'client', label: 'Client Name' },
+    { id: 'reference', label: 'Project Reference' },
+    { id: 'items_qty', label: 'Items / Qty' },
+    { id: 'total_value', label: 'Total Value' },
+    { id: 'status', label: 'Allocation Status' }
+  ], []);
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(50);
@@ -1908,7 +1945,7 @@ export default function InvoicesPage() {
             </div>
 
             <div style={{ overflowX: 'auto', flex: 1 }}>
-              <table className="table" style={{ width: '100%', margin: 0, fontSize: '11.5px', borderCollapse: 'collapse' }}>
+              <table className={`table ${tableDensity === 'compact' ? 'density-compact' : ''}`} style={{ width: '100%', margin: 0, fontSize: tableDensity === 'compact' ? '11px' : '11.5px', borderCollapse: 'collapse' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 5 }}>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                     <th style={{ width: '40px', textAlign: 'center', padding: '11px 4px' }}>
@@ -2451,6 +2488,14 @@ export default function InvoicesPage() {
                   allLabel="All Clients"
                   width="160px"
                 />
+                <TableViewOptions 
+                  storageKey="invoices"
+                  columns={INVOICES_TABLE_COLUMNS}
+                  visibleColumns={visibleColumns}
+                  onToggleColumn={handleToggleColumn}
+                  density={tableDensity}
+                  onChangeDensity={handleChangeDensity}
+                />
               </div>
 
             </div>
@@ -2466,41 +2511,55 @@ export default function InvoicesPage() {
                         Document #{renderDocSortIcon('document_no')}
                       </div>
                     </th>
-                    <th style={{ padding: '11px 8px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('doc_type')}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
-                        Type{renderDocSortIcon('doc_type')}
-                      </div>
-                    </th>
-                    <th style={{ padding: '11px 12px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('date')}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
-                        Date{renderDocSortIcon('date')}
-                      </div>
-                    </th>
-                    <th style={{ padding: '11px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('client')}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
-                        Client Name{renderDocSortIcon('client')}
-                      </div>
-                    </th>
-                    <th style={{ padding: '11px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('reference')}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center' }}>
-                        Project Reference{renderDocSortIcon('reference')}
-                      </div>
-                    </th>
-                    <th style={{ padding: '11px 12px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('items_qty')}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                        Items / Qty{renderDocSortIcon('items_qty')}
-                      </div>
-                    </th>
-                    <th style={{ padding: '11px 14px', textAlign: 'right', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('total_value')}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                        Total Value (Excl){renderDocSortIcon('total_value')}
-                      </div>
-                    </th>
-                    <th style={{ padding: '11px 14px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('status')}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                        Allocation Status{renderDocSortIcon('status')}
-                      </div>
-                    </th>
+                    {visibleColumns.doc_type !== false && (
+                      <th style={{ padding: '11px 8px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('doc_type')}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          Type{renderDocSortIcon('doc_type')}
+                        </div>
+                      </th>
+                    )}
+                    {visibleColumns.date !== false && (
+                      <th style={{ padding: '11px 12px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('date')}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          Date{renderDocSortIcon('date')}
+                        </div>
+                      </th>
+                    )}
+                    {visibleColumns.client !== false && (
+                      <th style={{ padding: '11px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('client')}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          Client Name{renderDocSortIcon('client')}
+                        </div>
+                      </th>
+                    )}
+                    {visibleColumns.reference !== false && (
+                      <th style={{ padding: '11px 14px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('reference')}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center' }}>
+                          Project Reference{renderDocSortIcon('reference')}
+                        </div>
+                      </th>
+                    )}
+                    {visibleColumns.items_qty !== false && (
+                      <th style={{ padding: '11px 12px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('items_qty')}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                          Items / Qty{renderDocSortIcon('items_qty')}
+                        </div>
+                      </th>
+                    )}
+                    {visibleColumns.total_value !== false && (
+                      <th style={{ padding: '11px 14px', textAlign: 'right', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('total_value')}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                          Total Value (Excl){renderDocSortIcon('total_value')}
+                        </div>
+                      </th>
+                    )}
+                    {visibleColumns.status !== false && (
+                      <th style={{ padding: '11px 14px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer', userSelect: 'none' }} onClick={() => handleDocSort('status')}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                          Allocation Status{renderDocSortIcon('status')}
+                        </div>
+                      </th>
+                    )}
                     <th style={{ padding: '11px 16px', textAlign: 'right', fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Action</th>
                   </tr>
                 </thead>

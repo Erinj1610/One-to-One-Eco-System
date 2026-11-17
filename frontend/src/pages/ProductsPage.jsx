@@ -1,4 +1,5 @@
 import SearchableFilterDropdown from '../components/common/SearchableFilterDropdown';
+import TableViewOptions from '../components/common/TableViewOptions';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
@@ -1102,6 +1103,44 @@ export default function ProductsPage() {
 
   // Filters State — changes trigger a new server fetch
   const [activeFilterTab, setActiveFilterTab] = useState('all'); // 'all' | 'pending_palladium' | 'low_stock' | 'out_of_stock'
+  // Table View Options (Density & Column Toggles)
+  const [tableDensity, setTableDensity] = useState(() => {
+    return localStorage.getItem('products_table_density') || 'comfortable';
+  });
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('products_visible_columns');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleToggleColumn = (colId, isVisible) => {
+    setVisibleColumns(prev => {
+      const updated = { ...prev, [colId]: isVisible };
+      localStorage.setItem('products_visible_columns', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleChangeDensity = (newDensity) => {
+    setTableDensity(newDensity);
+    localStorage.setItem('products_table_density', newDensity);
+  };
+
+  const PRODUCTS_TABLE_COLUMNS = useMemo(() => [
+    { id: 'image', label: 'Image' },
+    { id: 'sku', label: 'SKU', locked: true },
+    { id: 'name', label: 'Description / Product', locked: true },
+    { id: 'category', label: 'Category' },
+    { id: 'family', label: 'Family' },
+    { id: 'brand', label: 'Brand' },
+    { id: 'supplier', label: 'Supplier' },
+    { id: 'cost', label: 'Cost Price' },
+    { id: 'retail', label: 'RRP Price' },
+    { id: 'stock', label: 'Stock Qty' }
+  ], []);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All Categories');
   const [supplierFilter, setSupplierFilter] = useState('All Suppliers');
@@ -2340,6 +2379,14 @@ export default function ProductsPage() {
                       Showing <strong>{totalCount > 0 ? (currentPage - 1) * PAGE_SIZE + 1 : 0}</strong>–<strong>{Math.min(currentPage * PAGE_SIZE, totalCount)}</strong> of <strong>{totalCount}</strong> products
                     </span>
                   )}
+                  <TableViewOptions 
+                    storageKey="products"
+                    columns={PRODUCTS_TABLE_COLUMNS}
+                    visibleColumns={visibleColumns}
+                    onToggleColumn={handleToggleColumn}
+                    density={tableDensity}
+                    onChangeDensity={handleChangeDensity}
+                  />
                 </div>
               </div>
             </div>
@@ -2348,7 +2395,7 @@ export default function ProductsPage() {
 
             {/* TIER 2: PRODUCT LEDGER FULL-BLEED TABLE */}
             <div style={{ overflowX: 'auto', maxHeight: '68vh', position: 'relative' }}>
-              <table className="table" style={{ margin: 0, fontSize: '12.5px', width: '100%', borderCollapse: 'collapse' }}>
+              <table className={`table ${tableDensity === 'compact' ? 'density-compact' : ''}`} style={{ margin: 0, fontSize: tableDensity === 'compact' ? '11.5px' : '12.5px', width: '100%', borderCollapse: 'collapse' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>
                     <th style={{ width: '38px', textAlign: 'center' }}>
@@ -2358,14 +2405,16 @@ export default function ProductsPage() {
                         checked={products.length > 0 && selectedProductIds.length === products.length} 
                       />
                     </th>
-                    <th 
-                      onClick={() => handleSort('image')} 
-                      style={{ width: '56px', textAlign: 'center', cursor: 'pointer', userSelect: 'none' }}
-                    >
-                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
-                        IMAGE {renderSortIcon('image')}
-                      </div>
-                    </th>
+                    {visibleColumns.image !== false && (
+                      <th 
+                        onClick={() => handleSort('image')} 
+                        style={{ width: '56px', textAlign: 'center', cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+                          IMAGE {renderSortIcon('image')}
+                        </div>
+                      </th>
+                    )}
                     <th 
                       onClick={() => handleSort('sku')} 
                       style={{ width: '140px', cursor: 'pointer', userSelect: 'none' }}
@@ -2382,38 +2431,46 @@ export default function ProductsPage() {
                         DESCRIPTION / PRODUCT {renderSortIcon('name')}
                       </div>
                     </th>
-                    <th 
-                      onClick={() => handleSort('category')} 
-                      style={{ width: '120px', cursor: 'pointer', userSelect: 'none' }}
-                    >
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        CATEGORY {renderSortIcon('category')}
-                      </div>
-                    </th>
-                    <th 
-                      onClick={() => handleSort('family')} 
-                      style={{ width: '120px', cursor: 'pointer', userSelect: 'none' }}
-                    >
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        FAMILY {renderSortIcon('family')}
-                      </div>
-                    </th>
-                    <th 
-                      onClick={() => handleSort('brand')} 
-                      style={{ width: '110px', cursor: 'pointer', userSelect: 'none' }}
-                    >
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        BRAND {renderSortIcon('brand')}
-                      </div>
-                    </th>
-                    <th 
-                      onClick={() => handleSort('supplier')} 
-                      style={{ width: '120px', cursor: 'pointer', userSelect: 'none' }}
-                    >
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        SUPPLIER {renderSortIcon('supplier')}
-                      </div>
-                    </th>
+                    {visibleColumns.category !== false && (
+                      <th 
+                        onClick={() => handleSort('category')} 
+                        style={{ width: '120px', cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          CATEGORY {renderSortIcon('category')}
+                        </div>
+                      </th>
+                    )}
+                    {visibleColumns.family !== false && (
+                      <th 
+                        onClick={() => handleSort('family')} 
+                        style={{ width: '120px', cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          FAMILY {renderSortIcon('family')}
+                        </div>
+                      </th>
+                    )}
+                    {visibleColumns.brand !== false && (
+                      <th 
+                        onClick={() => handleSort('brand')} 
+                        style={{ width: '110px', cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          BRAND {renderSortIcon('brand')}
+                        </div>
+                      </th>
+                    )}
+                    {visibleColumns.supplier !== false && (
+                      <th 
+                        onClick={() => handleSort('supplier')} 
+                        style={{ width: '120px', cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          SUPPLIER {renderSortIcon('supplier')}
+                        </div>
+                      </th>
+                    )}
                     {isAdmin && showSupplierCost && (
                       <th 
                         onClick={() => handleSort('supplier_cost')} 
@@ -2424,30 +2481,36 @@ export default function ProductsPage() {
                         </div>
                       </th>
                     )}
-                    <th 
-                      onClick={() => handleSort('unit_cost')} 
-                      style={{ textAlign: 'right', width: '110px', cursor: 'pointer', userSelect: 'none' }}
-                    >
-                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px', width: '100%' }}>
-                        COST {renderSortIcon('unit_cost')}
-                      </div>
-                    </th>
-                    <th 
-                      onClick={() => handleSort('retail_price')} 
-                      style={{ textAlign: 'right', width: '110px', cursor: 'pointer', userSelect: 'none' }}
-                    >
-                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px', width: '100%' }}>
-                        RRP PRICE {renderSortIcon('retail_price')}
-                      </div>
-                    </th>
-                    <th 
-                      onClick={() => handleSort('stock')} 
-                      style={{ textAlign: 'center', width: '95px', cursor: 'pointer', userSelect: 'none' }}
-                    >
-                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px', width: '100%' }}>
-                        STOCK QTY {renderSortIcon('stock')}
-                      </div>
-                    </th>
+                    {visibleColumns.cost !== false && (
+                      <th 
+                        onClick={() => handleSort('unit_cost')} 
+                        style={{ textAlign: 'right', width: '110px', cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px', width: '100%' }}>
+                          COST {renderSortIcon('unit_cost')}
+                        </div>
+                      </th>
+                    )}
+                    {visibleColumns.retail !== false && (
+                      <th 
+                        onClick={() => handleSort('retail_price')} 
+                        style={{ textAlign: 'right', width: '110px', cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px', width: '100%' }}>
+                          RRP PRICE {renderSortIcon('retail_price')}
+                        </div>
+                      </th>
+                    )}
+                    {visibleColumns.stock !== false && (
+                      <th 
+                        onClick={() => handleSort('stock')} 
+                        style={{ textAlign: 'center', width: '95px', cursor: 'pointer', userSelect: 'none' }}
+                      >
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px', width: '100%' }}>
+                          STOCK QTY {renderSortIcon('stock')}
+                        </div>
+                      </th>
+                    )}
                     {activeFilterTab === 'pending_palladium' && (
                       <th style={{ textAlign: 'center', width: '220px' }}>
                         PALLADIUM VERIFICATION
@@ -2474,20 +2537,22 @@ export default function ProductsPage() {
                           onChange={e => handleToggleSelect(p.id, e)} 
                         />
                       </td>
-                      <td style={{ verticalAlign: 'middle', padding: '6px', textAlign: 'center' }}>
-                        {p.image_url ? (
-                          <div style={{ width: '40px', height: '40px', position: 'relative', margin: '0 auto', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <img
-                              src={p.image_url.startsWith('http') ? p.image_url : `${API_BASE}${p.image_url}`}
-                              alt={p.name}
-                              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
-                              onError={e => { e.target.style.display = 'none'; }}
-                            />
-                          </div>
-                        ) : (
-                          <span style={{ color: 'var(--text-tertiary)', fontSize: '13px' }}>—</span>
-                        )}
-                      </td>
+                      {visibleColumns.image !== false && (
+                        <td style={{ verticalAlign: 'middle', padding: '6px', textAlign: 'center' }}>
+                          {p.image_url ? (
+                            <div style={{ width: '40px', height: '40px', position: 'relative', margin: '0 auto', borderRadius: '6px', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <img
+                                src={p.image_url.startsWith('http') ? p.image_url : `${API_BASE}${p.image_url}`}
+                                alt={p.name}
+                                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                                onError={e => { e.target.style.display = 'none'; }}
+                              />
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--text-tertiary)', fontSize: '13px' }}>—</span>
+                          )}
+                        </td>
+                      )}
                       <td style={{ verticalAlign: 'middle', fontFamily: 'monospace', fontWeight: 600 }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                           <span>{p.sku}</span>
@@ -2522,19 +2587,27 @@ export default function ProductsPage() {
                       </td>
 
                       {/* CATEGORY */}
-                      <td style={{ verticalAlign: 'middle' }}>
-                        {p.category ? (
-                          <span className="badge b-secondary" style={{ fontSize: '11px', padding: '2px 8px', fontWeight: 600 }}>
-                            {p.category}
-                          </span>
-                        ) : (
-                          <span style={{ color: 'var(--text-tertiary)' }}>—</span>
-                        )}
-                      </td>
+                      {visibleColumns.category !== false && (
+                        <td style={{ verticalAlign: 'middle' }}>
+                          {p.category ? (
+                            <span className="badge b-secondary" style={{ fontSize: '11px', padding: '2px 8px', fontWeight: 600 }}>
+                              {p.category}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+                          )}
+                        </td>
+                      )}
 
-                      <td style={{ verticalAlign: 'middle' }}>{p.family || '—'}</td>
-                      <td style={{ verticalAlign: 'middle' }}>{p.brand || '—'}</td>
-                      <td style={{ verticalAlign: 'middle' }}>{p.supplier_name || p.supplier || '—'}</td>
+                      {visibleColumns.family !== false && (
+                        <td style={{ verticalAlign: 'middle' }}>{p.family || '—'}</td>
+                      )}
+                      {visibleColumns.brand !== false && (
+                        <td style={{ verticalAlign: 'middle' }}>{p.brand || '—'}</td>
+                      )}
+                      {visibleColumns.supplier !== false && (
+                        <td style={{ verticalAlign: 'middle' }}>{p.supplier_name || p.supplier || '—'}</td>
+                      )}
                       
                       {/* CONFIDENTIAL FACTORY COST (ADMIN ONLY) */}
                       {isAdmin && showSupplierCost && (
@@ -2544,21 +2617,27 @@ export default function ProductsPage() {
                       )}
 
                       {/* PM COST PRICE (INTERNAL COST) */}
-                      <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>
-                        {`R ${(p.unitCost || p.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                      </td>
+                      {visibleColumns.cost !== false && (
+                        <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>
+                          {`R ${(p.unitCost || p.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                        </td>
+                      )}
 
                       {/* RRP RETAIL PRICE */}
-                      <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>
-                        {`R ${(p.retailPrice || p.retail_price || p.recommended_retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                      </td>
+                      {visibleColumns.retail !== false && (
+                        <td style={{ verticalAlign: 'middle', textAlign: 'right', fontWeight: 600 }}>
+                          {`R ${(p.retailPrice || p.retail_price || p.recommended_retail_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                        </td>
+                      )}
 
                       {/* STOCK LEVEL (CLEAN NUMERIC DISPLAY) */}
-                      <td style={{ verticalAlign: 'middle', textAlign: 'center', fontWeight: 600 }}>
-                        <span className={`badge ${(p.stock || p.stock_level || 0) > 0 ? 'b-success' : 'b-secondary'}`} style={{ fontSize: '11px', padding: '2px 8px' }}>
-                          {p.stock || p.stock_level || 0}
-                        </span>
-                      </td>
+                      {visibleColumns.stock !== false && (
+                        <td style={{ verticalAlign: 'middle', textAlign: 'center', fontWeight: 600 }}>
+                          <span className={`badge ${(p.stock || p.stock_level || 0) > 0 ? 'b-success' : 'b-secondary'}`} style={{ fontSize: '11px', padding: '2px 8px' }}>
+                            {p.stock || p.stock_level || 0}
+                          </span>
+                        </td>
+                      )}
 
                       {/* PALLADIUM VERIFICATION ACTIONS */}
                       {activeFilterTab === 'pending_palladium' && (

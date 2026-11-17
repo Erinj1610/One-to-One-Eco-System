@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ClientPeekCard from '../components/common/ClientPeekCard';
+import TableViewOptions from '../components/common/TableViewOptions';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
@@ -45,6 +46,40 @@ export default function MyWorkspace() {
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterRole, setFilterRole] = useState('All');
+  // Table View Options (Density & Column Toggles)
+  const [tableDensity, setTableDensity] = useState(() => {
+    return localStorage.getItem('myworkspace_table_density') || 'comfortable';
+  });
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const saved = localStorage.getItem('myworkspace_visible_columns');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const handleToggleColumn = (colId, isVisible) => {
+    setVisibleColumns(prev => {
+      const updated = { ...prev, [colId]: isVisible };
+      localStorage.setItem('myworkspace_visible_columns', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleChangeDensity = (newDensity) => {
+    setTableDensity(newDensity);
+    localStorage.setItem('myworkspace_table_density', newDensity);
+  };
+
+  const WORKSPACE_TABLE_COLUMNS = [
+    { id: 'age', label: 'Age', locked: true },
+    { id: 'project', label: 'Project', locked: true },
+    { id: 'client', label: 'Client' },
+    { id: 'stage', label: 'Stage & Desk' },
+    { id: 'details', label: 'Details / Note' },
+    { id: 'priority', label: 'Priority' }
+  ];
   const [searchQuery, setSearchQuery] = useState('');
   const [viewScope, setViewScope] = useState('all'); // default to 'all' so users immediately see active company tasks
   const [selectedTicketForRoute, setSelectedTicketForRoute] = useState(null);
@@ -275,6 +310,14 @@ export default function MyWorkspace() {
             <option value="Invoicing / Debtors">Invoicing / Debtors</option>
             <option value="Logistics & Delivery">Logistics & Delivery</option>
           </select>
+          <TableViewOptions 
+            storageKey="myworkspace"
+            columns={WORKSPACE_TABLE_COLUMNS}
+            visibleColumns={visibleColumns}
+            onToggleColumn={handleToggleColumn}
+            density={tableDensity}
+            onChangeDensity={handleChangeDensity}
+          />
         </div>
       </div>        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '420px' }}>
           <div style={{ position: 'relative', width: '100%' }}>
@@ -366,48 +409,56 @@ export default function MyWorkspace() {
                 </td>
 
                 {/* CLIENT */}
-                <td style={{ padding: '12px 10px', color: 'var(--text-secondary)' }} onClick={(e) => e.stopPropagation()}>
-                  <ClientPeekCard clientName={ticket.client_name} style={{ fontSize: '12px' }} />
-                </td>
+                {visibleColumns.client !== false && (
+                  <td style={{ padding: '12px 10px', color: 'var(--text-secondary)' }} onClick={(e) => e.stopPropagation()}>
+                    <ClientPeekCard clientName={ticket.client_name} style={{ fontSize: '12px' }} />
+                  </td>
+                )}
 
                 {/* STAGE & DESK */}
-                <td style={{ padding: '12px 10px' }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11.5px', fontWeight: 600, color: isBlocked ? '#ef4444' : 'var(--text-info)', marginBottom: '2px' }}>
-                    <span>{ticket.stage_name}</span>
-                  </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                    Desk: <strong style={{ color: 'var(--text-primary)' }}>{ticket.assigned_to || ticket.assigned_role || 'Unassigned'}</strong>
-                  </div>
-                </td>
+                {visibleColumns.stage !== false && (
+                  <td style={{ padding: '12px 10px' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11.5px', fontWeight: 600, color: isBlocked ? '#ef4444' : 'var(--text-info)', marginBottom: '2px' }}>
+                      <span>{ticket.stage_name}</span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                      Desk: <strong style={{ color: 'var(--text-primary)' }}>{ticket.assigned_to || ticket.assigned_role || 'Unassigned'}</strong>
+                    </div>
+                  </td>
+                )}
 
                 {/* ACTION REQUIRED / NOTE */}
-                <td style={{ padding: '12px 10px' }}>
-                  <div style={{ color: isBlocked ? '#dc2626' : 'var(--text-primary)', fontWeight: isBlocked ? 700 : 500, lineHeight: 1.4 }}>
-                    {ticket.action_note || 'Review project and progress to next stage.'}
-                  </div>
-                  {ticket.routed_by && (
-                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                      Logged / Handed over by: <em>{ticket.routed_by}</em>
+                {visibleColumns.details !== false && (
+                  <td style={{ padding: '12px 10px' }}>
+                    <div style={{ color: isBlocked ? '#dc2626' : 'var(--text-primary)', fontWeight: isBlocked ? 700 : 500, lineHeight: 1.4 }}>
+                      {ticket.action_note || 'Review project and progress to next stage.'}
                     </div>
-                  )}
-                </td>
+                    {ticket.routed_by && (
+                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                        Logged / Handed over by: <em>{ticket.routed_by}</em>
+                      </div>
+                    )}
+                  </td>
+                )}
 
                 {/* PRIORITY / STATUS */}
-                <td style={{ textAlign: 'center', padding: '12px 8px' }}>
-                  <span 
-                    style={{
-                      fontSize: '10.5px',
-                      fontWeight: 800,
-                      padding: '2px 8px',
-                      borderRadius: '4px',
-                      background: isBlocked ? '#ef4444' : 'rgba(100, 116, 139, 0.15)',
-                      color: isBlocked ? '#ffffff' : 'var(--text-secondary)',
-                      border: isBlocked ? 'none' : '1px solid var(--border)'
-                    }}
-                  >
-                    {isBlocked ? '⚠️ BLOCKED' : (ticket.priority || 'Normal')}
-                  </span>
-                </td>
+                {visibleColumns.priority !== false && (
+                  <td style={{ textAlign: 'center', padding: '12px 8px' }}>
+                    <span 
+                      style={{
+                        fontSize: '10.5px',
+                        fontWeight: 800,
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        background: isBlocked ? '#ef4444' : 'rgba(100, 116, 139, 0.15)',
+                        color: isBlocked ? '#ffffff' : 'var(--text-secondary)',
+                        border: isBlocked ? 'none' : '1px solid var(--border)'
+                      }}
+                    >
+                      {isBlocked ? '⚠️ BLOCKED' : (ticket.priority || 'Normal')}
+                    </span>
+                  </td>
+                )}
 
                 {/* DIRECT ACTION BUTTON */}
                 <td style={{ textAlign: 'center', padding: '12px 10px' }}>
@@ -452,15 +503,23 @@ export default function MyWorkspace() {
                   </span>
                 </div>
                 <div style={{ overflowX: 'auto' }}>
-                  <table className="table" style={{ margin: 0, fontSize: '12px', width: '100%', borderCollapse: 'collapse' }}>
+                  <table className={`table ${tableDensity === 'compact' ? 'density-compact' : ''}`} style={{ margin: 0, fontSize: tableDensity === 'compact' ? '11px' : '12px', width: '100%', borderCollapse: 'collapse' }}>
                     <thead style={{ background: '#f8fafc' }}>
                       <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                         <th style={{ width: '100px', textAlign: 'center', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Age</th>
                         <th style={{ width: '180px', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Project</th>
-                        <th style={{ width: '140px', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Client</th>
-                        <th style={{ width: '170px', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Stage & Desk</th>
-                        <th style={{ padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Blocker Details</th>
-                        <th style={{ width: '100px', textAlign: 'center', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Status</th>
+                        {visibleColumns.client !== false && (
+                          <th style={{ width: '140px', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Client</th>
+                        )}
+                        {visibleColumns.stage !== false && (
+                          <th style={{ width: '170px', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Stage & Desk</th>
+                        )}
+                        {visibleColumns.details !== false && (
+                          <th style={{ padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Blocker Details</th>
+                        )}
+                        {visibleColumns.priority !== false && (
+                          <th style={{ width: '100px', textAlign: 'center', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Status</th>
+                        )}
                         <th style={{ width: '130px', textAlign: 'center', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Action</th>
                       </tr>
                     </thead>
@@ -486,7 +545,7 @@ export default function MyWorkspace() {
                 </span>
               </div>
               <div style={{ overflowX: 'auto' }}>
-                <table className="table" style={{ margin: 0, fontSize: '12px', width: '100%', borderCollapse: 'collapse' }}>
+                <table className={`table ${tableDensity === 'compact' ? 'density-compact' : ''}`} style={{ margin: 0, fontSize: tableDensity === 'compact' ? '11px' : '12px', width: '100%', borderCollapse: 'collapse' }}>
                   <thead style={{ background: '#f8fafc' }}>
                     <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                       <th style={{ width: '100px', textAlign: 'center', padding: '10px 12px', fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>FIFO Age</th>
