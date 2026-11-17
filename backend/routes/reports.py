@@ -160,11 +160,12 @@ def _build_open_pos(db: Session, division: Optional[str] = None) -> Dict[str, An
 
 def _build_pf_sent(db: Session, division: Optional[str] = None) -> Dict[str, Any]:
     orders = db.query(Order).all()
-    pay_allocs = db.query(OrderPaymentAllocation).all()
-    paid_by_order: Dict[int, float] = {}
+    pay_allocs = db.query(OrderPaymentAllocation).filter(OrderPaymentAllocation.status == "Active").all()
+    paid_by_order: Dict[str, float] = {}
     for pa in pay_allocs:
         if pa.order_id:
-            paid_by_order[pa.order_id] = paid_by_order.get(pa.order_id, 0.0) + float(pa.amount_allocated or 0.0)
+            k = str(pa.order_id)
+            paid_by_order[k] = paid_by_order.get(k, 0.0) + float(pa.allocated_amount or 0.0)
 
     now = datetime.now(timezone.utc).date()
     rows = []
@@ -179,7 +180,8 @@ def _build_pf_sent(db: Session, division: Optional[str] = None) -> Dict[str, Any
             continue
 
         order_val = float(o.value or 0.0)
-        paid_val = max(float(o.paid or 0.0), paid_by_order.get(o.id, 0.0))
+        alloc_paid = paid_by_order.get(str(o.po_number), 0.0) + paid_by_order.get(str(o.id), 0.0)
+        paid_val = max(float(o.paid or 0.0), alloc_paid)
         balance_due = max(0.0, round(order_val - paid_val, 2))
 
         # Auto-clear once paid in full or invoiced status
