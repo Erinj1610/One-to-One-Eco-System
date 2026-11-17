@@ -2898,12 +2898,14 @@ export default function OrdersPage() {
 
   // Compiler callback: receives generated items from Takeoff engine and performs Smart Sync / Diff
   const handleGenerateBOQFromTakeoff = async (generatedItems, mode = 'sync') => {
-    // Composite key generator: [floor]__[area]__[tag/code]
+    // Composite key generator: [floor]__[area]__[tag/code]__[revBucket]
     const makeKey = (item) => {
       const f = (item.floor || 'Ground').trim().toLowerCase();
       const a = (item.area || 'General Area').trim().toLowerCase();
       const t = (item.tag || item.code || '').trim().toUpperCase();
-      return `${f}__${a}__${t}`;
+      const rev = item.revision_status || item.revisionStatus || (Number(item.qty) < 0 ? 'SwappedCredit' : 'Active');
+      const revBucket = rev === 'SwappedCredit' ? 'MINUS' : (rev === 'Added' ? 'PLUS' : 'BASE');
+      return `${f}__${a}__${t}__${revBucket}`;
     };
 
     let updatedList = [];

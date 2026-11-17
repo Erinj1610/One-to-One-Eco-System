@@ -2374,7 +2374,9 @@ export default function TakeoffSpecEngine({
     // Helper to generate point fixture item
     const buildPointFixtureItem = (row, spec, product, idSuffix) => {
       const tag = (row.tag || '').trim().toUpperCase();
-      const qty = Math.max(1, Number(row.qty) || 1);
+      const rawQty = Number(row.qty);
+      const isMinus = Boolean(row.isSwapMinus) || rawQty < 0;
+      const qty = isMinus ? -Math.max(1, Math.abs(rawQty) || 1) : Math.max(1, rawQty || 1);
       const fixtureId = 'I-' + Date.now() + '-' + idSuffix + '-' + Math.random().toString(36).substr(2, 4);
       const costPrice = spec.customCost !== undefined ? Number(spec.customCost) : (product.cost_price || 0);
       const tradePrice = spec.customTrade !== undefined ? Number(spec.customTrade) : (product.trade_price || 0);
@@ -2383,6 +2385,8 @@ export default function TakeoffSpecEngine({
       return {
         id: fixtureId,
         qty,
+        revision_status: isMinus ? 'SwappedCredit' : (row.isSwapPlus ? 'Added' : 'Active'),
+        revisionStatus: isMinus ? 'SwappedCredit' : (row.isSwapPlus ? 'Added' : 'Active'),
         type: tag, // Type column holds Plan Code / Tag (e.g. A1, DL1)
         itemType: 'Hardware',
         oneOneCode: product.one_to_one_code || '',
@@ -2477,11 +2481,15 @@ export default function TakeoffSpecEngine({
 
     // Helper to generate unassigned placeholder item
     const buildUnassignedItem = (row, tag, idSuffix) => {
-      const qty = Math.max(1, Number(row.qty) || 1);
+      const rawQty = Number(row.qty);
+      const isMinus = Boolean(row.isSwapMinus) || rawQty < 0;
+      const qty = isMinus ? -Math.max(1, Math.abs(rawQty) || 1) : Math.max(1, rawQty || 1);
       const fixtureId = 'I-' + Date.now() + '-' + idSuffix + '-' + Math.random().toString(36).substr(2, 4);
       return {
         id: fixtureId,
         qty,
+        revision_status: isMinus ? 'SwappedCredit' : (row.isSwapPlus ? 'Added' : 'Active'),
+        revisionStatus: isMinus ? 'SwappedCredit' : (row.isSwapPlus ? 'Added' : 'Active'),
         type: tag,
         itemType: 'Hardware',
         oneOneCode: '',
@@ -2567,7 +2575,8 @@ export default function TakeoffSpecEngine({
           // 1. Output all room location rows
           let totalTagQty = 0;
           rows.forEach((row, rIdx) => {
-            const qty = Math.max(1, Number(row.qty) || 1);
+            const rawQ = Number(row.qty);
+            const qty = (Boolean(row.isSwapMinus) || rawQ < 0) ? -Math.max(1, Math.abs(rawQ) || 1) : Math.max(1, rawQ || 1);
             totalTagQty += qty;
             generatedItems.push(buildPointFixtureItem(row, spec, product, `tag-${tagIdx}-r-${rIdx}`));
           });
@@ -2621,7 +2630,8 @@ export default function TakeoffSpecEngine({
         const spec = specifications[tag];
         const itemType = spec?.itemType || row.itemType || 'fixture';
         const product = spec ? spec.product : null;
-        const qty = Math.max(1, Number(row.qty) || 1);
+        const rawQ = Number(row.qty);
+        const qty = (Boolean(row.isSwapMinus) || rawQ < 0) ? -Math.max(1, Math.abs(rawQ) || 1) : Math.max(1, rawQ || 1);
 
         if (itemType === 'linear_led') {
           generatedItems.push(...buildLinearLedItems(row, spec, rowIdx));
