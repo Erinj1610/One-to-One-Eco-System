@@ -151,37 +151,24 @@ export default function MyWorkspace() {
               <span style={{ 
                 display: 'inline-flex', 
                 alignItems: 'center', 
-                padding: '2px 8px', 
-                borderRadius: '6px', 
+                padding: '3px 8px', 
+                borderRadius: '4px', 
                 fontSize: '11px', 
-                fontWeight: 600, 
-                letterSpacing: '0.04em', 
+                fontWeight: 700, 
+                letterSpacing: '0.08em', 
                 textTransform: 'uppercase', 
                 background: '#f1f5f9', 
                 color: '#475569', 
                 border: '1px solid #e2e8f0' 
               }}>
-                Operational Queue
+                WORKSPACE SUITE
               </span>
-              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 400 }}>
+              <span style={{ fontSize: '11.5px', color: '#64748b' }}>
                 First-In, First-Out (FIFO) Departmental Workflow & Task Handover Desk
               </span>
             </div>
-            <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span>My Workspace</span>
-              <span 
-                style={{ 
-                  fontSize: '11.5px', 
-                  background: '#f1f5f9', 
-                  color: '#475569', 
-                  padding: '2px 10px', 
-                  borderRadius: '20px', 
-                  border: '1px solid #e2e8f0',
-                  fontWeight: 600
-                }}
-              >
-                {totalWaiting} Pending
-              </span>
+            <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em' }}>
+              My Workspace Hub
             </h1>
           </div>
 
@@ -212,34 +199,62 @@ export default function MyWorkspace() {
 
         {/* QUICK STATS CARDS */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginTop: '20px' }}>
+          {/* Card 1 */}
           <div style={{ background: '#ffffff', padding: '16px 18px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
-              Total Tasks on Desk
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
+                TOTAL TASKS ON DESK
+              </span>
+              <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Inbox size={14} color="#0f172a" />
+              </div>
             </div>
-            <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
-              {totalWaiting}
+            <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+              {totalWaiting} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>tasks</span>
+            </div>
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+              Active FIFO departmental handovers
             </div>
           </div>
 
+          {/* Card 2 */}
           <div style={{ background: '#ffffff', padding: '16px 18px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
-              Urgent / Snags
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
+                URGENT / SNAGS
+              </span>
+              <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <AlertTriangle size={14} color={urgentCount > 0 ? '#dc2626' : '#64748b'} />
+              </div>
             </div>
-            <div style={{ fontSize: '24px', fontWeight: 700, color: urgentCount > 0 ? '#dc2626' : '#0f172a', fontFamily: 'monospace' }}>
-              {urgentCount}
+            <div style={{ fontSize: '22px', fontWeight: 700, color: urgentCount > 0 ? '#dc2626' : '#0f172a', fontFamily: 'monospace' }}>
+              {urgentCount} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>urgent</span>
+            </div>
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+              High-priority snag alerts
             </div>
           </div>
 
+          {/* Card 3 */}
           <div style={{ background: '#ffffff', padding: '16px 18px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
-              Oldest Pending Task
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
+                OLDEST PENDING TASK
+              </span>
+              <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Clock size={14} color="#d97706" />
+              </div>
             </div>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: oldestTicket ? '#0f172a' : '#64748b', marginTop: '6px' }}>
-              {oldestTicket ? `${oldestTicket.project_name} (${oldestTicket.age_str})` : 'Queue Clear 🎉'}
+            <div style={{ fontSize: '15px', fontWeight: 700, color: oldestTicket ? '#0f172a' : '#16a34a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {oldestTicket ? `${oldestTicket.project_name}` : 'Queue Clear 🎉'}
+            </div>
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+              {oldestTicket ? `Waiting: ${oldestTicket.age_str}` : 'No backlogged handovers'}
             </div>
           </div>
         </div>
-      </div>            <div style={{ fontSize: '24px', fontWeight: 700, color: urgentCount > 0 ? '#dc2626' : '#0f172a', fontFamily: 'monospace' }}>
+      </div>
+
       {/* FILTER & SEARCH STRIP */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '20px' }}>
         {/* SCOPE TOGGLE: MY TASKS VS ALL COMPANY */}
@@ -318,37 +333,6 @@ export default function MyWorkspace() {
             density={tableDensity}
             onChangeDensity={handleChangeDensity}
           />
-        </div>
-      </div>        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: '420px' }}>
-          <div style={{ position: 'relative', width: '100%' }}>
-            <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-            <input 
-              type="text" 
-              className="form-control" 
-              placeholder="Search by project, client, or action required..." 
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              style={{ paddingLeft: '34px', width: '100%', fontSize: '12.5px', height: '34px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff' }}
-            />
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Stage:</span>
-          <select 
-            className="form-control" 
-            value={filterRole} 
-            onChange={e => setFilterRole(e.target.value)}
-            style={{ fontSize: '12px', fontWeight: 500, height: '34px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}
-          >
-            <option value="All">All Stages</option>
-            <option value="Design & Specification">Design & Specification</option>
-            <option value="Sales & Estimating">Sales & Estimating</option>
-            <option value="Procurement / Purchasing">Procurement / Purchasing</option>
-            <option value="Warehouse & Receiving">Warehouse & Receiving</option>
-            <option value="Invoicing / Debtors">Invoicing / Debtors</option>
-            <option value="Logistics & Delivery">Logistics & Delivery</option>
-          </select>
         </div>
       </div>
       {/* FIFO TASK QUEUES: SPLIT INTO CRITICAL BLOCKERS VS ROUTINE TASKS */}

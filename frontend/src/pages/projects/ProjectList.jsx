@@ -9,8 +9,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { 
   Briefcase, Clock, ShieldAlert, Award, TrendingUp, Search, Filter, 
-  Plus, Play, AlertTriangle, Users, BarChart3, ChevronRight, UserCheck, CheckCircle,
-  FileText, ShoppingBag, FolderGit, Calendar, ArrowUpDown, ArrowUp, ArrowDown
+  Plus, Play, AlertTriangle, Users, BarChart3, ChevronRight, UserCheck, CheckCircle, CheckCircle2,
+  FileText, ShoppingBag, Folder, FolderGit, Calendar, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import CollapsibleAlertSidebar from '../../components/common/CollapsibleAlertSidebar';
 import MobileProjectsViewer from '../../components/mobile/MobileProjectsViewer';
@@ -545,37 +545,24 @@ export default function ProjectList() {
               <span style={{ 
                 display: 'inline-flex', 
                 alignItems: 'center', 
-                padding: '2px 8px', 
-                borderRadius: '6px', 
+                padding: '3px 8px', 
+                borderRadius: '4px', 
                 fontSize: '11px', 
-                fontWeight: 600, 
-                letterSpacing: '0.04em', 
+                fontWeight: 700, 
+                letterSpacing: '0.08em', 
                 textTransform: 'uppercase', 
                 background: '#f1f5f9', 
                 color: '#475569', 
                 border: '1px solid #e2e8f0' 
               }}>
-                Projects Suite
+                PROJECTS SUITE
               </span>
-              <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 400 }}>
+              <span style={{ fontSize: '11.5px', color: '#64748b' }}>
                 Track active architectural projects, design fees, and milestone execution
               </span>
             </div>
-            <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span>{getModuleName('projects', 'Projects')}</span>
-              <span 
-                style={{ 
-                  fontSize: '11.5px', 
-                  background: '#f1f5f9', 
-                  color: '#475569', 
-                  padding: '2px 10px', 
-                  borderRadius: '20px', 
-                  border: '1px solid #e2e8f0',
-                  fontWeight: 600
-                }}
-              >
-                {kpis.total.qty} Projects
-              </span>
+            <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em' }}>
+              {getModuleName('projects', 'Projects')} Hub
             </h1>
           </div>
 
@@ -688,6 +675,7 @@ export default function ProjectList() {
       </div>
       {/* 4-COLUMN HIGH-FIDELITY KPI METRICS GRID (Modern Architectural Cards) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '14px', marginBottom: '20px' }}>
+        {/* Card 1: Total Projects */}
         <div
           className="clickable"
           onClick={() => setActiveKpiFilter(activeKpiFilter === 'total' ? null : 'total')}
@@ -701,23 +689,23 @@ export default function ProjectList() {
             transition: 'all 0.15s ease'
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Total Projects
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
+              TOTAL PROJECTS
             </span>
-            <span style={{ fontSize: '10px', fontWeight: 600, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: '4px' }}>
-              {kpis.total.qty} projects
-            </span>
+            <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Folder size={14} color="#0f172a" />
+            </div>
           </div>
-          <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
-            R {Math.round(kpis.total.totalVal / 1000)}k
+          <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+            R {Math.round(kpis.total.totalVal).toLocaleString()}
           </div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
-            <span>Design: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {Math.round(kpis.total.designVal / 1000)}k</strong></span>
-            <span>Product: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {Math.round(kpis.total.productVal / 1000)}k</strong></span>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+            {kpis.total.qty} active architectural projects
           </div>
         </div>
 
+        {/* Card 2: Pending Projects */}
         <div
           className="clickable"
           onClick={() => setActiveKpiFilter(activeKpiFilter === 'pending' ? null : 'pending')}
@@ -731,23 +719,23 @@ export default function ProjectList() {
             transition: 'all 0.15s ease'
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Pending Projects
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
+              PENDING PROJECTS
             </span>
-            <span style={{ fontSize: '10px', fontWeight: 600, background: '#fef3c7', color: '#b45309', padding: '1px 6px', borderRadius: '4px' }}>
-              {kpis.pending.qty} projects
-            </span>
+            <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Clock size={14} color="#d97706" />
+            </div>
           </div>
-          <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
-            R {Math.round(kpis.pending.totalVal / 1000)}k
+          <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+            R {Math.round(kpis.pending.totalVal).toLocaleString()}
           </div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
-            <span>Design: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {Math.round(kpis.pending.designVal / 1000)}k</strong></span>
-            <span>Product: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {Math.round(kpis.pending.productVal / 1000)}k</strong></span>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+            {kpis.pending.qty} projects awaiting approval
           </div>
         </div>
 
+        {/* Card 3: Active Projects */}
         <div
           className="clickable"
           onClick={() => setActiveKpiFilter(activeKpiFilter === 'active' ? null : 'active')}
@@ -761,23 +749,23 @@ export default function ProjectList() {
             transition: 'all 0.15s ease'
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Active Projects
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
+              ACTIVE PROJECTS
             </span>
-            <span style={{ fontSize: '10px', fontWeight: 600, background: '#dcfce7', color: '#15803d', padding: '1px 6px', borderRadius: '4px' }}>
-              {kpis.active.qty} projects
-            </span>
+            <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <TrendingUp size={14} color="#2563eb" />
+            </div>
           </div>
-          <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
-            R {Math.round(kpis.active.totalVal / 1000)}k
+          <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+            R {Math.round(kpis.active.totalVal).toLocaleString()}
           </div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
-            <span>Design: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {Math.round(kpis.active.designVal / 1000)}k</strong></span>
-            <span>Product: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {Math.round(kpis.active.productVal / 1000)}k</strong></span>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+            {kpis.active.qty} projects in ongoing execution
           </div>
         </div>
 
+        {/* Card 4: Complete Projects */}
         <div
           className="clickable"
           onClick={() => setActiveKpiFilter(activeKpiFilter === 'complete' ? null : 'complete')}
@@ -791,20 +779,19 @@ export default function ProjectList() {
             transition: 'all 0.15s ease'
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Complete Projects
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
+              COMPLETE PROJECTS
             </span>
-            <span style={{ fontSize: '10px', fontWeight: 600, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: '4px' }}>
-              {kpis.complete.qty} projects
-            </span>
+            <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <CheckCircle2 size={14} color="#16a34a" />
+            </div>
           </div>
-          <div style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
-            R {Math.round(kpis.complete.totalVal / 1000)}k
+          <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+            R {Math.round(kpis.complete.totalVal).toLocaleString()}
           </div>
-          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
-            <span>Design: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {Math.round(kpis.complete.designVal / 1000)}k</strong></span>
-            <span>Product: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {Math.round(kpis.complete.productVal / 1000)}k</strong></span>
+          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+            {kpis.complete.qty} fully delivered projects
           </div>
         </div>
       </div>

@@ -1511,8 +1511,8 @@ export default function InvoicesPage() {
             </span>
             <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 500 }}>Live Read-Only Feed from Palladium ERP</span>
           </div>
-          <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '10px', letterSpacing: '-0.02em' }}>
-            <Receipt size={22} style={{ color: '#0f172a' }} />
+          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '10px', letterSpacing: '-0.02em' }}>
+            <Receipt size={20} style={{ color: '#0f172a' }} />
             {selectedDocument ? (
               <span>
                 Document Workspace: <span style={{ fontFamily: 'monospace', color: '#0f172a', fontWeight: 700 }}>{selectedDocument.document_no}</span>

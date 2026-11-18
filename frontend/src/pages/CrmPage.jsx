@@ -868,37 +868,24 @@ export default function CrmPage() {
                   <span style={{ 
                     display: 'inline-flex', 
                     alignItems: 'center', 
-                    padding: '2px 8px', 
-                    borderRadius: '6px', 
+                    padding: '3px 8px', 
+                    borderRadius: '4px', 
                     fontSize: '11px', 
-                    fontWeight: 600, 
-                    letterSpacing: '0.04em', 
+                    fontWeight: 700, 
+                    letterSpacing: '0.08em', 
                     textTransform: 'uppercase', 
                     background: '#f1f5f9', 
                     color: '#475569', 
                     border: '1px solid #e2e8f0' 
                   }}>
-                    Client Relations
+                    CRM SUITE
                   </span>
-                  <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 400 }}>
+                  <span style={{ fontSize: '11.5px', color: '#64748b' }}>
                     Client directory, retention analytics, and relationship management
                   </span>
                 </div>
-                <h1 style={{ margin: 0, fontSize: '26px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span>{getModuleName('crm', 'CRM')}</span>
-                  <span 
-                    style={{ 
-                      fontSize: '11.5px', 
-                      background: '#f1f5f9', 
-                      color: '#475569', 
-                      padding: '2px 10px', 
-                      borderRadius: '20px', 
-                      border: '1px solid #e2e8f0',
-                      fontWeight: 600
-                    }}
-                  >
-                    {funnels.totalCount} Clients
-                  </span>
+                <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em' }}>
+                  {getModuleName('crm', 'CRM')} Directory Hub
                 </h1>
               </div>
 
@@ -976,21 +963,19 @@ export default function CrmPage() {
                 transition: 'all 0.15s ease'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Total Directory
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
+                  TOTAL DIRECTORY
                 </span>
-                <span style={{ fontSize: '10px', fontWeight: 600, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: '4px' }}>
-                  All
-                </span>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Building2 size={14} color="#0f172a" />
+                </div>
               </div>
               <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
-                {funnels.totalCount} <span style={{ fontSize: '12px', fontWeight: 400, color: '#64748b' }}>clients</span>
+                {funnels.totalCount} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>clients</span>
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
-                <span>Act: <strong style={{ color: '#0f172a' }}>{funnels.activeClients.length}</strong></span>
-                <span>Inact: <strong style={{ color: '#64748b' }}>{funnels.inactiveClients.length}</strong></span>
-                <span>Lost: <strong style={{ color: '#dc2626' }}>{funnels.lostClients.length}</strong></span>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                {funnels.activeClients.length} active · {funnels.inactiveClients.length} dormant
               </div>
             </div>
 
@@ -1008,20 +993,19 @@ export default function CrmPage() {
                 transition: 'all 0.15s ease'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Active Clients
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
+                  ACTIVE CLIENTS
                 </span>
-                <span style={{ fontSize: '10px', fontWeight: 600, background: '#dcfce7', color: '#15803d', padding: '1px 6px', borderRadius: '4px' }}>
-                  Pipeline
-                </span>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <TrendingUp size={14} color="#2563eb" />
+                </div>
               </div>
               <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
-                {funnels.activeClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: '#64748b' }}>accounts</span>
+                {funnels.activeClients.length} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>accounts</span>
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
-                <span>LTV: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {(funnels.activeClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
-                <span>YTD: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {(funnels.activeClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                R {Math.round(funnels.activeClients.reduce((a,c)=>a+(c.totalValue||0),0)).toLocaleString()} aggregate LTV
               </div>
             </div>
 
@@ -1039,20 +1023,19 @@ export default function CrmPage() {
                 transition: 'all 0.15s ease'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  VIP Key Accounts
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
+                  VIP KEY ACCOUNTS
                 </span>
-                <span style={{ fontSize: '10px', fontWeight: 600, background: '#fef3c7', color: '#b45309', padding: '1px 6px', borderRadius: '4px' }}>
-                  &gt;3 Proj
-                </span>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Award size={14} color="#d97706" />
+                </div>
               </div>
               <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
-                {funnels.vipClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: '#64748b' }}>partners</span>
+                {funnels.vipClients.length} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>partners</span>
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
-                <span>LTV: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {(funnels.vipClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
-                <span>YTD: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {(funnels.vipClients.reduce((a,c)=>a+(c.annualRevenue||0),0)/1000).toFixed(0)}k</strong></span>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                Premier architectural accounts
               </div>
             </div>
 
@@ -1070,20 +1053,19 @@ export default function CrmPage() {
                 transition: 'all 0.15s ease'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Inactive Accounts
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
+                  INACTIVE ACCOUNTS
                 </span>
-                <span style={{ fontSize: '10px', fontWeight: 600, background: '#f1f5f9', color: '#475569', padding: '1px 6px', borderRadius: '4px' }}>
-                  Dormant
-                </span>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Clock size={14} color="#64748b" />
+                </div>
               </div>
               <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
-                {funnels.inactiveClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: '#64748b' }}>accounts</span>
+                {funnels.inactiveClients.length} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>dormant</span>
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
-                <span>LTV: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>R {(funnels.inactiveClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
-                <span>YTD: <strong style={{ color: '#64748b', fontFamily: 'monospace' }}>R 0</strong></span>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                Clients without active projects
               </div>
             </div>
 
@@ -1101,20 +1083,19 @@ export default function CrmPage() {
                 transition: 'all 0.15s ease'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Lost Quoted Sales
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#64748b' }}>
+                  LOST OPPORTUNITIES
                 </span>
-                <span style={{ fontSize: '10px', fontWeight: 600, background: '#fee2e2', color: '#b91c1c', padding: '1px 6px', borderRadius: '4px' }}>
-                  Lost
-                </span>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <AlertTriangle size={14} color="#dc2626" />
+                </div>
               </div>
               <div style={{ fontSize: '22px', fontWeight: 700, color: '#dc2626', fontFamily: 'monospace' }}>
-                {funnels.lostClients.length} <span style={{ fontSize: '12px', fontWeight: 400, color: '#64748b' }}>lost</span>
+                {funnels.lostClients.length} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>lost</span>
               </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #f8fafc', paddingTop: '6px' }}>
-                <span>Lost Val: <strong style={{ color: '#dc2626', fontFamily: 'monospace' }}>R {(funnels.lostClients.reduce((a,c)=>a+(c.totalValue||0),0)/1000).toFixed(0)}k</strong></span>
-                <span>Rate: <strong style={{ color: '#64748b' }}>{((funnels.lostClients.length / (funnels.totalCount || 1)) * 100).toFixed(0)}%</strong></span>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                Lost quote portfolio opportunities
               </div>
             </div>
           </div>        <div className="crm-grid" style={{ marginTop: '20px' }}>
@@ -1156,7 +1137,7 @@ export default function CrmPage() {
                     density={tableDensity}
                     onChangeDensity={handleChangeDensity}
                   />
-                  <button className="btn btn-primary" onClick={() => setShowModal(true)}><Plus size={14} /> New Contact</button>
+                  <button className="btn btn-sm" style={{ background: "#0f172a", color: "#ffffff", border: "1px solid #0f172a", height: "32px", padding: "0 16px", borderRadius: "8px", fontWeight: 600, fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "6px" }} onClick={() => setShowModal(true)}><Plus size={14} /> New Contact</button>
                 </div>
               </div>
 

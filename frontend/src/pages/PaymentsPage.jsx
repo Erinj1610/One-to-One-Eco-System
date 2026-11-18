@@ -693,8 +693,8 @@ export default function PaymentsPage() {
               Live Read-Only Feed from Palladium ERP
             </span>
           </div>
-          <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <CreditCard size={22} style={{ color: '#0f172a' }} />
+          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <CreditCard size={20} style={{ color: '#0f172a' }} />
             {selectedDocument ? (
               <span>
                 Receipt Workspace: <span style={{ fontFamily: 'monospace', color: '#0f172a' }}>{selectedDocument.receipt_no}</span>

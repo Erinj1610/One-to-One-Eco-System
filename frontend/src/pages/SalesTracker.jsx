@@ -4601,24 +4601,24 @@ export default function SalesTracker() {
                   <span style={{ 
                     display: 'inline-flex', 
                     alignItems: 'center', 
-                    padding: '2px 8px', 
-                    borderRadius: '6px', 
+                    padding: '3px 8px', 
+                    borderRadius: '4px', 
                     fontSize: '11px', 
-                    fontWeight: 600, 
-                    letterSpacing: '0.04em', 
+                    fontWeight: 700, 
+                    letterSpacing: '0.08em', 
                     textTransform: 'uppercase', 
                     background: '#f1f5f9', 
                     color: '#475569', 
                     border: '1px solid #e2e8f0' 
                   }}>
-                    Sales Suite
+                    SALES SUITE
                   </span>
-                  <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 400 }}>
+                  <span style={{ fontSize: '11.5px', color: '#64748b' }}>
                     Central Quotations, Production Pipeline & Area-by-Area BOQ Builder
                   </span>
                 </div>
-                <h1 style={{ margin: '0 0 14px 0', fontSize: '26px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  Sales Tracker
+                <h1 style={{ margin: '0 0 14px 0', fontSize: '20px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em' }}>
+                  Sales Tracker Hub
                 </h1>
 
                 {/* VIEW MODE TOGGLE BUTTONS */}

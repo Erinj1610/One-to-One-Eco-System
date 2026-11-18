@@ -1964,8 +1964,8 @@ export default function ProductsPage() {
                     )
                   )}
                 </div>
-                <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  📦 {getModuleName('products', 'Products')} Master Database
+                <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em' }}>
+                  {getModuleName('products', 'Products')} Catalog Hub
                 </h1>
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -2105,111 +2105,98 @@ export default function ProductsPage() {
           </div>
 
           {/* 5-KPI SUMMARY CARD GRID */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '20px' }}>
+            {/* Card 1: Total SKUs */}
             <div 
+              className="clickable"
               onClick={() => { setActiveFilterTab('all'); setCurrentPage(1); }}
               style={{ 
                 background: '#ffffff', 
-                border: activeFilterTab === 'all' ? '2px solid #0f172a' : '1px solid #e2e8f0', 
+                border: activeFilterTab === 'all' ? '1.5px solid #0f172a' : '1px solid #e2e8f0', 
                 borderRadius: '12px', 
                 padding: '16px 18px', 
                 cursor: 'pointer', 
                 transition: 'all 0.15s ease',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                boxShadow: activeFilterTab === 'all' ? '0 2px 6px rgba(15,23,42,0.08)' : '0 1px 3px rgba(0,0,0,0.02)'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Total Products SKU</span>
-                <Package size={15} color="#64748b" />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
+                  TOTAL CATALOG SKUS
+                </span>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Package size={14} color="#0f172a" />
+                </div>
               </div>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace' }}>
-                {kpis.totalSku.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}>SKUs</span>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+                {kpis.totalSku.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>SKUs</span>
               </div>
-              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '10px', paddingTop: '8px', fontSize: '11px', color: '#64748b', display: 'flex', justifyContent: 'space-between' }}>
-                <span>Value: <strong style={{ color: '#0f172a' }}>R {kpis.totalVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
-                <span>Units: <strong style={{ color: '#0f172a' }}>{kpis.totalUnits.toLocaleString()}</strong></span>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                R {Math.round(kpis.totalVal).toLocaleString()} inventory value · {kpis.totalUnits.toLocaleString()} units
               </div>
             </div>
 
+            {/* Card 2: Pending ERP */}
             <div 
+              className="clickable"
               onClick={() => { setActiveFilterTab('pending_palladium'); setCurrentPage(1); }}
               style={{ 
                 background: '#ffffff', 
-                border: activeFilterTab === 'pending_palladium' ? '2px solid #0f172a' : '1px solid #e2e8f0', 
+                border: activeFilterTab === 'pending_palladium' ? '1.5px solid #0f172a' : '1px solid #e2e8f0', 
                 borderRadius: '12px', 
                 padding: '16px 18px', 
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                boxShadow: activeFilterTab === 'pending_palladium' ? '0 2px 6px rgba(15,23,42,0.08)' : '0 1px 3px rgba(0,0,0,0.02)'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '11px', color: kpis.pendingPalladium > 0 ? '#b91c1c' : '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>
-                  Pending ERP Verification
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
+                  ERP VERIFICATION
                 </span>
-                <ShieldAlert size={15} color={kpis.pendingPalladium > 0 ? '#dc2626' : '#64748b'} />
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ShieldAlert size={14} color={kpis.pendingPalladium > 0 ? '#dc2626' : '#16a34a'} />
+                </div>
               </div>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: kpis.pendingPalladium > 0 ? '#dc2626' : '#0f172a', fontFamily: 'monospace' }}>
-                {kpis.pendingPalladium.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}>Items</span>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: kpis.pendingPalladium > 0 ? '#dc2626' : '#0f172a', fontFamily: 'monospace' }}>
+                {kpis.pendingPalladium.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>Items</span>
               </div>
-              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '10px', paddingTop: '8px', fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '4px', fontWeight: 700, background: kpis.pendingPalladium > 0 ? 'rgba(239, 68, 68, 0.1)' : '#f1f5f9', color: kpis.pendingPalladium > 0 ? '#dc2626' : '#64748b' }}>
-                  {kpis.pendingPalladium > 0 ? 'Action Required' : 'All Clear'}
-                </span>
-                <span>{kpis.pendingPalladium > 0 ? 'Click to review & verify' : 'All SKUs verified in ERP'}</span>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                {kpis.pendingPalladium > 0 ? 'Pending ERP mapping verification' : 'All items verified in ERP'}
               </div>
             </div>
 
+            {/* Card 3: Low Stock */}
             <div
+              className="clickable"
               onClick={() => { setActiveFilterTab(activeFilterTab === 'low_stock' ? 'all' : 'low_stock'); setCurrentPage(1); }}
               style={{
                 background: '#ffffff',
-                border: activeFilterTab === 'low_stock' ? '2px solid #0f172a' : '1px solid #e2e8f0',
+                border: activeFilterTab === 'low_stock' ? '1.5px solid #0f172a' : '1px solid #e2e8f0',
                 borderRadius: '12px',
                 padding: '16px 18px',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                boxShadow: activeFilterTab === 'low_stock' ? '0 2px 6px rgba(15,23,42,0.08)' : '0 1px 3px rgba(0,0,0,0.02)'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Low Stock Items</span>
-                <AlertTriangle size={15} color="#d97706" />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
+                  LOW STOCK ITEMS
+                </span>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <AlertTriangle size={14} color="#d97706" />
+                </div>
               </div>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace' }}>
-                {kpis.lowStock.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}>Count</span>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: '#0f172a', fontFamily: 'monospace' }}>
+                {kpis.lowStock.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>SKUs</span>
               </div>
-              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '10px', paddingTop: '8px', fontSize: '11px', color: '#64748b' }}>
-                <span style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '4px', fontWeight: 700, background: '#fef3c7', color: '#b45309', marginRight: '6px' }}>Threshold</span>
-                reorder limit reached
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                Inventory below reorder threshold
               </div>
             </div>
 
-            <div
-              onClick={() => { setActiveFilterTab(activeFilterTab === 'out_of_stock' ? 'all' : 'out_of_stock'); setCurrentPage(1); }}
-              style={{
-                background: '#ffffff',
-                border: activeFilterTab === 'out_of_stock' ? '2px solid #0f172a' : '1px solid #e2e8f0',
-                borderRadius: '12px',
-                padding: '16px 18px',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Out of Stock Items</span>
-                <AlertTriangle size={15} color="#dc2626" />
-              </div>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace' }}>
-                {kpis.outStock.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}>Count</span>
-              </div>
-              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '10px', paddingTop: '8px', fontSize: '11px', color: '#64748b' }}>
-                <span style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '4px', fontWeight: 700, background: 'rgba(239, 68, 68, 0.1)', color: '#dc2626', marginRight: '6px' }}>Zero Units</span>
-                zero inventory balance
-              </div>
-            </div>
-
+            {/* Card 4: Profit Margin */}
             <div style={{ 
               background: '#ffffff', 
               border: '1px solid #e2e8f0', 
@@ -2217,15 +2204,19 @@ export default function ProductsPage() {
               padding: '16px 18px',
               boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Stock Margin Potential</span>
-                <Percent size={15} color="#059669" />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em' }}>
+                  AVERAGE CATALOG MARGIN
+                </span>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Percent size={14} color="#16a34a" />
+                </div>
               </div>
-              <div style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', fontFamily: 'monospace' }}>
-                {kpis.avgMargin}% <span style={{ fontSize: '12px', fontWeight: 500, color: '#64748b' }}>Avg Margin</span>
+              <div style={{ fontSize: '22px', fontWeight: 700, color: '#16a34a', fontFamily: 'monospace' }}>
+                {kpis.avgMargin}%
               </div>
-              <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '10px', paddingTop: '8px', fontSize: '11px', color: '#64748b' }}>
-                Profit Potential: <strong style={{ color: '#059669' }}>R {kpis.totalMargin.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '6px' }}>
+                R {Math.round(kpis.totalMargin).toLocaleString()} total gross profit potential
               </div>
             </div>
           </div>
