@@ -496,7 +496,31 @@ def trigger_password_reset(user_id: int, db: Session = Depends(get_db), current_
         raise HTTPException(status_code=404, detail="User not found")
 
     reset_link = None
+    email_sent = False
     if firebase_initialized:
+        # 1. First trigger the automatic email delivery with direct continueUrl
+        try:
+            import urllib.request
+            import json
+            api_key = "AIzaSyAsdT5wto73He85BZjf1gu_sEBtDxDgPkA"
+            url = f"https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={api_key}"
+            post_data = json.dumps({
+                "requestType": "PASSWORD_RESET",
+                "email": target_user.email,
+                "continueUrl": "https://ejportal.vercel.app/reset-password"
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                url,
+                data=post_data,
+                headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req) as response:
+                print(f"Successfully triggered password reset email for {target_user.email}")
+                email_sent = True
+        except Exception as email_err:
+            print(f"Warning: Failed to automatically send email: {email_err}")
+
+        # 2. Try to generate individual admin fallback reset link if quota permits
         try:
             reset_link = firebase_auth.generate_password_reset_link(target_user.email)
             if reset_link:
@@ -504,30 +528,16 @@ def trigger_password_reset(user_id: int, db: Session = Depends(get_db), current_
                     "https://one-to-one-portal-500205.firebaseapp.com/__/auth/action",
                     "https://ejportal.vercel.app/reset-password"
                 )
-            
-            # Send the email automatically via Identity Platform REST API
-            try:
-                import urllib.request
-                import json
-                api_key = "AIzaSyAsdT5wto73He85BZjf1gu_sEBtDxDgPkA"
-                url = f"https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={api_key}"
-                post_data = json.dumps({
-                    "requestType": "PASSWORD_RESET",
-                    "email": target_user.email,
-                    "continueUrl": "https://ejportal.vercel.app/reset-password"
-                }).encode("utf-8")
-                req = urllib.request.Request(
-                    url,
-                    data=post_data,
-                    headers={"Content-Type": "application/json"}
-                )
-                with urllib.request.urlopen(req) as response:
-                    print(f"Successfully triggered password reset email for {target_user.email}")
-            except Exception as email_err:
-                print(f"Warning: Failed to automatically send email: {email_err}")
-
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Firebase operations failed: {str(e)}")
+        except Exception as admin_err:
+            print(f"Admin SDK generate_password_reset_link rate-limited or error: {admin_err}")
+            # If the direct email already succeeded, do not fail the request
+            if not email_sent:
+                if "RESET_PASSWORD_EXCEED_LIMIT" in str(admin_err):
+                    raise HTTPException(
+                        status_code=429,
+                        detail="Password reset limit temporarily exceeded by Firebase for this account. Please wait a few minutes before requesting another reset email."
+                    )
+                raise HTTPException(status_code=500, detail=f"Firebase operations failed: {str(admin_err)}")
 
     return {
         "message": "Password reset triggered successfully",
