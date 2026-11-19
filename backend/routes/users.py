@@ -310,7 +310,8 @@ def invite_user(invite: UserInvite, db: Session = Depends(get_db), current_user:
                 url = f"https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={api_key}"
                 post_data = json.dumps({
                     "requestType": "PASSWORD_RESET",
-                    "email": invite.email
+                    "email": invite.email,
+                    "continueUrl": "https://ejportal.vercel.app/reset-password"
                 }).encode("utf-8")
                 req = urllib.request.Request(
                     url,
@@ -506,7 +507,8 @@ def trigger_password_reset(user_id: int, db: Session = Depends(get_db), current_
                 url = f"https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key={api_key}"
                 post_data = json.dumps({
                     "requestType": "PASSWORD_RESET",
-                    "email": target_user.email
+                    "email": target_user.email,
+                    "continueUrl": "https://ejportal.vercel.app/reset-password"
                 }).encode("utf-8")
                 req = urllib.request.Request(
                     url,

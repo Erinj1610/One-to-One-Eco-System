@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { auth } from '../firebase';
-import { confirmPasswordReset, verifyPasswordResetCode } from 'firebase/auth';
-import { Lock, AlertCircle, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { confirmPasswordReset, verifyPasswordResetCode, signInWithEmailAndPassword } from 'firebase/auth';
+import { Lock, AlertCircle, CheckCircle2, ArrowRight, ArrowLeft, RefreshCw } from 'lucide-react';
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
@@ -15,10 +15,11 @@ export default function ResetPassword() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
   const [verifying, setVerifying] = useState(true);
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
     if (!oobCode) {
-      setError("Invalid link. The password reset link is missing its security code.");
+      setError("Invalid link. The password setup link is missing its security code.");
       setVerifying(false);
       return;
     }
@@ -31,7 +32,7 @@ export default function ResetPassword() {
       })
       .catch((err) => {
         console.error(err);
-        setError("This password setup link has expired or has already been used. Please request a new invitation.");
+        setError("This password setup link has expired or has already been used. Please request a new invitation from your administrator.");
         setVerifying(false);
       });
   }, [oobCode]);
@@ -51,12 +52,28 @@ export default function ResetPassword() {
     setLoading(true);
 
     try {
+      // 1. Confirm and set password in Firebase
       await confirmPasswordReset(auth, oobCode, password);
       setSuccess(true);
+      setRedirecting(true);
+
+      // 2. Seamless Single-Step: Auto-authenticate user into the session
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        // Small delay so user sees confirmation before entering their workspace
+        setTimeout(() => {
+          navigate('/my-workspace', { replace: true });
+        }, 1200);
+      } catch (loginErr) {
+        console.warn("Auto-login fallback:", loginErr);
+        // Fallback: If auto-login fails for any browser policy reason, take to login
+        setTimeout(() => {
+          navigate('/login', { replace: true });
+        }, 1500);
+      }
     } catch (err) {
       console.error(err);
       setError(err.message || "Failed to set new password. Please try again.");
-    } finally {
       setLoading(false);
     }
   };
@@ -103,12 +120,13 @@ export default function ResetPassword() {
         </p>
 
         <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '10px', color: '#fff' }}>
-          Setup Account Password
+          {success ? "Account Activated!" : "Activate Your Account"}
         </h3>
 
         {verifying ? (
-          <div style={{ fontSize: '13px', color: '#9ca3af', margin: '20px 0' }}>
-            Verifying invitation details...
+          <div style={{ fontSize: '13px', color: '#9ca3af', margin: '30px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <RefreshCw size={14} className="spin" color="#e09924" />
+            <span>Verifying invitation link...</span>
           </div>
         ) : error ? (
           <div style={{ textAlign: 'left', marginBottom: '20px' }}>
@@ -117,33 +135,35 @@ export default function ResetPassword() {
               <span>{error}</span>
             </div>
             <button 
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/login')}
               style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'transparent', border: '1px solid rgba(255, 255, 255, 0.25)', color: '#fff', padding: '10px 16px', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}
             >
-              <ArrowLeft size={16} /> Back to Portal
+              <ArrowLeft size={16} /> Back to Login
             </button>
           </div>
         ) : success ? (
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.25)', borderRadius: '8px', padding: '12px', color: '#86efac', fontSize: '13px', marginBottom: '25px', textAlign: 'left' }}>
-              <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
-              <span>Password set successfully! Your account is now fully set up.</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.25)', borderRadius: '8px', padding: '14px', color: '#86efac', fontSize: '13.5px', marginBottom: '20px', textAlign: 'left' }}>
+              <CheckCircle2 size={20} style={{ flexShrink: 0, color: '#4ade80' }} />
+              <div>
+                <strong style={{ display: 'block', color: '#fff', marginBottom: '2px' }}>Welcome aboard!</strong>
+                <span>Password set successfully. Signing you into your portal workspace...</span>
+              </div>
             </div>
-            <button 
-              onClick={() => navigate('/')}
-              style={{ width: '100%', background: '#e09924', border: 'none', color: '#000', padding: '12px 16px', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '14px', transition: 'all 0.2s' }}
-            >
-              Login to Portal
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#e09924', fontSize: '13px', fontWeight: 600, padding: '10px 0' }}>
+              <RefreshCw size={14} className="spin" />
+              <span>Entering One to One Portal...</span>
+            </div>
           </div>
         ) : (
           <form onSubmit={handleSubmit} style={{ textAlign: 'left' }}>
-            <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '20px', textAlign: 'center' }}>
-              Setting up password for:<br /><strong>{email}</strong>
+            <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '20px', textAlign: 'center', lineHeight: 1.5 }}>
+              Choose a password to activate your account for:<br />
+              <strong style={{ color: '#ffffff' }}>{email}</strong>
             </p>
 
             <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: '#9ca3af', marginBottom: '6px', fontWeight: 600 }}>New Password</label>
+              <label style={{ display: 'block', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: '#9ca3af', marginBottom: '6px', fontWeight: 600 }}>Create Password</label>
               <div style={{ position: 'relative' }}>
                 <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#e09924' }} />
                 <input 
@@ -158,13 +178,13 @@ export default function ResetPassword() {
             </div>
 
             <div style={{ marginBottom: '25px' }}>
-              <label style={{ display: 'block', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: '#9ca3af', marginBottom: '6px', fontWeight: 600 }}>Confirm New Password</label>
+              <label style={{ display: 'block', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: '#9ca3af', marginBottom: '6px', fontWeight: 600 }}>Confirm Password</label>
               <div style={{ position: 'relative' }}>
                 <Lock size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#e09924' }} />
                 <input 
                   type="password" 
                   required
-                  placeholder="Confirm password" 
+                  placeholder="Re-enter password" 
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   style={{ width: '100%', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '8px', padding: '10px 12px 10px 38px', color: '#fff', fontSize: '13px', outline: 'none' }}
@@ -175,14 +195,40 @@ export default function ResetPassword() {
             <button 
               type="submit" 
               disabled={loading}
-              style={{ width: '100%', background: '#e09924', border: 'none', color: '#000', padding: '12px 16px', borderRadius: '8px', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', fontSize: '14px', marginBottom: '15px' }}
+              style={{ 
+                width: '100%', 
+                background: '#0f172a', 
+                border: '1px solid #e09924', 
+                color: '#ffffff', 
+                padding: '12px 16px', 
+                borderRadius: '8px', 
+                fontWeight: 600, 
+                cursor: loading ? 'not-allowed' : 'pointer', 
+                fontSize: '13.5px', 
+                marginBottom: '15px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 14px rgba(224, 153, 36, 0.25)'
+              }}
             >
-              {loading ? "Saving..." : "Set Password & Complete Setup"}
+              {loading ? (
+                <>
+                  <RefreshCw size={14} className="spin" />
+                  <span>Activating & Entering Workspace...</span>
+                </>
+              ) : (
+                <>
+                  <span>Activate Account & Enter Portal</span>
+                  <ArrowRight size={15} />
+                </>
+              )}
             </button>
 
             <button 
               type="button"
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/login')}
               style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '13px' }}
             >
               <ArrowLeft size={14} /> Back to Login
