@@ -28,6 +28,7 @@ from models.orm_models import (
     Product,
     PortalSetting,
     Client,
+    AllocationIssue,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,9 +68,38 @@ def _matches_division(candidate: Optional[str], rep: Optional[str], division: Op
     return any(t in hay for t in tokens if t)
 
 
+def _map_division(pm_name: Optional[str], proj_name: Optional[str], rep: Optional[str]) -> str:
+    txt = f"{pm_name or ''} {rep or ''} {proj_name or ''}".lower()
+    if "internal" in txt or "office" in txt:
+        return "INTERNAL - Office"
+    if "ryan" in txt:
+        return "MODUS PROFESSIONAL ( Ryan )"
+    if "thando" in txt:
+        return "MODUS SIGNATURE ( Thando )"
+    if "peer" in txt or "jon" in txt or "made" in txt:
+        return "MADE ( Jon-Peer)"
+    if "luxe" in txt:
+        return "LUXELINE"
+    if "dani" in txt or "daniel" in txt:
+        return "PROJECTS (Dani own)" if "own" in txt else "MODUS PROJECTS ( Dani )"
+    if "mood" in txt or "store" in txt:
+        return "MOOD STORES"
+    return "UNALLOCATED / UNASSIGNED"
+
+
 def _build_open_pos(db: Session, division: Optional[str] = None) -> Dict[str, Any]:
+    excluded_docs = {
+        iss.document_no
+        for iss in db.query(AllocationIssue).filter(
+            AllocationIssue.module == "PO",
+            AllocationIssue.reason.in_(["Internal Purchase", "Archived (Legacy Order)"])
+        ).all()
+        if iss.document_no
+    }
+
     rows = db.query(PalladiumPOLine).filter(
-        PalladiumPOLine.open_qty > 0
+        PalladiumPOLine.open_qty > 0,
+        PalladiumPOLine.status == "Open"
     ).order_by(desc(PalladiumPOLine.transaction_date)).all()
 
     allocs = db.query(ProcurementAllocation).filter(
@@ -88,6 +118,8 @@ def _build_open_pos(db: Session, division: Optional[str] = None) -> Dict[str, An
 
     for r in rows:
         doc_no = r.document_no
+        if doc_no in excluded_docs:
+            continue
         curr = (r.currency_code or "ZAR").strip().upper() or "ZAR"
         rate = float(r.exchange_rate or 1.0)
         line_val = float(r.total_value_excl or 0.0)
@@ -159,7 +191,7 @@ def _build_open_pos(db: Session, division: Optional[str] = None) -> Dict[str, An
 
 
 def _build_pf_sent(db: Session, division: Optional[str] = None) -> Dict[str, Any]:
-    orders = db.query(Order).all()
+    orders = db.query(Order).filter(Order.is_sub_order.isnot(True)).all()
     pay_allocs = db.query(OrderPaymentAllocation).filter(OrderPaymentAllocation.status == "Active").all()
     paid_by_order: Dict[str, float] = {}
     for pa in pay_allocs:
@@ -171,25 +203,31 @@ def _build_pf_sent(db: Session, division: Optional[str] = None) -> Dict[str, Any
     rows = []
 
     for o in orders:
-        if not _matches_division(o.division, o.one_one_rep or o.pm_name, division):
+        div = o.division if (o.division and o.division != "Auto-Detect (PM Name)") else _map_division(o.pm_name, o.quote_name, o.one_one_rep)
+        if not _matches_division(div, o.one_one_rep or o.pm_name, division):
             continue
+        st_low = (o.status or "").lower()
+        if st_low in ("complete", "cancelled", "closed", "lost", "draft", "invoiced"):
+            continue
+        if (o.quote_name or "").lower().endswith("(design fee)"):
+            continue
+
         first_pf = getattr(o, "first_pf_sent_date", None) or o.pf_date
         last_pf = getattr(o, "last_pf_sent_date", None) or o.pf_date
-        is_pf_status = (o.status or "").lower() in ("proforma sent", "pf sent", "awaiting deposit", "quoted")
+        is_pf_status = st_low in ("proforma sent", "pf sent", "awaiting deposit")
         if not (first_pf or last_pf or is_pf_status):
             continue
 
         order_val = float(o.value or 0.0)
         alloc_paid = paid_by_order.get(str(o.po_number), 0.0) + paid_by_order.get(str(o.id), 0.0)
         paid_val = max(float(o.paid or 0.0), alloc_paid)
-        balance_due = max(0.0, round(order_val - paid_val, 2))
-
-        # Auto-clear once paid in full or invoiced status
-        if paid_val >= order_val > 0 or (o.status or "").lower() in ("complete", "cancelled", "closed"):
+        if paid_val > 0 or (o.deposit_payment_date and str(o.deposit_payment_date).strip()):
+            continue
+        if order_val <= 0:
             continue
 
         days_waiting = 0
-        ref_date_str = first_pf or last_pf
+        ref_date_str = last_pf or first_pf
         if ref_date_str:
             try:
                 d_obj = datetime.fromisoformat(str(ref_date_str).split("T")[0]).date()
@@ -197,18 +235,22 @@ def _build_pf_sent(db: Session, division: Optional[str] = None) -> Dict[str, Any
             except Exception:
                 pass
 
+        # Exclude un-migrated historical archives (> 365 days old unless explicitly flagged Proforma Sent)
+        if days_waiting > 365 and not is_pf_status:
+            continue
+
         rows.append({
             "po_number": o.po_number or f"ORD-{o.id}",
             "project_client": f"{o.quote_name or 'Order'} ({o.client_name or o.client or 'Client'})",
-            "rep_division": o.division or o.one_one_rep or o.pm_name or "Unassigned",
+            "rep_division": div,
             "first_pf_date": str(first_pf).split("T")[0] if first_pf else "—",
             "last_pf_date": str(last_pf).split("T")[0] if last_pf else "—",
             "revision_count": int(getattr(o, "pf_revision_count", 0) or (1 if (first_pf or last_pf) else 0)),
             "days_waiting": days_waiting,
             "order_value": round(order_val, 2),
             "deposit_paid": round(paid_val, 2),
-            "balance_due": balance_due,
-            "status": "Deposit Partial" if paid_val > 0 else "Awaiting Deposit",
+            "balance_due": round(order_val - paid_val, 2),
+            "status": "Awaiting Deposit",
         })
 
     rows.sort(key=lambda x: x["days_waiting"], reverse=True)
@@ -241,7 +283,7 @@ def _build_pf_sent(db: Session, division: Optional[str] = None) -> Dict[str, Any
 
 
 def _build_to_be_invoiced(db: Session, division: Optional[str] = None) -> Dict[str, Any]:
-    orders = db.query(Order).all()
+    orders = db.query(Order).filter(Order.is_sub_order.isnot(True)).all()
     all_items = db.query(OrderItem).all()
     items_by_order: Dict[str, List[OrderItem]] = {}
     for it in all_items:
@@ -250,11 +292,20 @@ def _build_to_be_invoiced(db: Session, division: Optional[str] = None) -> Dict[s
 
     rows = []
     for o in orders:
-        if not _matches_division(o.division, o.one_one_rep or o.pm_name, division):
+        div = o.division if (o.division and o.division != "Auto-Detect (PM Name)") else _map_division(o.pm_name, o.quote_name, o.one_one_rep)
+        if not _matches_division(div, o.one_one_rep or o.pm_name, division):
             continue
-        if (o.status or "").lower() in ("cancelled", "lost", "draft"):
+        st_low = (o.status or "").lower()
+        if st_low in ("cancelled", "lost", "draft", "complete", "closed"):
             continue
         o_items = items_by_order.get(str(o.po_number), [])
+
+        # Match ReportsPage Executive KPI 2 rule: must be a Confirmed Order (Deposit Paid AND/OR PO Placed)
+        has_deposit_paid = float(o.paid or 0.0) > 0 or bool(o.deposit_payment_date and str(o.deposit_payment_date).strip())
+        has_po_placed = bool(o.purchase_orders) or any(bool(it.po_ref and str(it.po_ref).strip()) for it in o_items)
+        if not (has_deposit_paid and has_po_placed):
+            continue
+
         order_val = float(o.value or 0.0)
         invoiced_val = sum(float(it.invoice_value or 0.0) for it in o_items)
         to_be_invoiced = round(max(0.0, order_val - invoiced_val), 2)
@@ -272,7 +323,7 @@ def _build_to_be_invoiced(db: Session, division: Optional[str] = None) -> Dict[s
         rows.append({
             "po_number": o.po_number or f"ORD-{o.id}",
             "project_client": f"{o.quote_name or 'Order'} ({o.client_name or o.client or 'Client'})",
-            "rep_division": o.division or o.one_one_rep or o.pm_name or "Unassigned",
+            "rep_division": div,
             "order_value": round(order_val, 2),
             "already_invoiced": round(invoiced_val, 2),
             "to_be_invoiced": to_be_invoiced,
@@ -373,7 +424,7 @@ def _build_sales(db: Session, division: Optional[str] = None) -> Dict[str, Any]:
 def _build_pipeline(db: Session, division: Optional[str] = None) -> Dict[str, Any]:
     leads = db.query(Lead).all()
     clients = {c.id: c.name for c in db.query(Client).all()}
-    orders = db.query(Order).filter(Order.status.in_(["Draft", "Quote", "Quoted", "Proforma Sent", "PF Sent"])).all()
+    orders = db.query(Order).filter(Order.is_sub_order.isnot(True)).all()
 
     rows = []
     for ld in leads:
@@ -389,13 +440,25 @@ def _build_pipeline(db: Session, division: Optional[str] = None) -> Dict[str, An
         })
 
     for o in orders:
-        if not _matches_division(o.division, o.one_one_rep or o.pm_name, division):
+        div = o.division if (o.division and o.division != "Auto-Detect (PM Name)") else _map_division(o.pm_name, o.quote_name, o.one_one_rep)
+        if not _matches_division(div, o.one_one_rep or o.pm_name, division):
+            continue
+        st_low = (o.status or "").lower()
+        if st_low in ("cancelled", "lost", "complete", "closed"):
+            continue
+        raw_exp = (o.expected_deposit_month or "").strip().upper()
+        has_sched_month = bool(raw_exp and raw_exp not in ("TBC", "NONE", "—"))
+        is_unpaid = float(o.paid or 0.0) <= 0
+        is_pipeline_status = st_low in ("draft", "pending", "quote", "quoted", "proforma sent", "pf sent", "pipeline")
+        if not ((has_sched_month and is_unpaid) or (is_pipeline_status and is_unpaid)):
+            continue
+        if float(o.value or 0.0) <= 0:
             continue
         rows.append({
             "name": f"{o.po_number or ''} {o.quote_name or 'Order'}".strip(),
             "client": o.client_name or o.client or "—",
-            "rep_division": o.division or o.one_one_rep or o.pm_name or "Unassigned",
-            "stage": o.status or "Quoted",
+            "rep_division": div,
+            "stage": o.expected_deposit_month if has_sched_month else (o.status or "Draft"),
             "quote_date": o.quotation_sent_date or o.order_date or "—",
             "value_excl": round(float(o.value or 0.0), 2),
         })
@@ -443,7 +506,7 @@ def _build_stock(db: Session, division: Optional[str] = None) -> Dict[str, Any]:
         if soh <= 0:
             st = "Out of Stock"
             out_of_stock_count += 1
-        elif reorder > 0 and soh <= reorder:
+        elif (reorder > 0 and reorder != 100 and soh <= reorder) or (reorder in (0, 100) and soh <= 5):
             st = "Low Stock"
             low_stock_count += 1
         else:

@@ -408,18 +408,22 @@ export default function WeeklyReportsWorkspace({ initialMode = 'reports' }) {
           <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto', maxHeight: '560px' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                <thead style={{ position: 'sticky', top: 0, background: '#0f172a', color: '#ffffff', zIndex: 2 }}>
+                <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 2 }}>
                   <tr>
                     {(currentReport.columns || []).map(col => (
                       <th
                         key={col.key}
                         onClick={() => handleSort(col.key)}
                         style={{
-                          padding: '10px 12px',
+                          padding: '11px 12px',
+                          background: '#f8fafc',
+                          color: '#0f172a',
+                          borderBottom: '2px solid #cbd5e1',
                           textAlign: col.type === 'currency' || col.type === 'number' ? 'right' : 'left',
                           fontSize: '11px',
                           fontWeight: 700,
                           textTransform: 'uppercase',
+                          letterSpacing: '0.04em',
                           cursor: 'pointer',
                           whiteSpace: 'nowrap'
                         }}
@@ -638,15 +642,15 @@ export default function WeeklyReportsWorkspace({ initialMode = 'reports' }) {
           {/* RECIPIENT MATRIX TABLE */}
           <div style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: '10px', overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-              <thead style={{ background: '#0f172a', color: '#ffffff' }}>
+              <thead>
                 <tr>
-                  <th style={{ padding: '10px 12px', textAlign: 'left' }}>Team Member</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'left' }}>Scope / Division</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'left', background: '#f8fafc', color: '#0f172a', borderBottom: '2px solid #cbd5e1' }}>Team Member</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'left', background: '#f8fafc', color: '#0f172a', borderBottom: '2px solid #cbd5e1' }}>Scope / Division</th>
                   {REPORT_META.map(m => (
-                    <th key={m.key} style={{ padding: '10px 8px', textAlign: 'center', fontSize: '10.5px' }}>{m.label}</th>
+                    <th key={m.key} style={{ padding: '10px 8px', textAlign: 'center', fontSize: '10.5px', background: '#f8fafc', color: '#0f172a', borderBottom: '2px solid #cbd5e1' }}>{m.label}</th>
                   ))}
-                  <th style={{ padding: '10px 10px', textAlign: 'center' }}>Active</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'right' }}>Actions</th>
+                  <th style={{ padding: '10px 10px', textAlign: 'center', background: '#f8fafc', color: '#0f172a', borderBottom: '2px solid #cbd5e1' }}>Active</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'right', background: '#f8fafc', color: '#0f172a', borderBottom: '2px solid #cbd5e1' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
