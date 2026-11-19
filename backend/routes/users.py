@@ -303,6 +303,8 @@ def invite_user(invite: UserInvite, db: Session = Depends(get_db), current_user:
                 )
             
             # Send the email automatically via Identity Platform REST API
+            email_sent = False
+            email_error_detail = None
             try:
                 import urllib.request
                 import json
@@ -319,8 +321,10 @@ def invite_user(invite: UserInvite, db: Session = Depends(get_db), current_user:
                 )
                 with urllib.request.urlopen(req) as response:
                     print(f"Successfully triggered password reset email for {invite.email}")
+                    email_sent = True
             except Exception as email_err:
                 print(f"Warning: Failed to automatically send email: {email_err}")
+                email_error_detail = str(email_err)
                 
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Firebase user creation failed: {str(e)}")
@@ -356,7 +360,9 @@ def invite_user(invite: UserInvite, db: Session = Depends(get_db), current_user:
     return {
         "message": "User invited successfully",
         "email": invite.email,
-        "reset_link": reset_link
+        "reset_link": reset_link,
+        "email_sent": locals().get("email_sent", False),
+        "email_error": locals().get("email_error_detail", None)
     }
 
 @router.delete("/{user_id}")

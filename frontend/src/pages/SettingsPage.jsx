@@ -2161,30 +2161,31 @@ export default function SettingsPage() {
                     )}
 
                     {generatedLink && (
-                      <div style={{ padding: '12px', background: 'rgba(224, 153, 36, 0.08)', border: '1px solid rgba(224, 153, 36, 0.25)', borderRadius: '8px' }}>
-                        <div style={{ fontSize: '11px', color: '#e09924', fontWeight: 700, marginBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span>Password Setup / Invite Link:</span>
+                      <div style={{ padding: '14px', background: 'rgba(224, 153, 36, 0.1)', border: '1.5px solid rgba(224, 153, 36, 0.35)', borderRadius: '10px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '12px', color: '#e09924', fontWeight: 700 }}>Direct Account Activation Link:</span>
                           <button
                             type="button"
                             onClick={() => {
                               navigator.clipboard.writeText(generatedLink);
                               setCopiedLink(true);
-                              setTimeout(() => setCopiedLink(false), 2000);
+                              setTimeout(() => setCopiedLink(false), 2500);
                             }}
-                            style={{ background: 'none', border: 'none', color: copiedLink ? '#34d399' : '#e09924', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            className="btn btn-sm"
+                            style={{ background: copiedLink ? '#10b981' : '#e09924', border: 'none', color: '#000', fontSize: '11.5px', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px', transition: 'all 0.15s ease' }}
                           >
-                            <Copy size={12} /> {copiedLink ? "Copied!" : "Copy Link"}
+                            <Copy size={12} /> {copiedLink ? "Copied to Clipboard!" : "Copy Direct Link"}
                           </button>
                         </div>
+                        <p style={{ fontSize: '11.5px', color: '#94a3b8', margin: '0 0 8px 0', lineHeight: 1.4 }}>
+                          Share this link directly via Slack, Teams, or WhatsApp. The user clicks it, sets their password, and is automatically logged in.
+                        </p>
                         <textarea
                           readOnly
                           value={generatedLink}
                           onClick={e => e.target.select()}
-                          style={{ width: '100%', height: '50px', fontSize: '11px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '4px', padding: '6px', resize: 'none' }}
+                          style={{ width: '100%', height: '52px', fontSize: '11px', fontFamily: 'monospace', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.15)', color: '#e2e8f0', borderRadius: '6px', padding: '6px 8px', resize: 'none' }}
                         />
-                        <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                          An email has been dispatched automatically. You can also share this direct setup link manually.
-                        </div>
                       </div>
                     )}
 
