@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 import json
 import re
+import logging
 
 from database.cloud_sql import get_db
 from models.orm_models import (
@@ -20,6 +21,8 @@ from models.orm_models import (
     LogisticsDeliveryNoteItem,
     LogisticsLabelTemplate,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 public_router = APIRouter()
